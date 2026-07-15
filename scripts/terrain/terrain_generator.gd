@@ -9,6 +9,13 @@ const CHUNK_SCENE: PackedScene = preload("res://scenes/terrain/terrain_chunk.tsc
 @export var chunk_count_ahead: int = 6
 @export var chunk_count_behind: int = 2
 @export var ground_y: float = 192.0
+@export var surface_y_offset: float = -32.0
+@export var height_sample_count: int = 32
+@export var hill_amplitude: float = 34.0
+@export var hill_wavelength: float = 900.0
+@export var detail_amplitude: float = 12.0
+@export var detail_wavelength: float = 380.0
+@export var terrain_depth: float = 600.0
 
 var player: CharacterBody2D
 var next_chunk_index: int = 0
@@ -64,6 +71,7 @@ func spawn_chunk(chunk_index: int) -> void:
 		return
 
 	chunk.position = Vector2((float(chunk_index) * chunk_width) + (chunk_width * 0.5), ground_y)
+	build_chunk_surface(chunk, chunk_index)
 	apply_chunk_color(chunk, chunk_index)
 	add_child(chunk)
 	active_chunks[chunk_index] = chunk
@@ -80,12 +88,50 @@ func remove_chunk(chunk_index: int) -> void:
 	print("free chunk ", chunk_index)
 
 
+func build_chunk_surface(chunk: StaticBody2D, chunk_index: int) -> void:
+	var collision_shape: CollisionShape2D = chunk.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	var terrain_fill: Polygon2D = chunk.get_node_or_null("TerrainFill") as Polygon2D
+	if collision_shape == null or terrain_fill == null:
+		push_error("TerrainChunk requires CollisionShape2D and TerrainFill nodes.")
+		return
+
+	var surface_points: PackedVector2Array = PackedVector2Array()
+	var segment_points: PackedVector2Array = PackedVector2Array()
+	var chunk_start_x: float = float(chunk_index) * chunk_width
+	var sample_count: int = maxi(height_sample_count, 2)
+
+	for sample_index: int in range(sample_count + 1):
+		var progress: float = float(sample_index) / float(sample_count)
+		var world_x: float = chunk_start_x + (progress * chunk_width)
+		var local_x: float = (progress * chunk_width) - (chunk_width * 0.5)
+		surface_points.append(Vector2(local_x, get_terrain_height(world_x)))
+
+	for point_index: int in range(surface_points.size() - 1):
+		segment_points.append(surface_points[point_index])
+		segment_points.append(surface_points[point_index + 1])
+
+	var collision: ConcavePolygonShape2D = ConcavePolygonShape2D.new()
+	collision.set_segments(segment_points)
+	collision_shape.shape = collision
+
+	var fill_points: PackedVector2Array = surface_points.duplicate()
+	fill_points.append(Vector2(chunk_width * 0.5, terrain_depth))
+	fill_points.append(Vector2(-chunk_width * 0.5, terrain_depth))
+	terrain_fill.polygon = fill_points
+
+
+func get_terrain_height(world_x: float) -> float:
+	var broad_hill: float = sin((world_x / hill_wavelength) * TAU) * hill_amplitude
+	var detail_hill: float = sin((world_x / detail_wavelength) * TAU + 1.2) * detail_amplitude
+	return surface_y_offset + broad_hill + detail_hill
+
+
 func apply_chunk_color(chunk: StaticBody2D, chunk_index: int) -> void:
-	var color_rect: ColorRect = chunk.get_node_or_null("ColorRect") as ColorRect
-	if color_rect == null:
+	var terrain_fill: Polygon2D = chunk.get_node_or_null("TerrainFill") as Polygon2D
+	if terrain_fill == null:
 		return
 
 	if chunk_index % 2 == 0:
-		color_rect.color = LIGHT_CHUNK_COLOR
+		terrain_fill.color = LIGHT_CHUNK_COLOR
 	else:
-		color_rect.color = DARK_CHUNK_COLOR
+		terrain_fill.color = DARK_CHUNK_COLOR

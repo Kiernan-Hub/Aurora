@@ -1,16 +1,10 @@
-[gd_scene load_steps=2 format=3]
-
-[sub_resource type="RectangleShape2D" id="1"]
-size = Vector2(512, 64)
+[gd_scene format=3]
 
 [node name="TerrainChunk" type="StaticBody2D"]
 collision_layer = 1
 collision_mask = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("1")
 
-[node name="ColorRect" type="ColorRect" parent="."]
-position = Vector2(-256, -32)
-size = Vector2(512, 64)
+[node name="TerrainFill" type="Polygon2D" parent="."]
 color = Color(0.88, 0.95, 1, 1)
