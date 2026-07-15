@@ -9,6 +9,8 @@ const FLOOR_SNAP_LENGTH: float = 18.0
 
 @onready var color_rect: ColorRect = $ColorRect
 
+var did_print_velocity: bool = false
+
 
 func _ready() -> void:
 	floor_snap_length = FLOOR_SNAP_LENGTH
@@ -17,6 +19,8 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	velocity.x = FORWARD_SPEED
+
 	if is_on_floor() and Input.is_action_just_pressed("ui_accept"):
 		velocity.y = JUMP_VELOCITY
 
@@ -25,5 +29,8 @@ func _physics_process(delta: float) -> void:
 	elif velocity.y > 0.0:
 		velocity.y = 0.0
 
-	velocity.x = FORWARD_SPEED
+	if not did_print_velocity:
+		print(velocity)
+		did_print_velocity = true
+
 	move_and_slide()

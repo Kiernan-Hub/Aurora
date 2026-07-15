@@ -14,6 +14,9 @@ var player: CharacterBody2D
 var next_chunk_index: int = 0
 var active_chunks: Dictionary[int, Node2D] = {}
 
+const LIGHT_CHUNK_COLOR: Color = Color(0.92, 0.97, 1.0)
+const DARK_CHUNK_COLOR: Color = Color(0.78, 0.86, 0.93)
+
 
 func _ready() -> void:
 	player = get_node(player_path) as CharacterBody2D
@@ -61,8 +64,10 @@ func spawn_chunk(chunk_index: int) -> void:
 		return
 
 	chunk.position = Vector2((float(chunk_index) * chunk_width) + (chunk_width * 0.5), ground_y)
+	apply_chunk_color(chunk, chunk_index)
 	add_child(chunk)
 	active_chunks[chunk_index] = chunk
+	print("spawn chunk ", chunk_index)
 
 
 func remove_chunk(chunk_index: int) -> void:
@@ -71,4 +76,16 @@ func remove_chunk(chunk_index: int) -> void:
 
 	var chunk: Node2D = active_chunks[chunk_index]
 	active_chunks.erase(chunk_index)
-	chunk.queue_free()
+	chunk.free()
+	print("free chunk ", chunk_index)
+
+
+func apply_chunk_color(chunk: StaticBody2D, chunk_index: int) -> void:
+	var color_rect: ColorRect = chunk.get_node_or_null("ColorRect") as ColorRect
+	if color_rect == null:
+		return
+
+	if chunk_index % 2 == 0:
+		color_rect.color = LIGHT_CHUNK_COLOR
+	else:
+		color_rect.color = DARK_CHUNK_COLOR
