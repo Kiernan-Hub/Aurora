@@ -18,13 +18,25 @@ const DARK_SEGMENT_COLOR: Color = Color(0.57, 0.76, 0.94)
 
 
 func _ready() -> void:
-	player = get_node(player_path) as CharacterBody2D
+	player = resolve_player()
 	if player == null:
-		push_error("BackgroundGenerator requires a valid player_path.")
+		push_error("BackgroundGenerator requires a valid Player node.")
 		set_physics_process(false)
 		return
 
 	initialize_segments()
+
+
+func resolve_player() -> CharacterBody2D:
+	var resolved_player: CharacterBody2D = null
+
+	if player_path != NodePath():
+		resolved_player = get_node_or_null(player_path) as CharacterBody2D
+
+	if resolved_player == null:
+		resolved_player = get_node_or_null("/root/Main/Player") as CharacterBody2D
+
+	return resolved_player
 
 
 func _physics_process(_delta: float) -> void:
