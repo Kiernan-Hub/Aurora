@@ -23,6 +23,7 @@ var active_chunks: Dictionary[int, Node2D] = {}
 
 const LIGHT_CHUNK_COLOR: Color = Color(0.92, 0.97, 1.0)
 const DARK_CHUNK_COLOR: Color = Color(0.78, 0.86, 0.93)
+const SLOPE_SAMPLE_DISTANCE: float = 2.0
 
 
 func _ready() -> void:
@@ -124,6 +125,12 @@ func get_terrain_height(world_x: float) -> float:
 	var broad_hill: float = sin((world_x / hill_wavelength) * TAU) * hill_amplitude
 	var detail_hill: float = sin((world_x / detail_wavelength) * TAU + 1.2) * detail_amplitude
 	return surface_y_offset + broad_hill + detail_hill
+
+
+func get_slope_angle_at_x(world_x: float) -> float:
+	var left_height: float = get_terrain_height(world_x - SLOPE_SAMPLE_DISTANCE)
+	var right_height: float = get_terrain_height(world_x + SLOPE_SAMPLE_DISTANCE)
+	return atan2(right_height - left_height, SLOPE_SAMPLE_DISTANCE * 2.0)
 
 
 func apply_chunk_color(chunk: StaticBody2D, chunk_index: int) -> void:

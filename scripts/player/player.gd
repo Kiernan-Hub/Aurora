@@ -9,9 +9,11 @@ const FLOOR_SNAP_LENGTH: float = 18.0
 const ROTATION_SMOOTHNESS: float = 12.0
 
 @onready var color_rect: ColorRect = $ColorRect
+@onready var terrain_generator: TerrainGenerator = get_node_or_null("../TerrainGenerator") as TerrainGenerator
 
 var speed_manager: RefCounted
 var did_print_velocity: bool = false
+var debug_rotation_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -22,10 +24,19 @@ func _ready() -> void:
 	velocity = Vector2(speed_manager.current_speed, 0.0)
 	color_rect.color = Color(0.85, 0.93, 1.0)
 	color_rect.pivot_offset = color_rect.size * 0.5
+	if terrain_generator == null:
+		push_error("Player requires a TerrainGenerator sibling.")
 
 
 func _physics_process(delta: float) -> void:
 	speed_manager.update(delta)
+	if terrain_generator != null:
+		var terrain_angle: float = terrain_generator.get_slope_angle_at_x(global_position.x)
+		color_rect.rotation = lerp_angle(color_rect.rotation, terrain_angle, ROTATION_SMOOTHNESS * delta)
+		debug_rotation_timer += delta
+		if debug_rotation_timer >= 0.5:
+			debug_rotation_timer = 0.0
+			print("player x=", global_position.x, " slope_angle=", terrain_angle, " rotation=", color_rect.rotation)
 
 	if is_on_floor() and Input.is_action_just_pressed("ui_accept"):
 		velocity.y = JUMP_VELOCITY
@@ -33,16 +44,10 @@ func _physics_process(delta: float) -> void:
 	if is_on_floor() and velocity.y >= 0.0:
 		var slope_tangent: Vector2 = get_slope_tangent()
 		velocity = slope_tangent * speed_manager.current_speed
-		var target_rotation: float = slope_tangent.angle()
-		color_rect.rotation = lerp_angle(color_rect.rotation, target_rotation, ROTATION_SMOOTHNESS * delta)
 	else:
 		velocity.x = speed_manager.current_speed
 		velocity.y += GRAVITY * delta
-		color_rect.rotation = lerp_angle(color_rect.rotation, 0.0, ROTATION_SMOOTHNESS * delta)
 
-	if Engine.get_physics_frames() % 60 == 0:
-		print(velocity)
-		
 	move_and_slide()
 
 
