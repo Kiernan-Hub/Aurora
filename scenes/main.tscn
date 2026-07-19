@@ -4,6 +4,8 @@
 [ext_resource type="Script" uid="uid://bxieoqsa3l1ov" path="res://scripts/terrain/terrain_generator.gd" id="2"]
 [ext_resource type="Script" uid="uid://b167wbugq81a2" path="res://scripts/main.gd" id="3"]
 [ext_resource type="Script" uid="uid://c3bxsf5ckhq4k" path="res://scripts/systems/background_generator.gd" id="4"]
+[ext_resource type="PackedScene" path="res://scenes/obstacles/obstacle.tscn" id="5_tbgi4"]
+[ext_resource type="Script" path="res://scripts/game/game_manager.gd" id="6_j53ry"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -17,6 +19,7 @@ player_path = NodePath("../Player")
 
 [node name="Player" parent="." unique_id=1995330198 instance=ExtResource("1")]
 position = Vector2(64, 136)
+safe_margin = 1.0
 
 [node name="TerrainGenerator" type="Node2D" parent="." unique_id=1676138452]
 script = ExtResource("2")
@@ -24,3 +27,19 @@ player_path = NodePath("../Player")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1352461072]
 position = Vector2(0, 136)
+
+[node name="Obstacle" parent="." unique_id=1895873627 instance=ExtResource("5_tbgi4")]
+position = Vector2(506, 70)
+
+[node name="GameManager" type="Node" parent="." unique_id=151904437]
+script = ExtResource("6_j53ry")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=210075013]
+
+[node name="YouDiedLabel" type="Label" parent="CanvasLayer" unique_id=262636423]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 182.0
+offset_bottom = 39.0
+text = "You Died"
+visible = false

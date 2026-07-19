@@ -24,6 +24,8 @@ var active_chunks: Dictionary[int, Node2D] = {}
 const LIGHT_CHUNK_COLOR: Color = Color(0.92, 0.97, 1.0)
 const DARK_CHUNK_COLOR: Color = Color(0.78, 0.86, 0.93)
 const SLOPE_SAMPLE_DISTANCE: float = 2.0
+const MAX_COLLISION_SEGMENT_LENGTH: float = 16.0
+const DEBUG_TERRAIN_LOGGING: bool = false
 
 
 func _ready() -> void:
@@ -76,7 +78,8 @@ func spawn_chunk(chunk_index: int) -> void:
 	apply_chunk_color(chunk, chunk_index)
 	add_child(chunk)
 	active_chunks[chunk_index] = chunk
-	print("spawn chunk ", chunk_index)
+	if DEBUG_TERRAIN_LOGGING:
+		print("spawn chunk ", chunk_index)
 
 
 func remove_chunk(chunk_index: int) -> void:
@@ -86,7 +89,8 @@ func remove_chunk(chunk_index: int) -> void:
 	var chunk: Node2D = active_chunks[chunk_index]
 	active_chunks.erase(chunk_index)
 	chunk.free()
-	print("free chunk ", chunk_index)
+	if DEBUG_TERRAIN_LOGGING:
+		print("free chunk ", chunk_index)
 
 
 func build_chunk_surface(chunk: StaticBody2D, chunk_index: int) -> void:
@@ -99,17 +103,25 @@ func build_chunk_surface(chunk: StaticBody2D, chunk_index: int) -> void:
 	var surface_points: PackedVector2Array = PackedVector2Array()
 	var segment_points: PackedVector2Array = PackedVector2Array()
 	var chunk_start_x: float = float(chunk_index) * chunk_width
-	var sample_count: int = maxi(height_sample_count, 2)
+	var visual_sample_count: int = maxi(height_sample_count, 2)
+	var collision_sample_count: int = maxi(ceili(chunk_width / MAX_COLLISION_SEGMENT_LENGTH), 2)
+	var previous_collision_point: Vector2 = Vector2.ZERO
 
-	for sample_index: int in range(sample_count + 1):
-		var progress: float = float(sample_index) / float(sample_count)
+	for sample_index: int in range(visual_sample_count + 1):
+		var progress: float = float(sample_index) / float(visual_sample_count)
 		var world_x: float = chunk_start_x + (progress * chunk_width)
 		var local_x: float = (progress * chunk_width) - (chunk_width * 0.5)
 		surface_points.append(Vector2(local_x, get_terrain_height(world_x)))
 
-	for point_index: int in range(surface_points.size() - 1):
-		segment_points.append(surface_points[point_index])
-		segment_points.append(surface_points[point_index + 1])
+	for sample_index: int in range(collision_sample_count + 1):
+		var progress: float = float(sample_index) / float(collision_sample_count)
+		var world_x: float = chunk_start_x + (progress * chunk_width)
+		var local_x: float = (progress * chunk_width) - (chunk_width * 0.5)
+		var point: Vector2 = Vector2(local_x, get_terrain_height(world_x))
+		if sample_index > 0:
+			segment_points.append(previous_collision_point)
+			segment_points.append(point)
+		previous_collision_point = point
 
 	var collision: ConcavePolygonShape2D = ConcavePolygonShape2D.new()
 	collision.set_segments(segment_points)
