@@ -3,6 +3,7 @@ extends Node2D
 class_name TerrainGenerator
 
 const CHUNK_SCENE: PackedScene = preload("res://scenes/terrain/terrain_chunk.tscn")
+const OBSTACLE_SCENE: PackedScene = preload("res://scenes/obstacles/obstacle.tscn")
 
 @export var player_path: NodePath
 @export var chunk_width: float = 512.0
@@ -11,20 +12,36 @@ const CHUNK_SCENE: PackedScene = preload("res://scenes/terrain/terrain_chunk.tsc
 @export var ground_y: float = 192.0
 @export var surface_y_offset: float = -32.0
 @export var height_sample_count: int = 32
-@export var hill_amplitude: float = 34.0
-@export var hill_wavelength: float = 900.0
-@export var detail_amplitude: float = 12.0
-@export var detail_wavelength: float = 380.0
 @export var terrain_depth: float = 600.0
 
 var player: CharacterBody2D
 var next_chunk_index: int = 0
 var active_chunks: Dictionary[int, Node2D] = {}
+var last_obstacle_world_x: float = -1000000000.0
+var session_seed: int = 0
 
 const LIGHT_CHUNK_COLOR: Color = Color(0.92, 0.97, 1.0)
 const DARK_CHUNK_COLOR: Color = Color(0.78, 0.86, 0.93)
 const SLOPE_SAMPLE_DISTANCE: float = 2.0
 const MAX_COLLISION_SEGMENT_LENGTH: float = 16.0
+const SEGMENT_TYPE_FLAT: int = 0
+const SEGMENT_TYPE_HILL: int = 1
+const SEGMENT_TYPE_VALLEY: int = 2
+const SEGMENT_TIER_SMALL: int = 0
+const SEGMENT_TIER_MEDIUM: int = 1
+const SMALL_SEGMENT_LENGTH: float = 480.0
+const MEDIUM_SEGMENT_LENGTH: float = 640.0
+const SMALL_HILL_AMPLITUDE: float = 28.0
+const MEDIUM_HILL_AMPLITUDE: float = 46.0
+const FLAT_WEIGHT_PERCENT: int = 15
+const HILL_WEIGHT_PERCENT: int = 43
+const HASH_MASK: int = 0x7fffffff
+const HASH_INDEX_MULTIPLIER: int = 374761393
+const HASH_MIX_MULTIPLIER: int = 668265263
+const MIN_SAFE_START_DISTANCE: float = 440.0
+const MIN_OBSTACLE_GAP: float = 250.0
+const OBSTACLE_EDGE_PADDING: float = 24.0
+const OBSTACLE_SURFACE_Y_OFFSET: float = -16.0
 const DEBUG_TERRAIN_LOGGING: bool = false
 
 
@@ -35,6 +52,7 @@ func _ready() -> void:
 		set_physics_process(false)
 		return
 
+	session_seed = create_session_seed()
 	initialize_chunks()
 
 
@@ -75,6 +93,7 @@ func spawn_chunk(chunk_index: int) -> void:
 
 	chunk.position = Vector2((float(chunk_index) * chunk_width) + (chunk_width * 0.5), ground_y)
 	build_chunk_surface(chunk, chunk_index)
+	spawn_chunk_obstacle(chunk, chunk_index)
 	apply_chunk_color(chunk, chunk_index)
 	add_child(chunk)
 	active_chunks[chunk_index] = chunk
@@ -91,6 +110,28 @@ func remove_chunk(chunk_index: int) -> void:
 	chunk.free()
 	if DEBUG_TERRAIN_LOGGING:
 		print("free chunk ", chunk_index)
+
+
+func spawn_chunk_obstacle(chunk: StaticBody2D, chunk_index: int) -> void:
+	var obstacle: Area2D = OBSTACLE_SCENE.instantiate() as Area2D
+	if obstacle == null:
+		push_error("Failed to instance obstacle scene.")
+		return
+
+	var half_chunk_width: float = chunk_width * 0.5
+	var usable_half_width: float = maxi(half_chunk_width - OBSTACLE_EDGE_PADDING, 0.0)
+	var obstacle_local_x_offset: float = randf_range(-usable_half_width, usable_half_width)
+	var obstacle_world_x: float = (float(chunk_index) * chunk_width) + (chunk_width * 0.5) + obstacle_local_x_offset
+	if obstacle_world_x < MIN_SAFE_START_DISTANCE:
+		return
+
+	if obstacle_world_x - last_obstacle_world_x < MIN_OBSTACLE_GAP:
+		return
+
+	var surface_height: float = get_terrain_height(obstacle_world_x)
+	obstacle.position = Vector2(obstacle_local_x_offset, surface_height + OBSTACLE_SURFACE_Y_OFFSET)
+	chunk.add_child(obstacle)
+	last_obstacle_world_x = obstacle_world_x
 
 
 func build_chunk_surface(chunk: StaticBody2D, chunk_index: int) -> void:
@@ -134,9 +175,97 @@ func build_chunk_surface(chunk: StaticBody2D, chunk_index: int) -> void:
 
 
 func get_terrain_height(world_x: float) -> float:
-	var broad_hill: float = sin((world_x / hill_wavelength) * TAU) * hill_amplitude
-	var detail_hill: float = sin((world_x / detail_wavelength) * TAU + 1.2) * detail_amplitude
-	return surface_y_offset + broad_hill + detail_hill
+	var segment_index: int = 0
+	var segment_start_x: float = 0.0
+	if world_x >= 0.0:
+		while world_x >= segment_start_x + get_segment_length(segment_index):
+			segment_start_x += get_segment_length(segment_index)
+			segment_index += 1
+	else:
+		while world_x < segment_start_x:
+			segment_index -= 1
+			segment_start_x -= get_segment_length(segment_index)
+
+	var segment_x: float = world_x - segment_start_x
+	var segment_type: int = get_segment_type(segment_index)
+	if segment_type == SEGMENT_TYPE_FLAT:
+		return surface_y_offset
+
+	var segment_progress: float = segment_x / get_segment_length(segment_index)
+	var hill_amplitude: float = get_segment_amplitude(segment_index)
+	if segment_type == SEGMENT_TYPE_HILL:
+		# Godot's Y axis points down, so subtracting raises the hill visually.
+		return surface_y_offset - (get_curve_profile(segment_progress) * hill_amplitude)
+
+	# Adding the same profile mirrors the hill into a valley below baseline.
+	return surface_y_offset + (get_curve_profile(segment_progress) * hill_amplitude)
+
+
+func get_segment_tier(segment_index: int) -> int:
+	var random_value: int = get_segment_hash(segment_index) >> 4
+	if random_value % 2 == 0:
+		return SEGMENT_TIER_SMALL
+	return SEGMENT_TIER_MEDIUM
+
+
+func get_segment_length(segment_index: int) -> float:
+	if get_segment_type(segment_index) == SEGMENT_TYPE_FLAT:
+		return MEDIUM_SEGMENT_LENGTH
+	if get_segment_tier(segment_index) == SEGMENT_TIER_SMALL:
+		return SMALL_SEGMENT_LENGTH
+	return MEDIUM_SEGMENT_LENGTH
+
+
+func get_segment_amplitude(segment_index: int) -> float:
+	if get_segment_tier(segment_index) == SEGMENT_TIER_SMALL:
+		return SMALL_HILL_AMPLITUDE
+	return MEDIUM_HILL_AMPLITUDE
+
+
+func create_session_seed() -> int:
+	var seed_generator: RandomNumberGenerator = RandomNumberGenerator.new()
+	seed_generator.randomize()
+	return int(seed_generator.randi())
+
+
+func get_segment_type(segment_index: int) -> int:
+	var segment_type: int = get_unconstrained_segment_type(segment_index)
+	if segment_type != SEGMENT_TYPE_FLAT:
+		return segment_type
+
+	var previous_segment_type: int = get_unconstrained_segment_type(segment_index - 1)
+	if previous_segment_type != SEGMENT_TYPE_FLAT:
+		return segment_type
+
+	return get_non_flat_segment_type(segment_index)
+
+
+func get_unconstrained_segment_type(segment_index: int) -> int:
+	var random_value: int = get_segment_hash(segment_index) % 100
+	if random_value < FLAT_WEIGHT_PERCENT:
+		return SEGMENT_TYPE_FLAT
+	if random_value < FLAT_WEIGHT_PERCENT + HILL_WEIGHT_PERCENT:
+		return SEGMENT_TYPE_HILL
+	return SEGMENT_TYPE_VALLEY
+
+
+func get_non_flat_segment_type(segment_index: int) -> int:
+	var random_value: int = get_segment_hash(segment_index) >> 8
+	if random_value % 2 == 0:
+		return SEGMENT_TYPE_HILL
+	return SEGMENT_TYPE_VALLEY
+
+
+func get_segment_hash(segment_index: int) -> int:
+	var mixed_value: int = (session_seed ^ (segment_index * HASH_INDEX_MULTIPLIER)) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 13)) & HASH_MASK
+	mixed_value = (mixed_value * HASH_MIX_MULTIPLIER) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 15)) & HASH_MASK
+	return mixed_value
+
+
+func get_curve_profile(segment_progress: float) -> float:
+	return pow(sin(segment_progress * PI), 2.0)
 
 
 func get_slope_angle_at_x(world_x: float) -> float:
