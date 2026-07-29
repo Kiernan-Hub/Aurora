@@ -51,3 +51,16 @@ offset_bottom = 28.0
 theme_override_font_sizes/font_size = 12
 text = "0:00"
 horizontal_alignment = 2
+
+[node name="StuckTimeLabel" type="Label" parent="CanvasLayer" unique_id=903217456]
+visible = false
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -220.0
+offset_top = 30.0
+offset_right = -8.0
+offset_bottom = 50.0
+theme_override_font_sizes/font_size = 12
+text = ""
+horizontal_alignment = 2

@@ -56,6 +56,10 @@ const LARGE_VALLEY_DROP_LENGTH: float = 48.0
 const LARGE_VALLEY_RISE_LENGTH: float = 420.0
 const LARGE_VALLEY_FLOOR_LENGTH: float = 192.0
 const LARGE_VALLEY_DEPTH: float = 180.0
+# Same margin below floor_max_angle that mega_drop already uses. In practice this,
+# not LARGE_VALLEY_DROP_LENGTH above, determines the drop's real length -- see
+# get_large_valley_drop_length().
+const LARGE_VALLEY_FLOOR_ANGLE_FRACTION: float = 0.9
 const MEGA_DROP_TOTAL_VERTICAL_DROP: float = 1080.0
 const MEGA_DROP_SEGMENT_COUNT: int = 4
 const MEGA_DROP_FLOOR_ANGLE_FRACTION: float = 0.9
@@ -442,12 +446,34 @@ func get_segment_amplitude(segment_index: int) -> float:
 	return MEDIUM_HILL_AMPLITUDE
 
 
+func get_large_valley_max_angle() -> float:
+	return session_floor_max_angle * LARGE_VALLEY_FLOOR_ANGLE_FRACTION
+
+
+# Shortest drop_length whose PEAK chord angle still stays at/under
+# get_large_valley_max_angle(). The drop's height profile is an ease-in/out curve
+# (get_transition_profile), whose steepest point has slope
+# (LARGE_VALLEY_DEPTH / drop_length) * (PI / 2) -- solving that for the target
+# angle gives this length.
+func get_large_valley_min_drop_length_for_floor_angle() -> float:
+	return (LARGE_VALLEY_DEPTH * PI) / (2.0 * tan(get_large_valley_max_angle()))
+
+
+# Both quantities below are MINIMUM safe lengths for two independent constraints,
+# not maximums, so the constant and both derived minimums must be combined with
+# maxf(), never minf() -- a shorter length is always the STEEPER, less safe option.
+# (Measured bug in the prior version of this function: it used minf(), which since
+# LARGE_VALLEY_DROP_LENGTH=48 was already shorter than the floor-snap minimum
+# (~70.5px), silently discarded that minimum and let the drop reach 80.4 degrees --
+# steeper than floor_max_angle (45 degrees), which physics then treats as a wall
+# rather than a ramp. See CLAUDE.md's known-bad-seeds table.)
 func get_large_valley_drop_length() -> float:
 	var physics_delta: float = 1.0 / float(Engine.physics_ticks_per_second)
 	var target_drop_per_tick: float = session_floor_snap_length + (0.5 * Player.GRAVITY * physics_delta * physics_delta)
 	var target_slope: float = (target_drop_per_tick / (SpeedManager.INITIAL_SPEED * physics_delta)) * 1.1
-	var maximum_drop_length: float = (LARGE_VALLEY_DEPTH * PI) / (target_slope * 2.0)
-	return minf(LARGE_VALLEY_DROP_LENGTH, maximum_drop_length)
+	var floor_snap_min_drop_length: float = (LARGE_VALLEY_DEPTH * PI) / (target_slope * 2.0)
+	var floor_angle_min_drop_length: float = get_large_valley_min_drop_length_for_floor_angle()
+	return maxf(LARGE_VALLEY_DROP_LENGTH, maxf(floor_snap_min_drop_length, floor_angle_min_drop_length))
 
 
 func get_large_valley_rise_length() -> float:

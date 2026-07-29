@@ -6,6 +6,7 @@ class_name Main
 @onready var camera_2d: Camera2D = $Camera2D
 @onready var terrain_generator: TerrainGenerator = $TerrainGenerator
 @onready var timer_label: Label = $CanvasLayer/TimerLabel
+@onready var stuck_time_label: Label = $CanvasLayer/StuckTimeLabel
 
 const WORLD_REBASER_SCRIPT: Script = preload("res://scripts/systems/world_rebaser.gd")
 const VERTICAL_FOLLOW_MARGIN: float = 72.0
@@ -32,6 +33,7 @@ func _ready() -> void:
 		push_error("Main requires a TerrainGenerator child for world rebasing.")
 	if not world_rebase_enabled:
 		push_warning("World rebasing is DISABLED - the terrain freeze bug will return.")
+	(player as Player).debug_stuck_detected.connect(_on_player_stuck_detected)
 
 
 func _physics_process(delta: float) -> void:
@@ -46,6 +48,17 @@ func _physics_process(delta: float) -> void:
 
 	elapsed_time += delta
 	timer_label.text = format_elapsed_time(elapsed_time)
+
+
+# Stamps the real session clock at the moment the player stops making progress, and
+# leaves it on screen -- elapsed_time / timer_label keep running normally, this is a
+# separate label so "when did it stop" survives even if you looked away and came
+# back later. Overwrites on each new stuck event, but every event is also printed
+# to the console by Player, so the full history isn't lost.
+func _on_player_stuck_detected(session_seed: int, world_x: float) -> void:
+	stuck_time_label.visible = true
+	stuck_time_label.text = "stuck @ %s (x=%.0f)" % [format_elapsed_time(elapsed_time), world_x]
+	print("Player stuck at elapsed=", format_elapsed_time(elapsed_time), " seed=", session_seed, " world_x=", world_x)
 
 
 func format_elapsed_time(total_seconds: float) -> String:

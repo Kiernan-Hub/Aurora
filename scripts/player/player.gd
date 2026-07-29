@@ -5,6 +5,7 @@ class_name Player
 signal died
 signal debug_freeze_detected(session_seed: int)
 signal debug_stall_recovered(session_seed: int, world_x: float)
+signal debug_stuck_detected(session_seed: int, world_x: float)
 
 const SPEED_MANAGER_SCRIPT: Script = preload("res://scripts/systems/speed_manager.gd")
 const GRAVITY: float = 1600.0
@@ -25,6 +26,14 @@ const STALL_RECOVERY_FRAME_THRESHOLD: int = 4
 # Clearance above the sampled surface when re-seating, so the recovered body is not
 # born inside the collision polyline. Floor snap (18px) pulls it back down.
 const STALL_RECOVERY_CLEARANCE: float = 1.0
+# "Stuck" here means near-zero NET progress over a real window, not a single frame
+# reading exactly 0 -- catches jittering-in-place (small back-and-forth motion that
+# never clears a hard freeze threshold) as well as a flat stall. 60 frames = ~1s.
+const STUCK_WINDOW_FRAME_COUNT: int = 60
+# Even on the steepest face in this generator (~34 degrees, large_valley) minimum
+# forward speed (300 px/s) along-surface is ~250 px/s; a legitimate slope has no
+# reason to produce under 20px of net motion in a full second.
+const STUCK_NET_PROGRESS_THRESHOLD: float = 20.0
 
 @export var DEBUG_ALLOW_MANUAL_SPEED_CONTROL: bool = true
 @export var DEBUG_SHOW_PLAYER_STATE: bool = true
@@ -51,6 +60,9 @@ var debug_frame_history: Array[String] = []
 var capsule_half_height: float = 24.0
 var stalled_frame_count: int = 0
 var debug_stall_recovery_count: int = 0
+var stuck_motion_x_window: Array[float] = []
+var stuck_event_reported: bool = false
+var debug_stuck_event_count: int = 0
 
 const DEBUG_FREEZE_MIN_VELOCITY_X: float = 1.0
 const DEBUG_FREEZE_MAX_MOTION_X: float = 0.01
@@ -104,6 +116,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	last_physics_displacement = global_position - position_before_move
 	update_stall_recovery(delta)
+	update_stuck_detection(delta)
 	if TerrainGenerator.DEBUG_TERRAIN_LOGGING or DEBUG_SLOPE_LOGGING:
 		var slide_collision_count: int = get_slide_collision_count()
 		print("slide_collision_count=", slide_collision_count)
@@ -218,6 +231,42 @@ func recover_from_stall(delta: float) -> void:
 	velocity = get_slope_tangent() * speed_manager.current_speed
 	print("STALL_RECOVERY seed=", get_terrain_session_seed(), " world_x=", recovered_x, " count=", debug_stall_recovery_count)
 	debug_stall_recovered.emit(get_terrain_session_seed(), recovered_x)
+
+
+# Broader than is_stalled_this_frame(), and the reason that predicate alone is not
+# enough: a jittering stall (small back-and-forth motion) never strings together
+# STALL_RECOVERY_FRAME_THRESHOLD consecutive near-zero frames, so the per-frame
+# watchdog never fires while the player is nonetheless going nowhere. Measured at
+# seed 222894852 / world_x 1,166,358: 600 frames, net progress 1.6px, recoveries 0.
+# This catches it on NET progress instead, and recovers through the same path.
+func update_stuck_detection(delta: float) -> void:
+	stuck_motion_x_window.append(last_physics_displacement.x)
+	if stuck_motion_x_window.size() > STUCK_WINDOW_FRAME_COUNT:
+		stuck_motion_x_window.pop_front()
+	if stuck_motion_x_window.size() < STUCK_WINDOW_FRAME_COUNT:
+		return
+
+	var net_progress: float = 0.0
+	for windowed_motion_x: float in stuck_motion_x_window:
+		net_progress += windowed_motion_x
+
+	if not (is_on_floor() and net_progress < STUCK_NET_PROGRESS_THRESHOLD):
+		stuck_event_reported = false
+		return
+
+	if stuck_event_reported:
+		return
+
+	stuck_event_reported = true
+	debug_stuck_event_count += 1
+	print("STUCK_DETECTED seed=", get_terrain_session_seed(), " world_x=%.3f" % global_position.x, " event=", debug_stuck_event_count, " net_progress_over_%d_frames=%.3f" % [STUCK_WINDOW_FRAME_COUNT, net_progress])
+	debug_stuck_detected.emit(get_terrain_session_seed(), global_position.x)
+	recover_from_stall(delta)
+	# Clearing the window both resets the measurement against fresh post-recovery
+	# data and acts as a ~1s cooldown, so a location that re-sticks gets rescued
+	# repeatedly rather than once.
+	stuck_motion_x_window.clear()
+	stuck_event_reported = false
 
 
 func setup_debug_state_label() -> void:
