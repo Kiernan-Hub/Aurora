@@ -61,6 +61,16 @@ the signature; real terrain slopes are irrational):
 | 2160065702 | 226,800 / 237,919 | (0.338199, -0.941075) | 23/64 |
 | 3188032853 | 264,063 / 294,719 | (0.242536, -0.970143) | — |
 
+A **second, distinct** stall class was found and fixed separately (`fd59c53`):
+`large_valley`'s drop face used to be steep enough (80.4°, since fixed to ~40.5°)
+to exceed `floor_max_angle`, so the physics engine treated it as a wall and the
+player wedged at the lip instead of riding or launching off it. Not a float
+precision issue — real terrain geometry, confirmed by 1px-resolution height
+sampling. `Player.update_stuck_detection()` is a second, independent watchdog
+(alongside `recover_from_stall`'s per-frame one) for exactly this shape of bug:
+jittering-in-place defeats a per-frame consecutive-stall predicate since no single
+frame reads exactly 0, so it tracks **net** progress over a rolling window instead.
+
 `Player.recover_from_stall()` is the watchdog: after
 `STALL_RECOVERY_FRAME_THRESHOLD` consecutive stalled frames it re-seats the body on
 the terrain height field, prints `STALL_RECOVERY`, and bumps
@@ -141,9 +151,12 @@ the actual algorithm — these are the gotchas that aren't obvious from a read:
 - Player/terrain/obstacles share collision layer/mask **1**; `obstacle.gd`
   filters via `body.is_in_group("player")` — keep that guard.
 - `Player.FLOOR_SNAP_LENGTH`, `GRAVITY`, `SpeedManager.INITIAL_SPEED`, and the
-  tick rate feed `get_large_valley_drop_length()`, clamping the valley ramp so
-  floor snap keeps contact. Currently `min(48,70.5)`→48, i.e. clamp inactive —
-  lowering speed or raising snap length makes it bind. `player.gd` holds
+  tick rate feed `get_large_valley_drop_length()` (a floor-snap-contact minimum
+  length), and `session_floor_max_angle` feeds it a second, separate minimum (a
+  floor_max_angle-based one, see the known-bad-seeds table above for why). Both
+  are combined via `maxf()` — as of `fd59c53` the floor-angle minimum (~331px)
+  dominates; the floor-snap one only binds if speed drops or snap length rises
+  enough to need more room than that. `player.gd` holds
   `speed_manager` as a bare `RefCounted` instead of typed `SpeedManager`. The
   real circular reference is Player↔TerrainGenerator (each types/references the
   other) — `speed_manager.gd` itself references neither. Untested whether typing
