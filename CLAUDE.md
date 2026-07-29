@@ -23,21 +23,49 @@ changing tick rate silently changes level geometry.
 No test suite, no build script. Godot: `/Applications/Godot.app/Contents/MacOS/Godot`
 (play with `--path .`, opens a window and blocks — only when asked).
 
-Headless freeze-regression replay, the only automated check that exists:
+Headless freeze-regression replay:
 ```bash
-/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/freeze_replay_runner.gd -- --seed=2160065702 --frames=400 --runs=1
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/freeze_replay_runner.gd -- --seed=941462462 --frames=60000 --runs=1
 ```
 Instantiates `main.tscn`, forces `debug_replay_session_seed`, steps physics
-frames, prints `status=no_freeze|freeze_detected|tree_paused`. Run after any
-change to player physics, collision, or segment code.
+frames, prints `status=no_freeze|freeze_detected|tree_paused|stall_recovered`.
+Run after any change to player physics, collision, or segment code.
+**`--frames` must be large.** 400 frames (the count documented here until this was
+corrected) is 6.7s ≈ 2,000 world_x; every recorded freeze is beyond world_x
+175,000, i.e. past frame ~25,000. Short runs report `no_freeze` unconditionally.
+`--rebase=0` disables world rebasing for A/B work (see `scripts/systems/world_rebaser.gd`).
+
+**This runner alone is not sufficient.** It replays from spawn with no input, and
+a 60,000-frame no-input replay of seed 941462462 passes even with the fix disabled
+— the real reproduction needed a warp plus a jump schedule. The harness that
+actually finds stalls is `scripts/debug/freeze_search.gd`, which sweeps sub-pixel
+start phases × input schedules at a target world_x:
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/freeze_search.gd -- --seed=941462462 --warp=175000 --to=178000 --phases=8 --phasestep=0.25 --scan=1 --trialframes=500 --rebase=1
+```
+Expect `trials with a STALL : 0`. With `--rebase=0` the same command yields 1.
 
 Debug tooling: `Player.DEBUG_SHOW_PLAYER_STATE` builds a runtime `Label` with
 live physics/terrain state incl. **session seed** — read it to reproduce a bug
 via `--seed=`. `Player.DEBUG_LOG_FREEZE_REPRO` prints `FREEZE_REPRO` when
 grounded with `|velocity.x| >= 1` but `|motion.x| <= 0.01`, emitting
-`debug_freeze_detected(session_seed)` — what the replay runner watches. No
-known-bad seeds are recorded yet — log any seed that triggers `FREEZE_REPRO`
-or a visual bug here, with a one-line description, before fixing it.
+`debug_freeze_detected(session_seed)` — what the replay runner watches.
+Log any seed that triggers `FREEZE_REPRO` or a visual bug here, with a one-line
+description, before fixing it. Known-bad seeds (all the same float32 bug, all fixed
+by world rebasing — the reported normal is an exact small-integer ratio, which is
+the signature; real terrain slopes are irrational):
+
+| seed | world_x | reported floor normal | ratio |
+|---|---|---|---|
+| 941462462 | 175,552 | (0.169391, -0.985549) | 11/64 |
+| 2160065702 | 226,800 / 237,919 | (0.338199, -0.941075) | 23/64 |
+| 3188032853 | 264,063 / 294,719 | (0.242536, -0.970143) | — |
+
+`Player.recover_from_stall()` is the watchdog: after
+`STALL_RECOVERY_FRAME_THRESHOLD` consecutive stalled frames it re-seats the body on
+the terrain height field, prints `STALL_RECOVERY`, and bumps
+`debug_stall_recovery_count`. A passing regression run must show **zero**
+recoveries — a non-zero count means a stall still happened and was papered over.
 `TerrainGenerator.debug_log_segment_selection` / `DEBUG_TERRAIN_LOGGING` /
 `Player.DEBUG_SLOPE_LOGGING` are `const` toggles for per-frame spam.
 
@@ -45,11 +73,10 @@ or a visual bug here, with a one-line description, before fixing it.
 
 ```
 Main (Node2D, scripts/main.gd)
-├── ParallaxBackground/ParallaxLayer  motion_scale (0.3,0.3) ← background_generator.gd
+├── ParallaxBackground/ParallaxLayer  motion_scale (0.3,0) ← background_generator.gd
 ├── Player            position (64,136), safe_margin 1.0  ← player.tscn
 ├── TerrainGenerator  player_path = ../Player
 ├── Camera2D          position (0,136)
-├── Obstacle          position (68,56)  ← stray leftover, see Dead code
 ├── GameManager       scripts/game/game_manager.gd
 └── CanvasLayer/YouDiedLabel  (hidden until death)
 ```
@@ -97,6 +124,14 @@ the actual algorithm — these are the gotchas that aren't obvious from a read:
 
 ## Things that break silently
 
+- **World rebasing must stay on.** `Main.world_rebase_enabled` is intentionally
+  *not* `@export`ed: while it was, `main.tscn` serialised it to `false` and silently
+  reintroduced the freeze for weeks after it had been fixed and verified. Terrain
+  baselines drift downward without bound, so contact Y reaches tens of thousands of
+  px; float32 ulp there coarsens to ~1/512, contact separation vectors (order
+  `safe_margin` = 1px) quantise, and `get_floor_normal()` starts returning
+  off-vertical normals on provably flat ground. Don't re-export it, don't set it
+  from a scene. See `scripts/systems/world_rebaser.gd` for the measured chain.
 - `get_terrain_height` must stay **pure** in `(session_seed, world_x)` — chunk
   visuals, collision, player tilt, and the debug HUD all sample it separately.
 - Segment length, baseline delta, and the height curve must agree, or chunk
@@ -151,11 +186,16 @@ built-in `ui_accept`.
 - Obstacle spawning is **off**: `spawn_chunk_obstacle(...)` commented out at
   `terrain_generator.gd:149`. Has a latent bug —
   `maxi(half_chunk_width - OBSTACLE_EDGE_PADDING, 0.0)` passes floats to an
-  int function. Fix when re-enabling. The `Obstacle` node at `(68,56)` in
-  `main.tscn` is a separate hand-placed test hazard, not part of the design.
-- Background is one flat parallax layer with **no vertical coverage** beyond
-  `y ∈ [-1024,1024]` in layer space — vanishes after a few mega drops. Known
-  gap, not a regression.
+  int function. Fix when re-enabling. (The hand-placed `Obstacle` node that used to
+  sit at `(68,56)` in `main.tscn` has been deleted — jumping at t=0 landed the
+  capsule inside it at t≈0.10s, killing the run and making every manual playtest
+  and the harness's `tree_paused` result ambiguous.)
+- Background parallax is **horizontal only** (`motion_scale = (0.3, 0)`). Vertical
+  parallax is deliberately off: it made the layer jump ~0.3× the camera's Y move,
+  so each world rebase (~every 26s) snapped the background, and the layer's
+  `y ∈ [-1024,1024]` coverage vanished after a few mega drops. With `motion_scale.y
+  = 0` the layer is screen-locked vertically and both symptoms are gone. Restoring
+  vertical parallax means tiling `background_generator.gd` stripes on a 2D grid.
 - Leave alone unless asked: `project.godot`, `.godot/`, `*.uid` files (must
   move with their script), `icon.svg`.
 

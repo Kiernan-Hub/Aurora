@@ -11,7 +11,11 @@ const WORLD_REBASER_SCRIPT: Script = preload("res://scripts/systems/world_rebase
 const VERTICAL_FOLLOW_MARGIN: float = 72.0
 const VERTICAL_FOLLOW_SMOOTHNESS: float = 6.0
 
-@export var world_rebase_enabled: bool = true
+# Deliberately not @export: this is the freeze fix, not a tuning knob. While it was
+# exported, scenes/main.tscn serialised `world_rebase_enabled = false` and silently
+# disabled the fix, which is how the freeze regressed after 5bbc577. Debug harnesses
+# still set this directly in code before add_child (see scripts/debug/*.gd).
+var world_rebase_enabled: bool = true
 
 var camera_baseline_y: float = 0.0
 var camera_y: float = 0.0
@@ -26,6 +30,8 @@ func _ready() -> void:
 	camera_2d.global_position = Vector2(player.global_position.x, camera_y)
 	if terrain_generator == null:
 		push_error("Main requires a TerrainGenerator child for world rebasing.")
+	if not world_rebase_enabled:
+		push_warning("World rebasing is DISABLED - the terrain freeze bug will return.")
 
 
 func _physics_process(delta: float) -> void:

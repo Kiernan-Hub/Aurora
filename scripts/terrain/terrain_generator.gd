@@ -316,6 +316,14 @@ func get_large_valley_height(segment_x: float, segment_baseline: float) -> float
 	return segment_baseline + ((1.0 - get_transition_profile(rise_progress)) * LARGE_VALLEY_DEPTH)
 
 
+# World-space Y of the terrain surface at world_x. get_terrain_height() alone is a
+# local offset from ground_y; this adds the generator's own Y, which world rebasing
+# moves, so callers outside the chunk hierarchy get a coordinate they can compare
+# against global_position.
+func get_surface_world_y(world_x: float) -> float:
+	return global_position.y + ground_y + get_terrain_height(world_x)
+
+
 func get_segment_baseline(segment_index: int) -> float:
 	ensure_segment_cache_through(segment_index)
 	return segment_baseline_cache[segment_index]

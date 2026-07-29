@@ -4,6 +4,7 @@ class_name Player
 
 signal died
 signal debug_freeze_detected(session_seed: int)
+signal debug_stall_recovered(session_seed: int, world_x: float)
 
 const SPEED_MANAGER_SCRIPT: Script = preload("res://scripts/systems/speed_manager.gd")
 const GRAVITY: float = 1600.0
@@ -16,6 +17,14 @@ const DEBUG_SLOPE_LOGGING: bool = false
 # Fast enough to sweep the full INITIAL_SPEED..MAX_SPEED range in well under a
 # second, since the point is skipping the ~62s automatic ramp during testing.
 const MANUAL_SPEED_ADJUST_RATE: float = 300.0
+# Consecutive stalled physics frames before the body is re-seated on the terrain
+# height field. 4 frames is ~67ms: long enough that the known one-frame
+# landing-depenetration false positive cannot trigger it, short enough that a
+# recovery reads as a hitch rather than a dead run.
+const STALL_RECOVERY_FRAME_THRESHOLD: int = 4
+# Clearance above the sampled surface when re-seating, so the recovered body is not
+# born inside the collision polyline. Floor snap (18px) pulls it back down.
+const STALL_RECOVERY_CLEARANCE: float = 1.0
 
 @export var DEBUG_ALLOW_MANUAL_SPEED_CONTROL: bool = true
 @export var DEBUG_SHOW_PLAYER_STATE: bool = true
@@ -23,6 +32,7 @@ const MANUAL_SPEED_ADJUST_RATE: float = 300.0
 @export_range(10, 20, 1) var DEBUG_FREEZE_HISTORY_FRAME_COUNT: int = 20
 
 @onready var color_rect: ColorRect = $ColorRect
+@onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var terrain_generator: TerrainGenerator = get_node_or_null("../TerrainGenerator") as TerrainGenerator
 
 var speed_manager: RefCounted
@@ -38,6 +48,9 @@ var debug_physics_frame: int = 0
 var debug_freeze_event_count: int = 0
 var debug_freeze_reported: bool = false
 var debug_frame_history: Array[String] = []
+var capsule_half_height: float = 24.0
+var stalled_frame_count: int = 0
+var debug_stall_recovery_count: int = 0
 
 const DEBUG_FREEZE_MIN_VELOCITY_X: float = 1.0
 const DEBUG_FREEZE_MAX_MOTION_X: float = 0.01
@@ -47,6 +60,7 @@ func _ready() -> void:
 	if not is_in_group("player"):
 		add_to_group("player")
 	speed_manager = SPEED_MANAGER_SCRIPT.new() as RefCounted
+	capsule_half_height = get_capsule_half_height()
 	floor_snap_length = FLOOR_SNAP_LENGTH
 	floor_stop_on_slope = false
 	floor_constant_speed = true
@@ -89,6 +103,7 @@ func _physics_process(delta: float) -> void:
 	var position_before_move: Vector2 = global_position
 	move_and_slide()
 	last_physics_displacement = global_position - position_before_move
+	update_stall_recovery(delta)
 	if TerrainGenerator.DEBUG_TERRAIN_LOGGING or DEBUG_SLOPE_LOGGING:
 		var slide_collision_count: int = get_slide_collision_count()
 		print("slide_collision_count=", slide_collision_count)
@@ -143,11 +158,66 @@ func apply_manual_speed_input(delta: float) -> void:
 
 
 func get_slope_tangent() -> Vector2:
-	var floor_normal: Vector2 = get_floor_normal()
-	var slope_tangent: Vector2 = Vector2(-floor_normal.y, floor_normal.x).normalized()
-	if slope_tangent.x < 0.0:
-		slope_tangent = -slope_tangent
-	return slope_tangent
+	if terrain_generator == null:
+		return Vector2.RIGHT
+	# Derived from the terrain height field (ground truth), not the collision
+	# contact normal: the normal is one frame stale and noisy near slope
+	# discontinuities, which was the source of the mid-air "bounce" jitter on
+	# curved terrain. atan2's dx argument is always positive (2x a fixed
+	# sample distance), so cos(terrain_angle) is always > 0 — no sign flip needed.
+	var terrain_angle: float = terrain_generator.get_slope_angle_at_x(global_position.x)
+	return Vector2(cos(terrain_angle), sin(terrain_angle))
+
+
+func get_capsule_half_height() -> float:
+	var capsule: CapsuleShape2D = collision_shape.shape as CapsuleShape2D
+	if capsule == null:
+		push_error("Player requires a CapsuleShape2D on CollisionShape2D.")
+		return capsule_half_height
+	return capsule.height * 0.5
+
+
+# The stall the whole freeze investigation is about: grounded, still being driven
+# forward, but going nowhere. Shared by the recovery watchdog and the freeze logger
+# so the two can never disagree about what a stall is.
+func is_stalled_this_frame() -> bool:
+	return (
+		is_on_floor()
+		and absf(velocity.x) >= DEBUG_FREEZE_MIN_VELOCITY_X
+		and absf(last_physics_displacement.x) <= DEBUG_FREEZE_MAX_MOTION_X
+	)
+
+
+func update_stall_recovery(delta: float) -> void:
+	if not is_stalled_this_frame():
+		stalled_frame_count = 0
+		return
+
+	stalled_frame_count += 1
+	if stalled_frame_count >= STALL_RECOVERY_FRAME_THRESHOLD:
+		recover_from_stall(delta)
+
+
+# Last-resort unwedge. The collision polyline is a discretisation that the physics
+# solver can occasionally produce a nonsense contact normal for; the height field it
+# was sampled from is exact, so re-seat the body on that instead and let normal
+# physics resume. No terrain in this generator presents an uphill face steeper than
+# ~34 degrees, so a sustained grounded stall is always a bug, never level geometry.
+#
+# Deliberately loud: the regression harness asserts debug_stall_recovery_count == 0,
+# so this can never quietly paper over a real regression.
+func recover_from_stall(delta: float) -> void:
+	stalled_frame_count = 0
+	debug_stall_recovery_count += 1
+	if terrain_generator == null:
+		return
+
+	var recovered_x: float = global_position.x + (speed_manager.current_speed * delta)
+	var surface_world_y: float = terrain_generator.get_surface_world_y(recovered_x)
+	global_position = Vector2(recovered_x, surface_world_y - capsule_half_height - STALL_RECOVERY_CLEARANCE)
+	velocity = get_slope_tangent() * speed_manager.current_speed
+	print("STALL_RECOVERY seed=", get_terrain_session_seed(), " world_x=", recovered_x, " count=", debug_stall_recovery_count)
+	debug_stall_recovered.emit(get_terrain_session_seed(), recovered_x)
 
 
 func setup_debug_state_label() -> void:
@@ -295,11 +365,7 @@ func record_freeze_repro_frame() -> void:
 	if debug_frame_history.size() > history_limit:
 		debug_frame_history.pop_front()
 
-	var freeze_detected: bool = (
-		grounded
-		and absf(velocity.x) >= DEBUG_FREEZE_MIN_VELOCITY_X
-		and absf(last_physics_displacement.x) <= DEBUG_FREEZE_MAX_MOTION_X
-	)
+	var freeze_detected: bool = is_stalled_this_frame()
 	if freeze_detected and not debug_freeze_reported:
 		debug_freeze_reported = true
 		debug_freeze_event_count += 1
