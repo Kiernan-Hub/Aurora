@@ -1,0 +1,167 @@
+# Aura — endless 2D skater (Godot 4.7, GDScript, Mobile renderer)
+
+Alto's-Adventure-style endless downhill skater: player auto-runs right at a
+speed that ramps over time, riding an infinite, seeded, procedurally generated
+terrain. All on-screen art is placeholder `ColorRect`/`Polygon2D`.
+
+**Priority order:** terrain stability > physics/collision correctness > game
+feel. Missions, upgrades, and visual polish are deprioritized until the core
+loop is stable (see Build order at the bottom).
+
+## AI editing rules
+
+- Inspect connected files and investigate root cause before modifying or
+  fixing anything. Prefer targeted changes; preserve existing architecture
+  unless you have a clear reason to change it — then propose and explain first.
+
+`project.godot`: features `4.7` + `Mobile`, physics **60 Hz**, interpolation
+**OFF**. Some terrain constants derive from `1.0/physics_ticks_per_second` —
+changing tick rate silently changes level geometry.
+
+## Run / debug / test
+
+No test suite, no build script. Godot: `/Applications/Godot.app/Contents/MacOS/Godot`
+(play with `--path .`, opens a window and blocks — only when asked).
+
+Headless freeze-regression replay, the only automated check that exists:
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/freeze_replay_runner.gd -- --seed=2160065702 --frames=400 --runs=1
+```
+Instantiates `main.tscn`, forces `debug_replay_session_seed`, steps physics
+frames, prints `status=no_freeze|freeze_detected|tree_paused`. Run after any
+change to player physics, collision, or segment code.
+
+Debug tooling: `Player.DEBUG_SHOW_PLAYER_STATE` builds a runtime `Label` with
+live physics/terrain state incl. **session seed** — read it to reproduce a bug
+via `--seed=`. `Player.DEBUG_LOG_FREEZE_REPRO` prints `FREEZE_REPRO` when
+grounded with `|velocity.x| >= 1` but `|motion.x| <= 0.01`, emitting
+`debug_freeze_detected(session_seed)` — what the replay runner watches. No
+known-bad seeds are recorded yet — log any seed that triggers `FREEZE_REPRO`
+or a visual bug here, with a one-line description, before fixing it.
+`TerrainGenerator.debug_log_segment_selection` / `DEBUG_TERRAIN_LOGGING` /
+`Player.DEBUG_SLOPE_LOGGING` are `const` toggles for per-frame spam.
+
+## Scene graph (`scenes/main.tscn`)
+
+```
+Main (Node2D, scripts/main.gd)
+├── ParallaxBackground/ParallaxLayer  motion_scale (0.3,0.3) ← background_generator.gd
+├── Player            position (64,136), safe_margin 1.0  ← player.tscn
+├── TerrainGenerator  player_path = ../Player
+├── Camera2D          position (0,136)
+├── Obstacle          position (68,56)  ← stray leftover, see Dead code
+├── GameManager       scripts/game/game_manager.gd
+└── CanvasLayer/YouDiedLabel  (hidden until death)
+```
+
+Wiring is by sibling path — **no autoloads, no `autoloads/` dir** (ignore
+older docs claiming `GameState.gd` exists). `BackgroundGenerator` falls back
+to `/root/Main/Player` if `player_path` unset. **Sibling order is
+load-bearing:** `Player` must stay above `TerrainGenerator` so `Player._ready()`
+sets `floor_snap_length = 18.0` before `TerrainGenerator._ready()` caches it
+as `session_floor_snap_length` — reorder them and the generator reads Godot's
+default `1.0`, changing valley geometry.
+
+## Terrain pipeline (`scripts/terrain/terrain_generator.gd`)
+
+Two independent grids: **chunks** (fixed 512px — spawn/despawn + render unit)
+and **segments** (variable length — the shape unit), deliberately unaligned.
+Read `get_terrain_height`/`get_segment_selection`/`build_chunk_surface` for
+the actual algorithm — these are the gotchas that aren't obvious from a read:
+
+- Whole run is reproducible from one integer (`session_seed`); every segment
+  is a pure hash function of `(seed, index)`, no RNG state.
+- `is_mega_drop_start_segment` recurses back up to 3 segments — the hottest,
+  trickiest predicate in the file.
+- Baselines are cumulative and **drift downward without bound** (`+Y` down);
+  there's no rebound.
+- **Always call `ensure_segment_cache_for_world_x(x)` before
+  `find_segment_index_at_x(x)`** — otherwise the cache's binary search
+  silently clamps and returns the wrong segment.
+- Fill polygon closes at `max(surface_y) + 4096`, recomputed per chunk —
+  never hardcode this depth, baselines drift thousands of px down over a run.
+
+## Chunk lifecycle
+
+- Chunk `i` spans `[i*512,(i+1)*512)`; node sits at `((i+0.5)*512, ground_y)`
+  — surface Y is a local offset from shared origin `ground_y` (192); chunk
+  nodes never move vertically.
+- `_physics_process` spawns to `player_chunk + chunk_count_ahead`, frees below
+  `player_chunk - chunk_count_behind`. `next_chunk_index` only increases —
+  **can't re-spawn behind the player**; identity comes from the pure height
+  field, not this dict. `remove_chunk` calls `chunk.free()` immediately (not
+  `queue_free()`) — safe only because a despawning chunk is ≥1024px behind.
+- No pooling — chunks rebuild from scratch every spawn. `BackgroundGenerator`
+  mirrors this for 1024px stripes, indexed in *parallax-layer* space
+  (`player.x * motion_scale.x`).
+
+## Things that break silently
+
+- `get_terrain_height` must stay **pure** in `(session_seed, world_x)` — chunk
+  visuals, collision, player tilt, and the debug HUD all sample it separately.
+- Segment length, baseline delta, and the height curve must agree, or chunk
+  seams get vertical steps. Player spawn `(64,136)` = `ground_y(192) +
+  surface_y_offset(-32) − capsule half-height(24)` — changing either without
+  updating `Player` position in `main.tscn` drops or embeds the player at t=0.
+- Player/terrain/obstacles share collision layer/mask **1**; `obstacle.gd`
+  filters via `body.is_in_group("player")` — keep that guard.
+- `Player.FLOOR_SNAP_LENGTH`, `GRAVITY`, `SpeedManager.INITIAL_SPEED`, and the
+  tick rate feed `get_large_valley_drop_length()`, clamping the valley ramp so
+  floor snap keeps contact. Currently `min(48,70.5)`→48, i.e. clamp inactive —
+  lowering speed or raising snap length makes it bind. `player.gd` holds
+  `speed_manager` as a bare `RefCounted` instead of typed `SpeedManager`. The
+  real circular reference is Player↔TerrainGenerator (each types/references the
+  other) — `speed_manager.gd` itself references neither. Untested whether typing
+  `speed_manager` directly would actually break; treat as unconfirmed.
+
+## Player physics (`scripts/player/player.gd`)
+
+Grounded and airborne are two different velocity models — source of most feel
+bugs. Grounded (`is_on_floor() and velocity.y >= 0`): `velocity =
+get_slope_tangent() * current_speed` — constant speed **along the surface**,
+so progress slows on steep terrain. Airborne: `velocity.x = current_speed`,
+`velocity.y += GRAVITY * delta`. Coyote time / jump buffer both 0.12s; jump =
+built-in `ui_accept`.
+
+- Visual tilt lives on the child `ColorRect`, never the body: exp weight
+  `1 - exp(-k*delta)`, clamped to the terrain angle's side of upright so a
+  fast reversal can't overshoot; freezes mid-air. Don't swap in a plain lerp.
+- Collider is `CapsuleShape2D` (r16,h48), `safe_margin = 1.0` — both were the
+  fix for a snag/freeze bug on segment seams (`f2f075b`). Don't revert to a
+  rectangle or drop the margin.
+- Camera (`scripts/main.gd`) tracks x exactly, y **downward only**
+  (`max(camera_baseline_y, player.y - 72)`), same exp smoothing.
+
+## Conventions & performance-sensitive areas
+
+- Static typing on everything, incl. loop vars and typed dicts/arrays. Never
+  `:=`. Explicit return type always. Tunables are `const`, not `@export`,
+  unless a human needs to sweep them in the Inspector. `push_error(...)` +
+  `set_physics_process(false)` is the house pattern for a missing node.
+  Systems stay one-file-per-concern under `scripts/systems/`.
+- `build_chunk_surface` does ~64 `get_terrain_height` calls per spawn, each
+  walking `is_mega_drop_segment` (4 recursive lookups) — the frame-time spike
+  in the project. Don't raise `height_sample_count` or lower
+  `MAX_COLLISION_SEGMENT_LENGTH` casually. `add_unique_sample_world_x` is
+  O(n²), fine at n≈35 only. Segment caches grow all session, never trimmed —
+  fine for a few-minute run.
+
+## Dead / disabled code — check before "fixing"
+
+- Obstacle spawning is **off**: `spawn_chunk_obstacle(...)` commented out at
+  `terrain_generator.gd:149`. Has a latent bug —
+  `maxi(half_chunk_width - OBSTACLE_EDGE_PADDING, 0.0)` passes floats to an
+  int function. Fix when re-enabling. The `Obstacle` node at `(68,56)` in
+  `main.tscn` is a separate hand-placed test hazard, not part of the design.
+- Background is one flat parallax layer with **no vertical coverage** beyond
+  `y ∈ [-1024,1024]` in layer space — vanishes after a few mega drops. Known
+  gap, not a regression.
+- Leave alone unless asked: `project.godot`, `.godot/`, `*.uid` files (must
+  move with their script), `icon.svg`.
+
+## Build order / status
+
+1. Core loop (terrain + movement) — **working**, still being tuned
+2. Speed scaling — **working** (300→500 px/s, `ACCELERATION = 3.2`, ~62s to cap)
+3. Visual polish — placeholder rects only
+4. Missions/upgrades — not started (`mission_manager.gd`/`upgrade_manager.gd` don't exist)
