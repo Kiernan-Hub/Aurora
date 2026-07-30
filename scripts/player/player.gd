@@ -30,9 +30,9 @@ const STALL_RECOVERY_CLEARANCE: float = 1.0
 # reading exactly 0 -- catches jittering-in-place (small back-and-forth motion that
 # never clears a hard freeze threshold) as well as a flat stall. 60 frames = ~1s.
 const STUCK_WINDOW_FRAME_COUNT: int = 60
-# Even on the steepest face in this generator (~34 degrees, large_valley) minimum
-# forward speed (300 px/s) along-surface is ~250 px/s; a legitimate slope has no
-# reason to produce under 20px of net motion in a full second.
+# Even on the steepest face in this generator (~40.5 degrees, mega_drop) minimum
+# forward speed (300 px/s) along-surface still advances ~228 px/s in x; a legitimate
+# slope has no reason to produce under 20px of net motion in a full second.
 const STUCK_NET_PROGRESS_THRESHOLD: float = 20.0
 
 @export var DEBUG_ALLOW_MANUAL_SPEED_CONTROL: bool = true
@@ -63,6 +63,17 @@ var debug_stall_recovery_count: int = 0
 var stuck_motion_x_window: Array[float] = []
 var stuck_event_reported: bool = false
 var debug_stuck_event_count: int = 0
+# Which of the two velocity models ran this frame. Stored rather than re-derived:
+# apply_grounded_floor_snap() needs it after move_and_slide(), and an external probe
+# cannot reconstruct the choice from post-move state, because move_and_slide()
+# rewrites velocity on any grounded frame that found a contact.
+var is_using_grounded_model: bool = false
+# True from a jump impulse until the apex. Replaces reading `velocity.y < 0.0` as a
+# proxy for "ascending", which an uphill surface tangent also satisfies.
+var is_jump_ascending: bool = false
+var debug_forced_floor_snap_count: int = 0
+var debug_forced_floor_snap_max_y: float = 0.0
+var debug_forced_floor_snap_last_y: float = 0.0
 
 const DEBUG_FREEZE_MIN_VELOCITY_X: float = 1.0
 const DEBUG_FREEZE_MAX_MOTION_X: float = 0.01
@@ -104,8 +115,20 @@ func _physics_process(delta: float) -> void:
 		velocity.y = JUMP_VELOCITY
 		coyote_timer = 0.0
 		jump_buffer_timer = 0.0
+		is_jump_ascending = true
+	elif is_jump_ascending and velocity.y >= 0.0:
+		# Apex: past here the jump is an ordinary fall, so a floor contact means a
+		# landing and the grounded model may take over again.
+		is_jump_ascending = false
 
-	if is_on_floor() and velocity.y >= 0.0:
+	# The gate is "on the floor and not climbing out of a jump", NOT the former
+	# `velocity.y >= 0.0`. That test was trying to let a jump escape the grounded
+	# model, but it also caught every rising frame, because the grounded model's own
+	# velocity is the surface tangent and an uphill tangent points up. Measured before
+	# this changed: on gentle_uphill 76% of frames where the body was genuinely on the
+	# floor ran the airborne gravity model instead of following the surface.
+	is_using_grounded_model = is_on_floor() and not is_jump_ascending
+	if is_using_grounded_model:
 		var slope_tangent: Vector2 = get_slope_tangent()
 		velocity = slope_tangent * speed_manager.current_speed
 	else:
@@ -114,6 +137,9 @@ func _physics_process(delta: float) -> void:
 
 	var position_before_move: Vector2 = global_position
 	move_and_slide()
+	apply_grounded_floor_snap()
+	# Measured after the snap deliberately: the snap is part of this frame's motion,
+	# and the stall/stuck watchdogs downstream must see where the body actually ended.
 	last_physics_displacement = global_position - position_before_move
 	update_stall_recovery(delta)
 	update_stuck_detection(delta)
@@ -173,13 +199,56 @@ func apply_manual_speed_input(delta: float) -> void:
 func get_slope_tangent() -> Vector2:
 	if terrain_generator == null:
 		return Vector2.RIGHT
-	# Derived from the terrain height field (ground truth), not the collision
-	# contact normal: the normal is one frame stale and noisy near slope
-	# discontinuities, which was the source of the mid-air "bounce" jitter on
-	# curved terrain. atan2's dx argument is always positive (2x a fixed
-	# sample distance), so cos(terrain_angle) is always > 0 — no sign flip needed.
-	var terrain_angle: float = terrain_generator.get_slope_angle_at_x(global_position.x)
+	# Aimed along the actual collision chord underfoot (get_collision_chord_slope_angle),
+	# not the continuous height field's +/-2px analytic tangent: the two can disagree
+	# by a couple of degrees on curved terrain since the physical collision surface is
+	# a 16px-ish polyline, not the exact field, and driving velocity along an angle
+	# that doesn't match the surface the body is actually sliding on injects spurious
+	# vertical velocity every chord -- a source of jitter distinct from the
+	# now-fixed float32 freeze bug. atan2's dx argument is always positive (chord
+	# samples are ordered left-to-right), so cos(terrain_angle) is always > 0 — no
+	# sign flip needed.
+	#
+	# Deliberately NOT damped over time (measured, 2026-07-29): exponentially smoothing
+	# this angle the way update_visual_rotation() smooths the sprite makes contact
+	# WORSE, because on a piecewise-linear floor the correct heading IS the current
+	# chord's heading -- lagging it aims the body into the floor on concave stretches
+	# and off it on convex ones. A/B over 9000 frames of seed 941462462: mean
+	# surface-gap wobble 0.210px -> 0.270px, vertical-velocity reversals 4.09% ->
+	# 7.43% of grounded frames, and ~20% more time airborne. Smoothing is correct for
+	# the cosmetic sprite angle and wrong for the vector that determines contact.
+	var terrain_angle: float = terrain_generator.get_collision_chord_slope_angle(global_position.x)
 	return Vector2(cos(terrain_angle), sin(terrain_angle))
+
+
+# Closes the sub-pixel gap that Godot declines to close itself. CharacterBody2D's
+# own floor snapping early-returns whenever the velocity faces up_direction
+# (_snap_on_floor -> vel_dir_facing_up), and on this terrain that is every rising
+# frame, since the grounded model aims velocity along the surface. The step is then
+# tangential, move_and_slide() reports no contact at all (slide_collision_count == 0),
+# and nothing re-seats the body: is_on_floor() goes false while the capsule sits
+# ~0.4px off the terrain, and the next frame runs the gravity model to fall that
+# 0.4px back down. That two-frame cycle was the measured is_on_floor() flicker --
+# ~60% of gentle_uphill frames, ~36% of all rising frames, against <1% on falling
+# ground. The body never actually left the surface; only the engine's floor
+# bookkeeping did. apply_floor_snap() has no velocity gate.
+#
+# Deliberately scoped to exactly the suppressed case. When velocity faces down,
+# Godot's stock snapping already runs and this must not second-guess it -- and note
+# that stock snapping glues the body over the same FLOOR_SNAP_LENGTH in that
+# direction, so this cannot cancel airtime the engine would otherwise have granted.
+func apply_grounded_floor_snap() -> void:
+	if not is_using_grounded_model or is_on_floor() or velocity.y >= 0.0:
+		return
+
+	var snap_start_y: float = global_position.y
+	apply_floor_snap()
+	if not is_on_floor():
+		return
+
+	debug_forced_floor_snap_count += 1
+	debug_forced_floor_snap_last_y = absf(global_position.y - snap_start_y)
+	debug_forced_floor_snap_max_y = maxf(debug_forced_floor_snap_max_y, debug_forced_floor_snap_last_y)
 
 
 func get_capsule_half_height() -> float:
