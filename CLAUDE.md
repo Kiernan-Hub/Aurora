@@ -344,6 +344,106 @@ passes clean. **Do not treat this CLAUDE.md entry's PASS results as "no jitter
 remains"** — they only certify the flicker/stall mechanism this section documents,
 not the smoothness of the ride. Chase this only if revisited; not blocking.
 
+**Residual sub-pixel bounce — investigation status 2026-07-30 (long, read this before
+touching player.gd's grounded movement or collision again)**: this is a single
+multi-day investigation across many probes; summarizing here so it survives context
+resets. Goal was to find and fix the residual bounce noted above. Root cause is now
+identified with high confidence and is **not fixable at the input/movement level** —
+see below.
+
+**TL;DR**: jitter occurs near curvature transitions (hill peaks/valleys), not on
+flat or constant-slope ground; it's caused by `CharacterBody2D`'s own per-frame
+solver correction resolving contact against curved terrain, not by anything about
+how the player is moved. Ruled out as fixes: tangent direction (start-sampled vs
+chord vs floor-normal-aimed), collision shape (capsule vs rectangle), explicit
+floor snapping, `safe_margin` as a *complete* fix (0.1 helps ~3-4x but costs
+reliability at one known-bad seed), general visual smoothing (trades jitter for a
+new lag artifact on flat ground), and velocity-manipulation approaches (clamping
+into-terrain velocity, pre-emptive separation). Status: **accepted/deferred**,
+not blocking — revisit only if it becomes a real gameplay complaint, and read the
+full investigation below first.
+
+*Confirmed mechanism*: the vertical bounce comes from `CharacterBody2D.move_and_slide()`'s
+own per-frame contact resolution on curved terrain, and it is **inherent to the
+solver**, not a symptom of how the player is moved. Evidence, ranked by how directly
+it was tested:
+- `vertical_diff` (actual step motion minus requested motion, measured with zero
+  smoothing) is ~0 on flat ground, rises on any curved segment, and correlates with
+  **curvature**, not steepness — `mega_drop` (28.6° peak, low curvature per chord) is
+  quieter than the ~13° hills (high curvature). Collision-polyline resolution
+  (16/8/4px chords) does not change it. Vertex-crossing specifically does not
+  explain it either (`offset_curve_probe.gd`: residual on geometrically "stable"
+  frames, no bracket change, is statistically equal to residual at transitions).
+- Four different fixes to *how the player is moved* were tried and measured, and
+  **none reduced it, several made it worse**:
+  - Aiming along the step's endpoint chord instead of a start-sampled tangent: no
+    clear improvement.
+  - Aiming along the *actual* last-reported `get_floor_normal()` instead of the
+    analytic chord: made residual **worse** on every segment (+21% to +48%), because
+    the floor normal is one frame stale on continuously-curving ground — same lag
+    failure mode as the already-reverted temporal-tangent-smoothing experiment above.
+  - Swapping the capsule for a flat-bottomed `RectangleShape2D`: no improvement,
+    and reintroduced corner-snag behavior (more `NO_CONTACT` frames, our own
+    explicit snap started firing again) — this is *why* the capsule was chosen in
+    the first place (`f2f075b`), don't revisit.
+  - Clamping requested vertical velocity to never point into the terrain (Test B),
+    and giving the body a tiny pre-emptive upward separation before each step
+    (Test C): both left the curvature-specific correction **unchanged or worse**.
+    Test D (pure horizontal movement, zero terrain-following at all) confirmed this
+    conclusively: Godot's own unassisted contact resolution tracks the curved
+    surface about as smoothly frame-to-frame as active tangent-following does
+    (`gap_wobble` on hills was *slightly better*, 0.23-0.28 vs ~0.35-0.44) even
+    though the raw positional error is 6-8x larger and it introduces real airborne
+    hops (up to 52px apex) that tangent-following never produces. **Conclusion: the
+    solver cannot maintain stable, correction-free contact on curved terrain
+    regardless of movement strategy.**
+- `safe_margin` sweep (0.01 / 0.1 / 0.5 / 1.0 / 2.0): residual scales
+  monotonically with margin. **0.1 gives a real ~3.2-3.9x reduction** at full
+  4-seed/9000-frame scale, with `is_on_floor()` flicker still exactly 0. But **0.01
+  is disqualified outright** — it reproduces near-stall behavior at the documented
+  freeze location (33/40 near-stalling trials, 8 real `STUCK_DETECTED` events,
+  though it never crossed the strictest single-trial STALL threshold — only the
+  broader net-progress watchdog caught it). Even 0.1 is not fully clean: it
+  introduced 8/40 near-stalling trials at one of the three known-bad
+  seed/locations (`3188032853` @ 264063) where baseline is perfectly clean — the
+  other two known-bad locations were unaffected. **`safe_margin=0.1` is a real,
+  partial, non-free mitigation, not a validated fix** — would need much broader
+  multi-seed freeze-search + a full 60k-frame no-input replay before ever adopting.
+- Visual-only mitigation attempts (both reverted, no trace left in `player.gd`):
+  - General smoothing (exponential lerp toward the body's true position,
+    `k`=2..15 swept): the strength needed to meaningfully reduce hill jitter
+    (~33-42% at `k`≈2) introduces a *new*, more constant lag artifact on
+    previously-perfect flat ground (0.0008px→0.30px) — not a clean win.
+  - Targeted "compensation" (subtract only the solver's per-step correction from
+    the rendered position, not general smoothing): a **non-accumulating** version
+    (recompute fresh from the real position each frame) is mathematically provably
+    unable to reduce frame-to-frame jitter (confirmed empirically:
+    visual_jitter == raw_jitter) — the single-frame delta only depends on the
+    *difference* between consecutive corrections, not their magnitude, so nothing
+    cancels. An **accumulating** version does work mathematically (visual delta
+    reduces to exactly the requested/idealized motion) but drifts the rendered
+    position away from the real physics body — clamped, it just saturates and
+    stops helping; unclamped, drift reached ~70px in a short test. There is a real
+    tension between "cancel oscillating noise" and "zero lag / no accumulation"
+    that this experiment could not resolve within those constraints.
+
+*Bottom line*: every angle tried — movement direction, tangent/chord sampling,
+floor-normal aiming, collision shape, `safe_margin`, pure horizontal movement, and
+two different visual-only strategies — either didn't help or made something else
+worse. The two least-bad partial mitigations found so far are `safe_margin≈0.1`
+(real reduction, real but smaller safety cost, needs much more validation) and
+possibly a bounded/leaky-accumulator visual compensation (not yet tried — the
+unclamped version proved the *cancellation math works*, the open problem is
+bounding the drift without reintroducing the lag the last experiment was built to
+avoid). Read-only debug probes built during this investigation, all still present
+under `scripts/debug/`, useful for any follow-up: `chord_aim_probe.gd`,
+`offset_curve_probe.gd`, `slide_vs_snap_probe.gd`, `contact_instability_probe.gd`,
+`solver_correction_probe.gd`, `visual_smoothing_probe.gd`,
+`visual_compensation_probe.gd`. `player.gd` carries read-only instrumentation
+fields added for these (`debug_position_after_slide/snap`,
+`debug_velocity_before/after_slide`) — harmless, zero behavior impact, safe to keep
+or strip.
+
 **Deferred by agreement, not forgotten**: the shakiness/jitter on the long ~40.5°
 `mega_drop` slope is a **separate, still-open** issue — this fix barely touches it
 (mechanism measured near-absent there: flip rate 0.002-0.004, `gravity_while_grounded`

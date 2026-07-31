@@ -74,6 +74,20 @@ var is_jump_ascending: bool = false
 var debug_forced_floor_snap_count: int = 0
 var debug_forced_floor_snap_max_y: float = 0.0
 var debug_forced_floor_snap_last_y: float = 0.0
+# Read-only instrumentation (2026-07-30) for the residual sub-pixel bounce
+# investigation. No behavior depends on these -- they only record where the body was
+# immediately after move_and_slide() and again after apply_grounded_floor_snap(), so
+# an external probe can split each frame's vertical motion into its slide-resolution
+# component and its snap-correction component instead of only seeing the combined
+# total (last_physics_displacement). Do not read these to make gameplay decisions.
+var debug_position_after_slide: Vector2 = Vector2.ZERO
+var debug_position_after_snap: Vector2 = Vector2.ZERO
+# Same rationale, added (2026-07-30) for the "why does move_and_slide()'s contact
+# report flicker" follow-up: velocity immediately before and after move_and_slide(),
+# since move_and_slide() can rewrite velocity (sliding response) and an external
+# probe otherwise only sees the value already overwritten by the NEXT frame's model.
+var debug_velocity_before_slide: Vector2 = Vector2.ZERO
+var debug_velocity_after_slide: Vector2 = Vector2.ZERO
 
 const DEBUG_FREEZE_MIN_VELOCITY_X: float = 1.0
 const DEBUG_FREEZE_MAX_MOTION_X: float = 0.01
@@ -136,8 +150,12 @@ func _physics_process(delta: float) -> void:
 		velocity.y += GRAVITY * delta
 
 	var position_before_move: Vector2 = global_position
+	debug_velocity_before_slide = velocity
 	move_and_slide()
+	debug_position_after_slide = global_position
+	debug_velocity_after_slide = velocity
 	apply_grounded_floor_snap()
+	debug_position_after_snap = global_position
 	# Measured after the snap deliberately: the snap is part of this frame's motion,
 	# and the stall/stuck watchdogs downstream must see where the body actually ended.
 	last_physics_displacement = global_position - position_before_move
@@ -217,6 +235,32 @@ func get_slope_tangent() -> Vector2:
 	# surface-gap wobble 0.210px -> 0.270px, vertical-velocity reversals 4.09% ->
 	# 7.43% of grounded frames, and ~20% more time airborne. Smoothing is correct for
 	# the cosmetic sprite angle and wrong for the vector that determines contact.
+	#
+	# ALSO TRIED (2026-07-30) and reverted, do not retry without new evidence: aiming
+	# along the chord spanning the step's endpoints (global_position.x to
+	# +speed*delta) instead of a single start-sampled tangent, on the theory that a
+	# curved-terrain step ends off the sampled surface and gets caught by floor
+	# snapping. Measured (scripts/debug/chord_aim_probe.gd, seed 941462462, 9000
+	# frames): no clear improvement -- medium_hill/medium_valley residual dropped
+	# ~4-10%, small_hill rose ~9%, and the no-contact-frame fraction the fix targeted
+	# was unchanged (0.361 vs 0.366 on medium_hill). The mechanism this comment
+	# describes for the residual bounce remains correct per the investigation; this
+	# particular fix for it does not work.
+	# ALSO TRIED (2026-07-30) and reverted, do not retry without new evidence: aiming
+	# along the ACTUAL last-reported contact direction (get_floor_normal(), resolved
+	# by the PREVIOUS frame's move_and_slide()) instead of this analytic chord angle,
+	# to A/B test whether the residual bounce is triggered by this function's own
+	# tangent choice diverging from Godot's contact model. Measured (chord_aim_probe.gd
+	# + contact_instability_probe.gd, 4 seeds, 9000/3500 frames): residual got WORSE
+	# on every segment, including the near-constant-slope sustained_downhill control
+	# (0.147px mean -> 0.218px, +48%; medium_hill 0.357px -> 0.433px, +21%), while the
+	# slide_collision_count flip rate that drives it was essentially unchanged (67-73%
+	# of high-residual frames before vs 71-81% after). get_floor_normal() reflects the
+	# PREVIOUS frame's resolved contact, one frame stale on continuously-curving
+	# terrain -- the same lag mechanism the 2026-07-29 temporal-smoothing experiment
+	# above was reverted for. Confirms the residual is not caused by (and is not fixed
+	# by chasing) any particular tangent choice; it is closer to inherent per-frame
+	# solver behavior on curved terrain than to a tangent-selection bug.
 	var terrain_angle: float = terrain_generator.get_collision_chord_slope_angle(global_position.x)
 	return Vector2(cos(terrain_angle), sin(terrain_angle))
 
