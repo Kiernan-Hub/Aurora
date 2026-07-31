@@ -377,26 +377,26 @@ it was tested:
 - Four different fixes to *how the player is moved* were tried and measured, and
   **none reduced it, several made it worse**:
   - Aiming along the step's endpoint chord instead of a start-sampled tangent: no
-    clear improvement.
+	clear improvement.
   - Aiming along the *actual* last-reported `get_floor_normal()` instead of the
-    analytic chord: made residual **worse** on every segment (+21% to +48%), because
-    the floor normal is one frame stale on continuously-curving ground — same lag
-    failure mode as the already-reverted temporal-tangent-smoothing experiment above.
+	analytic chord: made residual **worse** on every segment (+21% to +48%), because
+	the floor normal is one frame stale on continuously-curving ground — same lag
+	failure mode as the already-reverted temporal-tangent-smoothing experiment above.
   - Swapping the capsule for a flat-bottomed `RectangleShape2D`: no improvement,
-    and reintroduced corner-snag behavior (more `NO_CONTACT` frames, our own
-    explicit snap started firing again) — this is *why* the capsule was chosen in
-    the first place (`f2f075b`), don't revisit.
+	and reintroduced corner-snag behavior (more `NO_CONTACT` frames, our own
+	explicit snap started firing again) — this is *why* the capsule was chosen in
+	the first place (`f2f075b`), don't revisit.
   - Clamping requested vertical velocity to never point into the terrain (Test B),
     and giving the body a tiny pre-emptive upward separation before each step
     (Test C): both left the curvature-specific correction **unchanged or worse**.
     Test D (pure horizontal movement, zero terrain-following at all) confirmed this
-    conclusively: Godot's own unassisted contact resolution tracks the curved
-    surface about as smoothly frame-to-frame as active tangent-following does
-    (`gap_wobble` on hills was *slightly better*, 0.23-0.28 vs ~0.35-0.44) even
-    though the raw positional error is 6-8x larger and it introduces real airborne
-    hops (up to 52px apex) that tangent-following never produces. **Conclusion: the
-    solver cannot maintain stable, correction-free contact on curved terrain
-    regardless of movement strategy.**
+	conclusively: Godot's own unassisted contact resolution tracks the curved
+	surface about as smoothly frame-to-frame as active tangent-following does
+	(`gap_wobble` on hills was *slightly better*, 0.23-0.28 vs ~0.35-0.44) even
+	though the raw positional error is 6-8x larger and it introduces real airborne
+	hops (up to 52px apex) that tangent-following never produces. **Conclusion: the
+	solver cannot maintain stable, correction-free contact on curved terrain
+	regardless of movement strategy.**
 - `safe_margin` sweep (0.01 / 0.1 / 0.5 / 1.0 / 2.0): residual scales
   monotonically with margin. **0.1 gives a real ~3.2-3.9x reduction** at full
   4-seed/9000-frame scale, with `is_on_floor()` flicker still exactly 0. But **0.01
@@ -415,17 +415,17 @@ it was tested:
     (~33-42% at `k`≈2) introduces a *new*, more constant lag artifact on
     previously-perfect flat ground (0.0008px→0.30px) — not a clean win.
   - Targeted "compensation" (subtract only the solver's per-step correction from
-    the rendered position, not general smoothing): a **non-accumulating** version
-    (recompute fresh from the real position each frame) is mathematically provably
-    unable to reduce frame-to-frame jitter (confirmed empirically:
-    visual_jitter == raw_jitter) — the single-frame delta only depends on the
-    *difference* between consecutive corrections, not their magnitude, so nothing
-    cancels. An **accumulating** version does work mathematically (visual delta
-    reduces to exactly the requested/idealized motion) but drifts the rendered
-    position away from the real physics body — clamped, it just saturates and
-    stops helping; unclamped, drift reached ~70px in a short test. There is a real
-    tension between "cancel oscillating noise" and "zero lag / no accumulation"
-    that this experiment could not resolve within those constraints.
+	the rendered position, not general smoothing): a **non-accumulating** version
+	(recompute fresh from the real position each frame) is mathematically provably
+	unable to reduce frame-to-frame jitter (confirmed empirically:
+	visual_jitter == raw_jitter) — the single-frame delta only depends on the
+	*difference* between consecutive corrections, not their magnitude, so nothing
+	cancels. An **accumulating** version does work mathematically (visual delta
+	reduces to exactly the requested/idealized motion) but drifts the rendered
+	position away from the real physics body — clamped, it just saturates and
+	stops helping; unclamped, drift reached ~70px in a short test. There is a real
+	tension between "cancel oscillating noise" and "zero lag / no accumulation"
+	that this experiment could not resolve within those constraints.
 
 *Bottom line*: every angle tried — movement direction, tangent/chord sampling,
 floor-normal aiming, collision shape, `safe_margin`, pure horizontal movement, and
@@ -443,6 +443,67 @@ under `scripts/debug/`, useful for any follow-up: `chord_aim_probe.gd`,
 fields added for these (`debug_position_after_slide/snap`,
 `debug_velocity_before/after_slide`) — harmless, zero behavior impact, safe to keep
 or strip.
+
+**Mitigation attempt 2026-07-31 — visual-only 2-tap washout filter, measured working,
+reverted as imperceptible**: a follow-up phase explicitly changed goal from "eliminate
+the solver correction" to "hide it without touching physics, while staying safe for
+future steep terrain/cliffs/chasms/jumps." Built a frequency-domain probe
+(`scripts/debug/jitter_frequency_probe.gd`, kept, read-only, useful for any follow-up)
+that splits vertical motion into a reversal-rate signature (HF, the bounce) vs net
+progress over a rolling window (LF, real motion) instead of the mean-|delta_y| metric
+used earlier, which can't tell a hill-crest bob apart from a legitimate cliff fall. That
+probe's no-input baseline confirmed the mechanism precisely: reversal rate 5.6-6.2% on
+`small_hill`/`medium_hill`/`medium_valley` vs a 0.3-1.4% floor on `flat`/`gentle_uphill`/
+`mega_drop`/scripted-jump `AIRBORNE` frames — 15-40x higher exactly on curvature-heavy
+segments, and low precisely where large one-directional motion happens, which is what
+made a magnitude+reversal-gated filter seem safe for future cliffs/drops (large
+same-signed deltas never look like the bounce).
+
+Implementation (briefly present in `player.gd`/`main.gd`, since reverted): a filter
+applied only to `color_rect.position.y` (never `global_position`/velocity), continuously
+while genuinely rolling (`is_on_floor() and is_using_grounded_model and not
+is_jump_ascending`, two consecutive such frames) and below a small magnitude gate,
+`offset[n] = clamp(-0.5 * motion_y[n], ±2px)`. Applying it *every* rolling frame
+(not just on frames that individually look like a reversal — a first version gated that
+way and measured almost no improvement, since halving one frame's delta without also
+having offset the frame before it doesn't reproduce cancellation, just shrinks the
+symptom) makes consecutive offsets compose into a true causal 2-tap moving average:
+`presentation_delta[n] = 0.5*(motion_y[n] + motion_y[n-1])`, which nulls an alternating
++d,-d sequence and leaves a steady one-directional sequence at a small bounded constant
+offset rather than a growing lag. Camera was pointed at the same filtered signal
+(`Player.get_presentation_y()`) instead of raw `global_position.y`, so the sprite and
+the screen wouldn't jitter independently of each other.
+
+Measured (4 seeds × 9000 frames, no-input): reversal rate roughly halved on exactly the
+affected segments (`medium_hill` 5.59%→2.95%, `medium_valley` 4.49%→1.88%, `small_hill`
+6.19%→3.27%), while mean delta magnitude was essentially untouched (`medium_hill`
+1.771→1.758px, ~0.7% change) and the `flat`/`gentle_uphill`/`mega_drop` controls showed
+no new lag. Camera-side numbers barely moved either way, confirming (separately
+measured, before implementing anything) that the existing `max(baseline, y-72)` clamp +
+`k=6` lerp already attenuates camera-side reversal to about a third of the raw body's on
+every hill segment — the camera was never the amplifier it looked like it might be from
+napkin math; decoupling it turned out to be low-value on its own.
+
+**Reverted despite the clean measurement**: playtest-confirmed (2026-07-31) the change
+was imperceptible in actual play — "looks the same, nothing's changed... no improvement
+on hills." The underlying artifact is sub-pixel to begin with (mean offset well under 1px
+in the typical case, clamp of 2px only reached rarely), so a real ~50% cut in an
+already-sub-pixel oscillating quantity does not cross into visible territory during
+normal-speed gameplay. Per this investigation's own rule ("do not keep changes unless
+they clearly improve the result"), a metric-only win was reverted rather than kept. Scene
+files were checked and do NOT override the export that gated this (the same class of bug
+that silently disabled `world_rebase_enabled` once, see "Things that break silently"
+above) — so the null result is real, not a wiring bug.
+
+**Implication for any future attempt**: the residual bounce documented throughout this
+file is real and measurable at the physics/rendering level, but is likely near or below
+the threshold of human visual perception at this game's normal camera zoom and speed,
+independent of which visual-only technique is used to reduce it. Before investing further
+here, get independent confirmation the bounce is actually visible during normal play (not
+just under close/frame-stepped inspection) — otherwise further filter-tuning is likely to
+repeat this result. `jitter_frequency_probe.gd`'s reversal-rate/second-difference split is
+the right tool to reach for if this is revisited; it's a materially better signal than the
+mean-|delta_y| metric used in the 2026-07-30 phase above.
 
 **Deferred by agreement, not forgotten**: the shakiness/jitter on the long ~40.5°
 `mega_drop` slope is a **separate, still-open** issue — this fix barely touches it
