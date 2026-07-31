@@ -68,7 +68,6 @@ func dump_environment(terrain_generator: TerrainGenerator, player: Player) -> vo
 	print("DUMP_ENV\tplayer_floor_constant_speed\t%s" % str(player.floor_constant_speed))
 	print("DUMP_ENV\tplayer_floor_stop_on_slope\t%s" % str(player.floor_stop_on_slope))
 	print("DUMP_ENV\tsession_floor_max_angle\t%.10f" % terrain_generator.session_floor_max_angle)
-	print("DUMP_ENV\tsession_floor_snap_length\t%.10f" % terrain_generator.session_floor_snap_length)
 	print("DUMP_ENV\tchunk_width\t%.10f" % terrain_generator.chunk_width)
 	print("DUMP_ENV\theight_sample_count\t%d" % terrain_generator.height_sample_count)
 	print("DUMP_ENV\tsurface_y_offset\t%.10f" % terrain_generator.surface_y_offset)
@@ -84,11 +83,7 @@ func dump_environment(terrain_generator: TerrainGenerator, player: Player) -> vo
 
 func dump_derived_constants(terrain_generator: TerrainGenerator) -> void:
 	print("DUMP_DERIVED\tmega_drop_angle\t%.10f" % terrain_generator.get_mega_drop_angle())
-	print("DUMP_DERIVED\tmega_drop_slope\t%.10f" % terrain_generator.get_mega_drop_slope())
-	print("DUMP_DERIVED\tmega_drop_segment_length\t%.10f" % terrain_generator.get_mega_drop_segment_length())
-	print("DUMP_DERIVED\tmega_drop_segment_vertical_drop\t%.10f" % terrain_generator.get_mega_drop_segment_vertical_drop())
-	print("DUMP_DERIVED\tlarge_valley_drop_length\t%.10f" % terrain_generator.get_large_valley_drop_length())
-	print("DUMP_DERIVED\tlarge_valley_rise_length\t%.10f" % terrain_generator.get_large_valley_rise_length())
+	print("DUMP_DERIVED\tmega_drop_length\t%.10f" % terrain_generator.get_mega_drop_length())
 
 
 func dump_segments(terrain_generator: TerrainGenerator, cache_through_world_x: float) -> void:

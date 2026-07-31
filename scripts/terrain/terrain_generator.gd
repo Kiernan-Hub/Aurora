@@ -3,7 +3,6 @@ extends Node2D
 class_name TerrainGenerator
 
 const CHUNK_SCENE: PackedScene = preload("res://scenes/terrain/terrain_chunk.tscn")
-const OBSTACLE_SCENE: PackedScene = preload("res://scenes/obstacles/obstacle.tscn")
 
 @export var player_path: NodePath
 @export var chunk_width: float = 512.0
@@ -14,19 +13,31 @@ const OBSTACLE_SCENE: PackedScene = preload("res://scenes/obstacles/obstacle.tsc
 @export var height_sample_count: int = 32
 @export var debug_log_segment_selection: bool = false
 @export var debug_replay_session_seed: int = -1
+# Complexity dial for bisecting terrain bugs to a single feature: set any weight to 0
+# to remove that shape from the world entirely, using the same weight<=0 skip already
+# present in get_non_flat_segment_selection/get_weighted_segment_selection. Ladder
+# example -- flat-only: zero every weight below except debug_weight_flat. +hills: also
+# raise debug_weight_medium_hill_valley_mix. +downhill/uphill: also raise those two.
+# +mega_drop: also raise debug_weight_mega_drop. Defaults reproduce the shipping mix.
+@export var debug_weight_flat: int = DEFAULT_WEIGHT_FLAT
+@export var debug_weight_small_hill: int = DEFAULT_WEIGHT_SMALL_HILL
+@export var debug_weight_medium_hill_valley_mix: int = DEFAULT_WEIGHT_MEDIUM_HILL_VALLEY_MIX
+@export var debug_weight_big_downhill: int = DEFAULT_WEIGHT_BIG_DOWNHILL
+@export var debug_weight_gentle_uphill: int = DEFAULT_WEIGHT_GENTLE_UPHILL
+@export var debug_weight_mega_drop: int = MEGA_DROP_SELECTION_WEIGHT
 
 var player: CharacterBody2D
 var next_chunk_index: int = 0
 var active_chunks: Dictionary[int, Node2D] = {}
-var last_obstacle_world_x: float = -1000000000.0
 var session_seed: int = 0
-var session_floor_snap_length: float = Player.FLOOR_SNAP_LENGTH
 var session_floor_max_angle: float = 0.0
 var segment_start_x_cache: Dictionary[int, float] = {}
 var segment_length_cache: Dictionary[int, float] = {}
 var segment_baseline_cache: Dictionary[int, float] = {}
+var segment_spec_cache: Dictionary[int, Dictionary] = {}
 var lowest_cached_segment_index: int = 0
 var highest_cached_segment_index: int = 0
+var segment_selection_weight_table: Array[Dictionary] = []
 
 const LIGHT_CHUNK_COLOR: Color = Color(0.92, 0.97, 1.0)
 const DARK_CHUNK_COLOR: Color = Color(0.78, 0.86, 0.93)
@@ -45,43 +56,26 @@ const SEGMENT_SELECTION_GENTLE_UPHILL: int = 4
 const SEGMENT_SELECTION_MEGA_DROP: int = 5
 const SEGMENT_TIER_SMALL: int = 0
 const SEGMENT_TIER_MEDIUM: int = 1
-const SEGMENT_TIER_LARGE: int = 2
 const SMALL_SEGMENT_LENGTH: float = 480.0
 const MEDIUM_SEGMENT_LENGTH: float = 640.0
 const SUSTAINED_DOWNHILL_LENGTH: float = 960.0
 const SUSTAINED_DOWNHILL_DROP: float = 160.0
 const GENTLE_UPHILL_LENGTH: float = SUSTAINED_DOWNHILL_LENGTH
 const GENTLE_UPHILL_RISE: float = 28.0
-const LARGE_VALLEY_DROP_LENGTH: float = 48.0
-const LARGE_VALLEY_RISE_LENGTH: float = 420.0
-const LARGE_VALLEY_FLOOR_LENGTH: float = 192.0
-const LARGE_VALLEY_DEPTH: float = 180.0
-# Same margin below floor_max_angle that mega_drop already uses. In practice this,
-# not LARGE_VALLEY_DROP_LENGTH above, determines the drop's real length -- see
-# get_large_valley_drop_length().
-const LARGE_VALLEY_FLOOR_ANGLE_FRACTION: float = 0.9
 const MEGA_DROP_TOTAL_VERTICAL_DROP: float = 1080.0
-const MEGA_DROP_SEGMENT_COUNT: int = 4
 const MEGA_DROP_FLOOR_ANGLE_FRACTION: float = 0.9
 const MEGA_DROP_SELECTION_WEIGHT: int = 10
 const TERRAIN_FILL_DEPTH_MARGIN: float = 4096.0
 const SMALL_HILL_AMPLITUDE: float = 56.0
 const MEDIUM_HILL_AMPLITUDE: float = 74.0
-const SEGMENT_SELECTION_WEIGHT_TABLE: Array[Dictionary] = [
-	{"selection": SEGMENT_SELECTION_FLAT, "weight": 16},
-	{"selection": SEGMENT_SELECTION_SMALL_HILL, "weight": 16},
-	{"selection": SEGMENT_SELECTION_MEDIUM_HILL_VALLEY_MIX, "weight": 42},
-	{"selection": SEGMENT_SELECTION_BIG_DOWNHILL, "weight": 16},
-	{"selection": SEGMENT_SELECTION_GENTLE_UPHILL, "weight": 10},
-	{"selection": SEGMENT_SELECTION_MEGA_DROP, "weight": MEGA_DROP_SELECTION_WEIGHT},
-]
+const DEFAULT_WEIGHT_FLAT: int = 16
+const DEFAULT_WEIGHT_SMALL_HILL: int = 16
+const DEFAULT_WEIGHT_MEDIUM_HILL_VALLEY_MIX: int = 42
+const DEFAULT_WEIGHT_BIG_DOWNHILL: int = 16
+const DEFAULT_WEIGHT_GENTLE_UPHILL: int = 10
 const HASH_MASK: int = 0x7fffffff
 const HASH_INDEX_MULTIPLIER: int = 374761393
 const HASH_MIX_MULTIPLIER: int = 668265263
-const MIN_SAFE_START_DISTANCE: float = 440.0
-const MIN_OBSTACLE_GAP: float = 250.0
-const OBSTACLE_EDGE_PADDING: float = 24.0
-const OBSTACLE_SURFACE_Y_OFFSET: float = -16.0
 const DEBUG_TERRAIN_LOGGING: bool = false
 const DEBUG_SEGMENT_SELECTION_LOG_COUNT: int = 80
 
@@ -94,8 +88,8 @@ func _ready() -> void:
 		return
 
 	session_seed = get_initial_session_seed()
-	session_floor_snap_length = player.floor_snap_length
 	session_floor_max_angle = player.floor_max_angle
+	segment_selection_weight_table = build_segment_selection_weight_table()
 	initialize_segment_cache()
 	if debug_log_segment_selection:
 		log_debug_segment_selection(0, DEBUG_SEGMENT_SELECTION_LOG_COUNT)
@@ -111,6 +105,17 @@ func get_initial_session_seed() -> int:
 
 func get_session_seed() -> int:
 	return session_seed
+
+
+func build_segment_selection_weight_table() -> Array[Dictionary]:
+	return [
+		{"selection": SEGMENT_SELECTION_FLAT, "weight": debug_weight_flat},
+		{"selection": SEGMENT_SELECTION_SMALL_HILL, "weight": debug_weight_small_hill},
+		{"selection": SEGMENT_SELECTION_MEDIUM_HILL_VALLEY_MIX, "weight": debug_weight_medium_hill_valley_mix},
+		{"selection": SEGMENT_SELECTION_BIG_DOWNHILL, "weight": debug_weight_big_downhill},
+		{"selection": SEGMENT_SELECTION_GENTLE_UPHILL, "weight": debug_weight_gentle_uphill},
+		{"selection": SEGMENT_SELECTION_MEGA_DROP, "weight": debug_weight_mega_drop},
+	]
 
 
 func _physics_process(_delta: float) -> void:
@@ -150,7 +155,6 @@ func spawn_chunk(chunk_index: int) -> void:
 
 	chunk.position = Vector2((float(chunk_index) * chunk_width) + (chunk_width * 0.5), ground_y)
 	build_chunk_surface(chunk, chunk_index)
-	# spawn_chunk_obstacle(chunk, chunk_index)
 	apply_chunk_color(chunk, chunk_index)
 	add_child(chunk)
 	active_chunks[chunk_index] = chunk
@@ -167,33 +171,6 @@ func remove_chunk(chunk_index: int) -> void:
 	chunk.free()
 	if DEBUG_TERRAIN_LOGGING:
 		print("free chunk ", chunk_index)
-
-
-func spawn_chunk_obstacle(chunk: StaticBody2D, chunk_index: int) -> void:
-	if is_chunk_overlapping_mega_drop(chunk_index):
-		return
-
-	var half_chunk_width: float = chunk_width * 0.5
-	var usable_half_width: float = maxi(half_chunk_width - OBSTACLE_EDGE_PADDING, 0.0)
-	var obstacle_local_x_offset: float = randf_range(-usable_half_width, usable_half_width)
-	var obstacle_world_x: float = (float(chunk_index) * chunk_width) + (chunk_width * 0.5) + obstacle_local_x_offset
-	if obstacle_world_x < MIN_SAFE_START_DISTANCE:
-		return
-	if is_world_x_in_mega_drop(obstacle_world_x):
-		return
-
-	if obstacle_world_x - last_obstacle_world_x < MIN_OBSTACLE_GAP:
-		return
-
-	var obstacle: Area2D = OBSTACLE_SCENE.instantiate() as Area2D
-	if obstacle == null:
-		push_error("Failed to instance obstacle scene.")
-		return
-
-	var surface_height: float = get_terrain_height(obstacle_world_x)
-	obstacle.position = Vector2(obstacle_local_x_offset, surface_height + OBSTACLE_SURFACE_Y_OFFSET)
-	chunk.add_child(obstacle)
-	last_obstacle_world_x = obstacle_world_x
 
 
 func build_chunk_surface(chunk: StaticBody2D, chunk_index: int) -> void:
@@ -275,49 +252,41 @@ func add_unique_sample_world_x(sample_world_xs: Array[float], world_x: float) ->
 	sample_world_xs.append(world_x)
 
 
+# Single dispatch point for terrain shape. Every other place that used to branch on
+# segment_type/tier independently (baseline_delta, length, the selection label) now
+# reads the same SegmentSpec this builds, so there is exactly one place that decides
+# what a segment looks like.
 func get_terrain_height(world_x: float) -> float:
 	ensure_segment_cache_for_world_x(world_x)
 	var segment_index: int = find_segment_index_at_x(world_x)
 	var segment_start_x: float = segment_start_x_cache[segment_index]
 
 	var segment_x: float = world_x - segment_start_x
-	var segment_type: int = get_segment_type(segment_index)
+	var spec: Dictionary = get_segment_spec(segment_index)
 	var segment_baseline: float = get_segment_baseline(segment_index)
-	if segment_type == SEGMENT_TYPE_FLAT:
-		return segment_baseline
-	if segment_type == SEGMENT_TYPE_DOWNHILL and is_mega_drop_segment(segment_index):
-		return segment_baseline + (get_mega_drop_slope() * segment_x)
-	if segment_type == SEGMENT_TYPE_DOWNHILL:
-		var downhill_progress: float = segment_x / SUSTAINED_DOWNHILL_LENGTH
-		return segment_baseline + (get_transition_profile(downhill_progress) * SUSTAINED_DOWNHILL_DROP)
-	if segment_type == SEGMENT_TYPE_UPHILL:
-		var uphill_progress: float = segment_x / GENTLE_UPHILL_LENGTH
-		return segment_baseline - (get_transition_profile(uphill_progress) * GENTLE_UPHILL_RISE)
-	if segment_type == SEGMENT_TYPE_VALLEY and get_segment_tier(segment_index) == SEGMENT_TIER_LARGE:
-		return get_large_valley_height(segment_x, segment_baseline)
+	var segment_progress: float = segment_x / float(spec["length"])
+	return segment_baseline + evaluate_segment_offset(spec, segment_progress)
 
-	var segment_progress: float = segment_x / get_segment_length(segment_index)
-	var hill_amplitude: float = get_segment_amplitude(segment_index)
+
+# The height offset from baseline at a given progress [0, 1] through the segment.
+# Evaluating this at progress=1.0 is exactly the segment's baseline delta -- see
+# get_segment_baseline_delta() -- so continuity between segments is guaranteed by
+# construction instead of by a hand-maintained duplicate of each shape's endpoint.
+func evaluate_segment_offset(spec: Dictionary, segment_progress: float) -> float:
+	var segment_type: int = int(spec["type"])
+	var magnitude: float = float(spec["magnitude"])
+	if segment_type == SEGMENT_TYPE_FLAT:
+		return 0.0
+	if segment_type == SEGMENT_TYPE_DOWNHILL:
+		return get_transition_profile(segment_progress) * magnitude
+	if segment_type == SEGMENT_TYPE_UPHILL:
+		return -get_transition_profile(segment_progress) * magnitude
 	if segment_type == SEGMENT_TYPE_HILL:
 		# Godot's Y axis points down, so subtracting raises the hill visually.
-		return segment_baseline - (get_curve_profile(segment_progress) * hill_amplitude)
+		return -get_curve_profile(segment_progress) * magnitude
 
 	# Adding the same profile mirrors the hill into a valley below baseline.
-	return segment_baseline + (get_curve_profile(segment_progress) * hill_amplitude)
-
-
-func get_large_valley_height(segment_x: float, segment_baseline: float) -> float:
-	var drop_length: float = get_large_valley_drop_length()
-	if segment_x < drop_length:
-		return segment_baseline + (get_transition_profile(segment_x / drop_length) * LARGE_VALLEY_DEPTH)
-
-	var floor_end_x: float = drop_length + LARGE_VALLEY_FLOOR_LENGTH
-	if segment_x <= floor_end_x:
-		return segment_baseline + LARGE_VALLEY_DEPTH
-
-	var rise_length: float = get_large_valley_rise_length()
-	var rise_progress: float = (segment_x - floor_end_x) / rise_length
-	return segment_baseline + ((1.0 - get_transition_profile(rise_progress)) * LARGE_VALLEY_DEPTH)
+	return get_curve_profile(segment_progress) * magnitude
 
 
 # World-space Y of the terrain surface at world_x. get_terrain_height() alone is a
@@ -337,6 +306,7 @@ func initialize_segment_cache() -> void:
 	segment_start_x_cache.clear()
 	segment_length_cache.clear()
 	segment_baseline_cache.clear()
+	segment_spec_cache.clear()
 	segment_start_x_cache[0] = 0.0
 	segment_length_cache[0] = get_segment_length(0)
 	segment_baseline_cache[0] = surface_y_offset
@@ -400,161 +370,118 @@ func find_segment_index_at_x(world_x: float) -> int:
 	return clampi(lower_index, lowest_cached_segment_index, highest_cached_segment_index)
 
 
+# Derived, not hand-written: evaluating the segment's own shape function at
+# progress=1.0 is its endpoint value by definition, so this cannot drift out of sync
+# with evaluate_segment_offset the way a separately-maintained delta could.
 func get_segment_baseline_delta(segment_index: int) -> float:
-	if is_mega_drop_segment(segment_index):
-		return get_mega_drop_segment_vertical_drop()
-
-	var segment_type: int = get_segment_type(segment_index)
-	if segment_type == SEGMENT_TYPE_DOWNHILL:
-		return SUSTAINED_DOWNHILL_DROP
-	if segment_type == SEGMENT_TYPE_UPHILL:
-		return -GENTLE_UPHILL_RISE
-	return 0.0
+	return evaluate_segment_offset(get_segment_spec(segment_index), 1.0)
 
 
 func get_segment_tier(segment_index: int) -> int:
-	var segment_selection: int = get_segment_selection(segment_index)
-	if segment_selection == SEGMENT_SELECTION_SMALL_HILL:
-		return SEGMENT_TIER_SMALL
-	if segment_selection == SEGMENT_SELECTION_MEDIUM_HILL_VALLEY_MIX and get_medium_mix_segment_type(segment_index) == SEGMENT_TYPE_VALLEY:
-		var tier_random_value: int = get_segment_hash(segment_index) >> 4
-		if tier_random_value % 2 == 0:
-			return SEGMENT_TIER_LARGE
-	return SEGMENT_TIER_MEDIUM
+	return int(get_segment_spec(segment_index)["tier"])
 
 
 func get_segment_length(segment_index: int) -> float:
-	if is_mega_drop_segment(segment_index):
-		return get_mega_drop_segment_length()
-
-	if get_segment_type(segment_index) == SEGMENT_TYPE_FLAT:
-		return MEDIUM_SEGMENT_LENGTH
-	if get_segment_type(segment_index) == SEGMENT_TYPE_DOWNHILL:
-		return SUSTAINED_DOWNHILL_LENGTH
-	if get_segment_type(segment_index) == SEGMENT_TYPE_UPHILL:
-		return GENTLE_UPHILL_LENGTH
-	if get_segment_type(segment_index) == SEGMENT_TYPE_VALLEY and get_segment_tier(segment_index) == SEGMENT_TIER_LARGE:
-		return get_large_valley_drop_length() + LARGE_VALLEY_FLOOR_LENGTH + get_large_valley_rise_length()
-	if get_segment_tier(segment_index) == SEGMENT_TIER_SMALL:
-		return SMALL_SEGMENT_LENGTH
-	return MEDIUM_SEGMENT_LENGTH
+	return float(get_segment_spec(segment_index)["length"])
 
 
-func get_segment_amplitude(segment_index: int) -> float:
-	if get_segment_tier(segment_index) == SEGMENT_TIER_SMALL:
-		return SMALL_HILL_AMPLITUDE
-	return MEDIUM_HILL_AMPLITUDE
+func get_segment_type(segment_index: int) -> int:
+	return int(get_segment_spec(segment_index)["type"])
 
 
-func get_large_valley_max_angle() -> float:
-	return session_floor_max_angle * LARGE_VALLEY_FLOOR_ANGLE_FRACTION
+func get_segment_selection_label(segment_index: int) -> String:
+	return String(get_segment_spec(segment_index)["label"])
 
 
-# Shortest drop_length whose PEAK chord angle still stays at/under
-# get_large_valley_max_angle(). The drop's height profile is an ease-in/out curve
-# (get_transition_profile), whose steepest point has slope
-# (LARGE_VALLEY_DEPTH / drop_length) * (PI / 2) -- solving that for the target
-# angle gives this length.
-func get_large_valley_min_drop_length_for_floor_angle() -> float:
-	return (LARGE_VALLEY_DEPTH * PI) / (2.0 * tan(get_large_valley_max_angle()))
-
-
-# Both quantities below are MINIMUM safe lengths for two independent constraints,
-# not maximums, so the constant and both derived minimums must be combined with
-# maxf(), never minf() -- a shorter length is always the STEEPER, less safe option.
-# (Measured bug in the prior version of this function: it used minf(), which since
-# LARGE_VALLEY_DROP_LENGTH=48 was already shorter than the floor-snap minimum
-# (~70.5px), silently discarded that minimum and let the drop reach 80.4 degrees --
-# steeper than floor_max_angle (45 degrees), which physics then treats as a wall
-# rather than a ramp. See CLAUDE.md's known-bad-seeds table.)
-func get_large_valley_drop_length() -> float:
-	var physics_delta: float = 1.0 / float(Engine.physics_ticks_per_second)
-	var target_drop_per_tick: float = session_floor_snap_length + (0.5 * Player.GRAVITY * physics_delta * physics_delta)
-	var target_slope: float = (target_drop_per_tick / (SpeedManager.INITIAL_SPEED * physics_delta)) * 1.1
-	var floor_snap_min_drop_length: float = (LARGE_VALLEY_DEPTH * PI) / (target_slope * 2.0)
-	var floor_angle_min_drop_length: float = get_large_valley_min_drop_length_for_floor_angle()
-	return maxf(LARGE_VALLEY_DROP_LENGTH, maxf(floor_snap_min_drop_length, floor_angle_min_drop_length))
-
-
-func get_large_valley_rise_length() -> float:
-	return maxf(LARGE_VALLEY_RISE_LENGTH, get_large_valley_drop_length())
-
-
+# mega_drop is a single segment (not the old 4-linear-segment chain), so this is a
+# direct label check with no recursion or neighbour lookback.
 func is_mega_drop_segment(segment_index: int) -> bool:
-	for segment_offset: int in range(MEGA_DROP_SEGMENT_COUNT):
-		if is_mega_drop_start_segment(segment_index - segment_offset):
-			return true
-	return false
+	return String(get_segment_spec(segment_index)["label"]) == "mega_drop"
 
 
-func is_mega_drop_start_segment(segment_index: int) -> bool:
-	if get_segment_selection(segment_index) != SEGMENT_SELECTION_MEGA_DROP:
-		return false
-	for segment_offset: int in range(1, MEGA_DROP_SEGMENT_COUNT):
-		if is_mega_drop_start_segment(segment_index - segment_offset):
-			return false
-	return true
+func get_segment_spec(segment_index: int) -> Dictionary:
+	if not segment_spec_cache.has(segment_index):
+		segment_spec_cache[segment_index] = build_segment_spec(segment_index)
+	return segment_spec_cache[segment_index]
+
+
+# The one place that decides what a segment IS: its shape, length, magnitude (drop
+# depth / rise height / hill-or-valley amplitude -- one field, since evaluate_segment_offset
+# uses it identically per type), tier, and debug label. Everything else in this file
+# reads this instead of re-deriving it.
+func build_segment_spec(segment_index: int) -> Dictionary:
+	var segment_selection: int = get_segment_selection(segment_index)
+
+	if segment_selection == SEGMENT_SELECTION_MEGA_DROP:
+		return {
+			"type": SEGMENT_TYPE_DOWNHILL,
+			"tier": SEGMENT_TIER_MEDIUM,
+			"length": get_mega_drop_length(),
+			"magnitude": MEGA_DROP_TOTAL_VERTICAL_DROP,
+			"label": "mega_drop",
+		}
+	if segment_selection == SEGMENT_SELECTION_FLAT:
+		return {
+			"type": SEGMENT_TYPE_FLAT,
+			"tier": SEGMENT_TIER_MEDIUM,
+			"length": MEDIUM_SEGMENT_LENGTH,
+			"magnitude": 0.0,
+			"label": "flat",
+		}
+	if segment_selection == SEGMENT_SELECTION_BIG_DOWNHILL:
+		return {
+			"type": SEGMENT_TYPE_DOWNHILL,
+			"tier": SEGMENT_TIER_MEDIUM,
+			"length": SUSTAINED_DOWNHILL_LENGTH,
+			"magnitude": SUSTAINED_DOWNHILL_DROP,
+			"label": "sustained_downhill",
+		}
+	if segment_selection == SEGMENT_SELECTION_GENTLE_UPHILL:
+		return {
+			"type": SEGMENT_TYPE_UPHILL,
+			"tier": SEGMENT_TIER_MEDIUM,
+			"length": GENTLE_UPHILL_LENGTH,
+			"magnitude": GENTLE_UPHILL_RISE,
+			"label": "gentle_uphill",
+		}
+	if segment_selection == SEGMENT_SELECTION_SMALL_HILL:
+		return {
+			"type": SEGMENT_TYPE_HILL,
+			"tier": SEGMENT_TIER_SMALL,
+			"length": SMALL_SEGMENT_LENGTH,
+			"magnitude": SMALL_HILL_AMPLITUDE,
+			"label": "small_hill",
+		}
+
+	# SEGMENT_SELECTION_MEDIUM_HILL_VALLEY_MIX
+	var segment_type: int = get_medium_mix_segment_type(segment_index)
+	var label: String = "medium_hill" if segment_type == SEGMENT_TYPE_HILL else "medium_valley"
+	return {
+		"type": segment_type,
+		"tier": SEGMENT_TIER_MEDIUM,
+		"length": MEDIUM_SEGMENT_LENGTH,
+		"magnitude": MEDIUM_HILL_AMPLITUDE,
+		"label": label,
+	}
 
 
 func get_mega_drop_angle() -> float:
 	return session_floor_max_angle * MEGA_DROP_FLOOR_ANGLE_FRACTION
 
 
-func get_mega_drop_slope() -> float:
-	return tan(get_mega_drop_angle())
-
-
-func get_mega_drop_segment_vertical_drop() -> float:
-	return MEGA_DROP_TOTAL_VERTICAL_DROP / float(MEGA_DROP_SEGMENT_COUNT)
-
-
-func get_mega_drop_segment_length() -> float:
-	var slope: float = get_mega_drop_slope()
-	if slope <= 0.0:
-		return MEGA_DROP_TOTAL_VERTICAL_DROP / float(MEGA_DROP_SEGMENT_COUNT)
-	return get_mega_drop_segment_vertical_drop() / slope
-
-
-func is_world_x_in_mega_drop(world_x: float) -> bool:
-	ensure_segment_cache_for_world_x(world_x)
-	return is_mega_drop_segment(find_segment_index_at_x(world_x))
-
-
-func is_chunk_overlapping_mega_drop(chunk_index: int) -> bool:
-	var chunk_start_x: float = float(chunk_index) * chunk_width
-	var chunk_end_x: float = chunk_start_x + chunk_width
-	ensure_segment_cache_for_world_x(chunk_start_x)
-	ensure_segment_cache_for_world_x(chunk_end_x)
-	var first_segment_index: int = find_segment_index_at_x(chunk_start_x)
-	var last_segment_index: int = find_segment_index_at_x(chunk_end_x - 0.001)
-	for segment_index: int in range(first_segment_index, last_segment_index + 1):
-		if is_mega_drop_segment(segment_index):
-			return true
-	return false
+# Length whose PEAK chord angle (of the same ease-in/out profile every other feature
+# uses) lands exactly at get_mega_drop_angle(). Same derivation the old large_valley
+# floor-angle minimum used: the ease curve's steepest point has slope
+# (TOTAL_VERTICAL_DROP / length) * (PI / 2), solved for length at the target angle.
+# floor_max_angle > 0 always in this project (see CLAUDE.md), so no zero-angle guard.
+func get_mega_drop_length() -> float:
+	return (MEGA_DROP_TOTAL_VERTICAL_DROP * PI) / (2.0 * tan(get_mega_drop_angle()))
 
 
 func create_session_seed() -> int:
 	var seed_generator: RandomNumberGenerator = RandomNumberGenerator.new()
 	seed_generator.randomize()
 	return int(seed_generator.randi())
-
-
-func get_segment_type(segment_index: int) -> int:
-	if is_mega_drop_segment(segment_index):
-		return SEGMENT_TYPE_DOWNHILL
-
-	var segment_selection: int = get_segment_selection(segment_index)
-	if segment_selection == SEGMENT_SELECTION_FLAT:
-		return SEGMENT_TYPE_FLAT
-	if segment_selection == SEGMENT_SELECTION_MEDIUM_HILL_VALLEY_MIX:
-		return get_medium_mix_segment_type(segment_index)
-	if segment_selection == SEGMENT_SELECTION_BIG_DOWNHILL:
-		return SEGMENT_TYPE_DOWNHILL
-	if segment_selection == SEGMENT_SELECTION_GENTLE_UPHILL:
-		return SEGMENT_TYPE_UPHILL
-	if segment_selection == SEGMENT_SELECTION_MEGA_DROP:
-		return SEGMENT_TYPE_DOWNHILL
-	return SEGMENT_TYPE_HILL
 
 
 func get_segment_selection(segment_index: int) -> int:
@@ -566,7 +493,25 @@ func get_segment_selection(segment_index: int) -> int:
 	if previous_segment_selection != SEGMENT_SELECTION_FLAT:
 		return segment_selection
 
+	# The "no two flats in a row" rule assumes some other shape has weight to spend --
+	# true whenever the shipping mix is in play. At the flat-only complexity level
+	# every non-flat weight is 0, so there is no alternative to fall back to; without
+	# this guard get_non_flat_segment_selection's fallback would force a hill in
+	# anyway, breaking flat-only bisection. get_segment_selection_total_weight floors
+	# at 1 for safe division elsewhere, so the raw sum is checked directly here.
+	if not has_any_non_flat_weight():
+		return segment_selection
+
 	return get_non_flat_segment_selection(segment_index)
+
+
+func has_any_non_flat_weight() -> bool:
+	for entry: Dictionary in segment_selection_weight_table:
+		var selection: int = int(entry["selection"])
+		var weight: int = int(entry["weight"])
+		if selection != SEGMENT_SELECTION_FLAT and weight > 0:
+			return true
+	return false
 
 
 func get_unconstrained_segment_selection(segment_index: int) -> int:
@@ -577,7 +522,7 @@ func get_non_flat_segment_selection(segment_index: int) -> int:
 	var total_weight: int = get_segment_selection_total_weight(false)
 	var random_value: int = (get_segment_hash(segment_index) >> 8) % total_weight
 	var accumulated_weight: int = 0
-	for entry: Dictionary in SEGMENT_SELECTION_WEIGHT_TABLE:
+	for entry: Dictionary in segment_selection_weight_table:
 		var selection: int = int(entry["selection"])
 		var weight: int = int(entry["weight"])
 		if selection == SEGMENT_SELECTION_FLAT or weight <= 0:
@@ -592,7 +537,7 @@ func get_weighted_segment_selection(random_value: int) -> int:
 	var total_weight: int = get_segment_selection_total_weight(true)
 	var weighted_value: int = random_value % total_weight
 	var accumulated_weight: int = 0
-	for entry: Dictionary in SEGMENT_SELECTION_WEIGHT_TABLE:
+	for entry: Dictionary in segment_selection_weight_table:
 		var weight: int = int(entry["weight"])
 		if weight <= 0:
 			continue
@@ -604,7 +549,7 @@ func get_weighted_segment_selection(random_value: int) -> int:
 
 func get_segment_selection_total_weight(include_flat: bool) -> int:
 	var total_weight: int = 0
-	for entry: Dictionary in SEGMENT_SELECTION_WEIGHT_TABLE:
+	for entry: Dictionary in segment_selection_weight_table:
 		var selection: int = int(entry["selection"])
 		var weight: int = int(entry["weight"])
 		if weight <= 0:
@@ -649,36 +594,37 @@ func log_debug_segment_selection(start_segment_index: int, segment_count: int) -
 		)
 
 
-func get_segment_selection_label(segment_index: int) -> String:
-	if is_mega_drop_segment(segment_index):
-		if is_mega_drop_start_segment(segment_index):
-			return "mega_drop_start"
-		return "mega_drop"
-
-	var segment_selection: int = get_segment_selection(segment_index)
-	if segment_selection == SEGMENT_SELECTION_FLAT:
-		return "flat"
-	if segment_selection == SEGMENT_SELECTION_SMALL_HILL:
-		return "small_hill"
-	if segment_selection == SEGMENT_SELECTION_MEDIUM_HILL_VALLEY_MIX:
-		if get_medium_mix_segment_type(segment_index) == SEGMENT_TYPE_HILL:
-			return "medium_hill"
-		if get_segment_tier(segment_index) == SEGMENT_TIER_LARGE:
-			return "large_valley"
-		return "medium_valley"
-	if segment_selection == SEGMENT_SELECTION_BIG_DOWNHILL:
-		return "sustained_downhill"
-	if segment_selection == SEGMENT_SELECTION_GENTLE_UPHILL:
-		return "gentle_uphill"
-	if segment_selection == SEGMENT_SELECTION_MEGA_DROP:
-		return "mega_drop_start"
-	return "unknown"
-
-
 func get_slope_angle_at_x(world_x: float) -> float:
 	var left_height: float = get_terrain_height(world_x - SLOPE_SAMPLE_DISTANCE)
 	var right_height: float = get_terrain_height(world_x + SLOPE_SAMPLE_DISTANCE)
 	return atan2(right_height - left_height, SLOPE_SAMPLE_DISTANCE * 2.0)
+
+
+# The slope of the actual 16px-ish chord the collision polyline uses at world_x, not
+# the continuous height field. get_slope_angle_at_x's +/-2px finite difference is an
+# analytic approximation that can disagree with the physical chord underfoot by a
+# couple of degrees on curved terrain -- the player was being aimed along that
+# analytic angle while physically resting on the chord, injecting spurious vertical
+# velocity every chord. Reuses the identical sample-point construction
+# build_chunk_surface feeds into ConcavePolygonShape2D, so the two can't disagree.
+func get_collision_chord_slope_angle(world_x: float) -> float:
+	var chunk_index: int = int(floor(world_x / chunk_width))
+	var chunk_start_x: float = float(chunk_index) * chunk_width
+	var chunk_end_x: float = chunk_start_x + chunk_width
+	var collision_sample_count: int = maxi(ceili(chunk_width / MAX_COLLISION_SEGMENT_LENGTH), 2)
+	var sample_world_xs: Array[float] = get_chunk_surface_sample_world_xs(chunk_start_x, chunk_end_x, collision_sample_count, true)
+
+	var left_world_x: float = sample_world_xs[0]
+	var right_world_x: float = sample_world_xs[sample_world_xs.size() - 1]
+	for sample_index: int in range(sample_world_xs.size() - 1):
+		if world_x >= sample_world_xs[sample_index] and world_x <= sample_world_xs[sample_index + 1]:
+			left_world_x = sample_world_xs[sample_index]
+			right_world_x = sample_world_xs[sample_index + 1]
+			break
+
+	var left_height: float = get_terrain_height(left_world_x)
+	var right_height: float = get_terrain_height(right_world_x)
+	return atan2(right_height - left_height, right_world_x - left_world_x)
 
 
 func apply_chunk_color(chunk: StaticBody2D, chunk_index: int) -> void:
