@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://c3bxsf5ckhq4k" path="res://scripts/systems/background_generator.gd" id="4"]
 [ext_resource type="Script" uid="uid://qs7ecwhx0vkq" path="res://scripts/game/game_manager.gd" id="6_j53ry"]
 [ext_resource type="Script" path="res://scripts/systems/coin_spawner.gd" id="7_coin"]
+[ext_resource type="Script" path="res://scripts/systems/obstacle_spawner.gd" id="8_obstacle"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -30,6 +31,11 @@ script = ExtResource("7_coin")
 terrain_generator_path = NodePath("..")
 player_path = NodePath("../../Player")
 
+[node name="ObstacleSpawner" type="Node2D" parent="TerrainGenerator"]
+script = ExtResource("8_obstacle")
+terrain_generator_path = NodePath("..")
+player_path = NodePath("../../Player")
+
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1352461072]
 position = Vector2(0, 136)
 
@@ -38,13 +44,40 @@ script = ExtResource("6_j53ry")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=210075013]
 
-[node name="YouDiedLabel" type="Label" parent="CanvasLayer" unique_id=262636423]
+[node name="DeathScreen" type="Control" parent="CanvasLayer" unique_id=262636423]
 visible = false
-offset_left = 16.0
-offset_top = 16.0
-offset_right = 182.0
-offset_bottom = 39.0
+process_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Overlay" type="ColorRect" parent="CanvasLayer/DeathScreen"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.6)
+
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/DeathScreen"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/DeathScreen/CenterContainer"]
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 32
 text = "You Died"
+horizontal_alignment = 1
+
+[node name="StatsLabel" type="Label" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 16
+text = "Coins: 0
+Time: 0:00"
+horizontal_alignment = 1
+
+[node name="RestartButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
+text = "Restart"
 
 [node name="TimerLabel" type="Label" parent="CanvasLayer" unique_id=738491056]
 anchors_preset = 1
