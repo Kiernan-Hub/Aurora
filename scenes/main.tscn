@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://b167wbugq81a2" path="res://scripts/main.gd" id="3"]
 [ext_resource type="Script" uid="uid://c3bxsf5ckhq4k" path="res://scripts/systems/background_generator.gd" id="4"]
 [ext_resource type="Script" uid="uid://qs7ecwhx0vkq" path="res://scripts/game/game_manager.gd" id="6_j53ry"]
+[ext_resource type="Script" path="res://scripts/systems/coin_spawner.gd" id="7_coin"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -23,6 +24,11 @@ safe_margin = 1.0
 [node name="TerrainGenerator" type="Node2D" parent="." unique_id=1676138452]
 script = ExtResource("2")
 player_path = NodePath("../Player")
+
+[node name="CoinSpawner" type="Node2D" parent="TerrainGenerator"]
+script = ExtResource("7_coin")
+terrain_generator_path = NodePath("..")
+player_path = NodePath("../../Player")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1352461072]
 position = Vector2(0, 136)
@@ -63,4 +69,16 @@ offset_right = -8.0
 offset_bottom = 50.0
 theme_override_font_sizes/font_size = 12
 text = ""
+horizontal_alignment = 2
+
+[node name="CoinLabel" type="Label" parent="CanvasLayer"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -100.0
+offset_top = 30.0
+offset_right = -8.0
+offset_bottom = 50.0
+theme_override_font_sizes/font_size = 12
+text = "Coins: 0"
 horizontal_alignment = 2
