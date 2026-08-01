@@ -64,7 +64,24 @@ const GENTLE_UPHILL_LENGTH: float = SUSTAINED_DOWNHILL_LENGTH
 const GENTLE_UPHILL_RISE: float = 28.0
 const MEGA_DROP_TOTAL_VERTICAL_DROP: float = 1080.0
 const MEGA_DROP_FLOOR_ANGLE_FRACTION: float = 0.9
-const MEGA_DROP_SELECTION_WEIGHT: int = 10
+# 0 = mega_drop is never generated (2026-08-01). It is the steepest feature in
+# the game (floor_max_angle * 0.9 = 40.5 deg) and carried a persistent visible
+# shake that survived every fix attempted: camera-follow smoothing (measured
+# -84% camera jerk, imperceptible), MSAA 2D and Polygon2D.antialiased (each
+# ~-55% rendered-edge jerk, imperceptible), plus ruled-out floor-snap,
+# frame-pacing, segment-entry and grounded/airborne hypotheses. Full history:
+# docs/research/camera_shake.md.
+#
+# The mechanism is angle-dependent -- rendered-edge quantisation scales with
+# edge steepness -- so cutting the steepest segment cuts the worst case. It
+# does NOT remove the effect from hills/valleys, which measure ~0.12-0.14
+# camera jerk against flat's 0.0005 and are still mildly affected.
+#
+# The generator code below is intentionally left intact rather than deleted:
+# this is a game-feel judgement that may be revisited, and debug harnesses
+# still force the segment through debug_weight_mega_drop to study it. Restore
+# by setting this back to 10.
+const MEGA_DROP_SELECTION_WEIGHT: int = 0
 const TERRAIN_FILL_DEPTH_MARGIN: float = 4096.0
 const SMALL_HILL_AMPLITUDE: float = 56.0
 const MEDIUM_HILL_AMPLITUDE: float = 74.0

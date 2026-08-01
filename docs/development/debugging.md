@@ -66,3 +66,31 @@ is.
 - `TerrainGenerator.debug_log_segment_selection` / `DEBUG_TERRAIN_LOGGING` /
   `Player.DEBUG_SLOPE_LOGGING` — `const` toggles for per-frame spam.
 - `TerrainGenerator.debug_weight_*` — see `docs/development/terrain.md`.
+
+## Camera shake probe (`scripts/debug/camera_shake_probe.gd`)
+
+Regression gate for the 2026-08-01 camera-judder fix (`main.gd` horizontal
+follow). Measures **camera jerk** — the frame-to-frame change in scroll rate —
+per segment label. The terrain is static in world space, so the camera's
+per-frame displacement *is* the on-screen motion of the whole view; uneven
+displacement is perceived shake. Smooth scrolling reads 0; the speed ramp only
+accounts for ~0.0009 px/frame², so anything above ~0.001 is judder.
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/camera_shake_probe.gd -- --seed=941462462 --frames=7000 --warmup=120
+```
+
+- `--smoothness=0` restores the old rigid `camera.x = player.x` follow and
+  `--lead=0` disables the lag-cancelling lead term, so before/after A/Bs come
+  from one binary and one seed rather than a checkout swap.
+- **`--warmup` matters.** A smoothed follow legitimately spends its opening
+  frames settling into its steady-state lag; without a warmup that one-time
+  transient lands in the stats as a bogus `gentle_uphill` max-jerk spike
+  (0.049 → 1.19) that looks exactly like a regression. 120 is plenty.
+- Expected on current `main`: `mega_drop` mean jerk ~0.06 (was 0.38 rigid),
+  `flat`/`gentle_uphill` at the ~0.002 noise floor, and follow distance ~7px.
+  A `mega_drop` mean above ~0.15 means the follow filter or its lead term
+  regressed.
+
+Full investigation — root cause, the four hypotheses ruled out first, and why
+the contact-point metric it replaced was a dead end: `docs/research/camera_shake.md`.

@@ -37,12 +37,13 @@ changing tick rate silently changes level geometry.
 No test suite, no build script. Godot: `/Applications/Godot.app/Contents/MacOS/Godot`
 (play with `--path .`, opens a window and blocks — only when asked).
 
-Four headless gates exist: a fast physics-free terrain-shape check, a
+Five headless gates exist: a fast physics-free terrain-shape check, a
 freeze-replay runner, a freeze-search sweep (the one that actually finds
-stalls — replay alone isn't sufficient), and a floor-flicker regression
-probe. Run the terrain-shape check after any segment/shape change; run the
-physics ones after any change to player physics, collision, or segment
-code. **Exact commands, flags, and watchdog mechanics**:
+stalls — replay alone isn't sufficient), a floor-flicker regression probe,
+and a camera-shake probe. Run the terrain-shape check after any segment/shape
+change; run the physics ones after any change to player physics, collision, or
+segment code; run the camera-shake probe after any change to the camera follow
+in `main.gd`. **Exact commands, flags, and watchdog mechanics**:
 `docs/development/debugging.md`. Rationale/history for why each exists:
 `docs/research/freeze_bug.md`. Log any new seed that triggers
 `FREEZE_REPRO` in `docs/research/freeze_bug.md` before fixing it.
@@ -85,7 +86,11 @@ the actual algorithm — these are the gotchas that aren't obvious from a read:
   silently clamps and returns the wrong segment.
 - `large_valley` (a segment type) was removed entirely and `mega_drop` was
   collapsed from 4 segments to 1 — permanent decisions; rationale and the
-  bugs that drove them in `docs/research/freeze_bug.md`.
+  bugs that drove them in `docs/research/freeze_bug.md`. **`mega_drop` is now
+  also disabled** (`MEGA_DROP_SELECTION_WEIGHT = 0`, 2026-08-01) over an
+  unfixable-feeling visual shake — see Known issues. With it gone the steepest
+  slope the generator can produce is **20.13deg**, down from 40.5deg; anything
+  assuming a near-`floor_max_angle` face still exists is now wrong.
 - Fill-polygon depth math, the `debug_weight_*` bisection dial, and
   performance notes: `docs/development/terrain.md`.
 
@@ -148,8 +153,14 @@ built-in `ui_accept`.
 - Collider is `CapsuleShape2D` (r16,h48), `safe_margin = 1.0` — both were the
   fix for a snag/freeze bug on segment seams (`f2f075b`). Don't revert to a
   rectangle or drop the margin.
-- Camera (`scripts/main.gd`) tracks x exactly, y **downward only**
-  (`max(camera_baseline_y, player.y - 72)`), same exp smoothing.
+- Camera (`scripts/main.gd`) follows y **downward only**
+  (`max(camera_baseline_y, player.y - 72)`) with exp smoothing. X is **also
+  exp-smoothed** (`HORIZONTAL_FOLLOW_SMOOTHNESS`) and then *led* by a smoothed
+  scroll-rate estimate that cancels the filter's steady-state lag — do not
+  "simplify" this back to `camera.x = player.x`. The terrain is static in world
+  space, so a rigid x follow pipes `move_and_slide()`'s per-frame resolution
+  noise straight to the screen as whole-view judder; that was the mega_drop
+  shake (`docs/research/camera_shake.md`).
 
 ## Known issues
 
@@ -163,9 +174,24 @@ built-in `ui_accept`.
   real gameplay complaint, and get independent confirmation it's actually
   visible first — read `docs/research/terrain_jitter.md` before touching
   this again (`jitter_frequency_probe.gd` is the tool to reach for).
-- **`mega_drop` shakiness — separate, still open.** Not addressed by the
-  flicker fix (mechanism measured near-absent there). Not otherwise
-  investigated yet.
+  **Caveat, 2026-08-01:** "imperceptible" was only ever true of its *vertical*
+  component. Its *horizontal* component is ±1-2px of per-frame scroll rate and
+  was the entire mega_drop shake once a rigid camera piped it to the screen.
+  The noise is still there; it is just no longer wired to the view.
+- **`mega_drop` shakiness — SEGMENT CUT, not fixed** (2026-08-01).
+  `MEGA_DROP_SELECTION_WEIGHT = 0`, so it is never generated; the generator code
+  is deliberately left intact (restore by setting it back to 10). Six mechanisms
+  were measured; four were eliminated outright, and all three that produced a
+  real measured improvement produced **zero** perceptual improvement in
+  playtest: camera-follow filtering (-84% camera jerk), MSAA 2D (-50% rendered
+  edge jerk), `Polygon2D.antialiased` (-59%). Cutting the steepest segment took
+  worst-case camera jerk 0.382 -> 0.033 px/frame^2 and the game's steepest slope
+  40.5deg -> 20.13deg. **Before spending any more time here read
+  `docs/research/camera_shake.md`** — it lists what is already eliminated, three
+  measurement traps that each cost a cycle, and the one lead never fully closed
+  (rendered-edge whole-pixel quantisation; the canvas transform is provably
+  smooth and unsnapped, frame pacing provably flawless). Hills/valleys still
+  measure ~0.03 against flat's ~0.002, so the class is reduced, not gone.
 - **"View snaps forward/backward for half a second" — unreproduced.**
   Reported once; not explained by any fix so far (stall/stuck watchdog
   counts stayed 0 in every measurement run to date). May need different

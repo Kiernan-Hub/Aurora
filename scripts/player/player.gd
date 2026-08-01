@@ -30,9 +30,13 @@ const STALL_RECOVERY_CLEARANCE: float = 1.0
 # reading exactly 0 -- catches jittering-in-place (small back-and-forth motion that
 # never clears a hard freeze threshold) as well as a flat stall. 60 frames = ~1s.
 const STUCK_WINDOW_FRAME_COUNT: int = 60
-# Even on the steepest face in this generator (~40.5 degrees, mega_drop) minimum
-# forward speed (300 px/s) along-surface still advances ~228 px/s in x; a legitimate
-# slope has no reason to produce under 20px of net motion in a full second.
+# Even on the steepest face this generator could produce back when mega_drop was
+# enabled (~40.5 degrees) minimum forward speed (300 px/s) along-surface still
+# advanced ~228 px/s in x; a legitimate slope has no reason to produce under 20px
+# of net motion in a full second. mega_drop is disabled as of 2026-08-01 and the
+# steepest slope is now 20.13 degrees, so this threshold has MORE headroom than
+# when it was chosen, not less -- it stays valid either way, and stays correct if
+# mega_drop is ever restored.
 const STUCK_NET_PROGRESS_THRESHOLD: float = 20.0
 
 @export var DEBUG_ALLOW_MANUAL_SPEED_CONTROL: bool = true

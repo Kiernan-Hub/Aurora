@@ -3,3 +3,6 @@
 export_presets.cfg
 .DS_Store
 .Rhistory
+
+# Debug probe output, regenerated on every run
+scripts/debug/*_output.log
