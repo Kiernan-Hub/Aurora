@@ -39,10 +39,30 @@ const STUCK_WINDOW_FRAME_COUNT: int = 60
 # mega_drop is ever restored.
 const STUCK_NET_PROGRESS_THRESHOLD: float = 20.0
 
-@export var DEBUG_ALLOW_MANUAL_SPEED_CONTROL: bool = true
-@export var DEBUG_SHOW_PLAYER_STATE: bool = true
-@export var DEBUG_LOG_FREEZE_REPRO: bool = true
-@export_range(10, 20, 1) var DEBUG_FREEZE_HISTORY_FRAME_COUNT: int = 20
+# Debug instrumentation, OFF in exported release builds and ON everywhere a developer
+# or a probe runs (editor play, --headless --script, debug export templates).
+#
+# These were plain `= true` @exports until 2026-08-03, which meant the shipping APK ran
+# the full probe rig every physics frame: update_debug_state_label() and
+# record_freeze_repro_frame() each do a get_floor_collision_data() pass and a terrain
+# segment lookup, and between them allocate ~25 transient Strings -- roughly 3,600
+# refcounted heap allocations per second that nobody in a shipped build will ever read.
+# DEBUG_ALLOW_MANUAL_SPEED_CONTROL shipping true also left the arrow keys as a live
+# speed cheat on any desktop build.
+#
+# Deriving from OS.is_debug_build() rather than hardcoding false keeps every headless
+# gate working untouched (they run on the editor binary, which is a debug build) while
+# making it impossible to ship the instrumentation by forgetting to flip a flag.
+#
+# Deliberately NOT @export anymore, matching Main.world_rebase_enabled and
+# GameManager.require_start_screen: an @export is exactly what main.tscn silently
+# serialised to reintroduce the freeze bug for weeks, and these four now control whether
+# the game does thousands of allocations per second. Probes still set them directly in
+# code, which works the same on a plain var.
+var DEBUG_ALLOW_MANUAL_SPEED_CONTROL: bool = OS.is_debug_build()
+var DEBUG_SHOW_PLAYER_STATE: bool = OS.is_debug_build()
+var DEBUG_LOG_FREEZE_REPRO: bool = OS.is_debug_build()
+var DEBUG_FREEZE_HISTORY_FRAME_COUNT: int = 20
 
 @onready var color_rect: ColorRect = $ColorRect
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D

@@ -185,7 +185,14 @@ func remove_chunk(chunk_index: int) -> void:
 
 	var chunk: Node2D = active_chunks[chunk_index]
 	active_chunks.erase(chunk_index)
-	chunk.free()
+	# queue_free(), not free(): this runs inside _physics_process and the chunk is a
+	# StaticBody2D carrying a ConcavePolygonShape2D, i.e. exactly the case Godot
+	# documents as unsafe to destroy synchronously during a physics callback. The old
+	# free() was justified by the chunk being >=1024px behind the player, but that is a
+	# distance margin, not a guarantee. Erasing from active_chunks first means the extra
+	# frame the node survives is invisible: next_chunk_index only increases, so this
+	# index can never be re-spawned into a duplicate overlapping body.
+	chunk.queue_free()
 	if DEBUG_TERRAIN_LOGGING:
 		print("free chunk ", chunk_index)
 

@@ -69,6 +69,11 @@ var services: GameServices
 
 
 func _ready() -> void:
+	# _notification below must still arrive while the tree is paused -- a focus-out that
+	# happens on the pause screen, or a back press on the death screen, is exactly when
+	# paused-ness is already true. This node has no _process/_physics_process, so ALWAYS
+	# costs nothing.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	services = GameServices.resolve(self)
 	main = get_parent() as Main
 	player = get_node_or_null(player_path) as Player
@@ -147,6 +152,38 @@ func set_state(new_state: State) -> void:
 
 	get_tree().paused = new_state != State.PLAYING
 	state_changed.emit(new_state)
+
+
+# Android lifecycle. There was no _notification anywhere in the project before
+# 2026-08-03, which meant three device-only failures that desktop testing cannot show:
+# the back button quit the app mid-run, a notification/call/app-switch left the game in
+# PLAYING while the player couldn't see it, and neither was recoverable.
+#
+# Everything here routes through set_state(), which stays the single owner of
+# get_tree().paused and screen visibility -- these are new *triggers*, not a second
+# pause mechanism.
+func _notification(what: int) -> void:
+	match what:
+		# Back button. project.godot sets quit_on_go_back=false so this arrives instead
+		# of Godot quitting for us. Mid-run it pauses (losing a run to a stray back press
+		# is the thing being fixed); on the pause screen it resumes, which is what the
+		# gesture means there. On START/DEAD there is nothing in progress to protect, and
+		# refusing to exit at all would be its own annoyance, so back does quit.
+		NOTIFICATION_WM_GO_BACK_REQUEST:
+			match state:
+				State.PLAYING:
+					set_state(State.PAUSED)
+				State.PAUSED:
+					_on_resume_pressed()
+				_:
+					get_tree().quit()
+		# Focus loss: notification shade, incoming call, recents switcher. Only PLAYING
+		# needs handling -- the other three states are already paused. Deliberately does
+		# NOT auto-resume on focus-in: coming back to a running game you can't react to
+		# yet is how you lose a run to the OS.
+		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+			if state == State.PLAYING:
+				set_state(State.PAUSED)
 
 
 func _on_start_pressed() -> void:

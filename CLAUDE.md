@@ -19,6 +19,7 @@ This file is the map. Everything else is one level down, read on demand.
 | `docs/development/input.md` | Any input change — desktop *or* touch |
 | `docs/development/debugging.md` | Running a gate, or reviving an archived probe |
 | `docs/development/dead_code.md` | Something looks reachable but isn't |
+| `docs/review/*.md` | Point-in-time external audits. Read the newest before a cleanup pass — it's the running list of known-but-unfixed debt |
 | `docs/research/*.md` | Archive of closed investigations. **Not required reading** — open one only when a section here points you at it |
 
 **Finishing an investigation?** Put the conclusion here (what's true now, what to
@@ -155,9 +156,16 @@ asked. Full history: `docs/development/dead_code.md`.
 8. Visual polish — placeholder rects only
 9. Missions/upgrades — not started
 
-Note the player's debug instrumentation (`DEBUG_SHOW_PLAYER_STATE`,
-`DEBUG_LOG_FREEZE_REPRO`, `DEBUG_ALLOW_MANUAL_SPEED_CONTROL`) **ships on** — turn it off
-before any build someone else will play. Details in `physics.md`.
+The player's debug instrumentation now derives from `OS.is_debug_build()`, so it runs
+under the editor and every probe and is off in a release export — it can't be shipped by
+forgetting a flag. Details in `physics.md`.
+
+**Still unset: the base viewport size.** `project.godot` declares no
+`window/size/viewport_width`/`height`, so the base resolution is the engine default
+(1152×648) and `stretch/aspect="expand"` lets the visible world width vary with device
+aspect ratio. On an auto-runner, forward visibility *is* reaction time, so that's a
+difficulty difference between phones, not a cosmetic one. Needs a deliberate decision —
+see `docs/review/2026-08-03-architecture-audit.md` §B4.
 
 ---
 

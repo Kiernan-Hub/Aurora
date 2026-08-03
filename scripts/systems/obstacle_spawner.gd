@@ -118,7 +118,11 @@ func _physics_process(_delta: float) -> void:
 		if not is_instance_valid(obstacle):
 			active_obstacles.remove_at(index)
 		elif obstacle.position.x < despawn_world_x:
-			obstacle.free()
+			# queue_free(), not free(): this runs inside _physics_process and an obstacle
+			# is an Area2D. Same reasoning as TerrainGenerator.remove_chunk(). It is
+			# dropped from active_obstacles in the same step, so the extra frame it
+			# survives is not observable here.
+			obstacle.queue_free()
 			active_obstacles.remove_at(index)
 
 

@@ -25,8 +25,11 @@ world rebasing exists.
 - `next_chunk_index` only ever increases, so chunks **cannot re-spawn behind the
   player**. That's safe because chunk identity comes from the pure height field, not
   from the `active_chunks` dict.
-- `remove_chunk` calls `chunk.free()` immediately, not `queue_free()` — safe only
-  because a despawning chunk is ≥1024px behind the player.
+- `remove_chunk` uses `queue_free()`. It used to call `free()` synchronously, justified
+  by the chunk being ≥1024px behind the player — but that is a distance margin, not a
+  guarantee, and destroying a `StaticBody2D` mid-`_physics_process` is the documented
+  unsafe case. Changed 2026-08-03; the extra frame the node survives is invisible
+  because it is erased from `active_chunks` first and `next_chunk_index` only increases.
 - No pooling; chunks rebuild from scratch on every spawn. `BackgroundGenerator` mirrors
   this scheme for 1024px stripes, indexed in *parallax-layer* space
   (`player.x * motion_scale.x`).

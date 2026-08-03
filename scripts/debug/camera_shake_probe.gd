@@ -135,6 +135,13 @@ func _init() -> void:
 		(main as Main).camera_horizontal_smoothness = smoothness_text.to_float()
 	(main as Main).camera_lead_enabled = get_int_argument("--lead", 1) != 0
 	(main.get_node("GameManager") as GameManager).require_start_screen = false
+	# Off explicitly, not just by default. This probe's entire subject is frame-to-frame
+	# timing noise, and the instrumentation these gate is ~25 String allocations plus two
+	# full floor-collision analyses per frame. As of 2026-08-03 both default to
+	# OS.is_debug_build(), which is TRUE under this harness -- so without these two lines
+	# the measurement carries the debug tax, exactly the trap the other gates avoid.
+	player.DEBUG_SHOW_PLAYER_STATE = false
+	player.DEBUG_LOG_FREEZE_REPRO = false
 	# ObstacleSpawner schedules clusters off Player.speed_manager.elapsed_time, and
 	# this probe runs long enough (thousands of frames, no input) to reach the first
 	# one. A collision would pause the tree via GameManager, freezing camera_x/

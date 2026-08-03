@@ -150,14 +150,25 @@ lose. Cancelling it costs judder rejection only, not visibility.
 X is never world-rebased (`world_rebaser.gd` rebases Y only), so the scroll-rate estimate
 needs no rebase correction — unlike `camera_y` / `camera_baseline_y`, which do.
 
-## Debug instrumentation that ships on
+## Debug instrumentation
 
 `DEBUG_SHOW_PLAYER_STATE`, `DEBUG_LOG_FREEZE_REPRO` and
-`DEBUG_ALLOW_MANUAL_SPEED_CONTROL` all default to `true`. The Android build therefore
-draws a 10-line state overlay across the top-left (overlapping the pause button, though
-`Label`'s default `MOUSE_FILTER_IGNORE` means it doesn't block the tap) and formats a
-per-frame history string at 60 Hz. Fine for development; turn them off before any build
-meant to be played by someone else.
+`DEBUG_ALLOW_MANUAL_SPEED_CONTROL` all default to **`OS.is_debug_build()`** — on under
+the editor, headless probes and debug exports; **off in an exported release build.**
+
+They shipped as plain `true` until 2026-08-03. That meant the release APK ran the full
+probe rig every physics frame: `update_debug_state_label()` and
+`record_freeze_repro_frame()` each do a `get_floor_collision_data()` pass and a terrain
+segment lookup, and between them allocate ~25 transient Strings — roughly 3,600
+refcounted heap allocations per second, which is the profile that produces intermittent
+stutter on mid-range Android. It also drew a 10-line overlay over the pause button and
+left the arrow keys as a live speed cheat on desktop builds.
+
+They are deliberately **not** `@export` anymore, matching `Main.world_rebase_enabled` and
+`GameManager.require_start_screen`. An `@export` is exactly what `main.tscn` silently
+serialised to reintroduce the freeze bug for weeks, and these now control whether the
+game does thousands of allocations per second. Probes set them directly in code, which
+works identically on a plain var.
 
 `player.gd` also carries read-only fields added for the jitter investigation
 (`debug_position_after_slide/snap`, `debug_velocity_before/after_slide`) — zero behavior

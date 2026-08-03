@@ -60,6 +60,15 @@ Restart is `get_tree().reload_current_scene()`, and it unpauses first: the tree-
 paused flag is **not** reset by the reload, so leaving it true rebuilds the scene into a
 frozen world.
 
+`GameManager._notification()` adds the Android lifecycle triggers (added 2026-08-03,
+there was no `_notification` anywhere before that) — back button and focus loss. Both
+route through `set_state()`, so they are new *triggers*, not a second pause mechanism.
+Back is pause mid-run / resume on the pause screen / quit on START and DEAD, which
+requires `application/config/quit_on_go_back=false` in `project.godot` or Godot quits
+before the notification arrives. Focus-out pauses only from PLAYING and deliberately does
+**not** auto-resume on focus-in. `GameManager` sets `process_mode = ALWAYS` so these
+still arrive while the tree is paused; it has no `_process`, so that costs nothing.
+
 ## Persistence
 
 Everything goes through `Services.save_store` (`scripts/systems/save_store.gd`), a

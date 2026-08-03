@@ -126,7 +126,9 @@ func _physics_process(_delta: float) -> void:
 		if not is_instance_valid(powerup):
 			active_powerups.remove_at(index)
 		elif powerup.position.x < despawn_world_x:
-			powerup.free()
+			# queue_free(), not free(): this runs inside _physics_process and a powerup is
+			# an Area2D. Same reasoning as TerrainGenerator.remove_chunk().
+			powerup.queue_free()
 			active_powerups.remove_at(index)
 
 

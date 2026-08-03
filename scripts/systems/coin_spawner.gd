@@ -115,7 +115,9 @@ func remove_coin_group(chunk_index: int) -> void:
 
 	var group: Node2D = active_coin_groups[chunk_index]
 	active_coin_groups.erase(chunk_index)
-	group.free()
+	# queue_free(), not free(): this runs inside _physics_process and the group's children
+	# are live Area2D monitors. Same reasoning as TerrainGenerator.remove_chunk().
+	group.queue_free()
 
 
 func _on_coin_collected(value: int) -> void:

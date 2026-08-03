@@ -52,7 +52,14 @@ Run that after adding any new `class_name`, before running any gate.
 
 Four things in the running game will quietly invalidate a measurement or make a gate
 "pass" by doing nothing. Any **new** harness that steps many physics frames needs all
-four; the existing ones in `scripts/debug/` already have them.
+four.
+
+**Do not read this table as a guarantee about the existing gates.** It used to say they
+"already have them", which was not true and is the same shape of assumption that let the
+original `world_rebase_enabled` regression hide: only `freeze_search`,
+`freeze_replay_runner` and `stall_recovery_probe` reference `world_rebase_enabled` at
+all. That's behaviourally fine — the default is `true`, which is what a gate wants — but
+check the file, don't trust the sentence.
 
 | Flag | Why |
 |---|---|

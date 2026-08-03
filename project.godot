@@ -14,6 +14,11 @@ config/name="Aura"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.svg"
+; Android back button must NOT quit the app. Godot's default is true, which killed a
+; run mid-play with no confirmation and no pause -- users read that as a crash. With
+; this false the press arrives as NOTIFICATION_WM_GO_BACK_REQUEST, which GameManager
+; turns into a pause. See scripts/game/game_manager.gd.
+config/quit_on_go_back=false
 
 [autoload]
 
@@ -23,10 +28,20 @@ Services="*res://scripts/autoload/services.gd"
 
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+; Side-scroller: portrait is never correct. Was unset, which left it to the Android
+; manifest default.
+window/handheld/orientation="landscape"
 
 [physics]
 
 3d/physics_engine="Jolt Physics"
+; PINNED, not left to the engine default. Several terrain constants derive from
+; 1.0/physics_ticks_per_second, so this value is level geometry -- CLAUDE.md has called
+; it load-bearing the whole time while it was the one number not written down anywhere
+; the engine actually reads. 60 is the value everything to date was measured at.
+common/physics_ticks_per_second=60
+; Also pinned: the docs state interpolation is OFF and every measurement assumes it.
+common/physics_interpolation=false
 
 [rendering]
 
