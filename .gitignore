@@ -1,8 +1,12 @@
 .godot/
 *.tmp
-export_presets.cfg
 .DS_Store
 .Rhistory
+
+# Keystore paths and signing passwords. Godot 4 keeps these OUT of
+# export_presets.cfg (which is tracked) and in this file instead -- so this is the one
+# that must never be committed. It does not exist until a keystore is configured.
+export_credentials.cfg
 
 # Debug probe output, regenerated on every run
 scripts/debug/*_output.log
