@@ -103,6 +103,13 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	# Explicit null guard rather than trusting _ready()'s set_physics_process(false):
+	# that call is documented (docs/development/debugging.md) as not reliably
+	# suppressing _physics_process in headless harness runs, and everything below
+	# dereferences both of these.
+	if terrain_generator == null or player == null:
+		return
+
 	if debug_spawning_disabled:
 		return
 
