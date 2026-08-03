@@ -38,11 +38,30 @@ var segment_spec_cache: Dictionary[int, Dictionary] = {}
 var lowest_cached_segment_index: int = 0
 var highest_cached_segment_index: int = 0
 var segment_selection_weight_table: Array[Dictionary] = []
+# Per-chunk collision polyline samples, keyed by chunk index: the world_x of every
+# vertex and the terrain height there. Built once per chunk (see
+# ensure_chunk_collision_samples) and read every physics frame by
+# get_collision_chord_slope_angle(), which used to rebuild the whole array from
+# scratch on every single call.
+#
+# PackedFloat64Array, never PackedFloat32Array: get_terrain_height() returns a
+# GDScript float (a double), and narrowing terrain geometry to float32 is the exact
+# shape of an already-fixed freeze bug (docs/research/freeze_bug.md). Float64 stores
+# these values bit-exactly, so the cache cannot perturb the height field.
+var chunk_collision_sample_xs: Dictionary[int, PackedFloat64Array] = {}
+var chunk_collision_sample_heights: Dictionary[int, PackedFloat64Array] = {}
 
 const LIGHT_CHUNK_COLOR: Color = Color(0.92, 0.97, 1.0)
 const DARK_CHUNK_COLOR: Color = Color(0.78, 0.86, 0.93)
 const SLOPE_SAMPLE_DISTANCE: float = 2.0
 const MAX_COLLISION_SEGMENT_LENGTH: float = 16.0
+# How far from the most recently requested chunk the collision-sample cache keeps
+# entries. Must exceed the live window (chunk_count_behind + chunk_count_ahead = 8) so
+# ordinary play never evicts a chunk it is about to ask for again. Bounding it here
+# rather than only in remove_chunk() keeps the cache finite for callers that sample
+# arbitrary world_x without spawning anything -- an endless runner must not accumulate
+# a dictionary entry per chunk forever.
+const CHUNK_COLLISION_SAMPLE_CACHE_RADIUS: int = 10
 const SEGMENT_TYPE_FLAT: int = 0
 const SEGMENT_TYPE_HILL: int = 1
 const SEGMENT_TYPE_VALLEY: int = 2
@@ -209,9 +228,12 @@ func build_chunk_surface(chunk: StaticBody2D, chunk_index: int) -> void:
 	var chunk_start_x: float = float(chunk_index) * chunk_width
 	var chunk_end_x: float = chunk_start_x + chunk_width
 	var visual_sample_count: int = maxi(height_sample_count, 2)
-	var collision_sample_count: int = maxi(ceili(chunk_width / MAX_COLLISION_SEGMENT_LENGTH), 2)
 	var visual_sample_world_xs: Array[float] = get_chunk_surface_sample_world_xs(chunk_start_x, chunk_end_x, visual_sample_count, true)
-	var collision_sample_world_xs: Array[float] = get_chunk_surface_sample_world_xs(chunk_start_x, chunk_end_x, collision_sample_count, true)
+	# The collision vertices come from the shared cache, so the shape built here and the
+	# slope angle the player steers along are literally the same numbers.
+	ensure_chunk_collision_samples(chunk_index)
+	var collision_sample_world_xs: PackedFloat64Array = chunk_collision_sample_xs[chunk_index]
+	var collision_sample_heights: PackedFloat64Array = chunk_collision_sample_heights[chunk_index]
 	var previous_collision_point: Vector2 = Vector2.ZERO
 
 	for world_x: float in visual_sample_world_xs:
@@ -222,7 +244,7 @@ func build_chunk_surface(chunk: StaticBody2D, chunk_index: int) -> void:
 	for sample_index: int in range(collision_sample_world_xs.size()):
 		var world_x: float = collision_sample_world_xs[sample_index]
 		var local_x: float = world_x - chunk_start_x - (chunk_width * 0.5)
-		var point: Vector2 = Vector2(local_x, get_terrain_height(world_x))
+		var point: Vector2 = Vector2(local_x, collision_sample_heights[sample_index])
 		if sample_index > 0:
 			segment_points.append(previous_collision_point)
 			segment_points.append(point)
@@ -244,6 +266,51 @@ func get_fill_bottom_y(surface_points: PackedVector2Array) -> float:
 	for surface_point: Vector2 in surface_points:
 		max_surface_y = maxf(max_surface_y, surface_point.y)
 	return max_surface_y + TERRAIN_FILL_DEPTH_MARGIN
+
+
+# Builds (once per chunk) the exact vertex list the chunk's ConcavePolygonShape2D is
+# made of, plus the terrain height at each vertex.
+#
+# This is the single source of both the collision shape and the slope angle the player
+# steers along. build_chunk_surface() and get_collision_chord_slope_angle() previously
+# each called get_chunk_surface_sample_world_xs() separately and trusted a comment that
+# the two agreed; now they read the same array, so agreement is structural.
+#
+# Safe to cache because everything feeding it is pure in (session_seed, world_x):
+# session_seed is assigned in _ready() before initialize_chunks(), so no entry can be
+# built against a stale seed, and get_terrain_height() is a documented pure function.
+func ensure_chunk_collision_samples(chunk_index: int) -> void:
+	if chunk_collision_sample_xs.has(chunk_index):
+		return
+
+	var chunk_start_x: float = float(chunk_index) * chunk_width
+	var chunk_end_x: float = chunk_start_x + chunk_width
+	var collision_sample_count: int = maxi(ceili(chunk_width / MAX_COLLISION_SEGMENT_LENGTH), 2)
+	var sample_world_xs: Array[float] = get_chunk_surface_sample_world_xs(chunk_start_x, chunk_end_x, collision_sample_count, true)
+
+	var cached_world_xs: PackedFloat64Array = PackedFloat64Array()
+	var cached_heights: PackedFloat64Array = PackedFloat64Array()
+	cached_world_xs.resize(sample_world_xs.size())
+	cached_heights.resize(sample_world_xs.size())
+	for sample_index: int in range(sample_world_xs.size()):
+		var world_x: float = sample_world_xs[sample_index]
+		cached_world_xs[sample_index] = world_x
+		cached_heights[sample_index] = get_terrain_height(world_x)
+
+	chunk_collision_sample_xs[chunk_index] = cached_world_xs
+	chunk_collision_sample_heights[chunk_index] = cached_heights
+	prune_chunk_collision_samples(chunk_index)
+
+
+func prune_chunk_collision_samples(around_chunk_index: int) -> void:
+	if chunk_collision_sample_xs.size() <= (CHUNK_COLLISION_SAMPLE_CACHE_RADIUS * 2) + 1:
+		return
+
+	var cached_chunk_indices: Array[int] = chunk_collision_sample_xs.keys()
+	for cached_chunk_index: int in cached_chunk_indices:
+		if absi(cached_chunk_index - around_chunk_index) > CHUNK_COLLISION_SAMPLE_CACHE_RADIUS:
+			chunk_collision_sample_xs.erase(cached_chunk_index)
+			chunk_collision_sample_heights.erase(cached_chunk_index)
 
 
 func get_chunk_surface_sample_world_xs(chunk_start_x: float, chunk_end_x: float, sample_count: int, include_segment_boundaries: bool) -> Array[float]:
@@ -631,24 +698,37 @@ func get_slope_angle_at_x(world_x: float) -> float:
 # analytic angle while physically resting on the chord, injecting spurious vertical
 # velocity every chord. Reuses the identical sample-point construction
 # build_chunk_surface feeds into ConcavePolygonShape2D, so the two can't disagree.
+# Called once per physics frame by Player.get_slope_tangent(), so it is the hottest
+# terrain query in the game. It used to rebuild the chunk's entire sample array on every
+# call -- a fresh allocation, an O(n^2) uniqueness scan (~545 float comparisons), a
+# sort, two segment-cache ensures and two binary searches -- purely to read two
+# neighbouring vertices of a polyline that was already built when the chunk spawned.
+# Now it indexes the cache built at chunk-build time: no allocation, no rebuild.
+#
+# The bracketing search below is deliberately still linear rather than a binary search.
+# It is a scan of ~33 entries, it is no longer the expensive part, and keeping it
+# preserves the original tie-breaking exactly: the FIRST bracketing pair wins, and a
+# world_x outside the sampled range falls back to the chunk's first and last vertex.
+# Verified byte-identical over 20,000 samples before and after this change.
 func get_collision_chord_slope_angle(world_x: float) -> float:
 	var chunk_index: int = int(floor(world_x / chunk_width))
-	var chunk_start_x: float = float(chunk_index) * chunk_width
-	var chunk_end_x: float = chunk_start_x + chunk_width
-	var collision_sample_count: int = maxi(ceili(chunk_width / MAX_COLLISION_SEGMENT_LENGTH), 2)
-	var sample_world_xs: Array[float] = get_chunk_surface_sample_world_xs(chunk_start_x, chunk_end_x, collision_sample_count, true)
+	ensure_chunk_collision_samples(chunk_index)
+	var sample_world_xs: PackedFloat64Array = chunk_collision_sample_xs[chunk_index]
+	var sample_heights: PackedFloat64Array = chunk_collision_sample_heights[chunk_index]
 
-	var left_world_x: float = sample_world_xs[0]
-	var right_world_x: float = sample_world_xs[sample_world_xs.size() - 1]
-	for sample_index: int in range(sample_world_xs.size() - 1):
+	var last_sample_index: int = sample_world_xs.size() - 1
+	var left_sample_index: int = 0
+	var right_sample_index: int = last_sample_index
+	for sample_index: int in range(last_sample_index):
 		if world_x >= sample_world_xs[sample_index] and world_x <= sample_world_xs[sample_index + 1]:
-			left_world_x = sample_world_xs[sample_index]
-			right_world_x = sample_world_xs[sample_index + 1]
+			left_sample_index = sample_index
+			right_sample_index = sample_index + 1
 			break
 
-	var left_height: float = get_terrain_height(left_world_x)
-	var right_height: float = get_terrain_height(right_world_x)
-	return atan2(right_height - left_height, right_world_x - left_world_x)
+	return atan2(
+		sample_heights[right_sample_index] - sample_heights[left_sample_index],
+		sample_world_xs[right_sample_index] - sample_world_xs[left_sample_index],
+	)
 
 
 func apply_chunk_color(chunk: StaticBody2D, chunk_index: int) -> void:
