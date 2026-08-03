@@ -129,6 +129,33 @@ the actual algorithm — these are the gotchas that aren't obvious from a read:
   `SpeedManager` — untested whether typing it directly would break anything
   (the real circular reference is Player↔TerrainGenerator, not this).
 
+## Input
+
+Keyboard/gamepad and desktop mouse jump the normal Godot way: `player.gd` polls
+`Input.is_action_just_pressed("ui_accept")`, and `InputSetup.configure()`
+(`scripts/systems/input_setup.gd`, called first thing in `Main._ready()`) adds a
+left-mouse-button binding to that built-in action.
+
+**Touch is a separate path, not routed through that action at all.**
+`Main._input` (`scripts/main.gd`) calls `Player.buffer_jump()` directly on a touch
+press, setting the same jump-buffer timer the action-based path sets. This shape
+was forced by on-device measurement (2026-08-02, Galaxy S21, Godot 4.7, `adb
+logcat`): tapping produced correctly-formed touch **and** emulated-mouse events —
+`emulate_mouse_from_touch` was confirmed `true` on device — but `ui_accept` never
+produced a `just_pressed` edge in `_physics_process`, and no pointer event of any
+kind ever reached `_unhandled_input` (an earlier fix lived there and never fired).
+Root cause of either gap wasn't isolated further; treat routing touch through an
+`Input` action on Android as unreliable, not just this specific bug's fix.
+
+- **Desktop testing structurally cannot validate mobile input** — a real mouse
+  click never exercises the touch path, and the emulated-mouse path that *does*
+  exist on Android behaves differently there than the direct polling desktop
+  relies on. Any input change needs an on-device check (`adb logcat -s godot:V`).
+- Touch handling has no explicit "is gameplay running" guard: `Main` uses the
+  default `process_mode`, so `_input` doesn't fire while `GameManager` holds
+  `get_tree().paused` on the start/death screens, and a menu tap can't leak in as
+  a jump.
+
 ## Player physics (`scripts/player/player.gd`)
 
 Grounded and airborne are two different velocity models — source of most feel
@@ -219,6 +246,8 @@ asked. Full removal history and why: `docs/development/dead_code.md`.
 ## Build order / status
 
 1. Core loop (terrain + movement) — **working**, still being tuned
-2. Speed scaling — **working** (300→500 px/s, `ACCELERATION = 3.2`, ~62s to cap)
+2. Speed scaling — **working**, two-phase ramp: 100→500 px/s over 10s
+   (`PHASE1_ACCELERATION`), then 500→750 px/s over the next 110s
+   (`PHASE2_ACCELERATION`), capping at `MAX_SPEED` (750) at t=120s
 3. Visual polish — placeholder rects only
 4. Missions/upgrades — not started (`mission_manager.gd`/`upgrade_manager.gd` don't exist)

@@ -30,6 +30,16 @@ func _init() -> void:
 	player.DEBUG_SHOW_PLAYER_STATE = false
 	player.DEBUG_LOG_FREEZE_REPRO = false
 	(main as Main).world_rebase_enabled = rebase_enabled
+	(main.get_node("GameManager") as GameManager).require_start_screen = false
+	# ObstacleSpawner schedules clusters off Player.speed_manager.elapsed_time, which
+	# keeps running for frame_count frames here. A stray obstacle near the warped
+	# target could collide and pause the tree via GameManager, stopping
+	# Player._physics_process -- which would look exactly like the stall this probe
+	# exists to reproduce, but for the wrong reason. Disabled since this probe
+	# measures collision/contact behavior against the terrain, not obstacle gameplay.
+	# See freeze_search.gd for why this is debug_spawning_disabled, not
+	# set_physics_process(false) -- the latter does not reliably work here.
+	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
 	root.add_child(main)
 	await physics_frame
 

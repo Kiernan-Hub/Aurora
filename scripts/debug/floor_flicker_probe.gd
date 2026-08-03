@@ -89,6 +89,16 @@ func run_seed(session_seed: int, frame_limit: int, trace_label: String, trace_li
 	terrain_generator.debug_replay_session_seed = session_seed
 	player.DEBUG_SHOW_PLAYER_STATE = false
 	player.DEBUG_LOG_FREEZE_REPRO = false
+	(main.get_node("GameManager") as GameManager).require_start_screen = false
+	# Same reasoning as camera_shake_probe.gd / freeze_search.gd: ObstacleSpawner's
+	# clusters are scheduled off live elapsed_time, and this probe runs long enough
+	# (frame_limit, no input) to reach one. A collision pauses the tree via
+	# GameManager, which would stop Player._physics_process mid-run and misreport as
+	# a stall/stuck event rather than reflecting real floor-contact behavior.
+	# debug_spawning_disabled, not set_physics_process(false) -- the latter does
+	# not reliably work here (verified by direct instrumentation: _physics_process
+	# kept firing every frame regardless).
+	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
 	root.add_child(main)
 	await physics_frame
 
@@ -246,6 +256,14 @@ func run_seed(session_seed: int, frame_limit: int, trace_label: String, trace_li
 	}
 	main.queue_free()
 	await process_frame
+	# get_tree().paused is tree-wide, not scoped to this seed's `main` instance:
+	# if this seed's run ended with GameManager having paused it (e.g. a death),
+	# every LATER seed in _init()'s sequential loop would otherwise start already
+	# paused and never process a single physics frame -- frozen at spawn for its
+	# entire run, misreported as whatever near-zero/never-moved stats that implies.
+	# Explicit reset here means each seed always starts from a clean slate
+	# regardless of how the previous one ended.
+	paused = false
 	return result
 
 

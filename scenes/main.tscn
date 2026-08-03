@@ -7,6 +7,8 @@
 [ext_resource type="Script" uid="uid://qs7ecwhx0vkq" path="res://scripts/game/game_manager.gd" id="6_j53ry"]
 [ext_resource type="Script" path="res://scripts/systems/coin_spawner.gd" id="7_coin"]
 [ext_resource type="Script" path="res://scripts/systems/obstacle_spawner.gd" id="8_obstacle"]
+[ext_resource type="Script" path="res://scripts/systems/powerup_manager.gd" id="9_powerup"]
+[ext_resource type="Script" path="res://scripts/systems/powerup_spawner.gd" id="10_powerup_spawner"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -36,13 +38,71 @@ script = ExtResource("8_obstacle")
 terrain_generator_path = NodePath("..")
 player_path = NodePath("../../Player")
 
+[node name="PowerupSpawner" type="Node2D" parent="TerrainGenerator"]
+script = ExtResource("10_powerup_spawner")
+terrain_generator_path = NodePath("..")
+player_path = NodePath("../../Player")
+
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1352461072]
 position = Vector2(0, 136)
 
 [node name="GameManager" type="Node" parent="." unique_id=151904437]
 script = ExtResource("6_j53ry")
 
+[node name="PowerupManager" type="Node" parent="."]
+script = ExtResource("9_powerup")
+player_path = NodePath("../Player")
+powerup_spawner_path = NodePath("../TerrainGenerator/PowerupSpawner")
+powerup_label_path = NodePath("../CanvasLayer/PowerupLabel")
+
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=210075013]
+
+[node name="StartScreen" type="Control" parent="CanvasLayer"]
+process_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Overlay" type="ColorRect" parent="CanvasLayer/StartScreen"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.06, 0.1, 0.88)
+
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/StartScreen"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/StartScreen/CenterContainer"]
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 40
+text = "AURA"
+horizontal_alignment = 1
+
+[node name="SubtitleLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 16
+text = "Endless Downhill Skater"
+horizontal_alignment = 1
+
+[node name="InstructionsLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 13
+text = "Tap / Space to jump
+Grab the balls, dodge the red boxes"
+horizontal_alignment = 1
+
+[node name="TapPromptLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 18
+text = "TAP TO START"
+horizontal_alignment = 1
+
+[node name="StartButton" type="Button" parent="CanvasLayer/StartScreen"]
+flat = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 
 [node name="DeathScreen" type="Control" parent="CanvasLayer" unique_id=262636423]
 visible = false
@@ -114,4 +174,17 @@ offset_right = -8.0
 offset_bottom = 50.0
 theme_override_font_sizes/font_size = 12
 text = "Coins: 0"
+horizontal_alignment = 2
+
+[node name="PowerupLabel" type="Label" parent="CanvasLayer"]
+visible = false
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -100.0
+offset_top = 52.0
+offset_right = -8.0
+offset_bottom = 72.0
+theme_override_font_sizes/font_size = 12
+text = "BOOST!"
 horizontal_alignment = 2

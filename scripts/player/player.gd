@@ -50,6 +50,18 @@ const STUCK_NET_PROGRESS_THRESHOLD: float = 20.0
 
 var speed_manager: RefCounted
 var is_dead: bool = false
+# Powerup boost: ground-locked speed override driven externally by
+# PowerupManager (start_boost/end_boost). Deliberately not part of
+# SpeedManager -- the boost speed exceeds SpeedManager.MAX_SPEED and jump is
+# disabled for the duration, both of which are player-state concerns, not
+# ramp-state concerns.
+var is_boosting: bool = false
+var boost_speed: float = 0.0
+# Powerup jump boost: multiplies JUMP_VELOCITY's magnitude. Independent of
+# is_boosting/boost_speed -- the two powerups can be active at once and don't
+# interact (a boosted jump would be a contradiction of "no airtime" anyway, but
+# nothing currently prevents picking up a jump ball mid speed-boost).
+var jump_boost_multiplier: float = 1.0
 var debug_rotation_timer: float = 0.0
 var airborne_rotation: float = 0.0
 var was_grounded_last_frame: bool = false
@@ -114,6 +126,15 @@ func _ready() -> void:
 	setup_debug_state_label()
 
 
+# Jump entry point for input paths that can't go through the "ui_accept" action.
+# Touch on Android is one: measured on device (2026-08-02), a tap's action state
+# never produced a just_pressed edge inside _physics_process, so the poll below
+# can't see it. Setting the buffer directly reuses the exact same coyote/buffer
+# gate a keyboard jump uses -- only the delivery differs.
+func buffer_jump() -> void:
+	jump_buffer_timer = JUMP_BUFFER_DURATION
+
+
 func _physics_process(delta: float) -> void:
 	speed_manager.update(delta)
 	if DEBUG_ALLOW_MANUAL_SPEED_CONTROL:
@@ -129,8 +150,8 @@ func _physics_process(delta: float) -> void:
 	else:
 		jump_buffer_timer = maxf(jump_buffer_timer - delta, 0.0)
 
-	if coyote_timer > 0.0 and jump_buffer_timer > 0.0:
-		velocity.y = JUMP_VELOCITY
+	if not is_boosting and coyote_timer > 0.0 and jump_buffer_timer > 0.0:
+		velocity.y = JUMP_VELOCITY * jump_boost_multiplier
 		coyote_timer = 0.0
 		jump_buffer_timer = 0.0
 		is_jump_ascending = true
@@ -145,12 +166,17 @@ func _physics_process(delta: float) -> void:
 	# velocity is the surface tangent and an uphill tangent points up. Measured before
 	# this changed: on gentle_uphill 76% of frames where the body was genuinely on the
 	# floor ran the airborne gravity model instead of following the surface.
-	is_using_grounded_model = is_on_floor() and not is_jump_ascending
+	# is_boosting forces the grounded model even off a small bump: jump input is
+	# already suppressed above, and apply_grounded_floor_snap() below is relaxed to
+	# pull the body back down regardless of velocity.y while boosting, so this is the
+	# only other place "no airtime during a boost" needs to be enforced.
+	is_using_grounded_model = is_boosting or (is_on_floor() and not is_jump_ascending)
+	var current_speed: float = boost_speed if is_boosting else speed_manager.current_speed
 	if is_using_grounded_model:
 		var slope_tangent: Vector2 = get_slope_tangent()
-		velocity = slope_tangent * speed_manager.current_speed
+		velocity = slope_tangent * current_speed
 	else:
-		velocity.x = speed_manager.current_speed
+		velocity.x = current_speed
 		velocity.y += GRAVITY * delta
 
 	var position_before_move: Vector2 = global_position
@@ -285,8 +311,14 @@ func get_slope_tangent() -> Vector2:
 # Godot's stock snapping already runs and this must not second-guess it -- and note
 # that stock snapping glues the body over the same FLOOR_SNAP_LENGTH in that
 # direction, so this cannot cancel airtime the engine would otherwise have granted.
+#
+# While boosting, the velocity.y gate is dropped entirely: a boost is meant to be
+# ground-locked with zero airtime, including the brief upward hop a bump can impart,
+# not just the tangential-velocity case this function was originally written for.
 func apply_grounded_floor_snap() -> void:
-	if not is_using_grounded_model or is_on_floor() or velocity.y >= 0.0:
+	if not is_using_grounded_model or is_on_floor():
+		return
+	if not is_boosting and velocity.y >= 0.0:
 		return
 
 	var snap_start_y: float = global_position.y
@@ -541,6 +573,29 @@ func record_freeze_repro_frame() -> void:
 		debug_freeze_detected.emit(get_terrain_session_seed())
 	elif not freeze_detected:
 		debug_freeze_reported = false
+
+
+func start_jump_boost(new_jump_boost_multiplier: float) -> void:
+	jump_boost_multiplier = new_jump_boost_multiplier
+
+
+func end_jump_boost() -> void:
+	jump_boost_multiplier = 1.0
+
+
+func start_boost(new_boost_speed: float) -> void:
+	is_boosting = true
+	boost_speed = new_boost_speed
+	# Clear any in-flight jump state so a boost that starts mid-air/mid-jump snaps
+	# straight into the ground-locked grounded model next frame instead of finishing
+	# the jump arc first.
+	is_jump_ascending = false
+	coyote_timer = 0.0
+	jump_buffer_timer = 0.0
+
+
+func end_boost() -> void:
+	is_boosting = false
 
 
 func die() -> void:

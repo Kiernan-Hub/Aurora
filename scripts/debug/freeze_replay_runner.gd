@@ -27,6 +27,15 @@ func _init() -> void:
 		player.DEBUG_LOG_FREEZE_REPRO = true
 		player.DEBUG_FREEZE_HISTORY_FRAME_COUNT = DEFAULT_HISTORY_FRAME_COUNT
 		(main as Main).world_rebase_enabled = rebase_enabled
+		(main.get_node("GameManager") as GameManager).require_start_screen = false
+		# Same reasoning as camera_shake_probe.gd etc: without this, an obstacle
+		# collision pauses the tree via GameManager well before long runs reach
+		# whatever world_x they're targeting, which this harness already reports
+		# distinctly as status=tree_paused -- but that means every long run to date
+		# has actually been an obstacle-death report in disguise, not a real
+		# freeze/no_freeze verdict past that point. Disabled so long runs test what
+		# this harness exists to test: terrain/collision behavior, not obstacles.
+		(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
 		root.add_child(main)
 
 		var event_count_at_run_start: int = player.debug_freeze_event_count

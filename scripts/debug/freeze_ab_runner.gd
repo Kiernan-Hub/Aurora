@@ -40,10 +40,21 @@ func _init() -> void:
 	terrain_generator.debug_replay_session_seed = session_seed
 	player.DEBUG_SHOW_PLAYER_STATE = false
 	player.DEBUG_LOG_FREEZE_REPRO = false
+	(main.get_node("GameManager") as GameManager).require_start_screen = false
 	# Remove the hand-placed test hazard so an early jump cannot end the run.
 	var stray_obstacle: Node = main.get_node_or_null("Obstacle")
 	if stray_obstacle != null:
 		stray_obstacle.queue_free()
+	# ObstacleSpawner schedules clusters off Player.speed_manager.elapsed_time, a
+	# clock that keeps running for up to frame_limit (default 60000) frames here. A
+	# stray obstacle spawned near the warped target window could collide and pause
+	# the tree via GameManager, stopping Player._physics_process and reading as a
+	# false stall/anomaly rather than a real one. Disabled for the same reason the
+	# hand-placed hazard above is removed: this probe measures collision/contact
+	# behavior against the terrain, not obstacle gameplay.
+	# See freeze_search.gd for why this is debug_spawning_disabled, not
+	# set_physics_process(false) -- the latter does not reliably work here.
+	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
 	root.add_child(main)
 	await physics_frame
 

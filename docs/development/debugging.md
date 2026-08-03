@@ -7,6 +7,15 @@ and measured history for why each harness exists: `docs/research/freeze_bug.md`.
 No test suite, no build script. Godot: `/Applications/Godot.app/Contents/MacOS/Godot`
 (play with `--path .`, opens a window and blocks — only when asked).
 
+**No gate covers input.** Every harness below drives `ui_accept` synthetically via
+`Input.action_press`, so they exercise the *consumer* of input, never its delivery.
+A platform input path can be completely dead with all gates green — that is exactly
+how the 2026-08-02 Android bug shipped. Input changes need a real desktop run
+(check keyboard *and* mouse-click separately) plus an on-device Android check:
+re-export to `./aura.apk`, `adb install -r aura.apk`, tap Start, then tap during
+play. If a tap does nothing on device, `adb logcat -s godot` while tapping is the
+next step.
+
 ## The four headless gates
 
 **Terrain shape** (fast, physics-free) — no Y discontinuity, no slope exceeding
@@ -66,6 +75,52 @@ is.
 - `TerrainGenerator.debug_log_segment_selection` / `DEBUG_TERRAIN_LOGGING` /
   `Player.DEBUG_SLOPE_LOGGING` — `const` toggles for per-frame spam.
 - `TerrainGenerator.debug_weight_*` — see `docs/development/terrain.md`.
+- `GameManager.require_start_screen` (default `true`, not `@export` — same reasoning
+  as `Main.world_rebase_enabled`) — real play pauses on a start screen until tapped;
+  any harness that instantiates `main.tscn` and steps many physics frames expecting
+  the player to actually move must set
+  `(main.get_node("GameManager") as GameManager).require_start_screen = false`
+  before `add_child(main)`, or the run sits paused and the gate trivially "passes"
+  by doing nothing. `freeze_replay_runner.gd`, `freeze_search.gd`,
+  `floor_flicker_probe.gd`, and `camera_shake_probe.gd` already do this.
+  `terrain_invariant_check.gd` doesn't need it: it awaits exactly one
+  `physics_frame` (frame signals fire regardless of pause) and samples the height
+  field directly, never depending on player movement.
+- `ObstacleSpawner` schedules clusters off live `Player.speed_manager.elapsed_time`
+  (not world_x), so any harness that steps many no-input frames will eventually
+  reach one. A collision pauses the tree via `GameManager`, which stops
+  `Player`/`Main` `_physics_process` mid-run and gets silently misread as whatever
+  that harness measures (a stall, a floor-contact anomaly, a camera freeze
+  reported as one huge jerk spike followed by a run of near-zero frames). Found
+  once already this way in `camera_shake_probe.gd` -- an 8.5 px/frame^2 spike with
+  `scroll_rate_x=0.0000` that vanished when the run was truncated to end before
+  the first cluster's ~20s trigger.
+  **`set_physics_process(false)` does NOT reliably suppress this** -- tried first,
+  and confirmed by direct instrumentation to be a no-op: `_physics_process` kept
+  firing every frame even while `is_physics_processing()` reported `false` on the
+  same node. Every harness "fixed" this way was actually still spawning obstacles;
+  the entire investigation above (camera jerk spike, `floor_flicker_probe.gd`
+  showing a frozen-looking `distance=11356`, a cross-seed pause cascade freezing
+  every seed after the first death in the same process) traced back to this one
+  ineffective fix, not a real physics/stall bug -- confirmed by
+  `freeze_replay_runner.gd` reaching `world_x=108978.9` at frame 10000 with
+  `status=no_freeze` once the real fix was in. Use
+  `ObstacleSpawner.debug_spawning_disabled = true` instead (a plain script var
+  checked inside `_physics_process()`, the same pattern as
+  `Main.world_rebase_enabled` / `Player.DEBUG_LOG_FREEZE_REPRO` /
+  `GameManager.require_start_screen`, all of which DO work reliably):
+  `(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true`
+  before `add_child(main)`. `freeze_search.gd`, `freeze_ab_runner.gd`,
+  `stall_recovery_probe.gd`, `camera_shake_probe.gd`, `floor_flicker_probe.gd`, and
+  `freeze_replay_runner.gd` all do this now.
+- `floor_flicker_probe.gd` runs multiple seeds sequentially in one process via
+  `run_seed()`. `get_tree().paused` is tree-wide, not scoped to one seed's `main`
+  instance -- without an explicit `paused = false` after `main.queue_free()`, a
+  seed that ends paused (e.g. from an obstacle death, before the fix above
+  existed) leaves every LATER seed in the sequence frozen at spawn for its entire
+  run. Fixed by resetting `paused = false` at the end of each `run_seed()` call.
+  `freeze_replay_runner.gd` doesn't need it: an obstacle death there reports as
+  its own distinct `status=tree_paused`, not misread as a stall.
 
 ## Camera shake probe (`scripts/debug/camera_shake_probe.gd`)
 

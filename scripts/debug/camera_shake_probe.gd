@@ -134,6 +134,23 @@ func _init() -> void:
 	if not smoothness_text.is_empty():
 		(main as Main).camera_horizontal_smoothness = smoothness_text.to_float()
 	(main as Main).camera_lead_enabled = get_int_argument("--lead", 1) != 0
+	(main.get_node("GameManager") as GameManager).require_start_screen = false
+	# ObstacleSpawner schedules clusters off Player.speed_manager.elapsed_time, and
+	# this probe runs long enough (thousands of frames, no input) to reach the first
+	# one. A collision would pause the tree via GameManager, freezing camera_x/
+	# camera_y (Main._physics_process stops too) while this probe's own frame loop
+	# keeps recording -- producing one huge fake jerk spike at the death frame, then
+	# hundreds/thousands of frozen frames all misreported as one "segment" with
+	# near-zero jerk. Disabled for the same reason freeze_search.gd disables it:
+	# this measures camera-follow behavior against the terrain, not obstacle
+	# gameplay. (Found via an 8.5 px/frame^2 spike with scroll_rate_x=0.0000 at
+	# world_x=11356 in a 7000-frame run, which vanished when truncated to frames
+	# before the first cluster's ~20s trigger.)
+	# See freeze_search.gd for why this is debug_spawning_disabled, not
+	# set_physics_process(false) -- the latter does not reliably work here (the
+	# 8.5 px/frame^2 spike this comment block originally referenced was itself
+	# caused by that fix being a no-op: the obstacle death still happened).
+	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
 	# Natural default segment mix on purpose: the point is comparing shake
 	# ACROSS segment types (playtest says flat is clean, gentle crests are a
 	# tiny vertical shake, mega_drop is severe), which a forced single-segment

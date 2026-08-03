@@ -63,6 +63,7 @@ var elapsed_time: float = 0.0
 
 
 func _ready() -> void:
+	InputSetup.configure()
 	camera_baseline_y = camera_2d.global_position.y
 	camera_y = camera_baseline_y
 	camera_x = player.global_position.x
@@ -73,6 +74,32 @@ func _ready() -> void:
 	if not world_rebase_enabled:
 		push_warning("World rebasing is DISABLED - the terrain freeze bug will return.")
 	(player as Player).debug_stuck_detected.connect(_on_player_stuck_detected)
+
+
+# Touch jump. Handled in _input, and by calling Player directly rather than by
+# pressing "ui_accept" -- both choices are forced by what the device actually does
+# (measured 2026-08-02 via adb logcat on a Galaxy S21, Godot 4.7):
+#
+#   * Every pointer event reaches _input, and NOT ONE reaches _unhandled_input --
+#     not touches, not the emulated mouse buttons, not motion. A fix living in
+#     _unhandled_input is attached to a callback that never runs.
+#   * "ui_accept" never produced a just_pressed edge inside _physics_process even
+#     though correctly-bound InputEventMouseButton events were arriving and
+#     emulate_mouse_from_touch was confirmed true. Going through the action at all
+#     is therefore unreliable here, so touch bypasses it.
+#
+# Not consumed with set_input_as_handled(): nothing downstream needs suppressing
+# during play, and leaving the event alone keeps every GUI path exactly as it was.
+# No explicit "is the game running" check is needed either -- Main uses the default
+# process_mode, so while GameManager holds get_tree().paused on the start and death
+# screens this callback does not fire at all, and a menu tap cannot leak in as a
+# jump. Keyboard and desktop mouse still go the old way, via player.gd's poll of
+# the action, which InputSetup binds; only touch takes this path.
+func _input(event: InputEvent) -> void:
+	var touch_event: InputEventScreenTouch = event as InputEventScreenTouch
+	if touch_event == null or not touch_event.pressed:
+		return
+	(player as Player).buffer_jump()
 
 
 func _physics_process(delta: float) -> void:

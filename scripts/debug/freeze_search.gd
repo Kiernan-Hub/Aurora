@@ -44,9 +44,28 @@ func _init() -> void:
 	player.DEBUG_SHOW_PLAYER_STATE = false
 	player.DEBUG_LOG_FREEZE_REPRO = false
 	(main as Main).world_rebase_enabled = get_int_argument("--rebase", 0) == 1
+	(main.get_node("GameManager") as GameManager).require_start_screen = false
 	var stray: Node = main.get_node_or_null("Obstacle")
 	if stray != null:
 		stray.queue_free()
+	# ObstacleSpawner schedules clusters off Player.speed_manager.elapsed_time, which
+	# keeps accumulating across every trial this process runs (the player object is
+	# reused, not re-instantiated -- see the file-level comment above). Over enough
+	# trials that clock can cross a cluster's trigger time with the player already
+	# warped into the scanned window, spawning a stray obstacle there. A collision
+	# would pause the tree via GameManager, which stops Player._physics_process and
+	# would misread as a STALL in this probe's own min_motion measurement -- a false
+	# positive, not a real physics bug. Disabled here for the same reason the stray
+	# legacy "Obstacle" node above is freed: this probe measures collision/contact
+	# behavior against the terrain, not obstacle gameplay.
+	# NOTE: set_physics_process(false) here was tried and found NOT to reliably
+	# suppress _physics_process in this context (verified by direct instrumentation:
+	# it kept firing every frame despite is_physics_processing() reporting false).
+	# debug_spawning_disabled is a plain script var checked inside
+	# _physics_process() instead -- the same pattern already used by
+	# Main.world_rebase_enabled / Player.DEBUG_LOG_FREEZE_REPRO /
+	# GameManager.require_start_screen, all of which DO work reliably.
+	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
 	root.add_child(main)
 	await physics_frame
 
