@@ -3,8 +3,9 @@ extends SceneTree
 # Baseline measurement for the "hide the jitter without eliminating it" investigation
 # (2026-07-31). Read-only: makes no gameplay decisions, writes no physics state.
 #
-# The mean-|delta_y| metric used earlier in this investigation (visual_smoothing_probe.gd)
-# can't tell a hill-crest bob apart from a legitimate cliff fall -- both are "large delta_y".
+# The mean-|delta_y| metric used earlier in this investigation (visual_smoothing_probe.gd,
+# since deleted) can't tell a hill-crest bob apart from a legitimate cliff fall -- both
+# are "large delta_y".
 # This probe splits vertical motion into two frequency bands per segment label:
 #
 #   HF (what we want to cancel): sign-reversal rate of frame-to-frame delta_y, and mean
@@ -18,12 +19,18 @@ extends SceneTree
 #   alone; a low-pass filter (the reverted smoothing experiment) attenuates it too, which
 #   is exactly the failure mode this metric is designed to catch.
 #
-# Also reads the REAL camera (main.camera_2d.global_position.y) and, since 2026-07-31,
-# the REAL rendered/presentation signal (Player.get_presentation_y(), the washout-filtered
-# value the sprite and camera both now consume -- see player.gd/main.gd) directly from a
-# live scene tree rather than simulating either offline. This is what lets one run of this
-# probe validate the washout filter: "presentation" columns show what actually reaches the
-# screen, "body" columns show the untouched physics ground truth for comparison.
+# Also reads the REAL camera (main.camera_2d.global_position.y) from a live scene tree
+# rather than simulating it offline, so "cam" columns show what actually reaches the
+# screen and "body" columns show the untouched physics ground truth for comparison.
+#
+# HISTORY (2026-08-03): this probe used to carry a third set of "presn" (presentation)
+# columns reading Player.get_presentation_y(), plus a --washout flag toggling
+# Player.DEBUG_VISUAL_JITTER_WASHOUT_ENABLED. That visual washout filter was the
+# 2026-07-31 mitigation attempt, and it was REVERTED as imperceptible in play (see
+# docs/research/terrain_jitter.md) -- but this probe was left referencing the deleted
+# API, so every run since died at "Invalid assignment of property
+# 'DEBUG_VISUAL_JITTER_WASHOUT_ENABLED'" and printed an empty summary table. Those
+# columns are gone; body-vs-camera is what remains measurable.
 #
 # World rebasing (main.gd, +-1024 discrete jumps every ~26s) and stall recovery
 # (player.gd recover_from_stall, a teleport) are both discontinuities that would corrupt
@@ -32,8 +39,7 @@ extends SceneTree
 #
 # Usage:
 #   Godot --headless --path . --script res://scripts/debug/jitter_frequency_probe.gd -- \
-#       --seeds=941462462,2160065702,3188032853,222894852 --frames=9000 [--jump=180] \
-#       [--washout=0]   # forces Player.DEBUG_VISUAL_JITTER_WASHOUT_ENABLED off for A/B
+#       --seeds=941462462,2160065702,3188032853,222894852 --frames=9000 [--jump=180]
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 const DEFAULT_SEEDS: String = "941462462,2160065702,3188032853,222894852"
 const NET_PROGRESS_WINDOW: int = 30
@@ -47,10 +53,6 @@ class LabelStats:
 	var body_reversal_samples: int = 0
 	var body_second_diff_abs_sum: float = 0.0
 	var body_second_diff_samples: int = 0
-	var presentation_delta_abs_sum: float = 0.0
-	var presentation_delta_samples: int = 0
-	var presentation_reversals: int = 0
-	var presentation_reversal_samples: int = 0
 	var camera_delta_abs_sum: float = 0.0
 	var camera_delta_samples: int = 0
 	var camera_reversals: int = 0
@@ -63,33 +65,30 @@ func _init() -> void:
 	var seeds_text: String = get_string_argument("--seeds", DEFAULT_SEEDS)
 	var frame_limit: int = get_int_argument("--frames", 9000)
 	var jump_period: int = get_int_argument("--jump", 0)
-	var washout_enabled: bool = get_int_argument("--washout", 1) != 0
 
-	print("JITTER_BEGIN\tgodot=%s\tframes_per_seed=%d\tjump_period=%d\twashout_enabled=%s" % [
-		Engine.get_version_info()["string"], frame_limit, jump_period, str(washout_enabled),
+	print("JITTER_BEGIN\tgodot=%s\tframes_per_seed=%d\tjump_period=%d" % [
+		Engine.get_version_info()["string"], frame_limit, jump_period,
 	])
 
 	var totals: Dictionary = {}
 	for seed_text: String in seeds_text.split(","):
 		var session_seed: int = seed_text.strip_edges().to_int()
-		await run_seed(session_seed, frame_limit, jump_period, washout_enabled, totals)
+		await run_seed(session_seed, frame_limit, jump_period, totals)
 
 	print("JITTER_SUMMARY  (all seeds pooled)")
-	print("    %-20s %8s %12s %10s %14s %16s %12s %12s %10s %14s" % [
+	print("    %-20s %8s %12s %10s %14s %12s %10s %14s" % [
 		"segment", "frames", "body|delta|", "body_rev", "body|d2|",
-		"presn|delta|", "presn_rev", "cam|delta|", "cam_rev", "net_prog/win",
+		"cam|delta|", "cam_rev", "net_prog/win",
 	])
 	var labels: Array = totals.keys()
 	labels.sort()
 	for label: String in labels:
 		var stats: LabelStats = totals[label]
-		print("    %-20s %8d %12.5f %10.4f %14.5f %16.5f %12.4f %12.5f %10.4f %14.4f" % [
+		print("    %-20s %8d %12.5f %10.4f %14.5f %12.5f %10.4f %14.4f" % [
 			label, stats.frames,
 			ratio_float(stats.body_delta_abs_sum, stats.body_delta_samples),
 			ratio(stats.body_reversals, stats.body_reversal_samples),
 			ratio_float(stats.body_second_diff_abs_sum, stats.body_second_diff_samples),
-			ratio_float(stats.presentation_delta_abs_sum, stats.presentation_delta_samples),
-			ratio(stats.presentation_reversals, stats.presentation_reversal_samples),
 			ratio_float(stats.camera_delta_abs_sum, stats.camera_delta_samples),
 			ratio(stats.camera_reversals, stats.camera_reversal_samples),
 			ratio_float(stats.net_progress_abs_sum, stats.net_progress_samples),
@@ -98,23 +97,27 @@ func _init() -> void:
 	quit(0)
 
 
-func run_seed(session_seed: int, frame_limit: int, jump_period: int, washout_enabled: bool, totals: Dictionary) -> void:
+func run_seed(session_seed: int, frame_limit: int, jump_period: int, totals: Dictionary) -> void:
 	var main: Node = MAIN_SCENE.instantiate()
 	var terrain_generator: TerrainGenerator = main.get_node("TerrainGenerator") as TerrainGenerator
 	var player: Player = main.get_node("Player") as Player
 	terrain_generator.debug_replay_session_seed = session_seed
 	player.DEBUG_SHOW_PLAYER_STATE = false
 	player.DEBUG_LOG_FREEZE_REPRO = false
-	player.DEBUG_VISUAL_JITTER_WASHOUT_ENABLED = washout_enabled
+	# The three harness opt-outs (docs/development/debugging.md). Without the first,
+	# GameManager holds get_tree().paused on the start screen for the whole run, Player
+	# never gets a _physics_process, and every column below is measured on a motionless
+	# body -- a silent all-zeros "pass". This probe predates the start screen and was
+	# missing all three until 2026-08-03.
+	(main.get_node("GameManager") as GameManager).require_start_screen = false
+	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
+	(main.get_node("TerrainGenerator/PowerupSpawner") as PowerupSpawner).debug_spawning_disabled = true
 	root.add_child(main)
 	await physics_frame
 
 	var previous_body_y: float = player.global_position.y
 	var previous_body_delta: float = 0.0
 	var has_previous_body_delta: bool = false
-	var previous_presentation_y: float = player.get_presentation_y()
-	var previous_presentation_delta: float = 0.0
-	var has_previous_presentation_delta: bool = false
 	var previous_camera_y: float = main.camera_2d.global_position.y
 	var previous_camera_delta: float = 0.0
 	var has_previous_camera_delta: bool = false
@@ -147,12 +150,10 @@ func run_seed(session_seed: int, frame_limit: int, jump_period: int, washout_ena
 		stats.frames += 1
 
 		var body_y: float = player.global_position.y
-		var presentation_y: float = player.get_presentation_y()
 		var camera_y: float = main.camera_2d.global_position.y
 
 		if discontinuity:
 			has_previous_body_delta = false
-			has_previous_presentation_delta = false
 			has_previous_camera_delta = false
 		else:
 			var body_delta: float = body_y - previous_body_y
@@ -166,16 +167,6 @@ func run_seed(session_seed: int, frame_limit: int, jump_period: int, washout_ena
 				stats.body_second_diff_samples += 1
 			previous_body_delta = body_delta
 			has_previous_body_delta = true
-
-			var presentation_delta: float = presentation_y - previous_presentation_y
-			stats.presentation_delta_abs_sum += absf(presentation_delta)
-			stats.presentation_delta_samples += 1
-			if has_previous_presentation_delta:
-				stats.presentation_reversal_samples += 1
-				if signf(presentation_delta) != signf(previous_presentation_delta) and not is_zero_approx(presentation_delta) and not is_zero_approx(previous_presentation_delta):
-					stats.presentation_reversals += 1
-			previous_presentation_delta = presentation_delta
-			has_previous_presentation_delta = true
 
 			var camera_delta: float = camera_y - previous_camera_y
 			stats.camera_delta_abs_sum += absf(camera_delta)
@@ -198,12 +189,12 @@ func run_seed(session_seed: int, frame_limit: int, jump_period: int, washout_ena
 				stats.net_progress_samples += 1
 
 		previous_body_y = body_y
-		previous_presentation_y = presentation_y
 		previous_camera_y = camera_y
 
-	print("JITTER_RESULT\tseed=%d\tdistance=%.0f\trecoveries=%d\tstuck=%d\twashout_engaged=%d\twashout_max_offset=%.4f" % [
+	# distance is the sanity check that the run actually happened: a paused run leaves
+	# the player at its spawn x of 64.
+	print("JITTER_RESULT\tseed=%d\tdistance=%.0f\trecoveries=%d\tstuck=%d" % [
 		session_seed, player.global_position.x, player.debug_stall_recovery_count, player.debug_stuck_event_count,
-		player.debug_visual_jitter_washout_engaged_count, player.debug_visual_jitter_washout_max_offset,
 	])
 	main.queue_free()
 	await process_frame

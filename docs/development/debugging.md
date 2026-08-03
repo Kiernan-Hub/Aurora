@@ -7,7 +7,14 @@ and measured history for why each harness exists: `docs/research/freeze_bug.md`.
 No test suite, no build script. Godot: `/Applications/Godot.app/Contents/MacOS/Godot`
 (play with `--path .`, opens a window and blocks — only when asked).
 
-**No gate covers input.** Every harness below drives `ui_accept` synthetically via
+**No gate covers input, and input has two independent paths.** A change verified on
+one can be completely broken on the other. Desktop mouse and keyboard go through the
+`ui_accept` action, polled in `player.gd._physics_process`; touch bypasses the action
+entirely and calls `Player.buffer_jump()` from `Main._input`. The pause-button jump
+leak (2026-08-03) was fixed for touch first and still reproduced on every desktop
+click, because the desktop path was never involved. Test **both** deliberately.
+
+Every harness below drives `ui_accept` synthetically via
 `Input.action_press`, so they exercise the *consumer* of input, never its delivery.
 A platform input path can be completely dead with all gates green — that is exactly
 how the 2026-08-02 Android bug shipped. Input changes need a real desktop run
@@ -16,7 +23,87 @@ re-export to `./aura.apk`, `adb install -r aura.apk`, tap Start, then tap during
 play. If a tap does nothing on device, `adb logcat -s godot` while tapping is the
 next step.
 
-## The four headless gates
+## Two ways a harness hangs instead of failing
+
+Both of these were hit on 2026-08-03 adding the `Services` autoload. Neither prints a
+useful failure — the gate just never terminates — so check them first when a probe
+that used to finish suddenly doesn't.
+
+**1. `--script` runs do not register autoloads.** Referencing the global identifier
+`Services` from gameplay code is a *compile* error in a headless script run, not a
+runtime null. The referencing script fails to load entirely, its class resolves to
+`Nil`, and every probe line configuring it (`require_start_screen = false`,
+`debug_spawning_disabled = true`) fails against `Nil`. The start screen then stays up,
+the tree stays paused, and the frame loop spins forever. **Never write `Services.x` in
+gameplay code — use `GameServices.resolve(self)` and null-guard it.**
+
+**2. A new `class_name` added outside the editor isn't in the global class cache.**
+`.godot/global_script_class_cache.cfg` is written by the editor, and `--script` runs
+read it. A script file created by hand parses fine in isolation but any *other* script
+naming its type fails with `Could not find type "X"` — same cascade as above. Fix:
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --editor --quit --path .
+```
+
+Run that after adding any new `class_name`, before running any gate.
+
+## Harness opt-outs — set these before `add_child(main)`
+
+Four things in the running game will quietly invalidate a measurement or make a gate
+"pass" by doing nothing. Any **new** harness that steps many physics frames needs all
+four; the existing ones in `scripts/debug/` already have them.
+
+| Flag | Why |
+|---|---|
+| `Main.world_rebase_enabled` | The freeze fix. `=false` only for deliberate A/B work. |
+| `GameManager.require_start_screen = false` | Otherwise the run sits paused on the start screen and the gate trivially passes. |
+| `ObstacleSpawner.debug_spawning_disabled = true` | Clusters schedule off `elapsed_time`; a collision ends the run mid-measurement. |
+| `PowerupSpawner.debug_spawning_disabled = true` | Same scheduling, worse effect — see below. |
+
+The `Services` autoload (`scripts/autoload/services.gd`) is instantiated in
+`--headless --script` runs too, so it executes inside every probe. It carries an
+`is_headless` guard for exactly this reason; anything added there that touches audio,
+rendering or input must sit behind that guard.
+
+**The powerup flag was added after it broke a gate (2026-08-03).** Powerup spawning
+moved from fixed world-X positions to an `elapsed_time` schedule starting at t=15s, and
+a probe player collects every pickup it runs into. A speed boost snaps `current_speed`
+to a flat 1000 px/s for 3s — above `MAX_SPEED`'s 750 — so each one injects two
+instantaneous speed step-changes into the run. `camera_shake_probe` then reported flat
+mean jerk **0.0066** against the documented 0.002 baseline, with `scroll_rate_x` topping
+out at 17.2 px/frame (1032 px/s, impossible under the ramp alone). That last number is
+the tell: if a camera measurement looks inflated, check `scroll_rate_x` against the
+750 px/s cap (12.5 px/frame) before believing it's a camera regression.
+
+## Archived probes are NOT gates — and most of them no longer run
+
+`scripts/debug/` holds 23 GDScript files, but only the **five gates** below (four in
+this section plus the camera shake probe's own) are maintained. Everything else is a one-off from a closed
+investigation, kept for its measurements and its comments. **Audited 2026-08-03, and
+most of them silently lie now:**
+
+| Probe | State |
+|---|---|
+| `chord_aim_probe`, `contact_instability_probe`, `mega_drop_probe`, `offset_curve_probe`, `slide_vs_snap_probe`, `solver_correction_probe`, `visual_compensation_probe` | Run, but **measure a frozen game** — see below |
+| `aa_toggle_probe`, `canvas_transform_probe`, `frame_capture_probe`, `mega_drop_visual_probe`, `render_pacing_probe` | Same, and additionally need a real window (they measure rendering), so they hang under `--headless` |
+| `model_validation_dump`, `rebase_probe`, `ghost_collision_probe` | Fine — they don't depend on the player moving |
+| `visual_smoothing_probe` | **Deleted 2026-08-03.** It consumed a temporary `Player` visual-smoothing experiment that was reverted; it had been erroring on the removed `debug_visual_process_frame_count` ever since |
+| `jitter_frequency_probe` | **Repaired 2026-08-03.** Was erroring on the removed washout API and printing an empty table; the presentation/washout columns are gone and the opt-outs are in |
+
+Why "frozen": all of these predate `GameManager`, so none of them sets
+`require_start_screen = false`. `GameManager` holds `get_tree().paused` on the start
+screen, `Player` uses the default `process_mode`, and so `Player._physics_process`
+**never runs for the entire measurement**. Nothing errors and nothing hangs — the probe
+prints a full, well-formatted, completely meaningless table.
+
+Measured: `chord_aim_probe --frames=600` (10s of game time) reports `distance=64`,
+which is the player's spawn x. It moved zero pixels.
+
+**Before trusting any archived probe, add the opt-outs from the table above and check
+its `distance=` output is not 64.** Reviving one is a few lines, but it is never free.
+
+## The five headless gates
 
 **Terrain shape** (fast, physics-free) — no Y discontinuity, no slope exceeding
 `floor_max_angle`, across N random seeds. Expect `status=PASS`:
@@ -41,7 +128,12 @@ Expect `trials with a STALL : 0`:
 
 **Floor flicker probe** (`scripts/debug/floor_flicker_probe.gd`) — the permanent
 regression gate for the `is_on_floor()` flicker fix; per-segment-label flip-rate,
-kept from `docs/research/floor_flicker.md`'s investigation.
+kept from `docs/research/floor_flicker.md`'s investigation. Defaults to the same six
+seeds and 20,000 frames the original measurement used, so the bare form is the gate:
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/floor_flicker_probe.gd -- --frames=20000
+```
+Other flags: `--seeds`, `--trace`, `--tracelines`, `--jump`.
 
 ## Watchdog mechanics
 

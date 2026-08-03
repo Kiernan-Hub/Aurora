@@ -120,11 +120,14 @@ tried — the unclamped version proved the *cancellation math works*, the open p
 was bounding the drift without reintroducing the lag the last experiment was built to
 avoid).
 
-Read-only debug probes built during this investigation, all still present under
-`scripts/debug/`, useful for any follow-up: `chord_aim_probe.gd`,
-`offset_curve_probe.gd`, `slide_vs_snap_probe.gd`, `contact_instability_probe.gd`,
-`solver_correction_probe.gd`, `visual_smoothing_probe.gd`,
-`visual_compensation_probe.gd`. `player.gd` carries read-only instrumentation fields
+Read-only debug probes built during this investigation, useful for any follow-up:
+`chord_aim_probe.gd`, `offset_curve_probe.gd`, `slide_vs_snap_probe.gd`,
+`contact_instability_probe.gd`, `solver_correction_probe.gd`,
+`visual_compensation_probe.gd`. **None of them runs as-is** — they predate the start
+screen and measure a paused game; see "Archived probes" in
+`docs/development/debugging.md` before trusting one. (`visual_smoothing_probe.gd` was
+deleted 2026-08-03: it consumed a `Player` experiment that no longer exists.)
+`player.gd` carries read-only instrumentation fields
 added for these (`debug_position_after_slide/snap`, `debug_velocity_before/after_slide`)
 — harmless, zero behavior impact, safe to keep or strip.
 

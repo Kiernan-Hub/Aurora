@@ -5,16 +5,25 @@ resurrecting something. `CLAUDE.md` keeps the still-active guard this code left 
 (the collision-layer/group check in `obstacle.gd`); this file has the full removal
 history.
 
-## Obstacle spawning — gone, not just disabled
+## Terrain-driven obstacle placement — gone, not just disabled
+
+> **Scope note (2026-08-03):** this section is about the *old* placement code that
+> lived inside `terrain_generator.gd`. Obstacles themselves are **live again** —
+> `scripts/systems/obstacle_spawner.gd` is wired into `main.tscn` under
+> `TerrainGenerator`, spawns `scenes/obstacles/obstacle.tscn`, and a hit calls
+> `Player.die()`. Until 2026-08-03 this file and `CLAUDE.md` both still said
+> obstacles were unreferenced, which is why the note is here: don't read the
+> paragraph below as "there are no obstacles".
 
 `spawn_chunk_obstacle`, `is_world_x_in_mega_drop`, `is_chunk_overlapping_mega_drop`,
 and their constants (`MIN_SAFE_START_DISTANCE`, `MIN_OBSTACLE_GAP`,
 `OBSTACLE_EDGE_PADDING`, `OBSTACLE_SURFACE_Y_OFFSET`) were deleted from
 `terrain_generator.gd` rather than left commented out — they were unreachable dead
-code and included a latent bug (`maxi(float, float)` on the padding calc).
-`scenes/obstacles/obstacle.tscn` / `scripts/obstacles/obstacle.gd` still exist but
-are unreferenced by anything; a re-implementation starts from scratch against the
-current `TerrainGenerator` API, not from the deleted functions.
+code and included a latent bug (`maxi(float, float)` on the padding calc). The
+current `ObstacleSpawner` was written from scratch against the public
+`TerrainGenerator` API (`get_terrain_height` / `get_slope_angle_at_x`) and schedules
+clusters off `Player.speed_manager.elapsed_time` rather than off chunk spawning; it
+shares no code with the deleted functions, and reviving them is still the wrong move.
 
 Separately: a hand-placed `Obstacle` node that used to sit at `(68,56)` in
 `main.tscn` was deleted earlier — jumping at t=0 landed the capsule inside it at
