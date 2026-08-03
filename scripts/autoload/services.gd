@@ -41,9 +41,23 @@ class_name GameServices
 # GameManager.require_start_screen by hand. See docs/development/debugging.md.
 
 const AUTOLOAD_PATH: String = "/root/Services"
+const MUSIC_BUS: StringName = &"Music"
+const SFX_BUS: StringName = &"SFX"
+# AudioServer floors to this well before 0.0 linear, and a real -80dB bus is
+# inaudible anyway -- silences the slider's bottom end instead of leaving it at
+# linear_to_db(0.0)'s -Inf, which the bus API accepts but is one dB literal
+# away from breaking if that ever changes.
+const MIN_VOLUME_DB: float = -80.0
 
 var save_store: SaveStore = SaveStore.new()
 var is_headless: bool = false
+# Lives here, not in main.tscn, for the same reason save_store does: restart calls
+# reload_current_scene() and destroys every node in that scene, but music
+# transitioning between runs is exactly the case that must NOT restart.
+# No stream is assigned yet -- CLAUDE.md build order still lists audio as
+# not-started; this wires the bus and volume so a track can be dropped in later
+# with no other changes.
+var music_player: AudioStreamPlayer
 
 
 # Returns null in headless harness runs, where the autoload does not exist. Callers
@@ -61,12 +75,56 @@ func _ready() -> void:
 	is_headless = DisplayServer.get_name() == "headless"
 	save_store.load_from_disk()
 
+	# Headless probes have no audio driver; touching AudioServer/AudioStreamPlayer
+	# there is exactly the class of thing the HEADLESS TRAP note above warns about.
+	if is_headless:
+		return
 
+	music_player = AudioStreamPlayer.new()
+	music_player.name = "MusicPlayer"
+	music_player.bus = MUSIC_BUS
+	music_player.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(music_player)
+	apply_music_volume()
+	apply_sfx_volume()
+
+
+# Applies the new volume immediately but does NOT touch the disk. A slider drag emits
+# value_changed on every step -- with step = 0.05 that is up to 20 writes for one sweep
+# across the bar, and many more for a finger wobbling back and forth. Each write is a
+# full open/stringify/store, i.e. synchronous flash I/O on the main thread mid-menu on
+# Android. GameManager calls save_settings() below once the interaction is over.
 func set_music_volume(value: float) -> void:
 	save_store.music_volume = clampf(value, 0.0, 1.0)
-	save_store.save_to_disk()
+	apply_music_volume()
 
 
 func set_sfx_volume(value: float) -> void:
 	save_store.sfx_volume = clampf(value, 0.0, 1.0)
+	apply_sfx_volume()
+
+
+# The single flush point for settings edited on the pause screen. Writes the whole save
+# file, so a best score recorded earlier in the session rides along.
+func save_settings() -> void:
 	save_store.save_to_disk()
+
+
+func apply_music_volume() -> void:
+	if is_headless:
+		return
+	set_bus_volume(MUSIC_BUS, save_store.music_volume)
+
+
+func apply_sfx_volume() -> void:
+	if is_headless:
+		return
+	set_bus_volume(SFX_BUS, save_store.sfx_volume)
+
+
+func set_bus_volume(bus_name: StringName, linear_value: float) -> void:
+	var bus_index: int = AudioServer.get_bus_index(bus_name)
+	if bus_index < 0:
+		return
+	var volume_db: float = MIN_VOLUME_DB if linear_value <= 0.0 else linear_to_db(linear_value)
+	AudioServer.set_bus_volume_db(bus_index, volume_db)

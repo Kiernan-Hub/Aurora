@@ -60,20 +60,39 @@ It is only visible while the game is running — i.e. exactly when input is live
 paused-ness cannot cover it. It leaks a jump through **both** paths, for **different**
 reasons, and a fix covering only one looks like it works:
 
-- **Touch** would buffer a jump in `Main._input`. A hit test suppresses that.
+- **Touch** would buffer a jump in `Main._input`. A hit test suppresses that, and that
+  is still how the touch half is fixed.
 - **Desktop mouse never reaches `Main._input`'s jump path at all.** It goes via
   `ui_accept`, which `player.gd` polls, so a hit test suppresses nothing on its own.
   Worse, `BaseButton` emits `pressed` on mouse-**up** by default, so the jump already
-  fired on mouse-**down** a frame before the pause screen appeared. Fixed by
-  `Input.action_release(&"ui_accept")` in `Main._input`, which lands in time because
-  `_input` runs during event flush, before this frame's `_physics_process`.
+  fired on mouse-**down** a frame before the pause screen appeared.
 
-Measured on desktop 2026-08-03: a touch-only hit test did **not** fix this, which is
-what exposed the two paths in the first place.
+**`Input.action_release()` does not fix the desktop half, and cannot.** This file said
+it did for one day. `is_action_just_pressed()` compares the press **frame stamp** and
+does not re-check the pressed flag, so releasing an action in the same event flush as
+its press leaves the edge intact. Measured 2026-08-03 against a verified control (press
+alone → 1 jump): press+release before the same physics frame **still jumped**. The
+user-visible symptom was the click both jumping *and* pausing.
 
-`Main.is_pause_button_press()` is the shared guard, and it covers both pointer kinds —
-Android's emulated-mouse events go down the mouse branch, so a tap there is suppressed
-even if it arrives in that form. The button is also `focus_mode = 0` so Space can't
-activate it and jump at once.
+**The desktop fix is that the pause button reports on `button_down`, not `pressed`**
+(`game_manager.gd`). The pause then lands during event flush, before that frame's
+physics, so the tree is already paused and `player.gd` never polls the action —
+independent of any `Input` frame-stamp semantics. It also removes the entire
+down-to-up window in which the game was still live under the pointer. Full log:
+`docs/research/pause_jump.md`.
+
+`action_release()` is still correct on the **START** and **RESUME** transitions, where
+the press happened while the tree was paused on a menu — an earlier frame, so the stamp
+is stale by the first gameplay frame. Only the same-flush case is affected.
+
+`Main.is_pause_button_press()` remains the shared guard for the touch path, and covers
+both pointer kinds — Android's emulated-mouse events go down the mouse branch. The
+button is also `focus_mode = 0` so Space can't activate it and jump at once.
+
+**Headless cannot test any of this.** Pointer events pushed with
+`Input.parse_input_event()` update the action state but are never dispatched to
+`_input` or to Controls (measured: the root viewport is 64×64 and `Main._input` never
+ran), so a probe "verifying" the guard will pass while the real path is broken. The
+transition *timing* is testable; the delivery is not.
 
 **Any future `Control` that is live during play needs all three considerations.**

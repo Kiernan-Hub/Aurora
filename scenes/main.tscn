@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://scripts/systems/obstacle_spawner.gd" id="8_obstacle"]
 [ext_resource type="Script" path="res://scripts/systems/powerup_manager.gd" id="9_powerup"]
 [ext_resource type="Script" path="res://scripts/systems/powerup_spawner.gd" id="10_powerup_spawner"]
+[ext_resource type="Script" path="res://scripts/systems/sfx_player.gd" id="11_sfx_player"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -54,6 +55,9 @@ script = ExtResource("9_powerup")
 player_path = NodePath("../Player")
 powerup_spawner_path = NodePath("../TerrainGenerator/PowerupSpawner")
 powerup_label_path = NodePath("../CanvasLayer/PowerupLabel")
+
+[node name="SfxPlayer" type="Node" parent="."]
+script = ExtResource("11_sfx_player")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=210075013]
 

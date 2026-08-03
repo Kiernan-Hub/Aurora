@@ -20,6 +20,10 @@ config/icon="res://icon.svg"
 ; turns into a pause. See scripts/game/game_manager.gd.
 config/quit_on_go_back=false
 
+[audio]
+
+buses/default_bus_layout="res://audio/default_bus_layout.tres"
+
 [autoload]
 
 Services="*res://scripts/autoload/services.gd"

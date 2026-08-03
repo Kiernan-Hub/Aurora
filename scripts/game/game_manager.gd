@@ -12,6 +12,7 @@ class_name GameManager
 @export var coin_spawner_path: NodePath = NodePath("../TerrainGenerator/CoinSpawner")
 @export var coin_label_path: NodePath = NodePath("../CanvasLayer/CoinLabel")
 @export var powerup_manager_path: NodePath = NodePath("../PowerupManager")
+@export var sfx_player_path: NodePath = NodePath("../SfxPlayer")
 @export var pause_screen_path: NodePath = NodePath("../CanvasLayer/PauseScreen")
 @export var pause_button_path: NodePath = NodePath("../CanvasLayer/PauseButton")
 @export var resume_button_path: NodePath = NodePath("../CanvasLayer/PauseScreen/CenterContainer/VBoxContainer/ResumeButton")
@@ -51,6 +52,7 @@ var coin_spawner: CoinSpawner
 var coin_label: Label
 var coin_count: int = 0
 var powerup_manager: PowerupManager
+var sfx_player: SfxPlayer
 
 # Was previously implicit in get_tree().paused plus which Control happened to be
 # visible. That works for two screens and stops working at four -- a pause screen makes
@@ -77,9 +79,12 @@ func _ready() -> void:
 	services = GameServices.resolve(self)
 	main = get_parent() as Main
 	player = get_node_or_null(player_path) as Player
-	if main == null or player == null:
-		push_error("GameManager requires a Main parent and a Player node at %s." % player_path)
+	sfx_player = get_node_or_null(sfx_player_path) as SfxPlayer
+	if main == null or player == null or sfx_player == null:
+		push_error("GameManager requires a Main parent, a Player node at %s, and an SfxPlayer at %s." % [player_path, sfx_player_path])
 		return
+
+	player.jumped.connect(_on_player_jumped)
 
 	start_screen = get_node_or_null(start_screen_path) as Control
 	start_button = get_node_or_null(start_button_path) as Button
@@ -109,7 +114,26 @@ func _ready() -> void:
 		push_error("GameManager requires a pause screen at %s with a pause button, resume/restart buttons and two volume sliders." % pause_screen_path)
 		return
 
-	pause_button.pressed.connect(_on_pause_pressed)
+	# button_down, NOT pressed. BaseButton emits `pressed` on pointer-UP, which leaves
+	# the game live for the whole down..up interval -- and the pointer-DOWN that started
+	# it is also a jump, because InputSetup binds left-click to "ui_accept" and player.gd
+	# polls that action. The old defence was Input.action_release() in Main._input, on the
+	# assumption it cancels the just-pressed edge. Measured 2026-08-03, it does not: with a
+	# verified control (press alone -> 1 jump), press+release issued before the same physics
+	# frame STILL jumped, because is_action_just_pressed() compares the press FRAME STAMP
+	# and does not re-check the pressed flag. That is why the reported symptom was "pauses
+	# AND jumps" rather than one or the other.
+	#
+	# Pausing on the DOWN edge sidesteps the whole question: it runs during event flush,
+	# before this frame's physics, so get_tree().paused is already true when the Player
+	# would have polled and _physics_process never runs. Independent of any Input
+	# frame-stamp semantics. The hit-test guard in Main._input stays -- it is what stops
+	# the separate TOUCH path from calling buffer_jump() directly.
+	#
+	# The action_release() calls on the START and RESUME transitions are unaffected by the
+	# finding above: there the press happened while the tree was paused on a menu, i.e. on
+	# an EARLIER frame, so its stamp is already stale by the first gameplay frame.
+	pause_button.button_down.connect(_on_pause_pressed)
 	resume_button.pressed.connect(_on_resume_pressed)
 	pause_restart_button.pressed.connect(_on_restart_pressed)
 
@@ -118,6 +142,11 @@ func _ready() -> void:
 		sfx_slider.value = services.save_store.sfx_volume
 	music_slider.value_changed.connect(_on_music_volume_changed)
 	sfx_slider.value_changed.connect(_on_sfx_volume_changed)
+	# value_changed applies the volume live; drag_ended is what persists it. See
+	# GameServices.set_music_volume for why the two are separated. drag_ended does not
+	# fire for a keyboard-driven slider, so set_state() flushes on leaving PAUSED too.
+	music_slider.drag_ended.connect(_on_volume_drag_ended)
+	sfx_slider.drag_ended.connect(_on_volume_drag_ended)
 
 	coin_spawner = get_node_or_null(coin_spawner_path) as CoinSpawner
 	coin_label = get_node_or_null(coin_label_path) as Label
@@ -133,6 +162,9 @@ func _ready() -> void:
 		push_error("GameManager requires a PowerupManager at %s." % powerup_manager_path)
 		return
 
+	powerup_manager.speed_boost_started.connect(_on_powerup_collected)
+	powerup_manager.jump_boost_started.connect(_on_powerup_collected)
+
 	# require_start_screen=false is the harness opt-out, and it has to skip straight to
 	# PLAYING rather than sitting on START -- see the comment on that var.
 	set_state(State.START if require_start_screen else State.PLAYING)
@@ -141,6 +173,7 @@ func _ready() -> void:
 # The single owner of get_tree().paused and of every screen's visibility. Nothing else
 # in the project may set either; if a new transition is needed, add it to the enum.
 func set_state(new_state: State) -> void:
+	var previous_state: State = state
 	state = new_state
 
 	start_screen.visible = new_state == State.START
@@ -151,6 +184,12 @@ func set_state(new_state: State) -> void:
 	pause_button.visible = new_state == State.PLAYING
 
 	get_tree().paused = new_state != State.PLAYING
+	# Leaving the pause screen is the end of any settings interaction, and the only
+	# flush point that also catches a slider moved by keyboard (which emits value_changed
+	# but never drag_ended). Writing here rather than per-step is the whole point -- see
+	# GameServices.set_music_volume.
+	if previous_state == State.PAUSED and new_state != State.PAUSED and services != null:
+		services.save_settings()
 	state_changed.emit(new_state)
 
 
@@ -200,7 +239,16 @@ func _on_start_pressed() -> void:
 	Input.action_release(&"ui_accept")
 
 
+func _on_player_jumped() -> void:
+	sfx_player.play_jump()
+
+
+func _on_powerup_collected() -> void:
+	sfx_player.play_powerup()
+
+
 func _on_player_died() -> void:
+	sfx_player.play_death()
 	# record_run persists only when the run beat the stored best, so the label below
 	# always reads the post-update value and "(New Best!)" is never stale.
 	var is_new_best: bool = false
@@ -227,6 +275,11 @@ func _on_resume_pressed() -> void:
 	Input.action_release(&"ui_accept")
 
 
+func _on_volume_drag_ended(_has_value_changed: bool) -> void:
+	if services != null:
+		services.save_settings()
+
+
 func _on_music_volume_changed(value: float) -> void:
 	if services != null:
 		services.set_music_volume(value)
@@ -238,6 +291,10 @@ func _on_sfx_volume_changed(value: float) -> void:
 
 
 func _on_restart_pressed() -> void:
+	# Restart from the pause screen bypasses set_state(), so it is the one exit from
+	# PAUSED that the flush there cannot cover -- and the scene is about to be destroyed.
+	if services != null:
+		services.save_settings()
 	# Unpause before the reload: the tree-wide paused flag is not reset by
 	# reload_current_scene(), so leaving it true would rebuild the scene into a frozen
 	# world. The reloaded GameManager sets its own state in _ready().
@@ -249,6 +306,7 @@ func _on_coin_collected(value: int) -> void:
 	var multiplier: float = powerup_manager.coin_multiplier if powerup_manager != null else 1.0
 	coin_count += int(value * multiplier)
 	update_coin_label()
+	sfx_player.play_coin()
 
 
 func update_coin_label() -> void:

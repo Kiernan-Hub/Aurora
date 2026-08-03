@@ -68,6 +68,7 @@ Main (Node2D, scripts/main.gd)
 ├── Camera2D          position (0,136)
 ├── GameManager       State { START, PLAYING, PAUSED, DEAD }
 ├── PowerupManager    boost timers; drives Player.start_boost etc.
+├── SfxPlayer         6-voice AudioStreamPlayer pool on the SFX bus
 └── CanvasLayer       StartScreen / PauseScreen / DeathScreen (all process_mode=ALWAYS),
 					  PauseButton, Timer/Coin/Powerup labels
 ```
@@ -149,10 +150,10 @@ asked. Full history: `docs/development/dead_code.md`.
 5. Powerups — **working**. Speed boost (1000 px/s, 3s, 2× coins) and jump boost (×√2,
    3s), independent ~60s-average schedules
 6. Screens — **working**. START/PLAYING/PAUSED/DEAD
-7. **Audio — not started, and next up.** The pause sliders already persist through
-   `SaveStore`, but **nothing consumes those values**: there are no audio buses and no
-   `AudioStreamPlayer` anywhere, so both sliders are currently no-ops. Wiring them up is
-   part of that work, not a separate bug
+7. **Audio — working (SFX only).** `Master → Music, SFX`; `SfxPlayer` plays
+   jump/coin/powerup/death from a 6-voice pool (placeholder WAVs, `assets/audio/sfx/`).
+   Sliders drive their bus, persisting on **drag end**. **No music track yet.** Audio must
+   stay behind a locally-computed `is_headless` — `Services` isn't ready in harness `_init()`
 8. Visual polish — placeholder rects only
 9. Missions/upgrades — not started
 

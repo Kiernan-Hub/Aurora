@@ -3,6 +3,7 @@ extends CharacterBody2D
 class_name Player
 
 signal died
+signal jumped
 signal debug_freeze_detected(session_seed: int)
 signal debug_stall_recovered(session_seed: int, world_x: float)
 signal debug_stuck_detected(session_seed: int, world_x: float)
@@ -175,6 +176,7 @@ func _physics_process(delta: float) -> void:
 		coyote_timer = 0.0
 		jump_buffer_timer = 0.0
 		is_jump_ascending = true
+		jumped.emit()
 	elif is_jump_ascending and velocity.y >= 0.0:
 		# Apex: past here the jump is an ordinary fall, so a floor contact means a
 		# landing and the grounded model may take over again.

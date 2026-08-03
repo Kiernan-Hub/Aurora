@@ -102,8 +102,8 @@ func _ready() -> void:
 # callback fires. Both input paths leak a jump through it, for DIFFERENT reasons, so
 # both are handled by is_pause_button_press() below:
 #
-#   * Touch takes the path below and would buffer a jump directly -- a hit test is
-#     enough to suppress that.
+#   * Touch takes the path below and would buffer a jump directly -- a hit test IS
+#     enough to suppress that, and this is the half that guard still owns.
 #   * Desktop mouse does NOT take the path below at all. It goes through "ui_accept"
 #     (InputSetup binds left-click to it) which player.gd polls in _physics_process,
 #     so a hit test here suppresses nothing on its own. Worse, BaseButton emits
@@ -111,10 +111,20 @@ func _ready() -> void:
 #     frame before the pause screen appeared. Measured on desktop 2026-08-03: a
 #     touch-only hit test did not fix this, which is what exposed the two paths.
 #
-# The desktop half is fixed the same way the start screen's free jump was -- release
-# the action so the poll sees nothing -- and it lands in time because _input runs
-# during event flush, before this frame's _physics_process. Not consumed with
-# set_input_as_handled(): the Button still needs the event to fire `pressed`.
+# The desktop half is NOT fixed by the Input.action_release() below, and this comment
+# claimed for one day that it was. It cannot be: is_action_just_pressed() compares the
+# press FRAME STAMP and does not re-check the pressed flag, so releasing an action in
+# the same event flush as its press leaves the just-pressed edge fully intact.
+# Measured 2026-08-03 against a verified control (press alone -> 1 jump): press and
+# release issued before the same physics frame STILL produced a jump. That is exactly
+# the reported symptom -- the click both jumped AND paused.
+#
+# The desktop fix lives in game_manager.gd instead: the pause button reports on
+# button_down, so get_tree().paused is already true before that frame's physics runs
+# and player.gd never gets to poll. The release call is kept as belt-and-braces, and
+# it remains the correct mechanism on the START and RESUME transitions, where the
+# press happened on an earlier frame and its stamp is already stale. Not consumed with
+# set_input_as_handled(): the Button still needs the event to fire its signal.
 func _input(event: InputEvent) -> void:
 	if is_pause_button_press(event):
 		Input.action_release(&"ui_accept")
