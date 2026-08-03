@@ -40,6 +40,7 @@ func _init() -> void:
 	# See freeze_search.gd for why this is debug_spawning_disabled, not
 	# set_physics_process(false) -- the latter does not reliably work here.
 	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
+	(main.get_node("TerrainGenerator/PowerupSpawner") as PowerupSpawner).debug_spawning_disabled = true
 	root.add_child(main)
 	await physics_frame
 

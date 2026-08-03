@@ -6,3 +6,8 @@ export_presets.cfg
 
 # Debug probe output, regenerated on every run
 scripts/debug/*_output.log
+
+# Android export output (28MB, rebuilt from export_presets.cfg on demand)
+*.apk
+*.idsig
+*.aab

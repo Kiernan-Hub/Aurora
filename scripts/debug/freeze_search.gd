@@ -66,6 +66,7 @@ func _init() -> void:
 	# Main.world_rebase_enabled / Player.DEBUG_LOG_FREEZE_REPRO /
 	# GameManager.require_start_screen, all of which DO work reliably.
 	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
+	(main.get_node("TerrainGenerator/PowerupSpawner") as PowerupSpawner).debug_spawning_disabled = true
 	root.add_child(main)
 	await physics_frame
 

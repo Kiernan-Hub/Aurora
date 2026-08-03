@@ -36,6 +36,7 @@ func _init() -> void:
 		# freeze/no_freeze verdict past that point. Disabled so long runs test what
 		# this harness exists to test: terrain/collision behavior, not obstacles.
 		(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
+		(main.get_node("TerrainGenerator/PowerupSpawner") as PowerupSpawner).debug_spawning_disabled = true
 		root.add_child(main)
 
 		var event_count_at_run_start: int = player.debug_freeze_event_count

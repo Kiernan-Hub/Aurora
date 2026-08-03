@@ -151,6 +151,7 @@ func _init() -> void:
 	# 8.5 px/frame^2 spike this comment block originally referenced was itself
 	# caused by that fix being a no-op: the obstacle death still happened).
 	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
+	(main.get_node("TerrainGenerator/PowerupSpawner") as PowerupSpawner).debug_spawning_disabled = true
 	# Natural default segment mix on purpose: the point is comparing shake
 	# ACROSS segment types (playtest says flat is clean, gentle crests are a
 	# tiny vertical shake, mega_drop is severe), which a forced single-segment

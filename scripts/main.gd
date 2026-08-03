@@ -7,6 +7,7 @@ class_name Main
 @onready var terrain_generator: TerrainGenerator = $TerrainGenerator
 @onready var timer_label: Label = $CanvasLayer/TimerLabel
 @onready var stuck_time_label: Label = $CanvasLayer/StuckTimeLabel
+@onready var pause_button: Button = $CanvasLayer/PauseButton
 
 const WORLD_REBASER_SCRIPT: Script = preload("res://scripts/systems/world_rebaser.gd")
 const VERTICAL_FOLLOW_MARGIN: float = 72.0
@@ -91,15 +92,62 @@ func _ready() -> void:
 # Not consumed with set_input_as_handled(): nothing downstream needs suppressing
 # during play, and leaving the event alone keeps every GUI path exactly as it was.
 # No explicit "is the game running" check is needed either -- Main uses the default
-# process_mode, so while GameManager holds get_tree().paused on the start and death
-# screens this callback does not fire at all, and a menu tap cannot leak in as a
+# process_mode, so while GameManager holds get_tree().paused on the start, pause and
+# death screens this callback does not fire at all, and a menu tap cannot leak in as a
 # jump. Keyboard and desktop mouse still go the old way, via player.gd's poll of
 # the action, which InputSetup binds; only touch takes this path.
+#
+# The ONE live Control during play is the pause button, and paused-ness cannot cover
+# it: it is only visible while the game is running, which is exactly when this
+# callback fires. Both input paths leak a jump through it, for DIFFERENT reasons, so
+# both are handled by is_pause_button_press() below:
+#
+#   * Touch takes the path below and would buffer a jump directly -- a hit test is
+#     enough to suppress that.
+#   * Desktop mouse does NOT take the path below at all. It goes through "ui_accept"
+#     (InputSetup binds left-click to it) which player.gd polls in _physics_process,
+#     so a hit test here suppresses nothing on its own. Worse, BaseButton emits
+#     `pressed` on mouse-UP by default, so the jump already fired on mouse-DOWN a
+#     frame before the pause screen appeared. Measured on desktop 2026-08-03: a
+#     touch-only hit test did not fix this, which is what exposed the two paths.
+#
+# The desktop half is fixed the same way the start screen's free jump was -- release
+# the action so the poll sees nothing -- and it lands in time because _input runs
+# during event flush, before this frame's _physics_process. Not consumed with
+# set_input_as_handled(): the Button still needs the event to fire `pressed`.
 func _input(event: InputEvent) -> void:
+	if is_pause_button_press(event):
+		Input.action_release(&"ui_accept")
+		return
+
 	var touch_event: InputEventScreenTouch = event as InputEventScreenTouch
 	if touch_event == null or not touch_event.pressed:
 		return
 	(player as Player).buffer_jump()
+
+
+# True for a press (not a release) of either pointer kind landing inside the pause
+# button. Android's emulated-mouse events go down the mouse branch and are covered
+# too, so a tap there is suppressed even if it arrives in that form rather than as a
+# touch. Returns false whenever the button is hidden, which is every state except
+# PLAYING -- the other screens are covered by the tree being paused.
+func is_pause_button_press(event: InputEvent) -> bool:
+	if pause_button == null or not pause_button.visible:
+		return false
+
+	var press_position: Vector2
+	var touch_event: InputEventScreenTouch = event as InputEventScreenTouch
+	if touch_event != null:
+		if not touch_event.pressed:
+			return false
+		press_position = touch_event.position
+	else:
+		var mouse_event: InputEventMouseButton = event as InputEventMouseButton
+		if mouse_event == null or not mouse_event.pressed or mouse_event.button_index != MOUSE_BUTTON_LEFT:
+			return false
+		press_position = mouse_event.position
+
+	return pause_button.get_global_rect().has_point(press_position)
 
 
 func _physics_process(delta: float) -> void:

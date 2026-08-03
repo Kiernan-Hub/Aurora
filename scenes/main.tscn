@@ -188,3 +188,67 @@ offset_bottom = 72.0
 theme_override_font_sizes/font_size = 12
 text = "BOOST!"
 horizontal_alignment = 2
+
+[node name="PauseButton" type="Button" parent="CanvasLayer"]
+visible = false
+focus_mode = 0
+anchors_preset = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 48.0
+offset_bottom = 40.0
+theme_override_font_sizes/font_size = 16
+text = "||"
+
+[node name="PauseScreen" type="Control" parent="CanvasLayer"]
+visible = false
+process_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Overlay" type="ColorRect" parent="CanvasLayer/PauseScreen"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.06, 0.1, 0.88)
+
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/PauseScreen"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/PauseScreen/CenterContainer"]
+custom_minimum_size = Vector2(220, 0)
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 32
+text = "Paused"
+horizontal_alignment = 1
+
+[node name="ResumeButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+text = "Resume"
+
+[node name="PauseRestartButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+text = "Restart"
+
+[node name="MusicLabel" type="Label" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 13
+text = "Music"
+horizontal_alignment = 1
+
+[node name="MusicSlider" type="HSlider" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+max_value = 1.0
+step = 0.05
+value = 0.8
+
+[node name="SfxLabel" type="Label" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 13
+text = "Sound"
+horizontal_alignment = 1
+
+[node name="SfxSlider" type="HSlider" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+max_value = 1.0
+step = 0.05
+value = 1.0

@@ -99,6 +99,7 @@ func run_seed(session_seed: int, frame_limit: int, trace_label: String, trace_li
 	# not reliably work here (verified by direct instrumentation: _physics_process
 	# kept firing every frame regardless).
 	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
+	(main.get_node("TerrainGenerator/PowerupSpawner") as PowerupSpawner).debug_spawning_disabled = true
 	root.add_child(main)
 	await physics_frame
 
