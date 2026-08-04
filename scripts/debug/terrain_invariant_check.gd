@@ -44,6 +44,45 @@ const SEED_SWEEP_BASE: int = 1
 const MAX_REPORTED_VIOLATIONS_PER_SEED: int = 5
 const PROGRESS_SAMPLE_INTERVAL: int = 250000
 
+# --- Chasm assertions ----------------------------------------------------------------
+# The height-field pass above cannot see a void at all, and that is by design: a chasm is a
+# FLAT segment whose get_terrain_height() returns the LIP height across the void, so the field
+# stays continuous and both existing assertions pass with no false positives and no exemption.
+# That is the payoff of the lip-height representation -- but it also means a gate that only
+# samples the height field would silently pass a completely broken chasm. Hence a second pass.
+#
+# This pass walks SEGMENTS (a few hundred over a 300,000px range), not the 1px sample loop, so
+# it costs effectively nothing.
+
+# How flat the ground on either side of a void must be, and over what distance. Catches a
+# lead-in shortened past a neighbouring shape, or a future non-flat chasm variant.
+const CHASM_LIP_FLATNESS_MARGIN: float = 96.0
+const CHASM_LIP_FLATNESS_TOLERANCE_Y: float = 0.001
+# Matching tolerance for "a collision vertex exists exactly on this lip". Must exceed
+# TerrainGenerator.add_unique_sample_world_x's 0.001 dedupe window: a lip within 0.001 of an
+# existing sample is legitimately collapsed onto it, which is geometrically identical.
+const CHASM_LIP_VERTEX_TOLERANCE_X: float = 0.002
+# A void must be at most this fraction of the jump reach available where it sits. 0.55 leaves
+# the takeoff window at roughly half the airtime rather than a frame-perfect input.
+#
+# THIS IS THE ASSERTION THAT MAKES VARYING THE CHASM SAFE. Width and exit drop are meant to
+# vary; when they do, this is what fails the build before an unclearable chasm ships, using
+# the real SpeedManager ramp and the real jump arithmetic rather than a remembered estimate.
+const CHASM_MAX_REACH_FRACTION: float = 0.55
+# Over a range at least this wide, finding zero chasms is a FAILURE, not a silent pass: a
+# rarity regression that stops generating them entirely would make every assertion above
+# trivially true.
+const CHASM_MIN_RANGE_FOR_PRESENCE: float = 100000.0
+# Slack required on top of the lead-in's minimum, so the invariant is not resting on an exact
+# tie between two independently-edited constants.
+const CHASM_LEAD_IN_MARGIN: float = 32.0
+# A void must be WIDER than the distance a player crosses in the time it takes to fall
+# exit_drop, or it can be cleared by running straight off the near lip and landing on a lower
+# far lip -- a "chasm" that is not a hazard at all. Vacuous at exit_drop 0 (an unjumped player
+# falls forever), so this asserts nothing today; it exists so that Phase 2's width table cannot
+# be extended with a drop in Phase 3 without this failing first.
+const CHASM_MIN_HAZARD_MARGIN: float = 24.0
+
 
 func _init() -> void:
 	var explicit_seed: int = get_int_argument("--seed", -1)
@@ -60,6 +99,16 @@ func _init() -> void:
 
 	print("TERRAIN_INVARIANT_CHECK seeds=", session_seeds.size(), " range=[%.0f, %.0f]" % [start_world_x, end_world_x], " step=%.2f" % sample_step)
 
+	# Seed-independent, so it runs once rather than per seed: the variant table and the lead-in
+	# are constants, and whether they are self-consistent has nothing to do with which seed or
+	# world_x range was asked for. It runs FIRST because a table failure makes every per-seed
+	# chasm result downstream uninteresting.
+	var variant_violations: Array[String] = check_chasm_variant_table()
+	print("TERRAIN_INVARIANT_CHASM_TABLE variants=", TerrainGenerator.CHASM_VARIANTS.size(),
+		" status=", "PASS" if variant_violations.is_empty() else "FAIL")
+	for violation: String in variant_violations:
+		print("    ", violation)
+
 	var failed_seed_count: int = 0
 	for session_seed: int in session_seeds:
 		var seed_passed: bool = await check_session_seed(session_seed, start_world_x, end_world_x, sample_step)
@@ -67,6 +116,11 @@ func _init() -> void:
 			failed_seed_count += 1
 
 	print("TERRAIN_INVARIANT_RESULT seeds_checked=", session_seeds.size(), " seeds_failed=", failed_seed_count)
+	if not variant_violations.is_empty():
+		print("TERRAIN_INVARIANT_RESULT status=FAIL")
+		quit(1)
+		return
+
 	if failed_seed_count > 0:
 		print("TERRAIN_INVARIANT_RESULT status=FAIL")
 		quit(1)
@@ -100,11 +154,13 @@ func check_session_seed(session_seed: int, start_world_x: float, end_world_x: fl
 
 	var max_slope_angle: float = player.floor_max_angle
 	var report: Dictionary = sample_height_field(terrain_generator, start_world_x, end_world_x, sample_step, max_slope_angle)
+	var chasm_report: Dictionary = check_chasms(terrain_generator, start_world_x, end_world_x)
 	print_seed_report(session_seed, report, max_slope_angle)
+	print_chasm_report(session_seed, chasm_report)
 
 	main.queue_free()
 	await process_frame
-	return int(report["violation_count"]) == 0
+	return int(report["violation_count"]) == 0 and int(chasm_report["violation_count"]) == 0
 
 
 func sample_height_field(terrain_generator: TerrainGenerator, start_world_x: float, end_world_x: float, sample_step: float, max_slope_angle: float) -> Dictionary:
@@ -174,6 +230,303 @@ func sample_height_field(terrain_generator: TerrainGenerator, start_world_x: flo
 	report["worst_slope_world_x"] = worst_slope_world_x
 	report["sample_count"] = sample_index + 1
 	return report
+
+
+# Validates TerrainGenerator's chasm CONSTANTS against the real SpeedManager ramp and the real
+# jump arithmetic, independently of what any particular seed happened to generate.
+#
+# check_one_chasm() below already tests every chasm the sweep actually walks over, but that is
+# a sample: a variant's WORST case is a chasm sitting at the earliest segment index it is
+# allowed to occupy, and no finite seed sweep is guaranteed to contain one. This checks that
+# worst case directly, for every variant, so the min_segment_index values in the table are
+# derived numbers rather than ones that happened not to be caught.
+func check_chasm_variant_table() -> Array[String]:
+	var violations: Array[String] = []
+
+	# 1. The lead-in must exceed the maximum reach of any jump, which is a JUMP-BOOSTED one at
+	#    MAX_SPEED. Below this, a jump taken before the chasm's segment even begins can land in
+	#    the void, which is the bug this replaced a comment about (see CHASM_LEAD_IN_LENGTH).
+	var boosted_reach: float = get_jump_reach_with_multiplier(
+		SpeedManager.MAX_SPEED, TerrainGenerator.CHASM_EXIT_DROP, PowerupManager.JUMP_BOOST_VELOCITY_MULTIPLIER,
+	)
+	var required_lead_in: float = boosted_reach + CHASM_LEAD_IN_MARGIN
+	if TerrainGenerator.CHASM_LEAD_IN_LENGTH < required_lead_in:
+		violations.append("CHASM_LEAD_IN_TOO_SHORT lead_in=%.1f required=%.1f (boosted reach=%.1f at %.0f px/s)" % [
+			TerrainGenerator.CHASM_LEAD_IN_LENGTH, required_lead_in, boosted_reach, SpeedManager.MAX_SPEED,
+		])
+
+	for variant: Dictionary in TerrainGenerator.CHASM_VARIANTS:
+		var label: String = String(variant["label"])
+		var void_length: float = float(variant["void_length"])
+		var min_segment_index: int = int(variant["min_segment_index"])
+
+		# 2. Clearable at the variant's own worst-case position. SMALL_SEGMENT_LENGTH is the
+		#    shortest segment there is, so index * SMALL_SEGMENT_LENGTH is a hard lower bound on
+		#    the world_x of that segment -- the same conservative conversion the generator's
+		#    min_segment_index gate relies on.
+		var earliest_void_start_x: float = (float(min_segment_index) * TerrainGenerator.SMALL_SEGMENT_LENGTH) + TerrainGenerator.CHASM_LEAD_IN_LENGTH
+		var min_speed: float = get_min_speed_at_world_x(earliest_void_start_x)
+		var jump_reach: float = get_jump_reach(min_speed, TerrainGenerator.CHASM_EXIT_DROP)
+		var max_allowed_width: float = jump_reach * CHASM_MAX_REACH_FRACTION
+		if void_length > max_allowed_width:
+			violations.append("CHASM_VARIANT_NOT_CLEARABLE %s width=%.1f max_allowed=%.1f at earliest world_x=%.1f (speed=%.1f reach=%.1f) -- raise min_segment_index to >= %d" % [
+				label, void_length, max_allowed_width, earliest_void_start_x, min_speed, jump_reach,
+				get_required_min_segment_index(void_length),
+			])
+
+		# 3. Below the global chasm gate the variant is unreachable, which is a table typo
+		#    rather than a safety problem -- but a silently dead variant is exactly the kind of
+		#    thing that makes a width distribution quietly wrong.
+		if min_segment_index < TerrainGenerator.CHASM_MIN_SEGMENT_INDEX:
+			violations.append("CHASM_VARIANT_BELOW_GLOBAL_MIN %s min_segment_index=%d global=%d" % [
+				label, min_segment_index, TerrainGenerator.CHASM_MIN_SEGMENT_INDEX,
+			])
+
+		# 4. The void plus its run-up plus the flatness margin the lip check needs must fit
+		#    inside the segment, or the far lip lands in whatever shape comes next and
+		#    CHASM_LIP_NOT_FLAT starts firing for a reason that is really a length bug.
+		var required_segment_length: float = TerrainGenerator.CHASM_LEAD_IN_LENGTH + void_length + CHASM_LIP_FLATNESS_MARGIN
+		if TerrainGenerator.CHASM_SEGMENT_LENGTH < required_segment_length:
+			violations.append("CHASM_SEGMENT_TOO_SHORT %s segment=%.1f required=%.1f" % [
+				label, TerrainGenerator.CHASM_SEGMENT_LENGTH, required_segment_length,
+			])
+
+	return violations
+
+
+# The lowest segment index at which a void of this width passes CHASM_MAX_REACH_FRACTION.
+# Reported alongside a CHASM_VARIANT_NOT_CLEARABLE failure so the fix is a number to paste
+# rather than an afternoon of solving the ramp by hand.
+func get_required_min_segment_index(void_length: float) -> int:
+	var required_reach: float = void_length / CHASM_MAX_REACH_FRACTION
+	var airtime: float = get_jump_airtime(TerrainGenerator.CHASM_EXIT_DROP, 1.0)
+	var required_speed: float = required_reach / airtime
+	if required_speed > SpeedManager.MAX_SPEED:
+		return -1
+
+	# Inverse of get_min_speed_at_world_x's phase 2 branch.
+	var phase1_distance: float = (SpeedManager.INITIAL_SPEED * SpeedManager.PHASE1_DURATION) + (0.5 * SpeedManager.PHASE1_ACCELERATION * pow(SpeedManager.PHASE1_DURATION, 2.0))
+	var required_world_x: float = phase1_distance
+	if required_speed > SpeedManager.PHASE1_TARGET_SPEED:
+		required_world_x += (pow(required_speed, 2.0) - pow(SpeedManager.PHASE1_TARGET_SPEED, 2.0)) / (2.0 * SpeedManager.PHASE2_ACCELERATION)
+
+	# The lead-in is part of the distance travelled before the void, so it counts toward the
+	# requirement rather than against it.
+	var required_segment_start_x: float = maxf(required_world_x - TerrainGenerator.CHASM_LEAD_IN_LENGTH, 0.0)
+	return maxi(ceili(required_segment_start_x / TerrainGenerator.SMALL_SEGMENT_LENGTH), TerrainGenerator.CHASM_MIN_SEGMENT_INDEX)
+
+
+func check_chasms(terrain_generator: TerrainGenerator, start_world_x: float, end_world_x: float) -> Dictionary:
+	var violations: Array[String] = []
+	var violation_count: int = 0
+	var void_starts: Array[float] = []
+	var min_width: float = 0.0
+	var max_width: float = 0.0
+
+	terrain_generator.ensure_segment_cache_for_world_x(start_world_x)
+	var segment_index: int = terrain_generator.find_segment_index_at_x(start_world_x)
+	while true:
+		terrain_generator.ensure_segment_cache_through(segment_index)
+		var segment_start_x: float = terrain_generator.segment_start_x_cache[segment_index]
+		if segment_start_x > end_world_x:
+			break
+
+		var void_span: Dictionary = terrain_generator.get_void_span_for_segment(segment_index)
+		if not void_span.is_empty():
+			var void_start_x: float = float(void_span["start_x"])
+			var void_end_x: float = float(void_span["end_x"])
+			var void_width: float = void_end_x - void_start_x
+			if void_starts.is_empty():
+				min_width = void_width
+				max_width = void_width
+			min_width = minf(min_width, void_width)
+			max_width = maxf(max_width, void_width)
+			void_starts.append(void_start_x)
+
+			for violation: String in check_one_chasm(terrain_generator, segment_index, void_start_x, void_end_x):
+				violation_count += 1
+				if violations.size() < MAX_REPORTED_VIOLATIONS_PER_SEED:
+					violations.append(violation)
+
+		segment_index += 1
+
+	# Spacing, checked across the whole sweep rather than per chasm.
+	var min_spacing: float = 0.0
+	var max_spacing: float = 0.0
+	# Offsets are drawn from [MARGIN, WINDOW - MARGIN - 1], so the tightest possible pair is a
+	# chasm at the last legal offset of one window followed by one at the first legal offset of
+	# the next: (WINDOW - (WINDOW - MARGIN - 1)) + MARGIN = 2 * MARGIN + 1 segments. Converted
+	# at the SHORTEST possible segment length, which is the only bound that holds regardless of
+	# the shape mix.
+	var min_spacing_segments: int = (2 * TerrainGenerator.CHASM_WINDOW_EDGE_MARGIN_SEGMENTS) + 1
+	var min_spacing_world_x: float = float(min_spacing_segments) * TerrainGenerator.SMALL_SEGMENT_LENGTH
+	for spacing_index: int in range(1, void_starts.size()):
+		var spacing: float = void_starts[spacing_index] - void_starts[spacing_index - 1]
+		if spacing_index == 1:
+			min_spacing = spacing
+			max_spacing = spacing
+		min_spacing = minf(min_spacing, spacing)
+		max_spacing = maxf(max_spacing, spacing)
+		if spacing < min_spacing_world_x:
+			violation_count += 1
+			if violations.size() < MAX_REPORTED_VIOLATIONS_PER_SEED:
+				violations.append("CHASM_SPACING too close at world_x=%.1f spacing=%.1f min=%.1f" % [
+					void_starts[spacing_index], spacing, min_spacing_world_x,
+				])
+
+	if void_starts.is_empty() and (end_world_x - start_world_x) >= CHASM_MIN_RANGE_FOR_PRESENCE:
+		violation_count += 1
+		violations.append("CHASM_NONE_GENERATED over %.0fpx -- rarity regression, or debug_chasm_disabled leaked into the scene" % (end_world_x - start_world_x))
+
+	var chasm_report: Dictionary = {}
+	chasm_report["violations"] = violations
+	chasm_report["violation_count"] = violation_count
+	chasm_report["void_count"] = void_starts.size()
+	chasm_report["first_void_x"] = void_starts[0] if not void_starts.is_empty() else 0.0
+	chasm_report["min_spacing"] = min_spacing
+	chasm_report["max_spacing"] = max_spacing
+	chasm_report["min_width"] = min_width
+	chasm_report["max_width"] = max_width
+	return chasm_report
+
+
+func check_one_chasm(terrain_generator: TerrainGenerator, segment_index: int, void_start_x: float, void_end_x: float) -> Array[String]:
+	var violations: Array[String] = []
+	var void_width: float = void_end_x - void_start_x
+
+	if void_width <= 0.0:
+		violations.append("CHASM_WIDTH non-positive at world_x=%.1f width=%.3f" % [void_start_x, void_width])
+		return violations
+
+	# 1. Both lips, and the ground either side of them, must be exactly level. This is the
+	#    entire safety argument for the feature: a chasm adds no slope to the world, so it
+	#    cannot reproduce the large_valley wall-wedge. If this fails, that argument is void.
+	var lip_height: float = terrain_generator.get_terrain_height(void_start_x)
+	var flatness_world_xs: Array[float] = [
+		void_start_x - CHASM_LIP_FLATNESS_MARGIN,
+		void_start_x,
+		void_end_x,
+		void_end_x + CHASM_LIP_FLATNESS_MARGIN,
+	]
+	for world_x: float in flatness_world_xs:
+		var height: float = terrain_generator.get_terrain_height(world_x)
+		if absf(height - lip_height) > CHASM_LIP_FLATNESS_TOLERANCE_Y:
+			violations.append("CHASM_LIP_NOT_FLAT at world_x=%.1f dy=%.4f (void starts %.1f)" % [
+				world_x, height - lip_height, void_start_x,
+			])
+			break
+
+	# 2. Not before the hard minimum world_x the minimum-speed derivation assumes.
+	var earliest_void_world_x: float = float(TerrainGenerator.CHASM_MIN_SEGMENT_INDEX) * TerrainGenerator.SMALL_SEGMENT_LENGTH
+	if void_start_x < earliest_void_world_x:
+		violations.append("CHASM_TOO_EARLY at world_x=%.1f earliest=%.1f" % [void_start_x, earliest_void_world_x])
+
+	# 3. A collision vertex must sit exactly on each lip, in every chunk the lip falls inside.
+	#    Without one, a ~16px chord straddles the lip: the midpoint test in build_chunk_surface
+	#    then either leaves a partial chord hanging over the void or eats a slice of real
+	#    ground. This is the one geometry bug the height field literally cannot express, so it
+	#    is the only thing here that has to look at the collision samples directly.
+	violations.append_array(check_chasm_lip_vertices(terrain_generator, void_start_x))
+	violations.append_array(check_chasm_lip_vertices(terrain_generator, void_end_x))
+
+	# 4. Clearable at the slowest speed the player can possibly have arrived here with.
+	var exit_drop: float = float(terrain_generator.get_segment_spec(segment_index).get("exit_drop", 0.0))
+	var min_speed: float = get_min_speed_at_world_x(void_start_x)
+	var jump_reach: float = get_jump_reach(min_speed, exit_drop)
+	if void_width > jump_reach * CHASM_MAX_REACH_FRACTION:
+		violations.append("CHASM_NOT_CLEARABLE at world_x=%.1f width=%.1f reach=%.1f (speed=%.1f drop=%.1f) max_allowed=%.1f" % [
+			void_start_x, void_width, jump_reach, min_speed, exit_drop, jump_reach * CHASM_MAX_REACH_FRACTION,
+		])
+
+	# 5. The other side of the same coin: a void with a lower far lip can be crossed by running
+	#    straight off the edge, no jump at all, if it is narrow enough relative to the drop.
+	#    Evaluated at MAX_SPEED rather than the arrival speed because that is the strictest
+	#    direction -- faster means further, means more likely to be free.
+	#
+	#    Inert at exit_drop 0 (fall_distance is 0, so any positive width passes), which is every
+	#    chasm today. It is here so that Phase 3's drop variants cannot ship as non-hazards.
+	if exit_drop > 0.0:
+		var free_fall_time: float = sqrt(2.0 * exit_drop / Player.GRAVITY)
+		var free_crossing_width: float = SpeedManager.MAX_SPEED * free_fall_time
+		if void_width < free_crossing_width + CHASM_MIN_HAZARD_MARGIN:
+			violations.append("CHASM_TRIVIALLY_CLEARABLE at world_x=%.1f width=%.1f drop=%.1f free_crossing=%.1f -- clearable without jumping at %.0f px/s" % [
+				void_start_x, void_width, exit_drop, free_crossing_width, SpeedManager.MAX_SPEED,
+			])
+
+	return violations
+
+
+func check_chasm_lip_vertices(terrain_generator: TerrainGenerator, lip_world_x: float) -> Array[String]:
+	var violations: Array[String] = []
+	var chunk_width: float = terrain_generator.chunk_width
+	# A lip exactly on a chunk boundary is already a vertex of both chunks via the uniform
+	# progress=0 / progress=1 samples, so only strictly-interior positions need checking.
+	var chunk_index: int = int(floor(lip_world_x / chunk_width))
+	var chunk_start_x: float = float(chunk_index) * chunk_width
+	if is_equal_approx(lip_world_x, chunk_start_x):
+		return violations
+
+	terrain_generator.ensure_chunk_collision_samples(chunk_index)
+	var sample_world_xs: PackedFloat64Array = terrain_generator.chunk_collision_sample_xs[chunk_index]
+	for sample_world_x: float in sample_world_xs:
+		if absf(sample_world_x - lip_world_x) <= CHASM_LIP_VERTEX_TOLERANCE_X:
+			return violations
+
+	violations.append("CHASM_COLLISION_NOT_CUT: no collision vertex on lip world_x=%.3f in chunk %d" % [lip_world_x, chunk_index])
+	return violations
+
+
+# The slowest speed the player can possibly have when reaching world_x.
+#
+# Conservative by construction: it assumes x-progress equals speed, but the grounded model
+# advances x at speed * cos(slope), so the player actually arrives LATER and therefore FASTER
+# than this. A speed boost only helps. Manual debug speed control can go below it, but that is
+# gated on OS.is_debug_build() and is not a shipping path.
+func get_min_speed_at_world_x(world_x: float) -> float:
+	var phase1_distance: float = (SpeedManager.INITIAL_SPEED * SpeedManager.PHASE1_DURATION) + (0.5 * SpeedManager.PHASE1_ACCELERATION * pow(SpeedManager.PHASE1_DURATION, 2.0))
+	if world_x <= phase1_distance:
+		# 100t + 20t^2 = x
+		var phase1_time: float = (-SpeedManager.INITIAL_SPEED + sqrt(pow(SpeedManager.INITIAL_SPEED, 2.0) + (2.0 * SpeedManager.PHASE1_ACCELERATION * world_x))) / SpeedManager.PHASE1_ACCELERATION
+		return SpeedManager.INITIAL_SPEED + (SpeedManager.PHASE1_ACCELERATION * phase1_time)
+
+	var phase2_distance: float = world_x - phase1_distance
+	var phase2_time: float = (-SpeedManager.PHASE1_TARGET_SPEED + sqrt(pow(SpeedManager.PHASE1_TARGET_SPEED, 2.0) + (2.0 * SpeedManager.PHASE2_ACCELERATION * phase2_distance))) / SpeedManager.PHASE2_ACCELERATION
+	return minf(SpeedManager.PHASE1_TARGET_SPEED + (SpeedManager.PHASE2_ACCELERATION * phase2_time), SpeedManager.MAX_SPEED)
+
+
+# Horizontal distance covered by a jump taken from the near lip that ends exit_drop below it.
+# The jump powerup only lengthens it, so ignoring it stays conservative HERE -- clearability is
+# about the weakest jump. CHASM_LEAD_IN_TOO_SHORT wants the opposite bound and passes the
+# multiplier explicitly.
+func get_jump_reach(speed: float, exit_drop: float) -> float:
+	return get_jump_reach_with_multiplier(speed, exit_drop, 1.0)
+
+
+func get_jump_reach_with_multiplier(speed: float, exit_drop: float, jump_velocity_multiplier: float) -> float:
+	return speed * get_jump_airtime(exit_drop, jump_velocity_multiplier)
+
+
+# Solving 0.5 * GRAVITY * t^2 + JUMP_VELOCITY * t = exit_drop for the positive root; at
+# exit_drop 0 and multiplier 1 this is the familiar 2 * 640 / 1600 = 0.8s.
+func get_jump_airtime(exit_drop: float, jump_velocity_multiplier: float) -> float:
+	var launch_speed: float = -Player.JUMP_VELOCITY * jump_velocity_multiplier
+	return (launch_speed + sqrt(pow(launch_speed, 2.0) + (2.0 * Player.GRAVITY * exit_drop))) / Player.GRAVITY
+
+
+func print_chasm_report(session_seed: int, chasm_report: Dictionary) -> void:
+	var violation_count: int = int(chasm_report["violation_count"])
+	print("TERRAIN_INVARIANT_CHASM seed=", session_seed,
+		" status=", "PASS" if violation_count == 0 else "FAIL",
+		" voids=", int(chasm_report["void_count"]),
+		" first_x=%.1f" % float(chasm_report["first_void_x"]),
+		" width=[%.3f, %.3f]" % [float(chasm_report["min_width"]), float(chasm_report["max_width"])],
+		" spacing=[%.1f, %.1f]" % [float(chasm_report["min_spacing"]), float(chasm_report["max_spacing"])])
+
+	var violations: Array = chasm_report["violations"]
+	for violation: String in violations:
+		print("    ", violation)
+	if violation_count > violations.size():
+		print("    ...and ", violation_count - violations.size(), " more")
 
 
 func print_seed_report(session_seed: int, report: Dictionary, max_slope_angle: float) -> void:

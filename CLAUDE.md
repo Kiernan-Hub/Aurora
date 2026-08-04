@@ -42,15 +42,16 @@ No test suite, no build script. Godot lives at
 `/Applications/Godot.app/Contents/MacOS/Godot` (play with `--path .`; it opens a window
 and blocks, so only when asked).
 
-**Five headless gates:** terrain-shape check (fast, physics-free), freeze-replay,
+**Six headless gates:** terrain-shape check (fast, physics-free), freeze-replay,
 freeze-search (the one that actually finds stalls — replay alone isn't sufficient),
-floor-flicker, camera-shake. Run the terrain check after any segment/shape change, the
-physics ones after any player/collision/segment change, and camera-shake after any
-change to the camera follow in `main.gd`. Commands, flags and watchdog mechanics:
+floor-flicker, camera-shake, chasm. Run the terrain check after any segment/shape change,
+the physics ones after any player/collision/segment change, camera-shake after any change
+to the camera follow in `main.gd`, and chasm after anything touching voids, fall death or
+the boost velocity model. Commands, flags and watchdog mechanics:
 `docs/development/debugging.md`. Log any new seed that trips `FREEZE_REPRO` in
 `docs/research/freeze_bug.md` before fixing it.
 
-**Only those five are maintained.** The other 18 files in `scripts/debug/` are archived
+**Only those six are maintained.** The other 18 files in `scripts/debug/` are archived
 one-offs, and most predate the start screen — they measure a *paused* game and print
 confident, meaningless numbers rather than failing. Never trust one without reviving it
 first.
@@ -98,6 +99,16 @@ to touch `get_tree().paused` or a screen's visibility. Reasoning for all of it:
   surface_y_offset(-32) − capsule half-height(24)`. Change either without updating
   `Player` in `main.tscn` and the player starts embedded in, or dropping toward, the
   terrain.
+- **Any long-running harness needs `debug_chasm_disabled = true`**, next to the two
+  `debug_spawning_disabled` flags — otherwise the run hits a chasm, dies, and reports a
+  confident wrong number. `freeze_search` takes `--chasms=1` to opt back in for that reason.
+  `camera_shake_probe` also accepts `--chasms=1`, but it drives no input, so it just dies at
+  the first void too — only meaningful there with `--frames` short enough to stop first.
+- **A chasm is flat, and must stay flat** — zero added slope, steepest terrain still 20.13°.
+  That is why a void was safe to build when a steep drop face was not: anything ≥
+  `floor_max_angle` is a wall and wedges the player (`large_valley`, three weeks).
+  `terrain_invariant_check` asserts the flatness *and*, via `CHASM_NOT_CLEARABLE`, that any
+  future width/`exit_drop` is jumpable.
 - **Every `Area2D` has terrain chunks entering it.** Player, chunks and obstacles are on
   layer 1; coins and powerups on layer 2; everything masks layer 1. `obstacle.gd`,
   `coin.gd` and `powerup.gd` each filter with `body.is_in_group("player")` — drop that
@@ -113,17 +124,15 @@ to touch `get_tree().paused` or a screen's visibility. Reasoning for all of it:
   independently, so nothing keeps them apart. Options: i-frames, smash-through, allow
   jumping while boosting, or suppress obstacle placement during a boost.
 - **Residual sub-pixel bounce on curved terrain — open, deferred.** Inherent to
-  `CharacterBody2D`'s per-frame solver correction, not fixable at the input/movement
-  level; several mitigations measured and rejected. Its *horizontal* component was the
-  entire `mega_drop` shake once a rigid camera piped it to screen — the noise is still
-  there, it's just no longer wired to the view. Revisit only for a real gameplay
-  complaint, and confirm it's actually visible first. Read
+  `CharacterBody2D`'s solver correction, not fixable at the input/movement level; several
+  mitigations measured and rejected. Its *horizontal* component was the entire `mega_drop`
+  shake once a rigid camera piped it to screen — still there, just no longer wired to the
+  view. Revisit only for a real complaint, and confirm it's visible first.
   `docs/research/terrain_jitter.md`; `jitter_frequency_probe.gd` is the tool.
 - **`mega_drop` shakiness — SEGMENT CUT, not fixed** (2026-08-01).
-  `MEGA_DROP_SELECTION_WEIGHT = 0`. Six mechanisms were measured; the three that produced
-  real measured improvement produced **zero** perceptual improvement in playtest. Cutting
-  the segment took worst-case camera jerk 0.382 → 0.033 px/frame². Hills/valleys still
-  measure above flat, so the class is reduced, not gone. **Read
+  `MEGA_DROP_SELECTION_WEIGHT = 0`. Six mechanisms measured; the three that improved the
+  numbers produced **zero** perceptual improvement. Cutting it took worst-case camera jerk
+  0.382 → 0.033 px/frame². Hills/valleys still measure above flat. **Read
   `docs/research/camera_shake.md` before spending any more time here** — it lists what's
   already eliminated and three measurement traps that each cost a cycle.
 - **`is_on_floor()` flicker on rising terrain — FIXED** (2026-07-29).
@@ -142,7 +151,10 @@ asked. Full history: `docs/development/dead_code.md`.
 
 ## Build order / status
 
-1. Core loop (terrain + movement) — **working**, still being tuned
+1. Core loop (terrain + movement) — **working**. Includes **chasms**: a rare 160/220/280px
+   void every ~35–85s, jumped or fatal. Width is a table gated on the speed ramp — the wide
+   variant is illegal early because 0.55×reach forbids it there, not for taste. `exit_drop`
+   is still 0; a non-zero one is phase 3 and needs the boost-glide fix first (`terrain.md`)
 2. Speed scaling — **working**. Two-phase ramp: 100→500 px/s over 10s, then 500→750 over
    the next 110s, capping at `MAX_SPEED` (750) at t=120s
 3. Coins + score — **working**. `SaveStore` persists a versioned best score

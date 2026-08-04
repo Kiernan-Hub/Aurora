@@ -26,6 +26,16 @@ const CHUNK_SCENE: PackedScene = preload("res://scenes/terrain/terrain_chunk.tsc
 @export var debug_weight_gentle_uphill: int = DEFAULT_WEIGHT_GENTLE_UPHILL
 @export var debug_weight_mega_drop: int = MEGA_DROP_SELECTION_WEIGHT
 
+# Harness opt-out for chasms, same contract as ObstacleSpawner/PowerupSpawner.debug_spawning_disabled.
+# Every long no-input probe must set this true before add_child(main): with it false the
+# player runs off the first lip, dies, GameManager pauses the tree, and the probe prints a
+# confident, meaningless number instead of failing (docs/development/debugging.md).
+#
+# Deliberately NOT @export, unlike debug_weight_*: an exported bool can be serialised into
+# main.tscn by the editor and silently disable the feature for weeks, which is exactly what
+# happened to Main.world_rebase_enabled (CLAUDE.md, "Things that break silently").
+var debug_chasm_disabled: bool = false
+
 var player: CharacterBody2D
 var next_chunk_index: int = 0
 var active_chunks: Dictionary[int, Node2D] = {}
@@ -102,6 +112,131 @@ const MEGA_DROP_FLOOR_ANGLE_FRACTION: float = 0.9
 # by setting this back to 10.
 const MEGA_DROP_SELECTION_WEIGHT: int = 0
 const TERRAIN_FILL_DEPTH_MARGIN: float = 4096.0
+# --- Chasm -------------------------------------------------------------------------
+# A chasm is a FLAT segment with a span of x in the middle where there is no ground.
+# get_terrain_height() still returns the LIP height inside that span, so the height field
+# stays single-valued, continuous, finite and flat, and every existing consumer -- the fill,
+# the collision samples, get_collision_chord_slope_angle, get_slope_angle_at_x, player tilt,
+# get_surface_world_y, recover_from_stall, the three spawners, terrain_invariant_check --
+# keeps working untouched. has_ground_at_world_x() is the ONLY thing in the project that
+# knows the ground is not really there.
+#
+# Why this is the safe way to add a dramatic feature, and a steep face is not: any surface
+# at or above floor_max_angle (45 deg) is classified by CharacterBody2D as a WALL and wedges
+# the player at the lip. That is the large_valley bug (80.4 deg face, three weeks,
+# docs/research/freeze_bug.md), and the height field cannot represent anything steeper than
+# vertical at all. A void has NO surface, so a chasm adds ZERO slope to the world: the
+# steepest terrain in the game stays 20.13 deg, exactly as it was without this feature.
+#
+# Both lips are exactly horizontal, and that is free rather than engineered: every profile
+# in evaluate_segment_offset has zero derivative at progress 0 and 1
+# (sin^2(pi*p) -> pi*sin(2*pi*p); 0.5-0.5cos(pi*p) -> 0.5*pi*sin(pi*p)), so every segment
+# boundary in this generator is already a flat tangent point.
+const CHASM_SEGMENT_LENGTH: float = 1600.0
+# Run-up before the near lip. Sized so that NO jump taken before the chasm's own segment can
+# carry the player into the void: the void is only ever reachable by a jump taken within the
+# run-up itself, i.e. within sight of the thing that kills you.
+#
+# That requires the lead-in to exceed the maximum jump reach, and the maximum is a
+# JUMP-BOOSTED one, which the v1 value of 640 did not account for: PowerupManager's
+# JUMP_BOOST_VELOCITY_MULTIPLIER (sqrt 2) takes airtime from 0.8s to 1.131s, so reach at
+# MAX_SPEED is 848px, not the 600px the old comment derived. A jump-boosted player who jumped
+# at the first pixel of a 640px run-up landed 208px past the near lip -- inside the void.
+# 900 restores the invariant with ~50px of margin, and terrain_invariant_check's
+# CHASM_LEAD_IN_TOO_SHORT now asserts it instead of a comment claiming it.
+#
+# Note what this does NOT buy, because the old comment overclaimed it: there is always some
+# window INSIDE the run-up from which a maximum-reach jump lands in the void (for any
+# lead-in L and reach R, that window is (L - R, L + width - R), which is never empty).
+# Jumping much too early is a mistake the player makes and can see; that is gameplay, not a
+# geometry bug. The invariant is only about jumps taken before the run-up exists.
+const CHASM_LEAD_IN_LENGTH: float = 900.0
+# The void itself, as a table of width variants. Airtime on level lips is exactly
+# 2 * 640 / 1600 = 0.8s (JUMP_VELOCITY / GRAVITY, player.gd), so reach is 0.8 * speed and the
+# maximum width terrain_invariant_check will accept at a given world_x is
+# CHASM_MAX_REACH_FRACTION (0.55) of it.
+#
+# That fraction, not taste, is what fixes this table. The SpeedManager ramp only reaches
+# ~545 px/s by the earliest position a chasm may occupy, which allows at most a 240px void
+# there -- so "wider than the v1 220" is not something a chasm can be ANYWHERE. Each variant
+# therefore carries its own min_segment_index, and the wide one is simply not drawn until the
+# ramp has produced the speed that clears it. terrain_invariant_check derives the required
+# minimum from the real ramp and the real jump arithmetic and fails the build if a
+# min_segment_index here is too low, so these are checked numbers, not estimates.
+#
+# min_segment_index is a HARD world_x bound via SMALL_SEGMENT_LENGTH (the shortest segment
+# possible), the same conservative trick CHASM_MIN_SEGMENT_INDEX uses, and for the same
+# reason: build_segment_spec cannot read segment_start_x_cache.
+#
+#   narrow    160  from index 28   (the global minimum; legal as early as chasms exist)
+#   standard  220  from index 28   the v1 chasm, unchanged
+#   wide      280  from index 112  the checker derives 76 as the hard minimum; 112 is two full
+#                                  windows, chosen so the wide variant clears the 0.55 fraction
+#                                  with ~26px of width to spare rather than sitting exactly on
+#                                  it. Being late is also the right call on its own terms --
+#                                  it is the widest hazard in the game.
+#
+# Every entry's min_segment_index must be >= CHASM_MIN_SEGMENT_INDEX for at least one variant,
+# or get_chasm_variant() would have nothing legal to draw. The two 28s guarantee that.
+const CHASM_VARIANTS: Array[Dictionary] = [
+	{"label": "chasm_narrow", "void_length": 160.0, "min_segment_index": 28, "weight": 3},
+	{"label": "chasm", "void_length": 220.0, "min_segment_index": 28, "weight": 4},
+	{"label": "chasm_wide", "void_length": 280.0, "min_segment_index": 112, "weight": 3},
+]
+# Height of the far lip relative to the near lip. Still 0: level lips are the only
+# configuration where the height field inside the void is indistinguishable from ordinary flat
+# ground, so terrain_invariant_check needs no exemption for the void span and every existing
+# consumer is trivially unaffected.
+#
+# Phase 2 deliberately varied WIDTH ONLY and left this alone. A non-zero drop is not a data
+# change: the field would need a step at the far lip (invisible to geometry, since no chord or
+# fill edge survives inside a void, but visible to the 1px sweep, to get_slope_angle_at_x and
+# to get_collision_chord_slope_angle, all of which would need void guards) -- and, decisively,
+# a boosting player skims the void at NEAR-lip height on a gravity-free grounded model and
+# would arrive above a lower far lip with only FLOOR_SNAP_LENGTH (18px) of snap to catch them,
+# hovering in mid-air until the boost expired. Deferred to Phase 3 with that fix.
+const CHASM_EXIT_DROP: float = 0.0
+# Placement: exactly one chasm per window of CHASM_WINDOW_SEGMENT_COUNT segments, at a
+# hash-chosen offset constrained to the window's middle. The edge margin is what turns "one
+# per window" into a real minimum spacing -- without it the last segment of one window and
+# the first of the next could both be chasms.
+#
+#   offsets in [14, 41]  ->  min spacing (56-41)+14 = 29 segments
+#                            max spacing (56-14)+41 = 83 segments
+#
+# At the shipping mix's ~640px mean segment length and 600-750 px/s that is roughly 31-89s,
+# but the BOUND is in segments; the seconds figure is an estimate that terrain_invariant_check
+# reports as measured min/max world_x spacing rather than assuming.
+#
+# A weight-table entry cannot express this: a weight permits two chasms in a row, and instant
+# death is not a shape that may repeat adjacently. So the chasm bypasses the weight table.
+const CHASM_WINDOW_SEGMENT_COUNT: int = 56
+const CHASM_WINDOW_EDGE_MARGIN_SEGMENTS: int = 14
+# No chasm before this segment index. The shortest segment is SMALL_SEGMENT_LENGTH, so this
+# is a HARD lower bound of 28 * 480 = 13,440 world_x, which the SpeedManager ramp puts at
+# speed >= ~545 px/s and a reach of ~436px -- 220 is 0.50 of that, inside
+# terrain_invariant_check's 0.55 CHASM_MAX_REACH_FRACTION with room to spare.
+#
+# It is set to half a window rather than a whole one on purpose. Suppression only bites in
+# window 0, so a value at or above CHASM_WINDOW_SEGMENT_COUNT - CHASM_WINDOW_EDGE_MARGIN_SEGMENTS
+# would empty window 0 entirely and push the FIRST chasm of every run out to ~90-110s, well
+# past the intended cadence. At 28, half of window 0's legal offsets survive: roughly half of
+# runs meet a chasm around t~35-50s and the rest around t~90s.
+#
+# Expressed in segments rather than world_x because build_segment_spec must not read
+# segment_start_x_cache: cache_previous_segment() computes a segment's length BEFORE writing
+# its start_x, and negative indices are real (initialize_chunks spawns from chunk -2), so
+# that entry does not exist yet while this runs.
+const CHASM_MIN_SEGMENT_INDEX: int = 28
+# How far past a far lip get_next_ground_world_x() places a nudged item, so a powerup pushed
+# out of a void does not sit on the lip vertex itself.
+const CHASM_LIP_CLEARANCE: float = 32.0
+const CHASM_HASH_INDEX_MULTIPLIER: int = 1597334677
+const CHASM_HASH_MIX_MULTIPLIER: int = 2654435761
+# Salt for the width draw, so which variant a chasm gets is uncorrelated with where the chasm
+# was placed -- the placement hash is keyed on the WINDOW and would otherwise hand every chasm
+# in a window the same draw.
+const CHASM_VARIANT_HASH_SALT: int = 0x5f3a71c9
 const SMALL_HILL_AMPLITUDE: float = 56.0
 const MEDIUM_HILL_AMPLITUDE: float = 74.0
 const DEFAULT_WEIGHT_FLAT: int = 16
@@ -241,24 +376,96 @@ func build_chunk_surface(chunk: StaticBody2D, chunk_index: int) -> void:
 		var surface_point: Vector2 = Vector2(local_x, get_terrain_height(world_x))
 		surface_points.append(surface_point)
 
+	var previous_collision_world_x: float = 0.0
 	for sample_index: int in range(collision_sample_world_xs.size()):
 		var world_x: float = collision_sample_world_xs[sample_index]
 		var local_x: float = world_x - chunk_start_x - (chunk_width * 0.5)
 		var point: Vector2 = Vector2(local_x, collision_sample_heights[sample_index])
 		if sample_index > 0:
-			segment_points.append(previous_collision_point)
-			segment_points.append(point)
+			# Chord MIDPOINT, not either endpoint. add_lip_sample_world_x has forced a vertex
+			# exactly on each lip, so a chord is either wholly inside the void or wholly outside
+			# it and its midpoint decides without ambiguity; an endpoint test would have to
+			# answer "is the lip x itself in the void", which is a tie-break rather than a fact.
+			# This is what guarantees no partial chord is ever left hanging over the gap.
+			#
+			# ConcavePolygonShape2D.set_segments() takes a segment SOUP, not a polyline, so
+			# dropping interior chords leaves a valid shape with a hole in it.
+			var chord_midpoint_world_x: float = (previous_collision_world_x + world_x) * 0.5
+			if has_ground_at_world_x(chord_midpoint_world_x):
+				segment_points.append(previous_collision_point)
+				segment_points.append(point)
 		previous_collision_point = point
+		previous_collision_world_x = world_x
 
+	# The sample ARRAYS above keep their void entries deliberately -- only chord EMISSION is
+	# filtered. get_collision_chord_slope_angle() reads those same arrays and falls back to the
+	# chunk's first and last vertex when nothing brackets world_x, so dropping the entries would
+	# make it return an arbitrary 512px-chord angle over a void instead of the correct 0. That 0
+	# is load-bearing: it is what carries a speed-boosting player across a chasm (see the boost
+	# note in player.gd's velocity model and PowerupManager.can_end_speed_boost).
 	var collision: ConcavePolygonShape2D = ConcavePolygonShape2D.new()
 	collision.set_segments(segment_points)
 	collision_shape.shape = collision
+	# Unreachable while CHASM_VOID_LENGTH < chunk_width, but the void length is a tunable and an
+	# empty ConcavePolygonShape2D on a live StaticBody2D is not a case this project has exercised.
+	collision_shape.disabled = segment_points.is_empty()
 
-	var fill_points: PackedVector2Array = surface_points.duplicate()
+	build_chunk_fill(chunk, terrain_fill, surface_points, visual_sample_world_xs)
+
+
+# One Polygon2D per contiguous run of ground. The visual sample list carries a vertex at every
+# lip (add_lip_sample_world_x), so a run always begins and ends exactly on a lip and the void
+# renders as a clean slot of background rather than a filled notch.
+#
+# The existing TerrainFill node keeps run 0, so the common case adds no node at all, and each
+# run closes on ITS OWN x extent rather than +/- chunk_width * 0.5. On a chunk with no void
+# there is exactly one run whose first and last samples ARE the chunk edges, so this produces a
+# byte-identical polygon to the code it replaced -- that equivalence is the whole no-regression
+# argument, and the disabled-chasm gate runs are what prove it.
+#
+# fill_bottom_y stays computed over the WHOLE chunk's surface points rather than per run, so
+# neighbouring runs close at the same depth. Never hardcode it: baselines drift thousands of px
+# down over a run (see TERRAIN_FILL_DEPTH_MARGIN).
+func build_chunk_fill(chunk: StaticBody2D, terrain_fill: Polygon2D, surface_points: PackedVector2Array, surface_world_xs: Array[float]) -> void:
 	var fill_bottom_y: float = get_fill_bottom_y(surface_points)
-	fill_points.append(Vector2(chunk_width * 0.5, fill_bottom_y))
-	fill_points.append(Vector2(-chunk_width * 0.5, fill_bottom_y))
-	terrain_fill.polygon = fill_points
+	var ground_runs: Array[PackedVector2Array] = split_surface_into_ground_runs(surface_points, surface_world_xs)
+	if ground_runs.is_empty():
+		terrain_fill.polygon = PackedVector2Array()
+		return
+
+	terrain_fill.polygon = close_fill_run(ground_runs[0], fill_bottom_y)
+	for run_index: int in range(1, ground_runs.size()):
+		var extra_fill: Polygon2D = Polygon2D.new()
+		extra_fill.name = "TerrainFill%d" % run_index
+		extra_fill.polygon = close_fill_run(ground_runs[run_index], fill_bottom_y)
+		chunk.add_child(extra_fill)
+
+
+# A run breaks between two consecutive samples whose midpoint has no ground -- the same test
+# build_chunk_surface applies to the collision chords, so the fill and the collision shape cut
+# at exactly the same places.
+func split_surface_into_ground_runs(surface_points: PackedVector2Array, surface_world_xs: Array[float]) -> Array[PackedVector2Array]:
+	var ground_runs: Array[PackedVector2Array] = []
+	var current_run: PackedVector2Array = PackedVector2Array()
+	for sample_index: int in range(surface_points.size()):
+		if sample_index > 0:
+			var chord_midpoint_world_x: float = (surface_world_xs[sample_index - 1] + surface_world_xs[sample_index]) * 0.5
+			if not has_ground_at_world_x(chord_midpoint_world_x):
+				if current_run.size() >= 2:
+					ground_runs.append(current_run)
+				current_run = PackedVector2Array()
+		current_run.append(surface_points[sample_index])
+
+	if current_run.size() >= 2:
+		ground_runs.append(current_run)
+	return ground_runs
+
+
+func close_fill_run(run_points: PackedVector2Array, fill_bottom_y: float) -> PackedVector2Array:
+	var fill_points: PackedVector2Array = run_points.duplicate()
+	fill_points.append(Vector2(run_points[run_points.size() - 1].x, fill_bottom_y))
+	fill_points.append(Vector2(run_points[0].x, fill_bottom_y))
+	return fill_points
 
 
 func get_fill_bottom_y(surface_points: PackedVector2Array) -> float:
@@ -335,6 +542,29 @@ func add_segment_boundary_sample_world_xs(sample_world_xs: Array[float], chunk_s
 	for segment_index: int in range(first_segment_index + 1, last_segment_index + 1):
 		add_unique_sample_world_x(sample_world_xs, segment_start_x_cache[segment_index])
 
+	# A vertex EXACTLY on each chasm lip, for the same reason segment starts get one: it is
+	# what guarantees no chord or fill edge ever half-spans the void, so the midpoint tests in
+	# build_chunk_surface and split_surface_into_ground_runs decide on a fact rather than a
+	# tie-break. Both the collision samples and the visual samples come through here, so the
+	# two cut at literally the same x.
+	#
+	# Note this range STARTS at first_segment_index, unlike the loop above: a chasm segment can
+	# begin before this chunk and still place a lip inside it.
+	for segment_index: int in range(first_segment_index, last_segment_index + 1):
+		var void_span: Dictionary = get_void_span_for_segment(segment_index)
+		if void_span.is_empty():
+			continue
+		add_lip_sample_world_x(sample_world_xs, float(void_span["start_x"]), chunk_start_x, chunk_end_x)
+		add_lip_sample_world_x(sample_world_xs, float(void_span["end_x"]), chunk_start_x, chunk_end_x)
+
+
+# Strictly interior: a lip outside this chunk is already cut by the chunk's own boundary
+# sample, and adding an out-of-range x would push the sample list past the chunk's extent and
+# break both the chord bracketing and the fill's x span.
+func add_lip_sample_world_x(sample_world_xs: Array[float], lip_world_x: float, chunk_start_x: float, chunk_end_x: float) -> void:
+	if lip_world_x > chunk_start_x and lip_world_x < chunk_end_x:
+		add_unique_sample_world_x(sample_world_xs, lip_world_x)
+
 
 func add_unique_sample_world_x(sample_world_xs: Array[float], world_x: float) -> void:
 	for existing_world_x: float in sample_world_xs:
@@ -357,6 +587,139 @@ func get_terrain_height(world_x: float) -> float:
 	var segment_baseline: float = get_segment_baseline(segment_index)
 	var segment_progress: float = segment_x / float(spec["length"])
 	return segment_baseline + evaluate_segment_offset(spec, segment_progress)
+
+
+# Whether there is collidable ground at world_x. Pure in (session_seed, world_x), the same
+# contract as get_terrain_height(), and deliberately ORTHOGONAL to it: get_terrain_height()
+# returns the lip height inside a void, so "how high is the surface" and "is there a surface"
+# are two independent facts. False only inside a chasm's void span.
+#
+# Half-open [void_start_x, void_end_x): the lip x itself counts as ground, which is what lets
+# build_chunk_surface decide each collision chord by its MIDPOINT rather than by a tie-break
+# at the endpoint.
+func has_ground_at_world_x(world_x: float) -> bool:
+	var void_span: Dictionary = get_void_span_at_world_x(world_x)
+	if void_span.is_empty():
+		return true
+	return world_x < float(void_span["start_x"]) or world_x >= float(void_span["end_x"])
+
+
+# The void span of the segment containing world_x, or {} if that segment has none.
+func get_void_span_at_world_x(world_x: float) -> Dictionary:
+	ensure_segment_cache_for_world_x(world_x)
+	return get_void_span_for_segment(find_segment_index_at_x(world_x))
+
+
+# Dictionary of GDScript floats (doubles), never a Vector2: Vector2 is float32, and at
+# world_x = 200,000 its ulp is 0.0156px, which would move a lip vertex relative to the
+# float64 chunk_collision_sample_xs. Narrowing terrain geometry to float32 is the exact
+# shape of an already-fixed freeze bug -- see the comment on that cache above.
+func get_void_span_for_segment(segment_index: int) -> Dictionary:
+	var spec: Dictionary = get_segment_spec(segment_index)
+	var void_length: float = float(spec.get("void_length", 0.0))
+	if void_length <= 0.0:
+		return {}
+
+	ensure_segment_cache_through(segment_index)
+	var void_start_x: float = segment_start_x_cache[segment_index] + float(spec["void_start_offset"])
+	return {"start_x": void_start_x, "end_x": void_start_x + void_length}
+
+
+# True only if there is ground across the WHOLE span. Walks segments rather than
+# point-sampling, so it cannot step over a void narrower than a sample stride.
+func has_ground_over_world_x_span(from_world_x: float, to_world_x: float) -> bool:
+	ensure_segment_cache_for_world_x(from_world_x)
+	ensure_segment_cache_for_world_x(to_world_x)
+	var first_segment_index: int = find_segment_index_at_x(from_world_x)
+	var last_segment_index: int = find_segment_index_at_x(to_world_x)
+	for segment_index: int in range(first_segment_index, last_segment_index + 1):
+		var void_span: Dictionary = get_void_span_for_segment(segment_index)
+		if void_span.is_empty():
+			continue
+		if from_world_x < float(void_span["end_x"]) and to_world_x >= float(void_span["start_x"]):
+			return false
+	return true
+
+
+# world_x itself if it is on ground, otherwise the first ground x past the void it sits in.
+# For PowerupSpawner, which has exactly one candidate position per scheduled spawn and must
+# nudge rather than silently drop a scheduled reward.
+func get_next_ground_world_x(world_x: float) -> float:
+	# Guard on has_ground_at_world_x, not on "world_x < start_x". A chasm segment continues for
+	# several hundred px PAST its far lip, so a world_x on that exit flat still resolves to this
+	# segment's void span while being perfectly good ground -- pushing it to end_x would move
+	# the item BACKWARDS, potentially behind the player.
+	if has_ground_at_world_x(world_x):
+		return world_x
+
+	var void_span: Dictionary = get_void_span_at_world_x(world_x)
+	return float(void_span["end_x"]) + CHASM_LIP_CLEARANCE
+
+
+# O(1) in segment_index: one integer division and one hash. No neighbour lookback, no
+# recursive segment lookup (mega_drop's mutual recursion was a measured frame-time spike),
+# and no read of segment_start_x_cache -- see the comment in build_segment_spec.
+func is_chasm_segment_index(segment_index: int) -> bool:
+	if debug_chasm_disabled or segment_index < CHASM_MIN_SEGMENT_INDEX:
+		return false
+
+	# CHASM_MIN_SEGMENT_INDEX > 0, so the guard above means segment_index is positive here
+	# and GDScript's sign-following % cannot bite. Negative indices are real: initialize_chunks
+	# spawns from chunk_count_behind chunks before the player.
+	var window_index: int = segment_index / CHASM_WINDOW_SEGMENT_COUNT
+	var offset_in_window: int = segment_index % CHASM_WINDOW_SEGMENT_COUNT
+	var usable_offset_count: int = CHASM_WINDOW_SEGMENT_COUNT - (2 * CHASM_WINDOW_EDGE_MARGIN_SEGMENTS)
+	var chasm_offset: int = CHASM_WINDOW_EDGE_MARGIN_SEGMENTS + (get_chasm_hash(window_index) % usable_offset_count)
+	return offset_in_window == chasm_offset
+
+
+# Separate hash from get_segment_hash: it is keyed on the WINDOW, not the segment, and using
+# distinct multipliers keeps chasm placement uncorrelated with the shape draw of the segment
+# it replaces.
+func get_chasm_hash(window_index: int) -> int:
+	var mixed_value: int = (session_seed ^ ((window_index + 1) * CHASM_HASH_INDEX_MULTIPLIER)) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 13)) & HASH_MASK
+	mixed_value = (mixed_value * CHASM_HASH_MIX_MULTIPLIER) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 15)) & HASH_MASK
+	return mixed_value
+
+
+# Which width variant this chasm gets. Weighted draw restricted to the variants legal at this
+# segment index, so a wide chasm can never appear before the speed ramp can clear it -- the
+# gate is structural rather than a check that happens to pass.
+#
+# O(1) (a fixed 3-entry table), pure in (session_seed, segment_index), and reads no cache, for
+# the same reasons is_chasm_segment_index() does none of those things.
+func get_chasm_variant(segment_index: int) -> Dictionary:
+	var total_weight: int = 0
+	for variant: Dictionary in CHASM_VARIANTS:
+		if segment_index >= int(variant["min_segment_index"]):
+			total_weight += int(variant["weight"])
+
+	# Only reachable if every variant's min_segment_index were raised above
+	# CHASM_MIN_SEGMENT_INDEX, which the constants block forbids. Falling back to the narrowest
+	# variant rather than dividing by zero keeps a future edit from crashing the generator.
+	if total_weight <= 0:
+		return CHASM_VARIANTS[0]
+
+	var remaining_weight: int = get_chasm_variant_hash(segment_index) % total_weight
+	for variant: Dictionary in CHASM_VARIANTS:
+		if segment_index < int(variant["min_segment_index"]):
+			continue
+		remaining_weight -= int(variant["weight"])
+		if remaining_weight < 0:
+			return variant
+
+	return CHASM_VARIANTS[0]
+
+
+# Keyed on the SEGMENT, unlike get_chasm_hash() which is keyed on the window. See the salt.
+func get_chasm_variant_hash(segment_index: int) -> int:
+	var mixed_value: int = (session_seed ^ CHASM_VARIANT_HASH_SALT ^ ((segment_index + 1) * CHASM_HASH_INDEX_MULTIPLIER)) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 13)) & HASH_MASK
+	mixed_value = (mixed_value * CHASM_HASH_MIX_MULTIPLIER) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 15)) & HASH_MASK
+	return mixed_value
 
 
 # The height offset from baseline at a given progress [0, 1] through the segment.
@@ -501,6 +864,31 @@ func get_segment_spec(segment_index: int) -> Dictionary:
 # uses it identically per type), tier, and debug label. Everything else in this file
 # reads this instead of re-deriving it.
 func build_segment_spec(segment_index: int) -> Dictionary:
+	# Chasm overrides the weighted selection entirely rather than joining the weight table:
+	# its rarity is a guaranteed minimum SPACING, which a weight cannot express. See the
+	# CHASM_ constants block and is_chasm_segment_index().
+	#
+	# SEGMENT_TYPE_FLAT with magnitude 0 means evaluate_segment_offset needs no new branch
+	# and get_segment_baseline_delta() derives 0.0 from it, so C0 continuity across the
+	# seams stays guaranteed by construction. The two extra keys are read only through
+	# .get(key, default), so the other six spec literals below stay untouched.
+	#
+	# This also leaves the "no two flats in a row" rule alone: get_segment_selection()
+	# consults get_unconstrained_segment_selection(), which never comes through here, so a
+	# chasm is invisible to its neighbours' selection.
+	if is_chasm_segment_index(segment_index):
+		var chasm_variant: Dictionary = get_chasm_variant(segment_index)
+		return {
+			"type": SEGMENT_TYPE_FLAT,
+			"tier": SEGMENT_TIER_MEDIUM,
+			"length": CHASM_SEGMENT_LENGTH,
+			"magnitude": 0.0,
+			"label": String(chasm_variant["label"]),
+			"void_start_offset": CHASM_LEAD_IN_LENGTH,
+			"void_length": float(chasm_variant["void_length"]),
+			"exit_drop": CHASM_EXIT_DROP,
+		}
+
 	var segment_selection: int = get_segment_selection(segment_index)
 
 	if segment_selection == SEGMENT_SELECTION_MEGA_DROP:
@@ -731,12 +1119,11 @@ func get_collision_chord_slope_angle(world_x: float) -> float:
 	)
 
 
+# Every Polygon2D child, not just TerrainFill: a chunk containing a chasm lip carries one
+# extra fill per contiguous ground run (build_chunk_fill).
 func apply_chunk_color(chunk: StaticBody2D, chunk_index: int) -> void:
-	var terrain_fill: Polygon2D = chunk.get_node_or_null("TerrainFill") as Polygon2D
-	if terrain_fill == null:
-		return
-
-	if chunk_index % 2 == 0:
-		terrain_fill.color = LIGHT_CHUNK_COLOR
-	else:
-		terrain_fill.color = DARK_CHUNK_COLOR
+	var chunk_color: Color = LIGHT_CHUNK_COLOR if chunk_index % 2 == 0 else DARK_CHUNK_COLOR
+	for child: Node in chunk.get_children():
+		var terrain_fill: Polygon2D = child as Polygon2D
+		if terrain_fill != null:
+			terrain_fill.color = chunk_color
