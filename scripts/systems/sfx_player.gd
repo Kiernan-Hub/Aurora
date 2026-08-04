@@ -15,6 +15,7 @@ const JUMP_SOUND: AudioStream = preload("res://assets/audio/sfx/jump.wav")
 const COIN_SOUND: AudioStream = preload("res://assets/audio/sfx/coin.wav")
 const POWERUP_SOUND: AudioStream = preload("res://assets/audio/sfx/powerup.wav")
 const DEATH_SOUND: AudioStream = preload("res://assets/audio/sfx/death.wav")
+const CLICK_SOUND: AudioStream = preload("res://assets/audio/sfx/click.wav")
 
 const SFX_BUS: StringName = &"SFX"
 # Comfortably above the number of gameplay sounds that can land on the same frame
@@ -63,6 +64,10 @@ func play_powerup() -> void:
 
 func play_death() -> void:
 	play(DEATH_SOUND)
+
+
+func play_click() -> void:
+	play(CLICK_SOUND)
 
 
 func play(stream: AudioStream) -> void:

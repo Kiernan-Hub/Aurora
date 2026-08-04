@@ -50,9 +50,9 @@ Run that after adding any new `class_name`, before running any gate.
 
 ## Harness opt-outs — set these before `add_child(main)`
 
-Four things in the running game will quietly invalidate a measurement or make a gate
+Five things in the running game will quietly invalidate a measurement or make a gate
 "pass" by doing nothing. Any **new** harness that steps many physics frames needs all
-four.
+five.
 
 **Do not read this table as a guarantee about the existing gates.** It used to say they
 "already have them", which was not true and is the same shape of assumption that let the
@@ -67,6 +67,7 @@ check the file, don't trust the sentence.
 | `GameManager.require_start_screen = false` | Otherwise the run sits paused on the start screen and the gate trivially passes. |
 | `ObstacleSpawner.debug_spawning_disabled = true` | Clusters schedule off `elapsed_time`; a collision ends the run mid-measurement. |
 | `PowerupSpawner.debug_spawning_disabled = true` | Same scheduling, worse effect — see below. |
+| `TerrainGenerator.debug_chasm_disabled = true` | A no-input run reaches a chasm, runs off the lip and dies. Same failure shape as the two spawner flags. `freeze_search` takes `--chasms=1` to opt back in; `chasm_probe` leaves them on by design. `camera_shake_probe` has the flag too, but it drives no input and so cannot jump a chasm — only meaningful with `--frames` short enough to stop before the seed's first void. |
 
 The `Services` autoload (`scripts/autoload/services.gd`) is instantiated in
 `--headless --script` runs too, so it executes inside every probe. It carries an
@@ -110,7 +111,13 @@ which is the player's spawn x. It moved zero pixels.
 **Before trusting any archived probe, add the opt-outs from the table above and check
 its `distance=` output is not 64.** Reviving one is a few lines, but it is never free.
 
-## The five headless gates
+## The six headless gates
+
+**These run at real-time 60Hz, so budget by frame count, not by patience.** A headless
+`SceneTree` script awaiting `physics_frame` still steps at the physics rate: floor-flicker
+(6 seeds × 20,000) is ~33 min, freeze-replay (60,000) ~17 min, camera-shake (7,000) ~2 min. A
+gate that has been "hanging" for twenty minutes is almost certainly just running — check
+elapsed CPU time before killing it.
 
 **Terrain shape** (fast, physics-free) — no Y discontinuity, no slope exceeding
 `floor_max_angle`, across N random seeds. Expect `status=PASS`:
@@ -141,6 +148,41 @@ seeds and 20,000 frames the original measurement used, so the bare form is the g
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/floor_flicker_probe.gd -- --frames=20000
 ```
 Other flags: `--seeds`, `--trace`, `--tracelines`, `--jump`.
+
+**Chasm probe** (`scripts/debug/chasm_probe.gd`) — the behavioural gate for chasms.
+`terrain_invariant_check` proves the *geometry* (lips level, void cut out of the collision
+shape, width clearable on paper) and runs no physics, so it cannot prove a chasm actually
+behaves. Four trials per chasm from the same warp onto the lead-in flat. Expect
+`status=PASS`:
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/chasm_probe.gd -- --seed=683407368 --chasms=3 --phases=4
+```
+`--phases` sweeps sub-pixel start offsets (0.25px apart) so trials do not all land on the far
+lip at the same offset — the same idea as `freeze_search`, applied where `freeze_search` cannot
+reach. `--speed=750` re-runs every trial at cap speed; the default pins each trial to the
+slowest speed the player could actually have reached *that* chasm at, which is the case that
+has to work.
+
+**Pinning the speed is not optional, and neither is defining "cleared" as *landed*.** Trials
+run from a warp, so `elapsed_time` bears no relation to `world_x`: unpinned, the first trial
+runs at the start-of-run ~100 px/s and reports a jump that cannot clear a gap sized for
+595 px/s. And at 750 px/s the player crosses a 220px void in 0.29s having fallen only ~69px, so
+a body still descending toward its death sails past a pure horizontal-distance threshold and
+reports as a clean crossing. Both of those shipped as probe bugs first and read exactly like
+feature failures — the `camera_shake.md` lesson again: measure the quantity that matters.
+- `no_jump` — the player must **fall in and die**. If this "passes" by surviving, the void
+  is not actually cut out of the collision shape and every other result is meaningless.
+- `jump` / `late` — must clear and land on the far lip, `recoveries=0`. The far lip is an
+  exposed open chord end in a `ConcavePolygonShape2D` segment soup, i.e. the highest-risk
+  geometry in the feature; a non-zero recovery count there is a stop-ship. `late` fires the
+  jump *past* the lip, so it exercises coyote time — the real takeoff window, not the paper
+  one.
+- `boost` — a speed boost must carry the player across. Jumping is suppressed for the
+  boost's full 3s, so if the glide ever stops working a boosted chasm becomes unavoidable
+  death. The glide is *emergent* (it falls out of `is_boosting` forcing the gravity-free
+  grounded model, plus `get_collision_chord_slope_angle` returning 0 over the void), so it
+  is exactly what a future refactor breaks silently. **This is the only gate that catches
+  it.**
 
 ## Watchdog mechanics
 

@@ -31,6 +31,11 @@ const OBSTACLE_HALF_HEIGHT: float = 16.0
 # window. get_slope_angle_at_x is the analytic (cosmetic) angle -- fine here,
 # unlike Player.get_slope_tangent(), since nothing physical rides on this value.
 const OBSTACLE_MAX_SLOPE_ANGLE: float = deg_to_rad(6.0)
+# Chasm exclusion around an obstacle slot. AHEAD covers the maximum jump reach (600px at
+# MAX_SPEED) plus margin, because an obstacle that forces a jump into a void is unavoidable
+# death. BEHIND only has to stop an obstacle sitting on the landing side of a far lip.
+const OBSTACLE_VOID_CLEARANCE_AHEAD: float = 700.0
+const OBSTACLE_VOID_CLEARANCE_BEHIND: float = 200.0
 # Clamp on how close to spawn a cluster can ever land: the old hand-placed
 # obstacle at (68,56) killed the player mid-jump at t=0.10s
 # (docs/development/dead_code.md) because it sat inside the player's very
@@ -146,6 +151,13 @@ func spawn_cluster(cluster_index: int) -> void:
 		# cluster is fine, an obstacle glued to a slope isn't (see
 		# OBSTACLE_MAX_SLOPE_ANGLE above).
 		if absf(terrain_generator.get_slope_angle_at_x(world_x)) > OBSTACLE_MAX_SLOPE_ANGLE:
+			continue
+		# Second reason to skip, and this one is safety-critical rather than cosmetic. An
+		# obstacle within one jump reach BEFORE a chasm's near lip is unavoidable death:
+		# clearing the obstacle commits the player to a landing, and that landing is in the
+		# void. Max reach is 0.8s airtime * MAX_SPEED 750 = 600px, so the exclusion runs
+		# OBSTACLE_VOID_CLEARANCE_AHEAD past the obstacle and a shorter margin behind it.
+		if not terrain_generator.has_ground_over_world_x_span(world_x - OBSTACLE_VOID_CLEARANCE_BEHIND, world_x + OBSTACLE_VOID_CLEARANCE_AHEAD):
 			continue
 		spawn_obstacle(world_x)
 

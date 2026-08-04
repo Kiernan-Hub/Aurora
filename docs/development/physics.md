@@ -90,6 +90,50 @@ airtime including the brief upward hop a bump imparts.
   directly to `MAX_SPEED` right after spawn. A formula keyed on `elapsed_time` would
   silently overwrite that pin on the next frame.
 
+## Fall death (chasms)
+
+`update_fall_death()` runs after `move_and_slide()` + snap and **before** both watchdogs, so
+a dead player never enters one. It is the only death path other than `obstacle.gd`.
+
+The predicate is **depth below the height field**, not an absolute Y and not a captured lip
+height:
+
+```gdscript
+global_position.y - terrain_generator.get_surface_world_y(global_position.x) > FALL_DEATH_DEPTH  # 360
+```
+
+Two properties are load-bearing. It **needs no knowledge of chasms** — the field is
+single-valued and the body is always above the surface on real ground, so positive depth can
+only mean a void, and because `get_terrain_height()` returns the lip height across a void this
+*is* "how far below the lip am I". And it is **stateless**, which is what makes it correct
+across a world rebase: `Main.apply_world_rebase` runs earlier in tree order and shifts the
+generator and the body by the same amount in the same frame, and `get_surface_world_y()` reads
+the generator's live `global_position.y`, so the difference is invariant. A captured lip Y
+would go stale by a full rebase quantum the moment one landed mid-fall.
+
+360px is ~0.67s of fall. There is no terminal velocity in this project, so a deeper threshold
+gets expensive fast.
+
+## A speed boost carries the player across a chasm
+
+`is_using_grounded_model = is_boosting or (...)` forces the grounded, **gravity-free** velocity
+model whether or not there is a floor. Over a void the collision chord slope reads 0, so
+velocity is `(boost_speed, 0)` and the player skims across at lip height onto the far lip.
+
+This matters because jump input is suppressed for the boost's full 3s — without the glide,
+every boosted chasm would be unavoidable death, the same class as the obstacle/boost issue in
+CLAUDE.md's Known issues. Here the boost *solves* the hazard instead.
+
+**It is emergent, not designed**, and it rests on two facts in two files: this gate in
+`player.gd`, and `TerrainGenerator` keeping the void's entries in `chunk_collision_sample_xs`
+so the chord slope is 0 rather than an arbitrary 512px-chord angle. Splitting the boost out of
+the model gate, or pruning those samples, silently breaks it. `chasm_probe.gd`'s `boost` trial
+is the only thing that would catch it.
+
+The remaining hole is a boost *expiring* mid-void — gravity would return at lip height with no
+jump available. `PowerupManager.can_end_speed_boost()` holds the boost until the player is over
+ground again; the extension is at most ~0.25s.
+
 ## Stall watchdogs
 
 Two of them, both recovering through `recover_from_stall()`, which re-seats the body on

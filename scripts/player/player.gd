@@ -39,6 +39,19 @@ const STUCK_WINDOW_FRAME_COUNT: int = 60
 # when it was chosen, not less -- it stays valid either way, and stays correct if
 # mega_drop is ever restored.
 const STUCK_NET_PROGRESS_THRESHOLD: float = 20.0
+# How far below the terrain height field the body must fall to die in a chasm.
+#
+# 200px is ~0.5s of fall. The player is ALWAYS above the surface on real ground -- a jump arcs
+# over it, and the grounded model pins them to it -- so the only thing this has to clear is
+# landing depenetration, which is sub-pixel. 200 is ~200x that, and there is no terminal
+# velocity in this project, so a deeper threshold only costs responsiveness.
+#
+# Why not deeper: at MAX_SPEED the player crosses a 220px void in 0.29s having fallen only
+# ~69px, so the death always registers somewhere PAST the far lip, with the body descending
+# behind the terrain fill (TerrainGenerator draws after Player, so it reads as falling into the
+# hole and vanishing). A 360px threshold pushed that to 0.67s and ~310px past the lip, which is
+# a noticeably late death screen for no benefit. Measured with chasm_probe.gd.
+const FALL_DEATH_DEPTH: float = 200.0
 
 # Debug instrumentation, OFF in exported release builds and ON everywhere a developer
 # or a probe runs (editor play, --headless --script, debug export templates).
@@ -192,6 +205,16 @@ func _physics_process(delta: float) -> void:
 	# already suppressed above, and apply_grounded_floor_snap() below is relaxed to
 	# pull the body back down regardless of velocity.y while boosting, so this is the
 	# only other place "no airtime during a boost" needs to be enforced.
+	#
+	# LOAD-BEARING FOR CHASMS: because is_boosting forces the grounded model whether or not
+	# there is a floor, and the grounded branch applies no gravity, a boosting player skims
+	# across a chasm at lip height on velocity = (boost_speed, 0) and lands on the far lip.
+	# That is what makes a chasm survivable during a boost, when jump input is suppressed for
+	# the full 3s -- unlike the obstacle/boost issue in CLAUDE.md's Known issues. It depends on
+	# get_collision_chord_slope_angle() returning 0 over a void, which in turn depends on
+	# TerrainGenerator keeping the void's entries in chunk_collision_sample_xs. Splitting the
+	# boost out of this gate, or pruning those samples, silently turns every boosted chasm into
+	# unavoidable death. PowerupManager.can_end_speed_boost() covers the other half.
 	is_using_grounded_model = is_boosting or (is_on_floor() and not is_jump_ascending)
 	var current_speed: float = boost_speed if is_boosting else speed_manager.current_speed
 	if is_using_grounded_model:
@@ -211,6 +234,8 @@ func _physics_process(delta: float) -> void:
 	# Measured after the snap deliberately: the snap is part of this frame's motion,
 	# and the stall/stuck watchdogs downstream must see where the body actually ended.
 	last_physics_displacement = global_position - position_before_move
+	# Before the watchdogs, so a player who has just died in a chasm never enters one.
+	update_fall_death()
 	update_stall_recovery(delta)
 	update_stuck_detection(delta)
 	if TerrainGenerator.DEBUG_TERRAIN_LOGGING or DEBUG_SLOPE_LOGGING:
@@ -370,6 +395,29 @@ func is_stalled_this_frame() -> bool:
 		and absf(velocity.x) >= DEBUG_FREEZE_MIN_VELOCITY_X
 		and absf(last_physics_displacement.x) <= DEBUG_FREEZE_MAX_MOTION_X
 	)
+
+
+# Death by falling into a chasm.
+#
+# Deliberately expressed as depth below the height FIELD rather than as an absolute Y or a
+# captured lip height, which buys two things:
+#
+#  * It needs no knowledge of chasms at all. The height field is single-valued and the body is
+#    always above the surface on real ground, so a positive depth can only mean a void -- and
+#    because get_terrain_height() returns the LIP height across a void, this is exactly "how
+#    far below the lip am I", for free.
+#  * It is STATELESS, which is what makes it correct across a world rebase. Main.apply_world_rebase
+#    runs earlier in tree order and shifts TerrainGenerator.position.y and the body by the same
+#    amount in the same frame, and get_surface_world_y() reads the generator's live
+#    global_position.y, so this difference is invariant. A captured lip Y would go stale by a
+#    full rebase quantum the moment one landed mid-fall.
+func update_fall_death() -> void:
+	if is_dead or terrain_generator == null or is_on_floor():
+		return
+
+	var surface_world_y: float = terrain_generator.get_surface_world_y(global_position.x)
+	if global_position.y - surface_world_y > FALL_DEATH_DEPTH:
+		die()
 
 
 func update_stall_recovery(delta: float) -> void:

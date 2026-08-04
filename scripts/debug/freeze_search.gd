@@ -67,6 +67,13 @@ func _init() -> void:
 	# GameManager.require_start_screen, all of which DO work reliably.
 	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
 	(main.get_node("TerrainGenerator/PowerupSpawner") as PowerupSpawner).debug_spawning_disabled = true
+	# Chasms off by default: reset_player() warps to get_terrain_height(warp_x), which over a
+	# void is mid-air, and a trial that falls to its death reads as a STALL once the tree
+	# pauses. --chasms=1 enables them for the one case this probe is uniquely good at --
+	# sweeping sub-pixel start phases across a chasm's lips, where the far lip is an exposed
+	# open chord end in a ConcavePolygonShape2D segment soup and therefore the highest-risk
+	# geometry in the feature. Warp onto the lead-in flat, never into the void.
+	(main.get_node("TerrainGenerator") as TerrainGenerator).debug_chasm_disabled = get_int_argument("--chasms", 0) == 0
 	root.add_child(main)
 	await physics_frame
 

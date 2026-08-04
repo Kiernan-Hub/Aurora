@@ -226,6 +226,7 @@ func _notification(what: int) -> void:
 
 
 func _on_start_pressed() -> void:
+	sfx_player.play_click()
 	set_state(State.PLAYING)
 	# InputSetup binds a mouse-button event to "ui_accept" so taps also register as
 	# that action (see input_setup.gd) -- meaning the SAME tap that just dismissed
@@ -264,10 +265,12 @@ func _on_player_died() -> void:
 func _on_pause_pressed() -> void:
 	if state != State.PLAYING:
 		return
+	sfx_player.play_click()
 	set_state(State.PAUSED)
 
 
 func _on_resume_pressed() -> void:
+	sfx_player.play_click()
 	set_state(State.PLAYING)
 	# Same reasoning as _on_start_pressed: this tap dismissed a Control, and without
 	# an explicit release the global Input singleton still reports "ui_accept" as
@@ -291,6 +294,7 @@ func _on_sfx_volume_changed(value: float) -> void:
 
 
 func _on_restart_pressed() -> void:
+	sfx_player.play_click()
 	# Restart from the pause screen bypasses set_state(), so it is the one exit from
 	# PAUSED that the flush there cannot cover -- and the scene is about to be destroyed.
 	if services != null:

@@ -100,6 +100,10 @@ func run_seed(session_seed: int, frame_limit: int, trace_label: String, trace_li
 	# kept firing every frame regardless).
 	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
 	(main.get_node("TerrainGenerator/PowerupSpawner") as PowerupSpawner).debug_spawning_disabled = true
+	# Chasms too. Without this the run reaches a chasm, the player runs off the lip and dies,
+	# GameManager pauses the tree, and every number below becomes meaningless rather than
+	# failing -- the exact way debug_spawning_disabled was needed for the spawners.
+	(main.get_node("TerrainGenerator") as TerrainGenerator).debug_chasm_disabled = true
 	root.add_child(main)
 	await physics_frame
 

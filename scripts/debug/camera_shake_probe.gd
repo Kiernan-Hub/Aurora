@@ -159,6 +159,17 @@ func _init() -> void:
 	# caused by that fix being a no-op: the obstacle death still happened).
 	(main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner).debug_spawning_disabled = true
 	(main.get_node("TerrainGenerator/PowerupSpawner") as PowerupSpawner).debug_spawning_disabled = true
+	# Chasms off by default for the same reason: a no-input run reaches one, runs off the lip
+	# and dies, which pauses the tree and turns the rest of the run into frozen frames
+	# misreported as one near-zero-jerk segment.
+	#
+	# --chasms=1 exists as an escape hatch, but note this probe drives NO input, so it cannot
+	# jump a chasm -- an enabled run is only meaningful with --frames kept short enough to stop
+	# before the first void (terrain_invariant_check reports each seed's first_x). The chasm
+	# label itself is not really measurable here, and does not need to be: the lips are level,
+	# so a landing produces no vertical camera step, and chasm_probe.gd already asserts landings
+	# are clean.
+	(main.get_node("TerrainGenerator") as TerrainGenerator).debug_chasm_disabled = get_int_argument("--chasms", 0) == 0
 	# Natural default segment mix on purpose: the point is comparing shake
 	# ACROSS segment types (playtest says flat is clean, gentle crests are a
 	# tiny vertical shake, mega_drop is severe), which a forced single-segment

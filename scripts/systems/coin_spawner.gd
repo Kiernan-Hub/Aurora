@@ -100,6 +100,12 @@ func spawn_coin_group(chunk_index: int) -> void:
 			continue
 
 		var world_x: float = chunk_start_x + (COIN_SLOT_FRACTIONS[slot_index] * chunk_width)
+		# A coin over a chasm is unreachable bait: get_terrain_height() returns the LIP
+		# height inside a void, so without this the coin renders in mid-air. Skipping is
+		# free here -- there are three independent slots per chunk.
+		if not terrain_generator.has_ground_at_world_x(world_x):
+			continue
+
 		var local_x: float = world_x - chunk_start_x - (chunk_width * 0.5)
 		var local_y: float = terrain_generator.get_terrain_height(world_x) - COIN_SURFACE_CLEARANCE
 

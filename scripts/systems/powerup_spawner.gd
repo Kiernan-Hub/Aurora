@@ -133,6 +133,10 @@ func _physics_process(_delta: float) -> void:
 
 
 func spawn_powerup(scene: PackedScene, world_x: float, effect: StringName) -> void:
+	# Nudged past a void rather than skipped, unlike a coin slot: this is a scheduled reward
+	# with no second chance, and silently dropping it would surface as "powerups sometimes
+	# just don't come" long after anyone remembers why.
+	world_x = terrain_generator.get_next_ground_world_x(world_x)
 	var world_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - POWERUP_SURFACE_CLEARANCE
 	var powerup: Powerup = scene.instantiate() as Powerup
 	powerup.position = Vector2(world_x, world_y)
