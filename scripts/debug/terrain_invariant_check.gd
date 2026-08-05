@@ -82,6 +82,10 @@ const CHASM_LEAD_IN_MARGIN: float = 32.0
 # falls forever), so this asserts nothing today; it exists so that Phase 2's width table cannot
 # be extended with a drop in Phase 3 without this failing first.
 const CHASM_MIN_HAZARD_MARGIN: float = 24.0
+# The mirror of CHASM_MIN_HAZARD_MARGIN, for variants that are meant to be crossed by running
+# off the edge: how much further than the void a no-input run-off must carry the player, so
+# clearing it is comfortable rather than a photo finish at the slowest legal arrival speed.
+const CHASM_DROP_CROSSING_MARGIN: float = 96.0
 
 
 func _init() -> void:
@@ -196,6 +200,26 @@ func sample_height_field(terrain_generator: TerrainGenerator, start_world_x: flo
 		var delta_height: float = height - previous_height
 		var delta_x: float = world_x - previous_world_x
 		var slope_angle: float = absf(atan2(delta_height, delta_x))
+
+		# The one legal discontinuity in the generator: a drop chasm's far lip, where the field
+		# steps from near-lip height down to the landing. Recognised structurally -- the
+		# previous sample was inside a drop void and this one is not -- rather than by
+		# tolerating any large step, so an accidental cliff anywhere else still fails.
+		#
+		# Skipped for the slope MAXIMUM too, not just the assertions: the step is near-vertical
+		# and would otherwise become the reported max_slope, hiding the real steepest terrain.
+		# check_one_chasm asserts the step's exact size, so nothing here goes unchecked.
+		var stepped_off_drop_lip: bool = (
+			terrain_generator.get_pending_exit_drop_at_world_x(previous_world_x) > 0.0
+			and terrain_generator.get_pending_exit_drop_at_world_x(world_x) <= 0.0
+			and delta_height > 0.0
+		)
+		if stepped_off_drop_lip:
+			previous_world_x = world_x
+			previous_height = height
+			world_x += sample_step
+			continue
+
 		if slope_angle > worst_slope_angle:
 			worst_slope_angle = slope_angle
 			worst_slope_world_x = world_x
@@ -266,7 +290,8 @@ func check_chasm_variant_table() -> Array[String]:
 		#    min_segment_index gate relies on.
 		var earliest_void_start_x: float = (float(min_segment_index) * TerrainGenerator.SMALL_SEGMENT_LENGTH) + TerrainGenerator.CHASM_LEAD_IN_LENGTH
 		var min_speed: float = get_min_speed_at_world_x(earliest_void_start_x)
-		var jump_reach: float = get_jump_reach(min_speed, TerrainGenerator.CHASM_EXIT_DROP)
+		var variant_exit_drop: float = float(variant.get("exit_drop", TerrainGenerator.CHASM_EXIT_DROP))
+		var jump_reach: float = get_jump_reach(min_speed, variant_exit_drop)
 		var max_allowed_width: float = jump_reach * CHASM_MAX_REACH_FRACTION
 		if void_length > max_allowed_width:
 			violations.append("CHASM_VARIANT_NOT_CLEARABLE %s width=%.1f max_allowed=%.1f at earliest world_x=%.1f (speed=%.1f reach=%.1f) -- raise min_segment_index to >= %d" % [
@@ -285,10 +310,18 @@ func check_chasm_variant_table() -> Array[String]:
 		# 4. The void plus its run-up plus the flatness margin the lip check needs must fit
 		#    inside the segment, or the far lip lands in whatever shape comes next and
 		#    CHASM_LIP_NOT_FLAT starts firing for a reason that is really a length bug.
+		#
+		#    A drop variant needs more than that: the player is airborne past the far lip for
+		#    the rest of the fall, so the landing flat must outlast the longest crossing, which
+		#    is the one taken at MAX_SPEED.
+		var variant_segment_length: float = float(variant.get("segment_length", TerrainGenerator.CHASM_SEGMENT_LENGTH))
 		var required_segment_length: float = TerrainGenerator.CHASM_LEAD_IN_LENGTH + void_length + CHASM_LIP_FLATNESS_MARGIN
-		if TerrainGenerator.CHASM_SEGMENT_LENGTH < required_segment_length:
+		if variant_exit_drop > 0.0:
+			var longest_crossing: float = SpeedManager.MAX_SPEED * sqrt(2.0 * variant_exit_drop / Player.GRAVITY)
+			required_segment_length = maxf(required_segment_length, TerrainGenerator.CHASM_LEAD_IN_LENGTH + longest_crossing + CHASM_LIP_FLATNESS_MARGIN)
+		if variant_segment_length < required_segment_length:
 			violations.append("CHASM_SEGMENT_TOO_SHORT %s segment=%.1f required=%.1f" % [
-				label, TerrainGenerator.CHASM_SEGMENT_LENGTH, required_segment_length,
+				label, variant_segment_length, required_segment_length,
 			])
 
 	return violations
@@ -401,18 +434,30 @@ func check_one_chasm(terrain_generator: TerrainGenerator, segment_index: int, vo
 	# 1. Both lips, and the ground either side of them, must be exactly level. This is the
 	#    entire safety argument for the feature: a chasm adds no slope to the world, so it
 	#    cannot reproduce the large_valley wall-wedge. If this fails, that argument is void.
+	#
+	#    With a drop chasm the far side is level too, just exit_drop lower, so each side is
+	#    checked against its OWN lip height. That turns the step into an assertion rather than
+	#    an exemption: the far lip must sit exactly exit_drop below the near one, and the whole
+	#    void must still read as flat near-lip ground (the property the boosted skim needs).
+	var spec: Dictionary = terrain_generator.get_segment_spec(segment_index)
+	var exit_drop: float = float(spec.get("exit_drop", 0.0))
 	var lip_height: float = terrain_generator.get_terrain_height(void_start_x)
-	var flatness_world_xs: Array[float] = [
-		void_start_x - CHASM_LIP_FLATNESS_MARGIN,
-		void_start_x,
-		void_end_x,
-		void_end_x + CHASM_LIP_FLATNESS_MARGIN,
+	var far_lip_height: float = lip_height + exit_drop
+	var flatness_expectations: Array[Array] = [
+		[void_start_x - CHASM_LIP_FLATNESS_MARGIN, lip_height],
+		[void_start_x, lip_height],
+		# Inside the void, which must read as near-lip ground however deep the far lip is.
+		[void_end_x - CHASM_LIP_FLATNESS_TOLERANCE_Y, lip_height],
+		[void_end_x, far_lip_height],
+		[void_end_x + CHASM_LIP_FLATNESS_MARGIN, far_lip_height],
 	]
-	for world_x: float in flatness_world_xs:
+	for expectation: Array in flatness_expectations:
+		var world_x: float = float(expectation[0])
+		var expected_height: float = float(expectation[1])
 		var height: float = terrain_generator.get_terrain_height(world_x)
-		if absf(height - lip_height) > CHASM_LIP_FLATNESS_TOLERANCE_Y:
-			violations.append("CHASM_LIP_NOT_FLAT at world_x=%.1f dy=%.4f (void starts %.1f)" % [
-				world_x, height - lip_height, void_start_x,
+		if absf(height - expected_height) > CHASM_LIP_FLATNESS_TOLERANCE_Y:
+			violations.append("CHASM_LIP_NOT_FLAT at world_x=%.1f dy=%.4f expected=%.4f (void starts %.1f drop=%.1f)" % [
+				world_x, height - expected_height, expected_height, void_start_x, exit_drop,
 			])
 			break
 
@@ -430,7 +475,6 @@ func check_one_chasm(terrain_generator: TerrainGenerator, segment_index: int, vo
 	violations.append_array(check_chasm_lip_vertices(terrain_generator, void_end_x))
 
 	# 4. Clearable at the slowest speed the player can possibly have arrived here with.
-	var exit_drop: float = float(terrain_generator.get_segment_spec(segment_index).get("exit_drop", 0.0))
 	var min_speed: float = get_min_speed_at_world_x(void_start_x)
 	var jump_reach: float = get_jump_reach(min_speed, exit_drop)
 	if void_width > jump_reach * CHASM_MAX_REACH_FRACTION:
@@ -445,13 +489,48 @@ func check_one_chasm(terrain_generator: TerrainGenerator, segment_index: int, vo
 	#
 	#    Inert at exit_drop 0 (fall_distance is 0, so any positive width passes), which is every
 	#    chasm today. It is here so that Phase 3's drop variants cannot ship as non-hazards.
-	if exit_drop > 0.0:
+	#
+	#    Scoped to must_be_jumped variants. chasm_drop is deliberately not a hazard -- it is
+	#    the spectacle beat -- so for it this assertion is not merely inapplicable, it is
+	#    backwards, and #6 asserts the opposite property instead.
+	var must_be_jumped: bool = bool(spec.get("must_be_jumped", true))
+	if exit_drop > 0.0 and must_be_jumped:
 		var free_fall_time: float = sqrt(2.0 * exit_drop / Player.GRAVITY)
 		var free_crossing_width: float = SpeedManager.MAX_SPEED * free_fall_time
 		if void_width < free_crossing_width + CHASM_MIN_HAZARD_MARGIN:
 			violations.append("CHASM_TRIVIALLY_CLEARABLE at world_x=%.1f width=%.1f drop=%.1f free_crossing=%.1f -- clearable without jumping at %.0f px/s" % [
 				void_start_x, void_width, exit_drop, free_crossing_width, SpeedManager.MAX_SPEED,
 			])
+
+	# 6. The drop chasm's own safety argument, and the inverse of #5: it must be crossable by
+	#    running straight off the near lip with NO input at all, at the slowest speed it can be
+	#    reached with. This is the whole contract -- it is scenery, not a hazard, and a player
+	#    who does nothing must survive it.
+	#
+	#    Checked at min_speed because slow is the strictest direction here: less horizontal
+	#    travel per unit of fall.
+	if not must_be_jumped:
+		if exit_drop <= 0.0:
+			violations.append("CHASM_DROP_WITHOUT_DROP at world_x=%.1f -- must_be_jumped=false needs a non-zero exit_drop, or nothing carries the player across" % void_start_x)
+		else:
+			var run_off_time: float = sqrt(2.0 * exit_drop / Player.GRAVITY)
+			var run_off_reach: float = min_speed * run_off_time
+			if run_off_reach < void_width + CHASM_DROP_CROSSING_MARGIN:
+				violations.append("CHASM_DROP_NOT_CROSSABLE at world_x=%.1f width=%.1f drop=%.1f run_off_reach=%.1f (speed=%.1f) required=%.1f" % [
+					void_start_x, void_width, exit_drop, run_off_reach, min_speed, void_width + CHASM_DROP_CROSSING_MARGIN,
+				])
+
+			# The far lip must also arrive before FALL_DEATH_DEPTH does. Player.update_fall_death
+			# measures against the far lip inside a drop void (get_pending_exit_drop_at_world_x),
+			# so what this really asserts is that the drop is deep enough to be that reference --
+			# a shallow drop under a wide void would put the player past the death depth while
+			# still airborne over the void.
+			var crossing_time: float = void_width / min_speed
+			var depth_at_far_lip: float = 0.5 * Player.GRAVITY * pow(crossing_time, 2.0)
+			if depth_at_far_lip > exit_drop + Player.FALL_DEATH_DEPTH:
+				violations.append("CHASM_DROP_FALL_DEATH at world_x=%.1f width=%.1f drop=%.1f depth_at_far_lip=%.1f limit=%.1f" % [
+					void_start_x, void_width, exit_drop, depth_at_far_lip, exit_drop + Player.FALL_DEATH_DEPTH,
+				])
 
 	return violations
 

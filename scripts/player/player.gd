@@ -227,7 +227,7 @@ func _physics_process(delta: float) -> void:
 	# TerrainGenerator keeping the void's entries in chunk_collision_sample_xs. Splitting the
 	# boost out of this gate, or pruning those samples, silently turns every boosted chasm into
 	# unavoidable death. PowerupManager.can_end_speed_boost() covers the other half.
-	is_using_grounded_model = is_boosting or (is_on_floor() and not is_jump_ascending)
+	is_using_grounded_model = (is_boosting and not is_boost_gliding_over_drop()) or (is_on_floor() and not is_jump_ascending)
 	var current_speed: float = boost_speed if is_boosting else speed_manager.current_speed
 	if is_using_grounded_model:
 		var slope_tangent: Vector2 = get_slope_tangent()
@@ -374,6 +374,30 @@ func get_slope_tangent() -> Vector2:
 # While boosting, the velocity.y gate is dropped entirely: a boost is meant to be
 # ground-locked with zero airtime, including the brief upward hop a bump can impart,
 # not just the tangential-velocity case this function was originally written for.
+# The one case where a boost must NOT force the grounded model: the player has skimmed
+# across a void and the ground that reappeared is a drop chasm's far lip, far below.
+#
+# The grounded branch applies no gravity, so without this the body holds its near-lip
+# height and glides forward over open air until the boost timer expires -- a visible hover,
+# and the reason CHASM_EXIT_DROP stayed 0 through phase 2 (docs/development/terrain.md).
+# Releasing the model here hands the body to gravity the instant there is something to fall
+# to, so a boosted drop chasm reads as a fall like any other.
+#
+# Deliberately narrow. It returns false while the player is still OVER the void, because
+# that skim is what carries a boosting player across at all (see the LOAD-BEARING FOR
+# CHASMS note above), and false within snap reach of the surface, preserving "no airtime
+# during a boost" over ordinary bumps. Only a gap the snap cannot close releases the model.
+func is_boost_gliding_over_drop() -> bool:
+	if not is_boosting or is_dead or terrain_generator == null or is_on_floor():
+		return false
+	if not terrain_generator.has_ground_at_world_x(global_position.x):
+		return false
+
+	var surface_world_y: float = terrain_generator.get_surface_world_y(global_position.x)
+	var gap_below_feet: float = (surface_world_y - global_position.y) - get_capsule_half_height()
+	return gap_below_feet > FLOOR_SNAP_LENGTH
+
+
 func apply_grounded_floor_snap() -> void:
 	if not is_using_grounded_model or is_on_floor():
 		return
@@ -427,7 +451,11 @@ func update_fall_death() -> void:
 	if is_dead or terrain_generator == null or is_on_floor():
 		return
 
+	# Inside a DROP chasm's void the field reads near-lip height while the ground being fallen
+	# toward is the far lip, exit_drop below it, so measure against that instead. Returns 0 for
+	# a level-lipped chasm, leaving the hazard variants' death behaviour untouched.
 	var surface_world_y: float = terrain_generator.get_surface_world_y(global_position.x)
+	surface_world_y += terrain_generator.get_pending_exit_drop_at_world_x(global_position.x)
 	if global_position.y - surface_world_y > FALL_DEATH_DEPTH:
 		die()
 

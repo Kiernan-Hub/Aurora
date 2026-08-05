@@ -150,7 +150,14 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 			break
 
 	var survived: bool = not player.is_dead and landed_past_far_lip
-	var expects_survival: bool = trial_mode != "no_jump"
+	# no_jump is the trial that proves the void is really cut: on a HAZARD chasm, surviving it
+	# means the ground was never removed and every other result here is meaningless. A drop
+	# chasm inverts that contract -- it is crossed by running straight off the near lip, so
+	# there no_jump must SURVIVE, and a death is the failure.
+	terrain_generator.ensure_segment_cache_for_world_x(near_lip_x)
+	var chasm_spec: Dictionary = terrain_generator.get_segment_spec(terrain_generator.find_segment_index_at_x(near_lip_x))
+	var must_be_jumped: bool = bool(chasm_spec.get("must_be_jumped", true))
+	var expects_survival: bool = trial_mode != "no_jump" or not must_be_jumped
 	var recoveries: int = player.debug_stall_recovery_count
 	# A stall recovery is a stop-ship regardless of the outcome: it means the body wedged and
 	# a watchdog papered over it, which is exactly the large_valley failure the lips are
@@ -203,6 +210,19 @@ func reset_player(world_x: float) -> void:
 		world_x,
 		terrain_generator.get_surface_world_y(world_x) - player.capsule_half_height,
 	)
+	# Rebuild the chunks around the new position. TerrainGenerator.next_chunk_index only ever
+	# INCREASES, so a warp backward past chunk_count_behind leaves the spawn point with no
+	# collision at all: _physics_process's spawn loop starts above the hole and never fills it.
+	# The player then falls through the world from frame 0 and dies ~32 frames later, which
+	# reads exactly like the chasm failing.
+	#
+	# Harmless in real play, where nothing ever moves backward -- only a warping harness can hit
+	# it. It became reachable here because a drop chasm's landing is far enough past the far lip
+	# that the next trial's spawn chunk has already been despawned. Boost trials masked it: the
+	# gravity-free grounded model follows the height field and needs no collision to survive.
+	for chunk_index: int in terrain_generator.active_chunks.keys():
+		terrain_generator.remove_chunk(chunk_index)
+	terrain_generator.initialize_chunks()
 
 
 func get_int_argument(argument_name: String, default_value: int) -> int:

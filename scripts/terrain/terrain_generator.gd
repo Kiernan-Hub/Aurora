@@ -36,6 +36,18 @@ const CHUNK_SCENE: PackedScene = preload("res://scenes/terrain/terrain_chunk.tsc
 # happened to Main.world_rebase_enabled (CLAUDE.md, "Things that break silently").
 var debug_chasm_disabled: bool = false
 
+# Playtest knob for the drop chasm: forces EVERY chasm to be the chasm_drop variant and
+# tightens the placement window, so a session meets one every ~5-13s instead of every ~30-90s.
+# Flip this to true, play, flip it back -- it is the only thing that needs changing.
+#
+# Affects placement and variant choice only; the shapes themselves are untouched, so what you
+# are rehearsing is exactly what ships. Every gate runs with it false, so a run left on cannot
+# quietly become the measured configuration.
+#
+# Plain var, not @export, for the same reason debug_chasm_disabled is: an exported bool can be
+# serialised into main.tscn and silently persist (CLAUDE.md, "Things that break silently").
+var debug_drop_chasm_rehearsal: bool = false
+
 var player: CharacterBody2D
 var next_chunk_index: int = 0
 var active_chunks: Dictionary[int, Node2D] = {}
@@ -178,11 +190,45 @@ const CHASM_LEAD_IN_LENGTH: float = 900.0
 #
 # Every entry's min_segment_index must be >= CHASM_MIN_SEGMENT_INDEX for at least one variant,
 # or get_chasm_variant() would have nothing legal to draw. The two 28s guarantee that.
+#
+# exit_drop and must_be_jumped are what phase 3 adds. The first three are HAZARDS: level
+# lips, cleared by jumping, and terrain_invariant_check holds them to CHASM_MAX_REACH_FRACTION
+# and to CHASM_TRIVIALLY_CLEARABLE. chasm_drop is not a hazard and is not meant to be -- it is
+# the "big fall" spectacle beat, crossed by simply running off the near lip, and the checker
+# asserts the OPPOSITE property for it (see check_one_chasm).
+#
+#   drop      320  from index 28   800px lower far lip. Running off at the slowest speed this
+#                                  can appear at (545 px/s) covers 545px against a 320px void,
+#                                  and 750px at cap -- so it is cleared with margin at every
+#                                  speed, and segment_length carries enough landing flat for
+#                                  the longest of those crossings.
 const CHASM_VARIANTS: Array[Dictionary] = [
-	{"label": "chasm_narrow", "void_length": 160.0, "min_segment_index": 28, "weight": 3},
-	{"label": "chasm", "void_length": 220.0, "min_segment_index": 28, "weight": 4},
-	{"label": "chasm_wide", "void_length": 280.0, "min_segment_index": 112, "weight": 3},
+	{"label": "chasm_narrow", "void_length": 160.0, "min_segment_index": 28, "weight": 3, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": 1600.0},
+	{"label": "chasm", "void_length": 220.0, "min_segment_index": 28, "weight": 4, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": 1600.0},
+	{"label": "chasm_wide", "void_length": 280.0, "min_segment_index": 112, "weight": 3, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": 1600.0},
+	{"label": "chasm_drop", "void_length": 320.0, "min_segment_index": 28, "weight": 3, "exit_drop": 800.0, "must_be_jumped": false, "segment_length": 2400.0},
 ]
+# Default far-lip height for a variant that does not state one. Kept at 0 so the hazard
+# variants above stay exactly as phase 2 shipped them.
+#
+# HOW A NON-ZERO DROP IS REPRESENTED (phase 3): the height field stays flat at NEAR-lip height
+# across the entire void and steps down once, exactly AT the far lip -- see
+# get_exit_drop_offset(). It is deliberately not a ramp across the void. A ramp would have
+# been continuous, but 800px over 320px is a 68deg chord, and get_collision_chord_slope_angle()
+# would then aim a boosting player straight down it instead of returning 0, silently breaking
+# the skim that carries a boost across any void at all (player.gd, LOAD-BEARING FOR CHASMS).
+# Keeping the void flat means every existing query is bit-identical to phase 2 and no void
+# guards are needed anywhere in this file.
+#
+# The step is the only height-field discontinuity in the generator. It is safe because nothing
+# spans it: the far lip is already a forced collision vertex (add_lip_sample_world_x) and a
+# fill-run boundary (split_surface_into_ground_runs), so no chord and no polygon edge crosses
+# it. terrain_invariant_check allows a step ONLY at a far lip and asserts it equals that
+# variant's exit_drop, which is a stronger check than the blanket one it replaces.
+#
+# The other half of phase 3 is Player.is_boost_gliding_over_drop(), which hands a boosting
+# player to gravity the moment ground reappears below them instead of hovering at near-lip
+# height until the boost timer expires.
 # Height of the far lip relative to the near lip. Still 0: level lips are the only
 # configuration where the height field inside the void is indistinguishable from ordinary flat
 # ground, so terrain_invariant_check needs no exemption for the void span and every existing
@@ -212,6 +258,10 @@ const CHASM_EXIT_DROP: float = 0.0
 # death is not a shape that may repeat adjacently. So the chasm bypasses the weight table.
 const CHASM_WINDOW_SEGMENT_COUNT: int = 56
 const CHASM_WINDOW_EDGE_MARGIN_SEGMENTS: int = 14
+# debug_drop_chasm_rehearsal's window. Offsets in [2, 7] -> spacing 5-15 segments, roughly
+# 5-13s at cruising speed. Same edge-margin rule as above, so the spacing bound still holds.
+const CHASM_REHEARSAL_WINDOW_SEGMENT_COUNT: int = 10
+const CHASM_REHEARSAL_WINDOW_EDGE_MARGIN_SEGMENTS: int = 2
 # No chasm before this segment index. The shortest segment is SMALL_SEGMENT_LENGTH, so this
 # is a HARD lower bound of 28 * 480 = 13,440 world_x, which the SpeedManager ramp puts at
 # speed >= ~545 px/s and a reach of ~436px -- 220 is 0.50 of that, inside
@@ -666,10 +716,12 @@ func is_chasm_segment_index(segment_index: int) -> bool:
 	# CHASM_MIN_SEGMENT_INDEX > 0, so the guard above means segment_index is positive here
 	# and GDScript's sign-following % cannot bite. Negative indices are real: initialize_chunks
 	# spawns from chunk_count_behind chunks before the player.
-	var window_index: int = segment_index / CHASM_WINDOW_SEGMENT_COUNT
-	var offset_in_window: int = segment_index % CHASM_WINDOW_SEGMENT_COUNT
-	var usable_offset_count: int = CHASM_WINDOW_SEGMENT_COUNT - (2 * CHASM_WINDOW_EDGE_MARGIN_SEGMENTS)
-	var chasm_offset: int = CHASM_WINDOW_EDGE_MARGIN_SEGMENTS + (get_chasm_hash(window_index) % usable_offset_count)
+	var window_segment_count: int = CHASM_REHEARSAL_WINDOW_SEGMENT_COUNT if debug_drop_chasm_rehearsal else CHASM_WINDOW_SEGMENT_COUNT
+	var edge_margin_segments: int = CHASM_REHEARSAL_WINDOW_EDGE_MARGIN_SEGMENTS if debug_drop_chasm_rehearsal else CHASM_WINDOW_EDGE_MARGIN_SEGMENTS
+	var window_index: int = segment_index / window_segment_count
+	var offset_in_window: int = segment_index % window_segment_count
+	var usable_offset_count: int = window_segment_count - (2 * edge_margin_segments)
+	var chasm_offset: int = edge_margin_segments + (get_chasm_hash(window_index) % usable_offset_count)
 	return offset_in_window == chasm_offset
 
 
@@ -691,6 +743,11 @@ func get_chasm_hash(window_index: int) -> int:
 # O(1) (a fixed 3-entry table), pure in (session_seed, segment_index), and reads no cache, for
 # the same reasons is_chasm_segment_index() does none of those things.
 func get_chasm_variant(segment_index: int) -> Dictionary:
+	if debug_drop_chasm_rehearsal:
+		for variant: Dictionary in CHASM_VARIANTS:
+			if float(variant.get("exit_drop", 0.0)) > 0.0:
+				return variant
+
 	var total_weight: int = 0
 	for variant: Dictionary in CHASM_VARIANTS:
 		if segment_index >= int(variant["min_segment_index"]):
@@ -730,7 +787,7 @@ func evaluate_segment_offset(spec: Dictionary, segment_progress: float) -> float
 	var segment_type: int = int(spec["type"])
 	var magnitude: float = float(spec["magnitude"])
 	if segment_type == SEGMENT_TYPE_FLAT:
-		return 0.0
+		return get_exit_drop_offset(spec, segment_progress)
 	if segment_type == SEGMENT_TYPE_DOWNHILL:
 		return get_transition_profile(segment_progress) * magnitude
 	if segment_type == SEGMENT_TYPE_UPHILL:
@@ -741,6 +798,50 @@ func evaluate_segment_offset(spec: Dictionary, segment_progress: float) -> float
 
 	# Adding the same profile mirrors the hill into a valley below baseline.
 	return get_curve_profile(segment_progress) * magnitude
+
+
+# 0 everywhere up to a drop chasm's far lip, exit_drop from the far lip onward -- so the void
+# itself reads as ordinary flat ground at NEAR-lip height and only the far lip steps down. See
+# the CHASM_EXIT_DROP block for why a step beats a ramp here.
+#
+# Evaluating this at progress 1.0 yields exit_drop, which is exactly the segment's baseline
+# delta, so the following segment starts at the lower height with no separate bookkeeping --
+# the same "derive the delta from the shape" contract every other profile honours.
+#
+# Non-chasm flat segments carry no exit_drop key and return 0.0 through the first branch, so
+# this is a no-op for them.
+# How much further down real ground lies than get_terrain_height() reports at this world_x.
+# Non-zero ONLY inside a drop chasm's void, where the field deliberately reads NEAR-lip height
+# but the ground the player is falling toward is the far lip, exit_drop below.
+#
+# Player.update_fall_death() adds this to the surface it measures against. Without it a drop
+# chasm kills the player mid-crossing for doing exactly what the feature asks: at 545 px/s a
+# 320px void takes 0.587s, which is a 276px fall against a FALL_DEATH_DEPTH of 200.
+#
+# Exactly 0 for a level-lipped chasm, so the hazard variants' death behaviour -- the thing
+# that makes them hazards -- is bit-identical to phase 2.
+func get_pending_exit_drop_at_world_x(world_x: float) -> float:
+	var void_span: Dictionary = get_void_span_at_world_x(world_x)
+	if void_span.is_empty():
+		return 0.0
+	if world_x < float(void_span["start_x"]) or world_x >= float(void_span["end_x"]):
+		return 0.0
+
+	var spec: Dictionary = get_segment_spec(find_segment_index_at_x(world_x))
+	return float(spec.get("exit_drop", 0.0))
+
+
+func get_exit_drop_offset(spec: Dictionary, segment_progress: float) -> float:
+	var exit_drop: float = float(spec.get("exit_drop", 0.0))
+	if exit_drop <= 0.0:
+		return 0.0
+
+	var void_end_offset: float = float(spec["void_start_offset"]) + float(spec["void_length"])
+	# Half-open to match has_ground_at_world_x: the far lip x is ground, and it is the first x
+	# at the LOWER height.
+	if (segment_progress * float(spec["length"])) < void_end_offset:
+		return 0.0
+	return exit_drop
 
 
 # World-space Y of the terrain surface at world_x. get_terrain_height() alone is a
@@ -881,12 +982,13 @@ func build_segment_spec(segment_index: int) -> Dictionary:
 		return {
 			"type": SEGMENT_TYPE_FLAT,
 			"tier": SEGMENT_TIER_MEDIUM,
-			"length": CHASM_SEGMENT_LENGTH,
+			"length": float(chasm_variant.get("segment_length", CHASM_SEGMENT_LENGTH)),
 			"magnitude": 0.0,
 			"label": String(chasm_variant["label"]),
 			"void_start_offset": CHASM_LEAD_IN_LENGTH,
 			"void_length": float(chasm_variant["void_length"]),
-			"exit_drop": CHASM_EXIT_DROP,
+			"exit_drop": float(chasm_variant.get("exit_drop", CHASM_EXIT_DROP)),
+			"must_be_jumped": bool(chasm_variant.get("must_be_jumped", true)),
 		}
 
 	var segment_selection: int = get_segment_selection(segment_index)

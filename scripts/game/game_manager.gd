@@ -341,7 +341,10 @@ func _on_start_pressed() -> void:
 
 
 func _on_player_jumped() -> void:
-	sfx_player.play_jump()
+	# Jump SFX muted 2026-08-04: the placeholder WAV is grating on a run where you jump
+	# constantly. The signal, the pool voice and SfxPlayer.play_jump() all stay wired, so
+	# restoring it is uncommenting one line once there is a real sound.
+	pass
 
 
 func _on_powerup_collected() -> void:
