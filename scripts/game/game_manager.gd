@@ -210,8 +210,9 @@ func _ready() -> void:
 		push_error("GameManager requires a PowerupManager at %s." % powerup_manager_path)
 		return
 
-	powerup_manager.speed_boost_started.connect(_on_powerup_collected)
-	powerup_manager.jump_boost_started.connect(_on_powerup_collected)
+	# unbind(1) because the pickup SFX is the same for every kind -- this listener does not
+	# care which effect started, and one connection now covers every future powerup.
+	powerup_manager.effect_started.connect(_on_powerup_collected.unbind(1))
 
 	# The shop is wired LAST and OPTIONALLY: push_error on failure but deliberately no
 	# `return`. Every block above is a hard gate, and any one of them firing skips

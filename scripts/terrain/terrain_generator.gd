@@ -452,7 +452,7 @@ func build_chunk_surface(chunk: StaticBody2D, chunk_index: int) -> void:
 	# chunk's first and last vertex when nothing brackets world_x, so dropping the entries would
 	# make it return an arbitrary 512px-chord angle over a void instead of the correct 0. That 0
 	# is load-bearing: it is what carries a speed-boosting player across a chasm (see the boost
-	# note in player.gd's velocity model and PowerupManager.can_end_speed_boost).
+	# note in player.gd's velocity model and PowerupManager.can_end_effect).
 	var collision: ConcavePolygonShape2D = ConcavePolygonShape2D.new()
 	collision.set_segments(segment_points)
 	collision_shape.shape = collision

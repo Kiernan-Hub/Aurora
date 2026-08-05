@@ -226,7 +226,8 @@ func _physics_process(delta: float) -> void:
 	# get_collision_chord_slope_angle() returning 0 over a void, which in turn depends on
 	# TerrainGenerator keeping the void's entries in chunk_collision_sample_xs. Splitting the
 	# boost out of this gate, or pruning those samples, silently turns every boosted chasm into
-	# unavoidable death. PowerupManager.can_end_speed_boost() covers the other half.
+	# unavoidable death. PowerupManager.can_end_effect() / VOID_GUARDED_EFFECTS covers the
+	# other half.
 	is_using_grounded_model = (is_boosting and not is_boost_gliding_over_drop()) or (is_on_floor() and not is_jump_ascending)
 	var current_speed: float = boost_speed if is_boosting else speed_manager.current_speed
 	if is_using_grounded_model:
