@@ -19,6 +19,7 @@ const EFFECT_SPEED_BOOST: StringName = &"speed_boost"
 const EFFECT_JUMP_BOOST: StringName = &"jump_boost"
 const EFFECT_COIN_MAGNET: StringName = &"coin_magnet"
 const EFFECT_COIN_DOUBLER: StringName = &"coin_doubler"
+const EFFECT_SHIELD: StringName = &"shield"
 
 const SPEED_BOOST_DURATION: float = 3.0
 const SPEED_BOOST_SPEED: float = 1000.0
@@ -98,6 +99,9 @@ func _ready() -> void:
 		return
 
 	powerup_spawner.powerup_collected.connect(start_effect)
+	# Shield is consumed by absorb_hit(), not by _process()'s timer -- Player is the
+	# only thing that knows when that happens, so it tells us via this signal.
+	player.shield_consumed.connect(_on_shield_consumed)
 	powerup_label.visible = false
 
 
@@ -140,6 +144,8 @@ func start_effect(effect: StringName) -> void:
 		EFFECT_COIN_MAGNET:
 			if coin_spawner != null:
 				coin_spawner.set_magnet_active(true)
+		EFFECT_SHIELD:
+			player.gain_shield()
 	# EFFECT_COIN_DOUBLER has no case: EFFECT_DURATIONS, EFFECT_LABEL_FORMATS and
 	# EFFECT_COIN_MULTIPLIERS above are the entire implementation, nothing else to start.
 	refresh_coin_multiplier()
@@ -161,6 +167,13 @@ func end_effect(effect: StringName) -> void:
 				coin_spawner.set_magnet_active(false)
 	refresh_coin_multiplier()
 	effect_ended.emit(effect)
+
+
+# Player has already cleared has_shield and its own visual by the time this fires; all
+# that's left here is our bookkeeping, so active_effects and the label stop reporting a
+# shield that's already gone.
+func _on_shield_consumed() -> void:
+	end_effect(EFFECT_SHIELD)
 
 
 func apply_speed_boost_start() -> void:

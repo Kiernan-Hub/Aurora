@@ -18,4 +18,4 @@ func _on_body_entered(body: Node2D) -> void:
 	has_triggered = true
 	set_deferred("monitoring", false)
 	var player: Player = body as Player
-	player.die()
+	player.absorb_hit()

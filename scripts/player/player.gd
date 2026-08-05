@@ -4,6 +4,9 @@ class_name Player
 
 signal died
 signal jumped
+# Emitted when a held shield absorbs an obstacle hit instead of dying. PowerupManager
+# listens so it can clear its own bookkeeping without owning has_shield itself.
+signal shield_consumed
 signal debug_freeze_detected(session_seed: int)
 signal debug_stall_recovered(session_seed: int, world_x: float)
 signal debug_stuck_detected(session_seed: int, world_x: float)
@@ -16,6 +19,8 @@ const JUMP_BUFFER_DURATION: float = 0.12
 const FLOOR_SNAP_LENGTH: float = 18.0
 const ROTATION_SMOOTHNESS: float = 12.0
 const DEBUG_SLOPE_LOGGING: bool = false
+const PLAYER_DEFAULT_COLOR: Color = Color(0.85, 0.93, 1.0)
+const PLAYER_SHIELD_COLOR: Color = Color(0.4, 0.85, 1.0)
 # Fast enough to sweep the full INITIAL_SPEED..MAX_SPEED range in well under a
 # second, since the point is skipping the ~62s automatic ramp during testing.
 const MANUAL_SPEED_ADJUST_RATE: float = 300.0
@@ -85,6 +90,11 @@ var DEBUG_FREEZE_HISTORY_FRAME_COUNT: int = 20
 
 var speed_manager: RefCounted
 var is_dead: bool = false
+# One-hit shield: consumed by absorb_hit(), never timed. update_fall_death() and both
+# stall/stuck watchdogs must stay untouched by this -- a shield that swallowed fall-death
+# would leave the player sliding forever below the world with no recovery, which is worse
+# than the death it prevented. Obstacle collisions only.
+var has_shield: bool = false
 # Powerup boost: ground-locked speed override driven externally by
 # PowerupManager (start_boost/end_boost). Deliberately not part of
 # SpeedManager -- the boost speed exceeds SpeedManager.MAX_SPEED and jump is
@@ -164,7 +174,7 @@ func _ready() -> void:
 	floor_stop_on_slope = false
 	floor_constant_speed = true
 	velocity = Vector2(speed_manager.current_speed, 0.0)
-	color_rect.color = Color(0.85, 0.93, 1.0)
+	color_rect.color = PLAYER_DEFAULT_COLOR
 	color_rect.pivot_offset = color_rect.size * 0.5
 	airborne_rotation = color_rect.rotation
 	if terrain_generator == null:
@@ -711,6 +721,26 @@ func end_boost() -> void:
 
 func play_flight_effect(duration: float) -> void:
 	flight_trail.play(duration)
+
+
+func gain_shield() -> void:
+	has_shield = true
+	color_rect.color = PLAYER_SHIELD_COLOR
+
+
+# Called by obstacle.gd instead of die() on every obstacle hit. Returns whether the
+# player survived, so the caller doesn't need to know about has_shield -- it just
+# self-disables either way. Obstacle collisions only: fall death and both watchdogs
+# call die()/recovery directly and are never routed through here.
+func absorb_hit() -> bool:
+	if has_shield:
+		has_shield = false
+		color_rect.color = PLAYER_DEFAULT_COLOR
+		shield_consumed.emit()
+		return true
+
+	die()
+	return false
 
 
 func die() -> void:
