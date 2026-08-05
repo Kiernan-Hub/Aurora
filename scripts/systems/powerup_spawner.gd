@@ -15,9 +15,16 @@ signal powerup_collected(effect: StringName)
 # SPEED_BOOST_SPEED) for 3s, well above MAX_SPEED's 750, and a probe player collects
 # every pickup it runs into. Left on, that injects two instantaneous speed step-changes
 # per boost into any measurement of scroll rate or camera motion. It was measured:
-# camera_shake_probe with powerups live reported flat mean jerk 0.0066 against the
-# documented 0.002 baseline, with scroll_rate_x topping out at 17.2 px/frame -- 1032
-# px/s, impossible under the ramp alone -- and that was the tell.
+# camera_shake_probe with powerups live reported flat mean jerk 0.0066, with scroll_rate_x
+# topping out at 17.2 px/frame -- 1032 px/s, impossible under the ramp alone -- and the
+# scroll rate was the tell.
+#
+# Use the SCROLL RATE, not the jerk, to spot this. The "0.002 flat baseline" this comment
+# used to cite as the jerk comparison no longer matches what the probe prints: on this
+# branch a clean tree measures flat mean jerk 0.00580 (seed 941462462, 7000 frames,
+# warmup 120), verified 2026-08-05 by stashing and re-running. 0.0066-vs-0.002 therefore
+# looks like a much sharper signal than it is, and it cost a full A/B to rule out.
+# scroll_rate_x is unambiguous: nothing but a boost can exceed MAX_SPEED's 12.5 px/frame.
 #
 # Every harness that steps past FIRST_POWERUP_MIN_TIME (freeze_search.gd,
 # freeze_ab_runner.gd, stall_recovery_probe.gd, camera_shake_probe.gd,

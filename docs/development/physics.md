@@ -140,8 +140,10 @@ the model gate, or pruning those samples, silently breaks it. `chasm_probe.gd`'s
 is the only thing that would catch it.
 
 The remaining hole is a boost *expiring* mid-void — gravity would return at lip height with no
-jump available. `PowerupManager.can_end_speed_boost()` holds the boost until the player is over
-ground again; the extension is at most ~0.25s.
+jump available. `PowerupManager.can_end_effect()` holds the boost until the player is over
+ground again; the extension is at most ~0.25s. Which effects get that treatment is the
+`VOID_GUARDED_EFFECTS` list — any future effect that is the only thing holding the player up
+over a void belongs on it.
 
 ## Stall watchdogs
 

@@ -170,7 +170,10 @@ asked. Full history: `docs/development/dead_code.md`.
    **coin wallet** every run banks into on death and per-upgrade levels
 4. Obstacles + death — **working**. Singles from t=20s, then every 12–30s
 5. Powerups — **working**. Speed boost (1000 px/s, 3s, 2× coins) and jump boost (×√2,
-   3s), independent ~60s-average schedules
+   3s). **One** ~30s-average schedule decides *when*; `PowerupSpawner.POWERUP_TABLE`
+   (effect/scene/weight) decides *which*, so a new kind is one table row and does not
+   change pickup density. `PowerupManager` holds effects in one `active_effects` dict
+   with duration/label/coin-multiplier tables beside it
 6. Screens — **working**. START/PLAYING/PAUSED/DEAD/SHOP
 7. **Audio — working (SFX only).** `M111/stopaster → Music, SFX`; `SfxPlayer` plays
    jump/coin/powerup/death from a 6-voice pool (placeholder WAVs, `assets/audio/sfx/`).
