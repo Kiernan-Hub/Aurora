@@ -80,6 +80,7 @@ var DEBUG_FREEZE_HISTORY_FRAME_COUNT: int = 20
 
 @onready var color_rect: ColorRect = $ColorRect
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
+@onready var flight_trail: FlightTrail = $FlightTrail
 @onready var terrain_generator: TerrainGenerator = get_node_or_null("../TerrainGenerator") as TerrainGenerator
 
 var speed_manager: RefCounted
@@ -96,6 +97,17 @@ var boost_speed: float = 0.0
 # interact (a boosted jump would be a contradiction of "no airtime" anyway, but
 # nothing currently prevents picking up a jump ball mid speed-boost).
 var jump_boost_multiplier: float = 1.0
+# Persistent meta-progression jump multiplier, set once per run by
+# GameManager.apply_upgrades() from the save file. SEPARATE from jump_boost_multiplier
+# on purpose: end_jump_boost() resets that one to 1.0 ABSOLUTELY, so sharing the var
+# would silently wipe a purchased upgrade the moment a jump powerup expired. The two
+# compose multiplicatively at the jump site.
+#
+# Defaults to 1.0, which is the fully-upgraded value and therefore today's physics
+# exactly. That default is what every --headless --script probe measures:
+# GameManager.apply_upgrades() deliberately skips headless runs, so no gate can be
+# perturbed by whatever is in the developer's own save.dat. See the comment there.
+var upgrade_jump_multiplier: float = 1.0
 var debug_rotation_timer: float = 0.0
 var airborne_rotation: float = 0.0
 var was_grounded_last_frame: bool = false
@@ -185,7 +197,7 @@ func _physics_process(delta: float) -> void:
 		jump_buffer_timer = maxf(jump_buffer_timer - delta, 0.0)
 
 	if not is_boosting and coyote_timer > 0.0 and jump_buffer_timer > 0.0:
-		velocity.y = JUMP_VELOCITY * jump_boost_multiplier
+		velocity.y = JUMP_VELOCITY * upgrade_jump_multiplier * jump_boost_multiplier
 		coyote_timer = 0.0
 		jump_buffer_timer = 0.0
 		is_jump_ascending = true
@@ -666,6 +678,10 @@ func start_boost(new_boost_speed: float) -> void:
 
 func end_boost() -> void:
 	is_boosting = false
+
+
+func play_flight_effect(duration: float) -> void:
+	flight_trail.play(duration)
 
 
 func die() -> void:

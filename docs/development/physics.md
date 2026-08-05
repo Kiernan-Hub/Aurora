@@ -18,6 +18,15 @@ so forward progress slows on steep terrain.
 Coyote time and jump buffer are both 0.12s. Jump is the built-in `ui_accept` action plus
 the separate touch path (see `input.md`).
 
+**Two independent jump multipliers compose at the impulse**:
+`velocity.y = JUMP_VELOCITY * upgrade_jump_multiplier * jump_boost_multiplier`.
+They are separate vars on purpose. `jump_boost_multiplier` is the powerup (√2, temporary)
+and `end_jump_boost()` resets it to 1.0 **absolutely**; `upgrade_jump_multiplier` is the
+purchased meta-progression level (×0.60 → ×1.00, fixed for a whole run). Sharing one var
+would mean every expiring powerup silently wiped the player's purchase. Only
+`GameManager.apply_upgrades()` may write the upgrade one, and it skips headless runs so no
+probe measures physics derived from the developer's own `save.dat` — see `CLAUDE.md`.
+
 The gate is `is_on_floor() and not is_jump_ascending`, **not** the former
 `velocity.y >= 0.0`. That old test was trying to let a jump escape the grounded model,
 but it also caught every *rising* frame, because the grounded model's own velocity is

@@ -87,6 +87,14 @@ func initialize_schedule() -> void:
 	next_speed_powerup_time = FIRST_POWERUP_MIN_TIME + get_powerup_hash(0, 0, 0) * (POWERUP_INTERVAL_MAX - POWERUP_INTERVAL_MIN)
 	next_jump_powerup_time = FIRST_POWERUP_MIN_TIME + get_powerup_hash(0, 1, 0) * (POWERUP_INTERVAL_MAX - POWERUP_INTERVAL_MIN)
 
+	# TEMPORARY debug-only test aid for the flight_trail effect: puts the first speed
+	# powerup within a couple seconds of spawn instead of the usual 15-45s wait.
+	# Self-gated by is_debug_build() like the rest of the project's debug instrumentation,
+	# so it never ships and never affects a headless probe (they all set
+	# debug_spawning_disabled before this runs). Remove once the effect is confirmed.
+	if OS.is_debug_build():
+		next_speed_powerup_time = 2.0
+
 
 func _physics_process(_delta: float) -> void:
 	# Explicit null guard rather than trusting _ready()'s set_physics_process(false):

@@ -97,16 +97,18 @@ text = "Tap / Space to jump
 Grab the balls, dodge the red boxes"
 horizontal_alignment = 1
 
-[node name="TapPromptLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer"]
-theme_override_font_sizes/font_size = 18
-text = "TAP TO START"
-horizontal_alignment = 1
+[node name="MenuButtons" type="HBoxContainer" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer"]
+alignment = 1
 
-[node name="StartButton" type="Button" parent="CanvasLayer/StartScreen"]
-flat = true
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
+[node name="StartButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons"]
+custom_minimum_size = Vector2(100, 44)
+theme_override_font_sizes/font_size = 16
+text = "Start"
+
+[node name="UpgradesButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons"]
+custom_minimum_size = Vector2(100, 44)
+theme_override_font_sizes/font_size = 16
+text = "Upgrades"
 
 [node name="DeathScreen" type="Control" parent="CanvasLayer" unique_id=262636423]
 visible = false
@@ -140,8 +142,14 @@ text = "Coins: 0
 Time: 0:00"
 horizontal_alignment = 1
 
+[node name="ShopButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
+text = "Upgrades"
+
 [node name="RestartButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
 text = "Restart"
+
+[node name="DeathHomeButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
+text = "Home"
 
 [node name="TimerLabel" type="Label" parent="CanvasLayer" unique_id=738491056]
 anchors_preset = 1
@@ -237,6 +245,9 @@ text = "Resume"
 [node name="PauseRestartButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
 text = "Restart"
 
+[node name="PauseHomeButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+text = "Home"
+
 [node name="MusicLabel" type="Label" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
 theme_override_font_sizes/font_size = 13
 text = "Music"
@@ -256,3 +267,55 @@ horizontal_alignment = 1
 max_value = 1.0
 step = 0.05
 value = 1.0
+
+[node name="ShopScreen" type="Control" parent="CanvasLayer"]
+visible = false
+process_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Overlay" type="ColorRect" parent="CanvasLayer/ShopScreen"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.06, 0.1, 0.94)
+
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/ShopScreen"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/ShopScreen/CenterContainer"]
+custom_minimum_size = Vector2(260, 0)
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 32
+text = "Upgrades"
+horizontal_alignment = 1
+
+[node name="WalletLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 16
+text = "Wallet: 0"
+horizontal_alignment = 1
+
+[node name="JumpLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 13
+text = "Jump  Lv 0/4"
+horizontal_alignment = 1
+
+[node name="BuyJumpButton" type="Button" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+text = "Jump"
+
+[node name="ResetProgressButton" type="Button" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+text = "Reset Progress"
+
+[node name="CloseButton" type="Button" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+text = "Back"
+
+[node name="ResetConfirmDialog" type="ConfirmationDialog" parent="CanvasLayer/ShopScreen"]
+title = "Reset Progress?"
+dialog_text = "This permanently deletes your best score, coin wallet, and every upgrade level. This cannot be undone."
+ok_button_text = "Reset Everything"
+cancel_button_text = "Cancel"

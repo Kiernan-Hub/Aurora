@@ -84,8 +84,14 @@ func start_speed_boost() -> void:
 	is_speed_boost_active = true
 	speed_boost_time_remaining = SPEED_BOOST_DURATION
 	coin_multiplier = COIN_MULTIPLIER
+	# Captured before start_boost() snaps the player onto the grounded model, so an
+	# airborne pickup still reads as airborne even though the boost itself makes
+	# is_on_floor() irrelevant for the rest of its duration.
+	var was_airborne: bool = not player.is_on_floor()
 	player.start_boost(SPEED_BOOST_SPEED)
 	speed_boost_started.emit()
+	if was_airborne:
+		player.play_flight_effect(SPEED_BOOST_DURATION)
 
 
 # A speed boost must not expire while the player is over a chasm.

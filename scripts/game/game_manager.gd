@@ -5,10 +5,12 @@ class_name GameManager
 
 @export var player_path: NodePath = NodePath("../Player")
 @export var start_screen_path: NodePath = NodePath("../CanvasLayer/StartScreen")
-@export var start_button_path: NodePath = NodePath("../CanvasLayer/StartScreen/StartButton")
+@export var start_button_path: NodePath = NodePath("../CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons/StartButton")
+@export var start_upgrades_button_path: NodePath = NodePath("../CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons/UpgradesButton")
 @export var death_screen_path: NodePath = NodePath("../CanvasLayer/DeathScreen")
 @export var death_stats_label_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/StatsLabel")
 @export var restart_button_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/RestartButton")
+@export var death_home_button_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/DeathHomeButton")
 @export var coin_spawner_path: NodePath = NodePath("../TerrainGenerator/CoinSpawner")
 @export var coin_label_path: NodePath = NodePath("../CanvasLayer/CoinLabel")
 @export var powerup_manager_path: NodePath = NodePath("../PowerupManager")
@@ -17,8 +19,18 @@ class_name GameManager
 @export var pause_button_path: NodePath = NodePath("../CanvasLayer/PauseButton")
 @export var resume_button_path: NodePath = NodePath("../CanvasLayer/PauseScreen/CenterContainer/VBoxContainer/ResumeButton")
 @export var pause_restart_button_path: NodePath = NodePath("../CanvasLayer/PauseScreen/CenterContainer/VBoxContainer/PauseRestartButton")
+@export var pause_home_button_path: NodePath = NodePath("../CanvasLayer/PauseScreen/CenterContainer/VBoxContainer/PauseHomeButton")
 @export var music_slider_path: NodePath = NodePath("../CanvasLayer/PauseScreen/CenterContainer/VBoxContainer/MusicSlider")
 @export var sfx_slider_path: NodePath = NodePath("../CanvasLayer/PauseScreen/CenterContainer/VBoxContainer/SfxSlider")
+# The shop is wired OPTIONALLY -- see the note above its block in _ready().
+@export var shop_screen_path: NodePath = NodePath("../CanvasLayer/ShopScreen")
+@export var shop_wallet_label_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/WalletLabel")
+@export var shop_jump_label_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/JumpLabel")
+@export var shop_jump_button_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/BuyJumpButton")
+@export var shop_close_button_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/CloseButton")
+@export var death_shop_button_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/ShopButton")
+@export var reset_progress_button_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/ResetProgressButton")
+@export var reset_confirm_dialog_path: NodePath = NodePath("../CanvasLayer/ShopScreen/ResetConfirmDialog")
 
 # Deliberately not @export, same reasoning as Main.world_rebase_enabled: this is
 # the "is this a real playthrough" switch, and main.tscn silently serializing it to
@@ -39,13 +51,16 @@ var player: Player
 var main: Main
 var start_screen: Control
 var start_button: Button
+var start_upgrades_button: Button
 var death_screen: Control
 var death_stats_label: Label
 var restart_button: Button
+var death_home_button: Button
 var pause_screen: Control
 var pause_button: Button
 var resume_button: Button
 var pause_restart_button: Button
+var pause_home_button: Button
 var music_slider: HSlider
 var sfx_slider: HSlider
 var coin_spawner: CoinSpawner
@@ -53,17 +68,43 @@ var coin_label: Label
 var coin_count: int = 0
 var powerup_manager: PowerupManager
 var sfx_player: SfxPlayer
+var shop_screen: Control
+var shop_wallet_label: Label
+var shop_jump_label: Label
+var shop_jump_button: Button
+var shop_close_button: Button
+var death_shop_button: Button
+var reset_progress_button: Button
+var reset_confirm_dialog: ConfirmationDialog
 
 # Was previously implicit in get_tree().paused plus which Control happened to be
 # visible. That works for two screens and stops working at four -- a pause screen makes
 # "paused" ambiguous (menu pause or death pause?) and the audio layer needs to know
 # which transition it is reacting to. set_state() is now the ONE place that touches
 # get_tree().paused or screen visibility.
-enum State { START, PLAYING, PAUSED, DEAD }
+#
+# SHOP is entered only from DEAD (the between-runs upgrade screen) and returns there, so
+# it needs no new pause semantics: `paused = new_state != PLAYING` below already covers
+# it. Purchases apply to the NEXT run, because leaving the shop leads to a restart, and
+# the rebuilt GameManager reads the save file in _ready(). There is deliberately no path
+# that mutates player stats mid-run.
+enum State { START, PLAYING, PAUSED, DEAD, SHOP }
 
 signal state_changed(new_state: State)
 
 var state: State = State.START
+# Which screen SHOP is a modal over: the shop is reachable from either the START
+# screen (the new Upgrades button) or the DEAD screen (the original entry point), and
+# closing it must return to whichever one opened it -- otherwise closing the shop from
+# the main menu would incorrectly reveal the (irrelevant, stale) death screen behind it.
+var shop_return_state: State = State.DEAD
+
+# Set right before a "quick restart" reload_current_scene() call and consumed by the
+# next _ready(). A local var can't survive the reload -- the whole script instance is
+# destroyed and rebuilt -- so this has to be static to cross that boundary. Always
+# false except in the one-frame window between _on_quick_restart_pressed() and the
+# rebuilt GameManager's _ready() reading it.
+static var pending_quick_restart: bool = false
 # Null in headless harness runs -- see GameServices. Every use is null-guarded, and a
 # null store simply means this run's best score is not persisted, which is exactly
 # what a probe wants anyway.
@@ -97,21 +138,27 @@ func _ready() -> void:
 	death_screen = get_node_or_null(death_screen_path) as Control
 	death_stats_label = get_node_or_null(death_stats_label_path) as Label
 	restart_button = get_node_or_null(restart_button_path) as Button
-	if death_screen == null or death_stats_label == null or restart_button == null:
-		push_error("GameManager requires a death screen at %s." % death_screen_path)
+	death_home_button = get_node_or_null(death_home_button_path) as Button
+	if death_screen == null or death_stats_label == null or restart_button == null or death_home_button == null:
+		push_error("GameManager requires a death screen at %s with restart and home buttons." % death_screen_path)
 		return
 
-	restart_button.pressed.connect(_on_restart_pressed)
+	# "Restart" jumps straight back into a new run (see _on_quick_restart_pressed);
+	# "Home" is the one that lands on the START/main screen, same as the pause
+	# screen's Home button and the same handler.
+	restart_button.pressed.connect(_on_quick_restart_pressed)
+	death_home_button.pressed.connect(_on_restart_pressed)
 	player.died.connect(_on_player_died)
 
 	pause_screen = get_node_or_null(pause_screen_path) as Control
 	pause_button = get_node_or_null(pause_button_path) as Button
 	resume_button = get_node_or_null(resume_button_path) as Button
 	pause_restart_button = get_node_or_null(pause_restart_button_path) as Button
+	pause_home_button = get_node_or_null(pause_home_button_path) as Button
 	music_slider = get_node_or_null(music_slider_path) as HSlider
 	sfx_slider = get_node_or_null(sfx_slider_path) as HSlider
-	if pause_screen == null or pause_button == null or resume_button == null or pause_restart_button == null or music_slider == null or sfx_slider == null:
-		push_error("GameManager requires a pause screen at %s with a pause button, resume/restart buttons and two volume sliders." % pause_screen_path)
+	if pause_screen == null or pause_button == null or resume_button == null or pause_restart_button == null or pause_home_button == null or music_slider == null or sfx_slider == null:
+		push_error("GameManager requires a pause screen at %s with a pause button, resume/restart/home buttons and two volume sliders." % pause_screen_path)
 		return
 
 	# button_down, NOT pressed. BaseButton emits `pressed` on pointer-UP, which leaves
@@ -135,7 +182,8 @@ func _ready() -> void:
 	# an EARLIER frame, so its stamp is already stale by the first gameplay frame.
 	pause_button.button_down.connect(_on_pause_pressed)
 	resume_button.pressed.connect(_on_resume_pressed)
-	pause_restart_button.pressed.connect(_on_restart_pressed)
+	pause_restart_button.pressed.connect(_on_quick_restart_pressed)
+	pause_home_button.pressed.connect(_on_restart_pressed)
 
 	if services != null:
 		music_slider.value = services.save_store.music_volume
@@ -165,9 +213,50 @@ func _ready() -> void:
 	powerup_manager.speed_boost_started.connect(_on_powerup_collected)
 	powerup_manager.jump_boost_started.connect(_on_powerup_collected)
 
+	# The shop is wired LAST and OPTIONALLY: push_error on failure but deliberately no
+	# `return`. Every block above is a hard gate, and any one of them firing skips
+	# set_state() entirely -- which leaves a fully running game underneath an
+	# un-dismissable dark overlay, because no screen's visibility was ever initialised.
+	# Eight of those already exist; a ninth for a between-runs convenience screen would
+	# be a bad trade. A missing shop costs the shop, not the game.
+	shop_screen = get_node_or_null(shop_screen_path) as Control
+	shop_wallet_label = get_node_or_null(shop_wallet_label_path) as Label
+	shop_jump_label = get_node_or_null(shop_jump_label_path) as Label
+	shop_jump_button = get_node_or_null(shop_jump_button_path) as Button
+	shop_close_button = get_node_or_null(shop_close_button_path) as Button
+	death_shop_button = get_node_or_null(death_shop_button_path) as Button
+	start_upgrades_button = get_node_or_null(start_upgrades_button_path) as Button
+	reset_progress_button = get_node_or_null(reset_progress_button_path) as Button
+	reset_confirm_dialog = get_node_or_null(reset_confirm_dialog_path) as ConfirmationDialog
+	if shop_screen == null or shop_wallet_label == null or shop_jump_label == null or shop_jump_button == null or shop_close_button == null or death_shop_button == null or start_upgrades_button == null or reset_progress_button == null or reset_confirm_dialog == null:
+		push_error("GameManager could not wire the upgrade shop at %s; the game runs without it." % shop_screen_path)
+	else:
+		shop_jump_button.pressed.connect(_on_buy_jump_pressed)
+		shop_close_button.pressed.connect(_on_shop_close_pressed)
+		death_shop_button.pressed.connect(_on_shop_pressed)
+		start_upgrades_button.pressed.connect(_on_start_shop_pressed)
+		reset_progress_button.pressed.connect(_on_reset_progress_pressed)
+		reset_confirm_dialog.confirmed.connect(_on_reset_progress_confirmed)
+
+	# Must run before the first gameplay frame. Safe here: Player is an earlier sibling
+	# in main.tscn so its _ready() has already run, and upgrade_jump_multiplier is only
+	# read inside _physics_process, which cannot start until every _ready() completes.
+	apply_upgrades()
+
 	# require_start_screen=false is the harness opt-out, and it has to skip straight to
-	# PLAYING rather than sitting on START -- see the comment on that var.
-	set_state(State.START if require_start_screen else State.PLAYING)
+	# PLAYING rather than sitting on START -- see the comment on that var. A quick
+	# restart (see _on_quick_restart_pressed) takes the same PLAYING shortcut, via the
+	# static flag rather than this instance var, because it has to survive the reload.
+	var quick_restart: bool = GameManager.pending_quick_restart
+	GameManager.pending_quick_restart = false
+	if quick_restart:
+		set_state(State.PLAYING)
+		# Same reasoning as _on_start_pressed / _on_resume_pressed: the click that
+		# triggered the reload is still "just pressed" on the Input singleton, which
+		# survives reload_current_scene() because it isn't part of the scene tree.
+		Input.action_release(&"ui_accept")
+	else:
+		set_state(State.START if require_start_screen else State.PLAYING)
 
 
 # The single owner of get_tree().paused and of every screen's visibility. Nothing else
@@ -176,9 +265,14 @@ func set_state(new_state: State) -> void:
 	var previous_state: State = state
 	state = new_state
 
-	start_screen.visible = new_state == State.START
+	# START/DEAD stay visible underneath SHOP: the shop is a modal over whichever screen
+	# opened it (see shop_return_state), and closing it returns there without a flicker.
+	start_screen.visible = new_state == State.START or (new_state == State.SHOP and shop_return_state == State.START)
 	pause_screen.visible = new_state == State.PAUSED
-	death_screen.visible = new_state == State.DEAD
+	death_screen.visible = new_state == State.DEAD or (new_state == State.SHOP and shop_return_state == State.DEAD)
+	# Null-guarded because the shop is optional wiring -- see _ready().
+	if shop_screen != null:
+		shop_screen.visible = new_state == State.SHOP
 	# Hidden on the menus so it can't be tapped while a screen is up, and hidden on
 	# death because the death screen owns the input at that point.
 	pause_button.visible = new_state == State.PLAYING
@@ -214,6 +308,12 @@ func _notification(what: int) -> void:
 					set_state(State.PAUSED)
 				State.PAUSED:
 					_on_resume_pressed()
+				# The shop is a modal over whichever screen opened it, so back means
+				# "close the modal", exactly like its own Back button -- NOT quit.
+				# Without this case it falls through to the default below and exits
+				# the app from a menu.
+				State.SHOP:
+					set_state(shop_return_state)
 				_:
 					get_tree().quit()
 		# Focus loss: notification shade, incoming call, recents switcher. Only PLAYING
@@ -250,15 +350,18 @@ func _on_powerup_collected() -> void:
 
 func _on_player_died() -> void:
 	sfx_player.play_death()
-	# record_run persists only when the run beat the stored best, so the label below
-	# always reads the post-update value and "(New Best!)" is never stale.
+	# record_run banks this run's coins into the wallet AND updates the best score, so
+	# the label below always reads post-update values -- neither "(New Best!)" nor the
+	# wallet total can be stale. Banking needs no separate call.
 	var is_new_best: bool = false
 	var best_score: int = 0
+	var wallet: int = 0
 	if services != null:
 		is_new_best = services.save_store.record_run(coin_count, main.elapsed_time)
 		best_score = services.save_store.best_score
+		wallet = services.save_store.coin_wallet
 	var best_suffix: String = " (New Best!)" if is_new_best else ""
-	death_stats_label.text = "Coins: %d\nTime: %s\nBest: %d%s" % [coin_count, main.format_elapsed_time(main.elapsed_time), best_score, best_suffix]
+	death_stats_label.text = "Coins: %d\nTime: %s\nBest: %d%s\nWallet: %d" % [coin_count, main.format_elapsed_time(main.elapsed_time), best_score, best_suffix, wallet]
 	set_state(State.DEAD)
 
 
@@ -293,15 +396,29 @@ func _on_sfx_volume_changed(value: float) -> void:
 		services.set_sfx_volume(value)
 
 
+# Reloads back to the main/start screen -- this is the "Home" button on both the pause
+# screen (which bypasses set_state(), so it is the one exit from PAUSED that the flush
+# there cannot cover) and the death screen. Lands on START because that's what a bare
+# reload_current_scene() does -- see require_start_screen.
 func _on_restart_pressed() -> void:
 	sfx_player.play_click()
-	# Restart from the pause screen bypasses set_state(), so it is the one exit from
-	# PAUSED that the flush there cannot cover -- and the scene is about to be destroyed.
 	if services != null:
 		services.save_settings()
 	# Unpause before the reload: the tree-wide paused flag is not reset by
 	# reload_current_scene(), so leaving it true would rebuild the scene into a frozen
 	# world. The reloaded GameManager sets its own state in _ready().
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+
+# The "Restart" button on both the pause and death screens: reloads AND skips the
+# START screen, straight into a new run. Same reload as _on_restart_pressed, plus the
+# static flag that survives it -- see pending_quick_restart.
+func _on_quick_restart_pressed() -> void:
+	sfx_player.play_click()
+	if services != null:
+		services.save_settings()
+	GameManager.pending_quick_restart = true
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
@@ -315,3 +432,113 @@ func _on_coin_collected(value: int) -> void:
 
 func update_coin_label() -> void:
 	coin_label.text = "Coins: %d" % coin_count
+
+
+# The SINGLE choke point where a purchased stat reaches gameplay. Nothing else in the
+# project may write player.upgrade_jump_multiplier -- a second writer is how the powerup
+# and the upgrade would start clobbering each other.
+#
+# HEADLESS IS EXCLUDED, AND THAT IS LOAD-BEARING, NOT AN OPTIMISATION. The autoload NODE
+# does exist in a `--headless --script` probe (only the global `Services` IDENTIFIER is
+# missing there), so resolve() succeeds and this function runs. Ungated, every physics
+# gate silently measures whatever jump level is in the DEVELOPER'S OWN save.dat --
+# machine-dependent, and drifting every time they buy an upgrade in a real session.
+#
+# Measured 2026-08-04: ungated, chasm_probe went 48/48 -> 8 failures. A probe that has
+# never played is level 0 (x0.60), and the 280px void stops being clearable on an early
+# jump. Gates must measure the design baseline (x1.00), which is upgrade_jump_multiplier's
+# own default -- so skipping is exactly right, and doing it here rather than as a
+# per-probe opt-out flag means a NEW probe cannot forget it.
+#
+# The check is LOCAL rather than `services.is_headless`, and that distinction cost a
+# debugging cycle: is_headless is assigned in GameServices._ready(), which a harness has
+# not necessarily run by the time GameManager._ready() gets here -- it read false in the
+# probe and the gate stayed broken. Same trap CLAUDE.md records for the audio path.
+# Reading DisplayServer directly has no initialisation order at all.
+func apply_upgrades() -> void:
+	if services == null or player == null:
+		return
+	if DisplayServer.get_name() == "headless":
+		return
+	var jump_level: int = services.upgrades.get_level(UpgradeStore.JUMP_UPGRADE_ID)
+	player.upgrade_jump_multiplier = UpgradeStore.get_jump_multiplier(jump_level)
+
+
+func _on_shop_pressed() -> void:
+	sfx_player.play_click()
+	shop_return_state = State.DEAD
+	refresh_shop()
+	set_state(State.SHOP)
+
+
+# Upgrades button on the START screen -- the shop's other entry point. Purchases here
+# apply immediately via apply_upgrades() same as from the death screen; there's no
+# run in progress to desync from.
+func _on_start_shop_pressed() -> void:
+	sfx_player.play_click()
+	shop_return_state = State.START
+	refresh_shop()
+	set_state(State.SHOP)
+
+
+func _on_shop_close_pressed() -> void:
+	sfx_player.play_click()
+	set_state(shop_return_state)
+
+
+func _on_buy_jump_pressed() -> void:
+	if services == null:
+		return
+	if not services.upgrades.purchase(UpgradeStore.JUMP_UPGRADE_ID):
+		return
+	sfx_player.play_powerup()
+	# Applied immediately even though the current run is over: keeping this next to the
+	# purchase means there is exactly one ordering to reason about, and the restart that
+	# follows re-derives the same value from disk anyway.
+	apply_upgrades()
+	refresh_shop()
+
+
+func refresh_shop() -> void:
+	if shop_screen == null:
+		return
+
+	var wallet: int = 0
+	var jump_level: int = 0
+	var next_cost: int = UpgradeStore.NO_COST
+	var can_buy: bool = false
+	if services != null:
+		wallet = services.upgrades.get_wallet()
+		jump_level = services.upgrades.get_level(UpgradeStore.JUMP_UPGRADE_ID)
+		next_cost = services.upgrades.get_next_cost(UpgradeStore.JUMP_UPGRADE_ID)
+		can_buy = services.upgrades.can_purchase(UpgradeStore.JUMP_UPGRADE_ID)
+
+	var max_level: int = UpgradeStore.get_max_level(UpgradeStore.JUMP_UPGRADE_ID)
+	shop_wallet_label.text = "Wallet: %d" % wallet
+	shop_jump_label.text = "Jump  Lv %d/%d  (x%.2f)" % [jump_level, max_level, UpgradeStore.get_jump_multiplier(jump_level)]
+
+	if next_cost == UpgradeStore.NO_COST:
+		shop_jump_button.text = "Jump  MAX"
+	else:
+		shop_jump_button.text = "Jump  ->  x%.2f   (%d)" % [UpgradeStore.get_jump_multiplier(jump_level + 1), next_cost]
+	shop_jump_button.disabled = not can_buy
+
+
+# Just opens the confirmation -- the actual wipe is in _on_reset_progress_confirmed,
+# wired to the dialog's own `confirmed` signal, so a stray tap on the button can never
+# delete a save. get_tree().paused is already true here (SHOP implies not-PLAYING),
+# and ConfirmationDialog inherits process_mode from ShopScreen (PROCESS_MODE_ALWAYS),
+# so the popup still opens and can still be dismissed while the game is paused.
+func _on_reset_progress_pressed() -> void:
+	sfx_player.play_click()
+	reset_confirm_dialog.popup_centered()
+
+
+func _on_reset_progress_confirmed() -> void:
+	sfx_player.play_click()
+	if services != null:
+		services.save_store.reset_progress()
+		# Same reasoning as _on_buy_jump_pressed: sync the now-reset jump level onto
+		# the live player immediately rather than waiting for the next reload.
+		apply_upgrades()
+	refresh_shop()

@@ -49,35 +49,27 @@ const MIN_SAFE_START_WORLD_X: float = 900.0
 # when in the ramp it falls, which is exactly the "not actually once a minute"
 # bug this replaces.
 #
-# The first cluster is small and shows up quickly; every cluster after it is
-# bigger and keeps recurring at a fresh random interval, so obstacles get MORE
-# frequent as a run goes on, not less.
+# Every "cluster" is exactly one obstacle -- multi-obstacle groups (formerly
+# 1-5 with a tight/wide gap between them) were cut in favor of frequent
+# singles, which reads as a harder, steadier stream of hazards rather than a
+# quiet stretch followed by a wall of boxes. FIRST_CLUSTER_TIME is left
+# untouched: terrain_invariant_check's check_obstacle_clearance() derives the
+# slowest speed an obstacle is ever judged against from this constant, and
+# lowering it tightens that jump-clearance window rather than loosening it.
 const FIRST_CLUSTER_TIME: float = 20.0
-const FIRST_CLUSTER_MIN_COUNT: int = 1
-const FIRST_CLUSTER_MAX_COUNT: int = 3
-# The 2nd cluster's absolute time is itself randomized in this window (not a
-# fixed point), and every cluster after that recurs at a fresh random interval
-# drawn from the same window, measured from the previous cluster's time --
-# "anywhere from 50-70 seconds" as an ongoing cadence, not a one-off gap.
-const RECURRING_CLUSTER_MIN_INTERVAL: float = 50.0
-const RECURRING_CLUSTER_MAX_INTERVAL: float = 70.0
-const RECURRING_CLUSTER_MIN_COUNT: int = 1
-const RECURRING_CLUSTER_MAX_COUNT: int = 5
-
-# Passability for a multi-obstacle cluster has exactly two safe regimes: gap
-# far enough apart that a jump over one obstacle lands clear of the next
-# (reaction + re-jump), or close enough together that a SINGLE jump clears the
-# whole run of them. The dangerous middle ground is a gap close to the jump's
-# own landing distance, which risks landing on top of the next obstacle.
-# Jump horizontal reach (very roughly, flat ground) is
-# 2*(-JUMP_VELOCITY/GRAVITY)*speed = 0.8*speed. FIRST_CLUSTER_TIME (20s) is
-# the earliest an obstacle ever appears, and SpeedManager's ramp is
-# monotonically non-decreasing after that, so speed at t=20s (~523px/s, reach
-# ~418px) is the lowest reach any cluster will ever be judged against, and
-# MAX_SPEED (750px/s, reach 600px) is the highest. TIGHT sits under the lower
-# bound; WIDE sits over the upper bound, with margin on both.
-const CLUSTER_TIGHT_GAP_WORLD_X: float = 260.0
-const CLUSTER_WIDE_GAP_WORLD_X: float = 700.0
+# Cadence ramps up in OBSTACLE_RAMP_WINDOW-second steps: ~1 obstacle in the
+# first window, ~2 in the second, ~3 in the third, and so on, each window's
+# obstacles spread by a randomized interval (not evenly spaced) drawn around
+# that window's average. target_count is clamped at OBSTACLE_RAMP_MAX_COUNT
+# so the density stops climbing once it's already denser than the speed ramp
+# (which caps at t=120s, MAX_SPEED) can justify -- otherwise an endless run
+# eventually asks for an impossible obstacle-per-second rate.
+const OBSTACLE_RAMP_WINDOW: float = 30.0
+const OBSTACLE_RAMP_MAX_COUNT: int = 6
+# Absolute floor under the random interval regardless of how dense the ramp
+# above wants to go, so a jittered-down roll can never land two obstacles
+# closer together than a player has time to react to.
+const RECURRING_CLUSTER_MIN_INTERVAL_FLOOR: float = 4.0
 
 # Mirrors the chunk spawners' forward lookahead so a cluster is never seen
 # popping into existence right underfoot.
@@ -118,10 +110,20 @@ func _physics_process(_delta: float) -> void:
 	if debug_spawning_disabled:
 		return
 
-	while player.speed_manager.elapsed_time >= next_cluster_time:
-		spawn_cluster(next_cluster_index)
+	# not player.is_boosting: a boost forces the grounded model and suppresses jump
+	# input for its full 3s (player.gd, is_boosting), so a cluster landing inside one
+	# is unavoidable death (CLAUDE.md Known Issues). Withholding next_cluster_time's
+	# advance, rather than skipping the cluster outright, means the wait ends the
+	# instant the boost does -- and spawn_cluster always places its obstacle
+	# SPAWN_LOOKAHEAD_WORLD_X ahead of wherever the player currently is, so one
+	# spawned right as the boost ends still gets the same reaction-time lookahead as
+	# any other. A boost (3s) can never span two trigger times (12-30s apart), so
+	# this doesn't need the catch-up a `while` gives the despawn loop below.
+	if player.speed_manager.elapsed_time >= next_cluster_time and not player.is_boosting:
+		spawn_cluster()
 		next_cluster_index += 1
-		var interval: float = RECURRING_CLUSTER_MIN_INTERVAL + (get_cluster_hash(next_cluster_index, 1) * (RECURRING_CLUSTER_MAX_INTERVAL - RECURRING_CLUSTER_MIN_INTERVAL))
+		var interval_bounds: Vector2 = get_interval_bounds(player.speed_manager.elapsed_time)
+		var interval: float = interval_bounds.x + (get_cluster_hash(next_cluster_index) * (interval_bounds.y - interval_bounds.x))
 		next_cluster_time += interval
 
 	var despawn_world_x: float = player.global_position.x - DESPAWN_BEHIND_WORLD_X
@@ -138,28 +140,38 @@ func _physics_process(_delta: float) -> void:
 			active_obstacles.remove_at(index)
 
 
-func spawn_cluster(cluster_index: int) -> void:
-	var min_count: int = FIRST_CLUSTER_MIN_COUNT if cluster_index == 0 else RECURRING_CLUSTER_MIN_COUNT
-	var max_count: int = FIRST_CLUSTER_MAX_COUNT if cluster_index == 0 else RECURRING_CLUSTER_MAX_COUNT
-	var obstacle_count: int = min_count + int(get_cluster_hash(cluster_index, 0) * float(max_count - min_count + 1))
-	var gap_world_x: float = CLUSTER_TIGHT_GAP_WORLD_X if get_cluster_hash(cluster_index, 2) < 0.5 else CLUSTER_WIDE_GAP_WORLD_X
-	var cluster_start_world_x: float = maxf(MIN_SAFE_START_WORLD_X, player.global_position.x + SPAWN_LOOKAHEAD_WORLD_X)
+# The randomized interval band for the window elapsed_time currently falls in --
+# see the ramp comment above OBSTACLE_RAMP_WINDOW. +/-30% jitter around the
+# window's average keeps the cadence from reading as a metronome while still
+# landing roughly the target obstacle count per window.
+func get_interval_bounds(elapsed_time: float) -> Vector2:
+	var window: int = int(elapsed_time / OBSTACLE_RAMP_WINDOW)
+	var target_count: int = mini(window + 1, OBSTACLE_RAMP_MAX_COUNT)
+	var average_interval: float = OBSTACLE_RAMP_WINDOW / float(target_count)
+	var min_interval: float = maxf(RECURRING_CLUSTER_MIN_INTERVAL_FLOOR, average_interval * 0.7)
+	var max_interval: float = maxf(min_interval + 0.1, average_interval * 1.3)
+	return Vector2(min_interval, max_interval)
 
-	for slot_index: int in range(obstacle_count):
-		var world_x: float = cluster_start_world_x + (float(slot_index) * gap_world_x)
-		# Skip (don't reposition) a slot that lands on a slope -- a shorter
-		# cluster is fine, an obstacle glued to a slope isn't (see
-		# OBSTACLE_MAX_SLOPE_ANGLE above).
-		if absf(terrain_generator.get_slope_angle_at_x(world_x)) > OBSTACLE_MAX_SLOPE_ANGLE:
-			continue
-		# Second reason to skip, and this one is safety-critical rather than cosmetic. An
-		# obstacle within one jump reach BEFORE a chasm's near lip is unavoidable death:
-		# clearing the obstacle commits the player to a landing, and that landing is in the
-		# void. Max reach is 0.8s airtime * MAX_SPEED 750 = 600px, so the exclusion runs
-		# OBSTACLE_VOID_CLEARANCE_AHEAD past the obstacle and a shorter margin behind it.
-		if not terrain_generator.has_ground_over_world_x_span(world_x - OBSTACLE_VOID_CLEARANCE_BEHIND, world_x + OBSTACLE_VOID_CLEARANCE_AHEAD):
-			continue
-		spawn_obstacle(world_x)
+
+# Places (up to) one obstacle. Takes no index now that count/gap randomization is gone
+# (multi-obstacle groups were cut, see the comment above FIRST_CLUSTER_TIME) -- kept as
+# a distinct function from spawn_obstacle() because it's the one that applies the
+# slope/chasm placement rules, where spawn_obstacle() is the unconditional placer.
+func spawn_cluster() -> void:
+	var world_x: float = maxf(MIN_SAFE_START_WORLD_X, player.global_position.x + SPAWN_LOOKAHEAD_WORLD_X)
+	# Skip (don't reposition) a slot that lands on a slope -- a missed obstacle
+	# this cycle is fine, an obstacle glued to a slope isn't (see
+	# OBSTACLE_MAX_SLOPE_ANGLE above).
+	if absf(terrain_generator.get_slope_angle_at_x(world_x)) > OBSTACLE_MAX_SLOPE_ANGLE:
+		return
+	# Second reason to skip, and this one is safety-critical rather than cosmetic. An
+	# obstacle within one jump reach BEFORE a chasm's near lip is unavoidable death:
+	# clearing the obstacle commits the player to a landing, and that landing is in the
+	# void. Max reach is 0.8s airtime * MAX_SPEED 750 = 600px, so the exclusion runs
+	# OBSTACLE_VOID_CLEARANCE_AHEAD past the obstacle and a shorter margin behind it.
+	if not terrain_generator.has_ground_over_world_x_span(world_x - OBSTACLE_VOID_CLEARANCE_BEHIND, world_x + OBSTACLE_VOID_CLEARANCE_AHEAD):
+		return
+	spawn_obstacle(world_x)
 
 
 func spawn_obstacle(world_x: float) -> void:
@@ -170,13 +182,13 @@ func spawn_obstacle(world_x: float) -> void:
 	active_obstacles.append(obstacle)
 
 
-# Pure function of (session_seed, cluster_index, channel) -> [0, 1). Same
-# style as TerrainGenerator.get_segment_hash / CoinSpawner.get_slot_hash, with
-# its own multiplier pair so this sequence doesn't correlate with either.
-# channel 0 = obstacle count, 1 = recurrence interval, 2 = gap style.
-func get_cluster_hash(cluster_index: int, channel: int) -> float:
+# Pure function of (session_seed, cluster_index) -> [0, 1), used to draw the next
+# recurrence interval. Same style as TerrainGenerator.get_segment_hash /
+# CoinSpawner.get_slot_hash, with its own multiplier pair so this sequence doesn't
+# correlate with either.
+func get_cluster_hash(cluster_index: int) -> float:
 	var session_seed: int = terrain_generator.get_session_seed()
-	var mixed_value: int = (session_seed ^ ((cluster_index * 3 + channel) * HASH_INDEX_MULTIPLIER)) & HASH_MASK
+	var mixed_value: int = (session_seed ^ (cluster_index * HASH_INDEX_MULTIPLIER)) & HASH_MASK
 	mixed_value = (mixed_value ^ (mixed_value >> 13)) & HASH_MASK
 	mixed_value = (mixed_value * HASH_MIX_MULTIPLIER) & HASH_MASK
 	mixed_value = (mixed_value ^ (mixed_value >> 15)) & HASH_MASK

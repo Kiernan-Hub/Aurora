@@ -81,6 +81,25 @@ and silently losing a best score is worse than a log line.
 
 A file with no `version` key is treated as v0 and upgraded in place on the next write.
 
+**v2 (2026-08-04)** added meta-progression: `coin_wallet` (spendable currency, distinct
+from `best_score`, which stays the run-score stat) and `upgrades`, an open
+`Dictionary[String, int]` of upgrade id → level. Reading a v1 file yields wallet 0 and
+level 0 everywhere, which is exactly the correct new-player state, so as with v0 → v1
+there is no explicit conversion step. Two traps when adding fields of this shape:
+`JSON.parse_string` returns an **untyped** Dictionary — assigning one straight into a
+`Dictionary[String, int]` fails at runtime, so copy key by key — and JSON round-trips
+every number as a float, so the `int()` casts are mandatory.
+
+Keeping upgrades in an open dictionary rather than a field per upgrade means adding an
+upgrade *type* needs no version bump; only a new top-level *concept* (zone progress,
+mission state) does. Unknown ids from a newer build survive a round-trip and are clamped
+to a legal level by `UpgradeStore.get_level`, so saves stay compatible in both directions.
+
+`record_run()` **always writes now**, where it used to write only on a new best: every
+run banks its coins, so there is always something to persist. It is still exactly one
+disk write per death. Anything that needs to persist per-run state should go through it
+rather than adding a second write.
+
 ## The one autoload
 
 There is **exactly one**: `Services` (`scripts/autoload/services.gd`, `class_name

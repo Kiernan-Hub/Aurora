@@ -50,6 +50,10 @@ const SFX_BUS: StringName = &"SFX"
 const MIN_VOLUME_DB: float = -80.0
 
 var save_store: SaveStore = SaveStore.new()
+# Meta-progression catalog + purchases. Reads and writes through save_store, which is
+# injected in _ready() below rather than resolved, so UpgradeStore stays usable from
+# headless probes that have no autoload at all.
+var upgrades: UpgradeStore = UpgradeStore.new()
 var is_headless: bool = false
 # Lives here, not in main.tscn, for the same reason save_store does: restart calls
 # reload_current_scene() and destroys every node in that scene, but music
@@ -74,6 +78,7 @@ func _ready() -> void:
 
 	is_headless = DisplayServer.get_name() == "headless"
 	save_store.load_from_disk()
+	upgrades.save_store = save_store
 
 	# Headless probes have no audio driver; touching AudioServer/AudioStreamPlayer
 	# there is exactly the class of thing the HEADLESS TRAP note above warns about.

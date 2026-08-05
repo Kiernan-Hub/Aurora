@@ -163,10 +163,23 @@ seed-independent `check_chasm_variant_table()` pass that runs once before the se
 | assertion | what it catches |
 |---|---|
 | `CHASM_VARIANT_NOT_CLEARABLE` | a variant unclearable at the earliest index it may occupy — the worst case no finite seed sweep is guaranteed to contain. Reports the `min_segment_index` that *would* work |
+| `CHASM_VARIANT_NOT_CLEARABLE_AT_MIN_UPGRADE` | a variant wider than a level-0 player's *entire* reach — a wall rather than a hazard |
 | `CHASM_LEAD_IN_TOO_SHORT` | a run-up shorter than the maximum jump reach |
 | `CHASM_SEGMENT_TOO_SHORT` | run-up + void + flatness margin overflowing the segment |
 | `CHASM_VARIANT_BELOW_GLOBAL_MIN` | a silently unreachable (dead) variant |
 | `CHASM_TRIVIALLY_CLEARABLE` | *(per chasm)* a drop crossable by running off the edge. **Inert at `exit_drop` 0**, i.e. today |
+| `UPGRADE_CEILING_EXCEEDS_CHASM_LEAD_IN` | a jump upgrade curve whose maximum outruns the run-up |
+| `OBSTACLE_APEX_TOO_LOW` / `OBSTACLE_WINDOW_TOO_TIGHT` | a jump upgrade curve whose *minimum* cannot clear a 32×32 obstacle at the first cluster |
+
+**Jump strength is a range now, so clearability is asserted in two bands** (2026-08-04,
+meta-progression). This file used to evaluate reach at a hardcoded multiplier of 1.0 and
+call it "the weakest jump" — true only while 1.0 was the only jump. It is now the
+*strongest*: the upgrade curve runs ×0.60 → ×1.00 and the player starts nerfed. So
+`CHASM_MAX_REACH_FRACTION` (0.55) is checked against **max upgrade** — is this well-tuned
+for someone who has finished the curve — and `CHASM_MIN_UPGRADE_REACH_FRACTION` (0.90)
+against **min upgrade** — is it physically possible at all for someone who has bought
+nothing. Neither band alone is sufficient, and there is deliberately no unqualified
+`get_jump_reach()` left, so no call site can silently mean the wrong one.
 
 `CHASM_LEAD_IN_LENGTH` is **900**, not v1's 640. The old value was derived from an unboosted
 reach of 600px and missed `JUMP_BOOST_VELOCITY_MULTIPLIER` (√2), whose reach at `MAX_SPEED` is

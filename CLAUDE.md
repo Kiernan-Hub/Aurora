@@ -113,16 +113,25 @@ to touch `get_tree().paused` or a screen's visibility. Reasoning for all of it:
   layer 1; coins and powerups on layer 2; everything masks layer 1. `obstacle.gd`,
   `coin.gd` and `powerup.gd` each filter with `body.is_in_group("player")` — drop that
   guard and the first chunk to overlap a coin collects it, or kills you.
+- **The jump upgrade curve may not exceed ×1.0224.** `CHASM_LEAD_IN_LENGTH` (900) bounds
+  max-upgrade × the √2 powerup; above that a boosted jump taken at the first pixel of a
+  chasm run-up lands *inside* the void. The curve ends at ×1.00 so every existing
+  jump-reach constant stays valid. `check_upgrade_curve()` fails the build if it's raised.
+- **The autoload *node* exists under `--headless --script`** even though the global
+  `Services` identifier doesn't, so `resolve()` succeeds in every probe.
+  `GameManager.apply_upgrades()` must therefore skip headless, or the gates measure
+  whatever jump level is in *your* `save.dat` (measured: chasm_probe 48/48 → 8 failures).
+  It checks `DisplayServer` directly, **not** `services.is_headless` — that isn't assigned
+  yet when `GameManager._ready()` runs, the same ordering trap the audio path has.
 
 ## Known issues
 
-- **A speed boost taken into an obstacle cluster is unavoidable death — open, needs a
-  design decision** (found 2026-08-03 by inspection). Jumping is impossible for the full
-  3s of a boost (`player.gd` gates on `not is_boosting`, and `start_boost()` clears the
-  coyote/buffer timers), obstacles kill on contact with no i-frames, and the boost covers
-  3000px — further than a whole 5-obstacle cluster. The two spawners schedule
-  independently, so nothing keeps them apart. Options: i-frames, smash-through, allow
-  jumping while boosting, or suppress obstacle placement during a boost.
+- **A speed boost taken into an obstacle cluster was unavoidable death — FIXED**
+  (2026-08-04). `ObstacleSpawner`'s cluster trigger (`obstacle_spawner.gd`) now withholds
+  a cluster spawn while `player.is_boosting`, without touching the boost's grounded-model
+  behavior (load-bearing for chasms). The wait ends the instant the boost does, and
+  `spawn_cluster` always places obstacles a fixed lookahead ahead of the player's current
+  position, so a cluster spawned right as a boost ends still gets full reaction time.
 - **Residual sub-pixel bounce on curved terrain — open, deferred.** Inherent to
   `CharacterBody2D`'s solver correction, not fixable at the input/movement level; several
   mitigations measured and rejected. Its *horizontal* component was the entire `mega_drop`
@@ -157,17 +166,24 @@ asked. Full history: `docs/development/dead_code.md`.
    is still 0; a non-zero one is phase 3 and needs the boost-glide fix first (`terrain.md`)
 2. Speed scaling — **working**. Two-phase ramp: 100→500 px/s over 10s, then 500→750 over
    the next 110s, capping at `MAX_SPEED` (750) at t=120s
-3. Coins + score — **working**. `SaveStore` persists a versioned best score
-4. Obstacles + death — **working**. Clusters from t=20s, then every 50–70s, growing
+3. Coins + score — **working**. `SaveStore` (v2) persists a versioned best score, plus a
+   **coin wallet** every run banks into on death and per-upgrade levels
+4. Obstacles + death — **working**. Singles from t=20s, then every 12–30s
 5. Powerups — **working**. Speed boost (1000 px/s, 3s, 2× coins) and jump boost (×√2,
    3s), independent ~60s-average schedules
-6. Screens — **working**. START/PLAYING/PAUSED/DEAD
-7. **Audio — working (SFX only).** `Master → Music, SFX`; `SfxPlayer` plays
+6. Screens — **working**. START/PLAYING/PAUSED/DEAD/SHOP
+7. **Audio — working (SFX only).** `M111/stopaster → Music, SFX`; `SfxPlayer` plays
    jump/coin/powerup/death from a 6-voice pool (placeholder WAVs, `assets/audio/sfx/`).
    Sliders drive their bus, persisting on **drag end**. **No music track yet.** Audio must
    stay behind a locally-computed `is_headless` — `Services` isn't ready in harness `_init()`
 8. Visual polish — placeholder rects only
-9. Missions/upgrades — not started
+9. **Upgrades — vertical slice working** (2026-08-04). One track: jump, five levels
+   ×0.60→×1.00, bought from a SHOP screen off either the death screen or the START
+   screen's Upgrades button, with banked coins. `GameManager.shop_return_state` tracks
+   which one opened it so closing the shop returns there instead of always DEAD.
+   The player now starts **deliberately weak** and buys their way back to baseline.
+   Missions, zones and milestone unlocks are still not started; `UpgradeStore` and
+   `State.SHOP` are the seams they attach to (`upgrade_store.gd` header)
 
 The player's debug instrumentation now derives from `OS.is_debug_build()`, so it runs
 under the editor and every probe and is off in a release export — it can't be shipped by
@@ -187,3 +203,5 @@ general direction of the project, and the traps that cost real time when someone
 know them. Add something only if it's genuinely necessary at this level — otherwise it
 goes in `docs/development/` (how something works) or `docs/research/` (what an
 investigation found).
+
+one thing i want to say (im the user, so this is important) if something has a lot of potenital to make more bugs or is gonna be exceeslsivey hard when theres another option, then jhsut flag it and let me know. i am prioritixzing this to be clean code. if a big drop is too much terrain changing, then we just add a chasm instead, for exmaple
