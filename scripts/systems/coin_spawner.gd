@@ -32,11 +32,18 @@ const HASH_MASK: int = 0x7fffffff
 const HASH_INDEX_MULTIPLIER: int = 2246822519
 const HASH_MIX_MULTIPLIER: int = 3266489917
 
+# Coin magnet powerup (PowerupManager.EFFECT_COIN_MAGNET), driven externally via
+# set_magnet_active() the same way PowerupManager drives Player.start_boost/end_boost --
+# this node has no idea a powerup exists, it just pulls when told to.
+const MAGNET_RADIUS: float = 220.0
+const MAGNET_PULL_SPEED: float = 900.0
+
 var terrain_generator: TerrainGenerator
 var player: CharacterBody2D
 var next_chunk_index: int = 0
 var active_coin_groups: Dictionary[int, Node2D] = {}
 var has_initialized_coin_groups: bool = false
+var magnet_active: bool = false
 
 
 func _ready() -> void:
@@ -48,7 +55,7 @@ func _ready() -> void:
 		return
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	# Deliberately not done in _ready(): this node is a child of TerrainGenerator
 	# (see terrain_generator_path doc comment above), and Godot runs _ready() on
 	# children before their parent, so TerrainGenerator's own _ready() -- which
@@ -73,6 +80,9 @@ func _physics_process(_delta: float) -> void:
 	for chunk_index: int in chunk_indices:
 		if chunk_index < despawn_chunk_index:
 			remove_coin_group(chunk_index)
+
+	if magnet_active:
+		apply_magnet_pull(delta)
 
 
 func initialize_coin_groups() -> void:
@@ -124,6 +134,34 @@ func remove_coin_group(chunk_index: int) -> void:
 	# queue_free(), not free(): this runs inside _physics_process and the group's children
 	# are live Area2D monitors. Same reasoning as TerrainGenerator.remove_chunk().
 	group.queue_free()
+
+
+func set_magnet_active(active: bool) -> void:
+	magnet_active = active
+
+
+# Pulls every uncollected coin within MAGNET_RADIUS toward the player. Moves
+# global_position, not the coin's parent-relative position: this runs fresh every physics
+# frame rather than caching anything across frames, so it is unaffected by world
+# rebasing -- global_position is recomputed from the current chunk-group transform on
+# every read/write, the same as get_slope_tangent() reading global_position each frame.
+# Collection itself is untouched: the coin's own Area2D.body_entered still does that, so
+# the magnet only moves coins into pickup range, it never collects them directly.
+#
+# A pulled coin can end up outside the world-x span of the chunk group that owns it, so
+# remove_coin_group() (keyed on the GROUP's chunk index, not the coin's live position)
+# could in principle free it a chunk early. Harmless in practice: at MAGNET_PULL_SPEED the
+# coin reaches the player and is collected well within a second, long before its native
+# chunk falls behind chunk_count_behind.
+func apply_magnet_pull(delta: float) -> void:
+	for group: Node2D in active_coin_groups.values():
+		for child: Node in group.get_children():
+			var coin: Coin = child as Coin
+			if coin == null or not is_instance_valid(coin) or coin.has_been_collected:
+				continue
+			if coin.global_position.distance_to(player.global_position) > MAGNET_RADIUS:
+				continue
+			coin.global_position = coin.global_position.move_toward(player.global_position, MAGNET_PULL_SPEED * delta)
 
 
 func _on_coin_collected(value: int) -> void:

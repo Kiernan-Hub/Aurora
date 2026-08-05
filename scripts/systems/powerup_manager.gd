@@ -6,6 +6,7 @@ class_name PowerupManager
 @export var powerup_spawner_path: NodePath = NodePath("../TerrainGenerator/PowerupSpawner")
 @export var powerup_label_path: NodePath = NodePath("../CanvasLayer/PowerupLabel")
 @export var terrain_generator_path: NodePath = NodePath("../TerrainGenerator")
+@export var coin_spawner_path: NodePath = NodePath("../TerrainGenerator/CoinSpawner")
 
 # One pair of signals for every effect, rather than a _started/_ended pair per kind.
 # The per-kind form was already two effects' worth of signal; at six kinds it is twelve
@@ -16,6 +17,8 @@ signal effect_ended(effect: StringName)
 
 const EFFECT_SPEED_BOOST: StringName = &"speed_boost"
 const EFFECT_JUMP_BOOST: StringName = &"jump_boost"
+const EFFECT_COIN_MAGNET: StringName = &"coin_magnet"
+const EFFECT_COIN_DOUBLER: StringName = &"coin_doubler"
 
 const SPEED_BOOST_DURATION: float = 3.0
 const SPEED_BOOST_SPEED: float = 1000.0
@@ -29,12 +32,18 @@ const JUMP_BOOST_DURATION: float = 3.0
 # location of this constant are part of that gate's contract.
 const JUMP_BOOST_VELOCITY_MULTIPLIER: float = 1.4142135
 
+const COIN_MAGNET_DURATION: float = 4.0
+const COIN_DOUBLER_DURATION: float = 6.0
+const COIN_DOUBLER_MULTIPLIER: float = 2.0
+
 # How long each timed effect lasts. An effect absent from this table is untimed and is
 # never expired by _process() -- it is owned by whatever consumes it (a shield is spent
 # on a hit, not on a clock).
 const EFFECT_DURATIONS: Dictionary = {
 	EFFECT_SPEED_BOOST: SPEED_BOOST_DURATION,
 	EFFECT_JUMP_BOOST: JUMP_BOOST_DURATION,
+	EFFECT_COIN_MAGNET: COIN_MAGNET_DURATION,
+	EFFECT_COIN_DOUBLER: COIN_DOUBLER_DURATION,
 }
 
 # Label line per effect; the "%.1f" is fed the remaining seconds. An effect with no entry
@@ -42,12 +51,16 @@ const EFFECT_DURATIONS: Dictionary = {
 const EFFECT_LABEL_FORMATS: Dictionary = {
 	EFFECT_SPEED_BOOST: "BOOST! %.1fs",
 	EFFECT_JUMP_BOOST: "JUMP x2! %.1fs",
+	EFFECT_COIN_MAGNET: "MAGNET! %.1fs",
+	EFFECT_COIN_DOUBLER: "COINS x2! %.1fs",
 }
 
 # Coin multiplier contributed by each effect while active. The wallet applies the MAX of
-# these, never the product -- see refresh_coin_multiplier().
+# these, never the product -- see refresh_coin_multiplier(). A doubler taken mid-speed-boost
+# stays at x2, not x4, and doesn't drop early if the boost ends first.
 const EFFECT_COIN_MULTIPLIERS: Dictionary = {
 	EFFECT_SPEED_BOOST: COIN_MULTIPLIER,
+	EFFECT_COIN_DOUBLER: COIN_DOUBLER_MULTIPLIER,
 }
 
 # Effects that must not be allowed to expire while the player is over a void.
@@ -58,6 +71,7 @@ var player: Player
 var powerup_spawner: PowerupSpawner
 var powerup_label: Label
 var terrain_generator: TerrainGenerator
+var coin_spawner: CoinSpawner
 # effect StringName -> seconds remaining. Membership IS "active"; an untimed effect sits
 # in here with INF remaining, so one dictionary answers both questions.
 var active_effects: Dictionary = {}
@@ -75,6 +89,9 @@ func _ready() -> void:
 	# can_end_effect() needs it. Not added to the required set below: a null one only
 	# costs the void guard, and can_end_effect() degrades to unguarded expiry.
 	terrain_generator = get_node_or_null(terrain_generator_path) as TerrainGenerator
+	# Same tier as terrain_generator: a null one only costs the magnet effect, which
+	# degrades to "does nothing" rather than crashing.
+	coin_spawner = get_node_or_null(coin_spawner_path) as CoinSpawner
 	if player == null or powerup_spawner == null or powerup_label == null:
 		push_error("PowerupManager requires a Player, a PowerupSpawner at %s, and a powerup label at %s." % [powerup_spawner_path, powerup_label_path])
 		set_process(false)
@@ -120,6 +137,11 @@ func start_effect(effect: StringName) -> void:
 			apply_speed_boost_start()
 		EFFECT_JUMP_BOOST:
 			player.start_jump_boost(JUMP_BOOST_VELOCITY_MULTIPLIER)
+		EFFECT_COIN_MAGNET:
+			if coin_spawner != null:
+				coin_spawner.set_magnet_active(true)
+	# EFFECT_COIN_DOUBLER has no case: EFFECT_DURATIONS, EFFECT_LABEL_FORMATS and
+	# EFFECT_COIN_MULTIPLIERS above are the entire implementation, nothing else to start.
 	refresh_coin_multiplier()
 	effect_started.emit(effect)
 
@@ -134,6 +156,9 @@ func end_effect(effect: StringName) -> void:
 			player.end_boost()
 		EFFECT_JUMP_BOOST:
 			player.end_jump_boost()
+		EFFECT_COIN_MAGNET:
+			if coin_spawner != null:
+				coin_spawner.set_magnet_active(false)
 	refresh_coin_multiplier()
 	effect_ended.emit(effect)
 

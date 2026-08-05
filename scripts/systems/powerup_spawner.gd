@@ -61,6 +61,16 @@ const POWERUP_TABLE: Array[Dictionary] = [
 		"scene": preload("res://scenes/pickups/jump_powerup.tscn"),
 		"weight": 22.0,
 	},
+	{
+		"effect": PowerupManager.EFFECT_COIN_MAGNET,
+		"scene": preload("res://scenes/pickups/coin_magnet.tscn"),
+		"weight": 18.0,
+	},
+	{
+		"effect": PowerupManager.EFFECT_COIN_DOUBLER,
+		"scene": preload("res://scenes/pickups/coin_doubler.tscn"),
+		"weight": 10.0,
+	},
 ]
 
 # Above the sampled surface, low enough to be grabbed while grounded (player
