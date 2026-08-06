@@ -20,6 +20,7 @@ const EFFECT_JUMP_BOOST: StringName = &"jump_boost"
 const EFFECT_COIN_MAGNET: StringName = &"coin_magnet"
 const EFFECT_COIN_DOUBLER: StringName = &"coin_doubler"
 const EFFECT_SHIELD: StringName = &"shield"
+const EFFECT_GLIDE: StringName = &"glide"
 
 const SPEED_BOOST_DURATION: float = 3.0
 const SPEED_BOOST_SPEED: float = 1000.0
@@ -36,6 +37,7 @@ const JUMP_BOOST_VELOCITY_MULTIPLIER: float = 1.4142135
 const COIN_MAGNET_DURATION: float = 4.0
 const COIN_DOUBLER_DURATION: float = 6.0
 const COIN_DOUBLER_MULTIPLIER: float = 2.0
+const GLIDE_DURATION: float = 15.0
 
 # How long each timed effect lasts. An effect absent from this table is untimed and is
 # never expired by _process() -- it is owned by whatever consumes it (a shield is spent
@@ -45,6 +47,7 @@ const EFFECT_DURATIONS: Dictionary = {
 	EFFECT_JUMP_BOOST: JUMP_BOOST_DURATION,
 	EFFECT_COIN_MAGNET: COIN_MAGNET_DURATION,
 	EFFECT_COIN_DOUBLER: COIN_DOUBLER_DURATION,
+	EFFECT_GLIDE: GLIDE_DURATION,
 }
 
 # Label line per effect; the "%.1f" is fed the remaining seconds. An effect with no entry
@@ -54,6 +57,7 @@ const EFFECT_LABEL_FORMATS: Dictionary = {
 	EFFECT_JUMP_BOOST: "JUMP x2! %.1fs",
 	EFFECT_COIN_MAGNET: "MAGNET! %.1fs",
 	EFFECT_COIN_DOUBLER: "COINS x2! %.1fs",
+	EFFECT_GLIDE: "GLIDE! %.1fs",
 }
 
 # Coin multiplier contributed by each effect while active. The wallet applies the MAX of
@@ -66,7 +70,7 @@ const EFFECT_COIN_MULTIPLIERS: Dictionary = {
 
 # Effects that must not be allowed to expire while the player is over a void.
 # See can_end_effect() for why this list exists and what happens without it.
-const VOID_GUARDED_EFFECTS: Array[StringName] = [EFFECT_SPEED_BOOST]
+const VOID_GUARDED_EFFECTS: Array[StringName] = [EFFECT_SPEED_BOOST, EFFECT_GLIDE]
 
 var player: Player
 var powerup_spawner: PowerupSpawner
@@ -146,6 +150,8 @@ func start_effect(effect: StringName) -> void:
 				coin_spawner.set_magnet_active(true)
 		EFFECT_SHIELD:
 			player.gain_shield()
+		EFFECT_GLIDE:
+			player.start_glide()
 	# EFFECT_COIN_DOUBLER has no case: EFFECT_DURATIONS, EFFECT_LABEL_FORMATS and
 	# EFFECT_COIN_MULTIPLIERS above are the entire implementation, nothing else to start.
 	refresh_coin_multiplier()
@@ -165,6 +171,8 @@ func end_effect(effect: StringName) -> void:
 		EFFECT_COIN_MAGNET:
 			if coin_spawner != null:
 				coin_spawner.set_magnet_active(false)
+		EFFECT_GLIDE:
+			player.end_glide()
 	refresh_coin_multiplier()
 	effect_ended.emit(effect)
 
@@ -222,3 +230,7 @@ func start_speed_boost() -> void:
 
 func start_jump_boost() -> void:
 	start_effect(EFFECT_JUMP_BOOST)
+
+
+func start_glide() -> void:
+	start_effect(EFFECT_GLIDE)

@@ -21,6 +21,23 @@ const ROTATION_SMOOTHNESS: float = 12.0
 const DEBUG_SLOPE_LOGGING: bool = false
 const PLAYER_DEFAULT_COLOR: Color = Color(0.85, 0.93, 1.0)
 const PLAYER_SHIELD_COLOR: Color = Color(0.4, 0.85, 1.0)
+# Glide lives entirely in the airborne (gravity) branch of _physics_process -- see the
+# LOAD-BEARING FOR CHASMS note below. is_using_grounded_model is never touched by it, so a
+# boosting player is unaffected and the chasm contract can't move by construction.
+# Real acceleration, not an eased target speed: GRAVITY always applies, exactly like an
+# ordinary fall, and holding ADDS a stronger opposing acceleration on top of it. That is
+# what makes deceleration, crossing zero, and climbing read as one continuous physical
+# motion instead of three special-cased states -- and it means "don't touch anything"
+# free-falls with the same accelerating feel as a normal jump's descent, not a slow float.
+# Net accel while held: GLIDE_THRUST_ACCELERATION - GRAVITY = 1200 px/s^2 upward.
+const GLIDE_THRUST_ACCELERATION: float = 2800.0
+const GLIDE_MAX_RISE_SPEED: float = -600.0
+const GLIDE_MAX_FALL_SPEED: float = 550.0
+# Liftoff impulse when a grounded pickup starts a glide (see start_glide()). Still gentler
+# than JUMP_VELOCITY (-640) -- the glide takeoff is not a jump and shouldn't read as one --
+# but strong enough to clear a noticeably higher hop than the original -350 before the
+# hold/thrust math takes over.
+const GLIDE_LAUNCH_VELOCITY: float = -480.0
 # Fast enough to sweep the full INITIAL_SPEED..MAX_SPEED range in well under a
 # second, since the point is skipping the ~62s automatic ramp during testing.
 const MANUAL_SPEED_ADJUST_RATE: float = 300.0
@@ -87,6 +104,9 @@ var DEBUG_FREEZE_HISTORY_FRAME_COUNT: int = 20
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var flight_trail: FlightTrail = $FlightTrail
 @onready var terrain_generator: TerrainGenerator = get_node_or_null("../TerrainGenerator") as TerrainGenerator
+# For is_glide_input_held(): touch has no "ui_accept" action edge to poll (see Main's
+# _input comment), so held-state has to come from Main's own touch tracking.
+@onready var main_node: Main = get_node_or_null("..") as Main
 
 var speed_manager: RefCounted
 var is_dead: bool = false
@@ -95,6 +115,20 @@ var is_dead: bool = false
 # would leave the player sliding forever below the world with no recovery, which is worse
 # than the death it prevented. Obstacle collisions only.
 var has_shield: bool = false
+# Timed effect, driven entirely by PowerupManager.start_glide()/end_glide(); see the
+# airborne branch of _physics_process for what it actually does.
+var is_glide_active: bool = false
+# Latches on with the glide and stays on for the rest of the airborne arc, same pattern
+# as Main's is_glide_vertical_follow_active -- the effect (and therefore is_glide_active)
+# can end mid-air, well before landing. Grants a short obstacle-only shield on touchdown
+# so removing GLIDE_MAX_ALTITUDE (flight can go off-screen from the ground) doesn't turn
+# every landing into a blind coin-flip.
+var is_glide_landing_shield_pending: bool = false
+# Only ticks while true, so a shield actually EARNED via a shield powerup mid-flight is
+# never clipped by this timer -- absorb_hit() clears it same as it clears has_shield.
+var is_shield_from_glide_landing: bool = false
+var glide_landing_shield_timer: float = 0.0
+const GLIDE_LANDING_SHIELD_DURATION: float = 1.0
 # Powerup boost: ground-locked speed override driven externally by
 # PowerupManager (start_boost/end_boost). Deliberately not part of
 # SpeedManager -- the boost speed exceeds SpeedManager.MAX_SPEED and jump is
@@ -206,7 +240,15 @@ func _physics_process(delta: float) -> void:
 	else:
 		jump_buffer_timer = maxf(jump_buffer_timer - delta, 0.0)
 
-	if not is_boosting and coyote_timer > 0.0 and jump_buffer_timer > 0.0:
+	# not is_jump_ascending guards against a real double-launch: is_on_floor() still reads
+	# true for one frame after start_glide()'s liftoff (move_and_slide() hasn't run yet to
+	# reflect the new upward velocity), so if "ui_accept" is freshly pressed on exactly that
+	# frame -- which holding-to-glide does by construction, since it's the same action --
+	# coyote_timer and jump_buffer_timer both got refreshed at the top of this function and
+	# this branch would re-fire a full ordinary jump on top of the glide launch, discarding
+	# it. is_jump_ascending is already true from the glide launch at that point, so this
+	# also can't retrigger a genuine mid-jump the same way.
+	if not is_boosting and not is_jump_ascending and coyote_timer > 0.0 and jump_buffer_timer > 0.0:
 		velocity.y = JUMP_VELOCITY * upgrade_jump_multiplier * jump_boost_multiplier
 		coyote_timer = 0.0
 		jump_buffer_timer = 0.0
@@ -245,7 +287,10 @@ func _physics_process(delta: float) -> void:
 		velocity = slope_tangent * current_speed
 	else:
 		velocity.x = current_speed
-		velocity.y += GRAVITY * delta
+		if is_glide_active:
+			velocity.y = get_glide_velocity_y(delta)
+		else:
+			velocity.y += GRAVITY * delta
 
 	var position_before_move: Vector2 = global_position
 	debug_velocity_before_slide = velocity
@@ -259,6 +304,7 @@ func _physics_process(delta: float) -> void:
 	last_physics_displacement = global_position - position_before_move
 	# Before the watchdogs, so a player who has just died in a chasm never enters one.
 	update_fall_death()
+	update_glide_landing_shield(delta)
 	update_stall_recovery(delta)
 	update_stuck_detection(delta)
 	if TerrainGenerator.DEBUG_TERRAIN_LOGGING or DEBUG_SLOPE_LOGGING:
@@ -723,6 +769,44 @@ func play_flight_effect(duration: float) -> void:
 	flight_trail.play(duration)
 
 
+# Most pickups happen while grounded (this is a runner, not a platformer), and requiring
+# a separate jump press before glide does anything read as "the powerup didn't do
+# anything." Same launch mechanism a real jump uses -- is_jump_ascending forces the
+# airborne branch below even on the frame is_on_floor() still reads true -- just with
+# GLIDE_LAUNCH_VELOCITY instead of JUMP_VELOCITY, and skipped entirely if the pickup
+# happened mid-air already (an active jump or a fall), where forcing a snap to launch
+# velocity would read as a stutter, not a liftoff.
+func start_glide() -> void:
+	is_glide_active = true
+	if is_on_floor() and not is_jump_ascending:
+		velocity.y = GLIDE_LAUNCH_VELOCITY
+		is_jump_ascending = true
+		coyote_timer = 0.0
+		jump_buffer_timer = 0.0
+
+
+func end_glide() -> void:
+	is_glide_active = false
+
+
+func is_glide_input_held() -> bool:
+	if Input.is_action_pressed(&"ui_accept"):
+		return true
+	return main_node != null and main_node.is_touch_held()
+
+
+# Gravity always applies; holding adds thrust on top of it (net accel upward). Either
+# way the result is clamped to the two speed caps, same as GRAVITY's implicit cap is
+# usually the level ending before terminal velocity matters anywhere else in this
+# project. No altitude cap: chasm-blind flight is an accepted risk (see CLAUDE.md),
+# and landing after a glide grants a short obstacle-only shield instead.
+func get_glide_velocity_y(delta: float) -> float:
+	var new_velocity_y: float = velocity.y + GRAVITY * delta
+	if is_glide_input_held():
+		new_velocity_y -= GLIDE_THRUST_ACCELERATION * delta
+	return clampf(new_velocity_y, GLIDE_MAX_RISE_SPEED, GLIDE_MAX_FALL_SPEED)
+
+
 func gain_shield() -> void:
 	has_shield = true
 	color_rect.color = PLAYER_SHIELD_COLOR
@@ -735,12 +819,33 @@ func gain_shield() -> void:
 func absorb_hit() -> bool:
 	if has_shield:
 		has_shield = false
+		is_shield_from_glide_landing = false
 		color_rect.color = PLAYER_DEFAULT_COLOR
 		shield_consumed.emit()
 		return true
 
 	die()
 	return false
+
+
+# Grants GLIDE_LANDING_SHIELD_DURATION of has_shield the instant a glide-or-fall-from-
+# glide touches down, and expires it on its own timer -- it does NOT go through
+# PowerupManager, so a real shield powerup picked up mid-flight is untouched by it.
+func update_glide_landing_shield(delta: float) -> void:
+	if is_glide_active:
+		is_glide_landing_shield_pending = true
+	elif is_glide_landing_shield_pending and is_on_floor():
+		is_glide_landing_shield_pending = false
+		gain_shield()
+		is_shield_from_glide_landing = true
+		glide_landing_shield_timer = GLIDE_LANDING_SHIELD_DURATION
+
+	if is_shield_from_glide_landing:
+		glide_landing_shield_timer -= delta
+		if glide_landing_shield_timer <= 0.0:
+			has_shield = false
+			is_shield_from_glide_landing = false
+			color_rect.color = PLAYER_DEFAULT_COLOR
 
 
 func die() -> void:

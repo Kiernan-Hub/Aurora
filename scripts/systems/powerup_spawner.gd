@@ -39,6 +39,18 @@ var debug_spawning_disabled: bool = false
 # waiting on the weighted draw. Debug-only convenience, never set in shipped code.
 var debug_forced_effect: StringName = &""
 
+# Overrides the first spawn's draw so an editor playtest doesn't have to wait out
+# FIRST_POWERUP_MIN_TIME (15s) to see a pickup. -1 leaves the real schedule alone. Same
+# is_debug_build() idiom as player.gd's DEBUG_* vars: on in the editor/debug export, off
+# in a release build. Harmless in every headless gate too -- they all set
+# debug_spawning_disabled before this can matter, same as debug_forced_effect above.
+var debug_first_powerup_time_override: float = 5.0 if OS.is_debug_build() else -1.0
+
+# Pins ONLY the first spawn's kind, unlike debug_forced_effect above which pins every
+# spawn for the whole run -- this is meant to pair with the time override for a quick
+# look at one specific powerup, without losing variety for the rest of the session.
+var debug_first_powerup_effect_override: StringName = PowerupManager.EFFECT_GLIDE if OS.is_debug_build() else &""
+
 # The full powerup catalogue: one row per kind, and the ONLY place a kind is declared.
 #
 # Replaced a per-kind schedule (each with its own next-time var, hash channel and while
@@ -75,6 +87,11 @@ const POWERUP_TABLE: Array[Dictionary] = [
 		"effect": PowerupManager.EFFECT_SHIELD,
 		"scene": preload("res://scenes/pickups/shield_powerup.tscn"),
 		"weight": 13.0,
+	},
+	{
+		"effect": PowerupManager.EFFECT_GLIDE,
+		"scene": preload("res://scenes/pickups/glide_powerup.tscn"),
+		"weight": 15.0,
 	},
 ]
 
@@ -141,6 +158,9 @@ func _ready() -> void:
 # (39.812038s / 19.395459s), because every one of them hashed seed 0. Every node's
 # _ready() has run by the first _physics_process(), so this is the safe point.
 func initialize_schedule() -> void:
+	if debug_first_powerup_time_override >= 0.0:
+		next_powerup_time = debug_first_powerup_time_override
+		return
 	next_powerup_time = FIRST_POWERUP_MIN_TIME + get_powerup_hash(0, HASH_CHANNEL_INTERVAL) * (POWERUP_INTERVAL_MAX - POWERUP_INTERVAL_MIN)
 
 
@@ -189,6 +209,11 @@ func get_weighted_effect_index(powerup_index: int) -> int:
 	if debug_forced_effect != &"":
 		for index: int in range(POWERUP_TABLE.size()):
 			if POWERUP_TABLE[index]["effect"] == debug_forced_effect:
+				return index
+
+	if powerup_index == 0 and debug_first_powerup_effect_override != &"":
+		for index: int in range(POWERUP_TABLE.size()):
+			if POWERUP_TABLE[index]["effect"] == debug_first_powerup_effect_override:
 				return index
 
 	var total_weight: float = 0.0

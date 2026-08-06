@@ -8,6 +8,7 @@ class_name Main
 @onready var timer_label: Label = $CanvasLayer/TimerLabel
 @onready var stuck_time_label: Label = $CanvasLayer/StuckTimeLabel
 @onready var pause_button: Button = $CanvasLayer/PauseButton
+@onready var game_manager: GameManager = $GameManager
 
 const WORLD_REBASER_SCRIPT: Script = preload("res://scripts/systems/world_rebaser.gd")
 const VERTICAL_FOLLOW_MARGIN: float = 72.0
@@ -37,6 +38,14 @@ const HORIZONTAL_FOLLOW_SMOOTHNESS: float = 8.0
 # estimate by (1-w)/w (~7x at 8.0), so any frame-to-frame noise left in it is
 # amplified straight back into the position this filter exists to smooth.
 const SCROLL_RATE_SMOOTHNESS: float = 6.0
+# Vertical follow while glide is active: near-1:1, no dead zone, no lead term. A
+# permanent lead (tried and reverted, see git history) fixed the glide case but
+# amplified ordinary-hill camera jerk (measured: worst-frame jerk 0.43 -> 0.66
+# px/frame^2 on camera_shake_probe's seed) because vertical scroll rate is far
+# noisier than horizontal on undulating terrain. Scoping the tight follow to ONLY
+# while airborne-from-a-glide leaves normal terrain follow (VERTICAL_FOLLOW_SMOOTHNESS,
+# the baseline dead zone) completely untouched, so that measurement still holds.
+const GLIDE_VERTICAL_FOLLOW_SMOOTHNESS: float = 30.0
 
 # Deliberately not @export: this is the freeze fix, not a tuning knob. While it was
 # exported, scenes/main.tscn serialised `world_rebase_enabled = false` and silently
@@ -61,6 +70,16 @@ var previous_player_x: float = 0.0
 var has_previous_player_x: bool = false
 var total_world_rebase_shift: float = 0.0
 var elapsed_time: float = 0.0
+# Held-state for Player's glide (Phase 3): touch has no "ui_accept" action edge to poll,
+# the same reason buffer_jump() exists below, so Player reads this instead.
+var is_touch_currently_held: bool = false
+# Latches on when a glide starts, and stays on for the rest of the airborne arc even
+# after the glide effect itself ends (input released, or the timed effect expires) --
+# only clears on landing. Without that latch, releasing mid-fall would hand off to the
+# normal baseline-relative dead zone while the player is still well above it, which
+# reads as the camera racing ahead to the resting/ground framing before the player
+# actually gets there.
+var is_glide_vertical_follow_active: bool = false
 
 
 func _ready() -> void:
@@ -75,6 +94,11 @@ func _ready() -> void:
 	if not world_rebase_enabled:
 		push_warning("World rebasing is DISABLED - the terrain freeze bug will return.")
 	(player as Player).debug_stuck_detected.connect(_on_player_stuck_detected)
+	# A touch that ends while paused (e.g. the pause button itself, or backgrounding the
+	# app mid-hold) must not leave is_touch_currently_held stuck true -- that would glide
+	# the player the instant PLAYING resumes with no finger on the screen.
+	if game_manager != null:
+		game_manager.state_changed.connect(_on_game_manager_state_changed)
 
 
 # Touch jump. Handled in _input, and by calling Player directly rather than by
@@ -131,9 +155,22 @@ func _input(event: InputEvent) -> void:
 		return
 
 	var touch_event: InputEventScreenTouch = event as InputEventScreenTouch
-	if touch_event == null or not touch_event.pressed:
+	if touch_event == null:
 		return
-	(player as Player).buffer_jump()
+	is_touch_currently_held = touch_event.pressed
+	if touch_event.pressed:
+		(player as Player).buffer_jump()
+
+
+# Read by Player.is_glide_input_held() -- see buffer_jump()'s comment above for why touch
+# can't go through the "ui_accept" action at all.
+func is_touch_held() -> bool:
+	return is_touch_currently_held
+
+
+func _on_game_manager_state_changed(new_state: GameManager.State) -> void:
+	if new_state != GameManager.State.PLAYING:
+		is_touch_currently_held = false
 
 
 # True for a press (not a release) of either pointer kind landing inside the pause
@@ -165,8 +202,15 @@ func _physics_process(delta: float) -> void:
 	# settled state of the previous physics frame.
 	apply_world_rebase()
 
-	var target_camera_y: float = get_vertical_camera_target()
-	var interpolation_weight: float = 1.0 - exp(-VERTICAL_FOLLOW_SMOOTHNESS * delta)
+	update_glide_vertical_follow_state()
+	var target_camera_y: float
+	var interpolation_weight: float
+	if is_glide_vertical_follow_active:
+		target_camera_y = player.global_position.y
+		interpolation_weight = 1.0 - exp(-GLIDE_VERTICAL_FOLLOW_SMOOTHNESS * delta)
+	else:
+		target_camera_y = get_vertical_camera_target()
+		interpolation_weight = 1.0 - exp(-VERTICAL_FOLLOW_SMOOTHNESS * delta)
 	camera_y = lerpf(camera_y, target_camera_y, interpolation_weight)
 
 	var player_x: float = player.global_position.x
@@ -225,9 +269,35 @@ func update_camera_scroll_rate(player_x: float, delta: float) -> void:
 	camera_scroll_rate = lerpf(camera_scroll_rate, raw_scroll_rate, rate_weight)
 
 
+# Only ever followed DOWNWARD until Phase 3 (glide) -- maxf(baseline, descent) meant a
+# player who climbed more than VERTICAL_FOLLOW_MARGIN above the baseline (previously only
+# a jump, now a sustained glide) had the camera pin at the baseline and stop following.
+# Symmetric now: the middle zone (within one margin either side of baseline) still holds
+# still, exactly as before -- ordinary terrain undulation isn't worth chasing -- but going
+# far enough past the margin in EITHER direction now follows.
+# Turns tight glide-follow on the instant a glide starts, and only turns it back off
+# once the player is grounded again -- see is_glide_vertical_follow_active's comment
+# for why landing, not the effect ending, is the right release point.
+func update_glide_vertical_follow_state() -> void:
+	var glide_player: Player = player as Player
+	if glide_player == null:
+		return
+	if glide_player.is_glide_active:
+		is_glide_vertical_follow_active = true
+	elif is_glide_vertical_follow_active and glide_player.is_on_floor():
+		is_glide_vertical_follow_active = false
+
+
 func get_vertical_camera_target() -> float:
 	var descent_camera_y: float = player.global_position.y - VERTICAL_FOLLOW_MARGIN
-	return maxf(camera_baseline_y, descent_camera_y)
+	if descent_camera_y > camera_baseline_y:
+		return descent_camera_y
+
+	var climb_camera_y: float = player.global_position.y + VERTICAL_FOLLOW_MARGIN
+	if climb_camera_y < camera_baseline_y:
+		return climb_camera_y
+
+	return camera_baseline_y
 
 
 # Shifts the whole play area back toward y=0 so physics contacts keep float

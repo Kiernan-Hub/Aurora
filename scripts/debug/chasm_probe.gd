@@ -23,10 +23,16 @@ extends SceneTree
 #               plus get_collision_chord_slope_angle returning 0 over the void), so it is
 #               exactly the kind of behaviour that a future refactor breaks silently. This is
 #               the only gate that would catch it.
+#   glide    -- opt-in via --glide=1 (Phase 3). ui_accept is held for the whole trial, same as
+#               a player who jumps into a void and holds to glide across. This is the only gate
+#               that exercises PowerupManager.VOID_GUARDED_EFFECTS for EFFECT_GLIDE -- without
+#               it, a glide that expired mid-void would restore gravity at lip height with no
+#               way to jump, the exact unavoidable-death shape the speed boost's guard exists
+#               to prevent.
 #
 # Usage:
 #   godot --headless --path . --script res://scripts/debug/chasm_probe.gd -- \
-#       [--seed=683407368] [--chasms=3]
+#       [--seed=683407368] [--chasms=3] [--glide=1]
 
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 
@@ -51,6 +57,7 @@ var game_manager: GameManager
 # actually have reached each chasm at, which is the case that has to work.
 var speed_override: float = 0.0
 var phase_count: int = 4
+var glide_enabled: bool = false
 
 
 func _init() -> void:
@@ -58,6 +65,7 @@ func _init() -> void:
 	var chasm_budget: int = maxi(get_int_argument("--chasms", 3), 1)
 	speed_override = float(get_int_argument("--speed", 0))
 	phase_count = maxi(get_int_argument("--phases", 4), 1)
+	glide_enabled = get_int_argument("--glide", 0) == 1
 
 	main = MAIN_SCENE.instantiate()
 	terrain_generator = main.get_node("TerrainGenerator") as TerrainGenerator
@@ -82,10 +90,14 @@ func _init() -> void:
 		quit(1)
 		return
 
+	var trial_modes: Array[String] = ["no_jump", "jump", "late", "boost"]
+	if glide_enabled:
+		trial_modes.append("glide")
+
 	var failures: int = 0
 	var trials: int = 0
 	for void_span: Dictionary in void_spans:
-		for trial_mode: String in ["no_jump", "jump", "late", "boost"]:
+		for trial_mode: String in trial_modes:
 			for phase_index: int in range(phase_count):
 				trials += 1
 				var passed: bool = await run_trial(void_span, trial_mode, float(phase_index) * PHASE_STEP_WORLD_X)
@@ -118,6 +130,13 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 
 	if trial_mode == "boost":
 		(main.get_node("PowerupManager") as PowerupManager).start_speed_boost()
+	elif trial_mode == "glide":
+		# Held for the whole trial, same as a player who jumps into a void and holds to
+		# glide across -- and unlike "jump"/"late", is_action_just_pressed() firing on
+		# this frame while still grounded is fine: an ordinary jump into a glide is
+		# exactly the real usage this is meant to cover.
+		(main.get_node("PowerupManager") as PowerupManager).start_glide()
+		Input.action_press(&"ui_accept")
 
 	# A jump is armed to fire the frame the player is within one jump reach of the lip. "late"
 	# holds it until the player is actually past the lip, exercising coyote time -- the thing
@@ -127,12 +146,21 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 		jump_trigger_x = near_lip_x + 1.0
 
 	var has_jumped: bool = false
+	var has_released_glide: bool = false
 	var reached_x: float = player.global_position.x
 	var landed_past_far_lip: bool = false
 	for _frame_index: int in range(TRIAL_FRAME_BUDGET):
 		if (trial_mode == "jump" or trial_mode == "late") and not has_jumped and player.global_position.x >= jump_trigger_x:
 			player.buffer_jump()
 			has_jumped = true
+		# Holding past the far lip forever is not what a real player does -- they release once
+		# clearly across, and gravity (unopposed by thrust) brings them back down to land. Without
+		# this release the player just keeps climbing at GLIDE_MAX_RISE_SPEED for the rest of the
+		# trial budget and is_on_floor() never goes true, which would fail every glide trial
+		# regardless of whether the glide itself is correct.
+		if trial_mode == "glide" and not has_released_glide and player.global_position.x >= far_lip_x:
+			Input.action_release(&"ui_accept")
+			has_released_glide = true
 		await physics_frame
 		if player.is_dead:
 			break
@@ -148,6 +176,9 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 		if reached_x >= far_lip_x + CLEARED_MARGIN_WORLD_X and player.is_on_floor():
 			landed_past_far_lip = true
 			break
+
+	if trial_mode == "glide":
+		Input.action_release(&"ui_accept")
 
 	var survived: bool = not player.is_dead and landed_past_far_lip
 	# no_jump is the trial that proves the void is really cut: on a HAZARD chasm, surviving it
@@ -201,6 +232,7 @@ func reset_player(world_x: float) -> void:
 	player.is_dead = false
 	player.debug_stall_recovery_count = 0
 	player.end_boost()
+	player.end_glide()
 	player.velocity = Vector2.ZERO
 	# Past PHASE1_DURATION so the ramp uses the slow phase-2 acceleration (2.27 px/s^2, ~15
 	# px/s over a whole trial) and the pin below stays effectively pinned.

@@ -5,11 +5,11 @@
 [ext_resource type="Script" uid="uid://b167wbugq81a2" path="res://scripts/main.gd" id="3"]
 [ext_resource type="Script" uid="uid://c3bxsf5ckhq4k" path="res://scripts/systems/background_generator.gd" id="4"]
 [ext_resource type="Script" uid="uid://qs7ecwhx0vkq" path="res://scripts/game/game_manager.gd" id="6_j53ry"]
-[ext_resource type="Script" path="res://scripts/systems/coin_spawner.gd" id="7_coin"]
-[ext_resource type="Script" path="res://scripts/systems/obstacle_spawner.gd" id="8_obstacle"]
-[ext_resource type="Script" path="res://scripts/systems/powerup_manager.gd" id="9_powerup"]
-[ext_resource type="Script" path="res://scripts/systems/powerup_spawner.gd" id="10_powerup_spawner"]
-[ext_resource type="Script" path="res://scripts/systems/sfx_player.gd" id="11_sfx_player"]
+[ext_resource type="Script" uid="uid://bbp425mdybhtt" path="res://scripts/systems/coin_spawner.gd" id="7_coin"]
+[ext_resource type="Script" uid="uid://b3pom5bjfla81" path="res://scripts/systems/obstacle_spawner.gd" id="8_obstacle"]
+[ext_resource type="Script" uid="uid://8hfphtmvbmv0" path="res://scripts/systems/powerup_manager.gd" id="9_powerup"]
+[ext_resource type="Script" uid="uid://xplp0rgrqgp8" path="res://scripts/systems/powerup_spawner.gd" id="10_powerup_spawner"]
+[ext_resource type="Script" uid="uid://cbl2r5umx7t8l" path="res://scripts/systems/sfx_player.gd" id="11_sfx_player"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -29,126 +29,137 @@ safe_margin = 1.0
 script = ExtResource("2")
 player_path = NodePath("../Player")
 
-[node name="CoinSpawner" type="Node2D" parent="TerrainGenerator"]
+[node name="CoinSpawner" type="Node2D" parent="TerrainGenerator" unique_id=1927678191]
 script = ExtResource("7_coin")
-terrain_generator_path = NodePath("..")
-player_path = NodePath("../../Player")
 
-[node name="ObstacleSpawner" type="Node2D" parent="TerrainGenerator"]
+[node name="ObstacleSpawner" type="Node2D" parent="TerrainGenerator" unique_id=576404608]
 script = ExtResource("8_obstacle")
-terrain_generator_path = NodePath("..")
-player_path = NodePath("../../Player")
 
-[node name="PowerupSpawner" type="Node2D" parent="TerrainGenerator"]
+[node name="PowerupSpawner" type="Node2D" parent="TerrainGenerator" unique_id=1131805352]
 script = ExtResource("10_powerup_spawner")
-terrain_generator_path = NodePath("..")
-player_path = NodePath("../../Player")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1352461072]
 position = Vector2(0, 136)
+zoom = Vector2(0.8333333, 0.8333333)
 
 [node name="GameManager" type="Node" parent="." unique_id=151904437]
 script = ExtResource("6_j53ry")
 
-[node name="PowerupManager" type="Node" parent="."]
+[node name="PowerupManager" type="Node" parent="." unique_id=1746217405]
 script = ExtResource("9_powerup")
-player_path = NodePath("../Player")
-powerup_spawner_path = NodePath("../TerrainGenerator/PowerupSpawner")
-powerup_label_path = NodePath("../CanvasLayer/PowerupLabel")
 
-[node name="SfxPlayer" type="Node" parent="."]
+[node name="SfxPlayer" type="Node" parent="." unique_id=1754029316]
 script = ExtResource("11_sfx_player")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=210075013]
 
-[node name="StartScreen" type="Control" parent="CanvasLayer"]
+[node name="StartScreen" type="Control" parent="CanvasLayer" unique_id=1062444047]
 process_mode = 3
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="Overlay" type="ColorRect" parent="CanvasLayer/StartScreen"]
-anchors_preset = 15
+[node name="Overlay" type="ColorRect" parent="CanvasLayer/StartScreen" unique_id=1601690253]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.04, 0.06, 0.1, 0.88)
 
-[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/StartScreen"]
-anchors_preset = 15
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/StartScreen" unique_id=2070746425]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/StartScreen/CenterContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/StartScreen/CenterContainer" unique_id=857622420]
+layout_mode = 2
 alignment = 1
 
-[node name="TitleLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer"]
+[node name="TitleLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer" unique_id=87483162]
+layout_mode = 2
 theme_override_font_sizes/font_size = 40
 text = "AURA"
 horizontal_alignment = 1
 
-[node name="SubtitleLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer"]
+[node name="SubtitleLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer" unique_id=2103748145]
+layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Endless Downhill Skater"
 horizontal_alignment = 1
 
-[node name="InstructionsLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer"]
+[node name="InstructionsLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer" unique_id=1287256151]
+layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "Tap / Space to jump
 Grab the balls, dodge the red boxes"
 horizontal_alignment = 1
 
-[node name="MenuButtons" type="HBoxContainer" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer"]
+[node name="MenuButtons" type="HBoxContainer" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer" unique_id=2122975043]
+layout_mode = 2
 alignment = 1
 
-[node name="StartButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons"]
+[node name="StartButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons" unique_id=1810347507]
 custom_minimum_size = Vector2(100, 44)
+layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Start"
 
-[node name="UpgradesButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons"]
+[node name="UpgradesButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons" unique_id=910124926]
 custom_minimum_size = Vector2(100, 44)
+layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Upgrades"
 
 [node name="DeathScreen" type="Control" parent="CanvasLayer" unique_id=262636423]
-visible = false
 process_mode = 3
+visible = false
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="Overlay" type="ColorRect" parent="CanvasLayer/DeathScreen"]
-anchors_preset = 15
+[node name="Overlay" type="ColorRect" parent="CanvasLayer/DeathScreen" unique_id=1305968060]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0, 0, 0, 0.6)
 
-[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/DeathScreen"]
-anchors_preset = 15
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/DeathScreen" unique_id=1770771764]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/DeathScreen/CenterContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/DeathScreen/CenterContainer" unique_id=1455458272]
+layout_mode = 2
 alignment = 1
 
-[node name="TitleLabel" type="Label" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
+[node name="TitleLabel" type="Label" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer" unique_id=841770344]
+layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "You Died"
 horizontal_alignment = 1
 
-[node name="StatsLabel" type="Label" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
+[node name="StatsLabel" type="Label" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer" unique_id=255900849]
+layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Coins: 0
 Time: 0:00"
 horizontal_alignment = 1
 
-[node name="ShopButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
+[node name="ShopButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer" unique_id=1781100998]
+layout_mode = 2
 text = "Upgrades"
 
-[node name="RestartButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
+[node name="RestartButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer" unique_id=146141358]
+layout_mode = 2
 text = "Restart"
 
-[node name="DeathHomeButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
+[node name="DeathHomeButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer" unique_id=620492131]
+layout_mode = 2
 text = "Home"
 
 [node name="TimerLabel" type="Label" parent="CanvasLayer" unique_id=738491056]
@@ -173,10 +184,9 @@ offset_top = 30.0
 offset_right = -8.0
 offset_bottom = 50.0
 theme_override_font_sizes/font_size = 12
-text = ""
 horizontal_alignment = 2
 
-[node name="CoinLabel" type="Label" parent="CanvasLayer"]
+[node name="CoinLabel" type="Label" parent="CanvasLayer" unique_id=382659027]
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
@@ -188,7 +198,7 @@ theme_override_font_sizes/font_size = 12
 text = "Coins: 0"
 horizontal_alignment = 2
 
-[node name="PowerupLabel" type="Label" parent="CanvasLayer"]
+[node name="PowerupLabel" type="Label" parent="CanvasLayer" unique_id=2098674924]
 visible = false
 anchors_preset = 1
 anchor_left = 1.0
@@ -201,121 +211,141 @@ theme_override_font_sizes/font_size = 12
 text = "BOOST!"
 horizontal_alignment = 2
 
-[node name="PauseButton" type="Button" parent="CanvasLayer"]
+[node name="PauseButton" type="Button" parent="CanvasLayer" unique_id=1389630751]
 visible = false
-focus_mode = 0
-anchors_preset = 0
 offset_left = 8.0
 offset_top = 8.0
 offset_right = 48.0
 offset_bottom = 40.0
+focus_mode = 0
 theme_override_font_sizes/font_size = 16
 text = "||"
 
-[node name="PauseScreen" type="Control" parent="CanvasLayer"]
-visible = false
+[node name="PauseScreen" type="Control" parent="CanvasLayer" unique_id=604031779]
 process_mode = 3
+visible = false
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="Overlay" type="ColorRect" parent="CanvasLayer/PauseScreen"]
-anchors_preset = 15
+[node name="Overlay" type="ColorRect" parent="CanvasLayer/PauseScreen" unique_id=166305575]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.04, 0.06, 0.1, 0.88)
 
-[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/PauseScreen"]
-anchors_preset = 15
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/PauseScreen" unique_id=2078955471]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/PauseScreen/CenterContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/PauseScreen/CenterContainer" unique_id=1138421493]
 custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
 alignment = 1
 
-[node name="TitleLabel" type="Label" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+[node name="TitleLabel" type="Label" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer" unique_id=838057633]
+layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "Paused"
 horizontal_alignment = 1
 
-[node name="ResumeButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+[node name="ResumeButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer" unique_id=1712208502]
+layout_mode = 2
 text = "Resume"
 
-[node name="PauseRestartButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+[node name="PauseRestartButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer" unique_id=1294793863]
+layout_mode = 2
 text = "Restart"
 
-[node name="PauseHomeButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+[node name="PauseHomeButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer" unique_id=1358341735]
+layout_mode = 2
 text = "Home"
 
-[node name="MusicLabel" type="Label" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+[node name="MusicLabel" type="Label" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer" unique_id=99237244]
+layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "Music"
 horizontal_alignment = 1
 
-[node name="MusicSlider" type="HSlider" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+[node name="MusicSlider" type="HSlider" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer" unique_id=1949717004]
+layout_mode = 2
 max_value = 1.0
 step = 0.05
 value = 0.8
 
-[node name="SfxLabel" type="Label" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+[node name="SfxLabel" type="Label" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer" unique_id=1943112407]
+layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "Sound"
 horizontal_alignment = 1
 
-[node name="SfxSlider" type="HSlider" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer"]
+[node name="SfxSlider" type="HSlider" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer" unique_id=349467149]
+layout_mode = 2
 max_value = 1.0
 step = 0.05
 value = 1.0
 
-[node name="ShopScreen" type="Control" parent="CanvasLayer"]
-visible = false
+[node name="ShopScreen" type="Control" parent="CanvasLayer" unique_id=1828391378]
 process_mode = 3
+visible = false
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="Overlay" type="ColorRect" parent="CanvasLayer/ShopScreen"]
-anchors_preset = 15
+[node name="Overlay" type="ColorRect" parent="CanvasLayer/ShopScreen" unique_id=1608509594]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.04, 0.06, 0.1, 0.94)
 
-[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/ShopScreen"]
-anchors_preset = 15
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/ShopScreen" unique_id=1813352781]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/ShopScreen/CenterContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/ShopScreen/CenterContainer" unique_id=1662363968]
 custom_minimum_size = Vector2(260, 0)
+layout_mode = 2
 alignment = 1
 
-[node name="TitleLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+[node name="TitleLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=1602399790]
+layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "Upgrades"
 horizontal_alignment = 1
 
-[node name="WalletLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+[node name="WalletLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=1058992387]
+layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Wallet: 0"
 horizontal_alignment = 1
 
-[node name="JumpLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+[node name="JumpLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=68450793]
+layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "Jump  Lv 0/4"
 horizontal_alignment = 1
 
-[node name="BuyJumpButton" type="Button" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+[node name="BuyJumpButton" type="Button" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=717443780]
+layout_mode = 2
 text = "Jump"
 
-[node name="ResetProgressButton" type="Button" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+[node name="ResetProgressButton" type="Button" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=1210029879]
+layout_mode = 2
 text = "Reset Progress"
 
-[node name="CloseButton" type="Button" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer"]
+[node name="CloseButton" type="Button" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=2081233333]
+layout_mode = 2
 text = "Back"
 
-[node name="ResetConfirmDialog" type="ConfirmationDialog" parent="CanvasLayer/ShopScreen"]
+[node name="ResetConfirmDialog" type="ConfirmationDialog" parent="CanvasLayer/ShopScreen" unique_id=434660687]
 title = "Reset Progress?"
-dialog_text = "This permanently deletes your best score, coin wallet, and every upgrade level. This cannot be undone."
 ok_button_text = "Reset Everything"
-cancel_button_text = "Cancel"
+dialog_text = "This permanently deletes your best score, coin wallet, and every upgrade level. This cannot be undone."
