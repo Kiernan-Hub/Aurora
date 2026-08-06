@@ -42,12 +42,11 @@ blocks, so only when asked).
 
 **Six headless gates:** terrain-shape check (fast, physics-free), freeze-replay,
 freeze-search (the one that actually finds stalls — replay alone isn't sufficient),
-floor-flicker, camera-shake, chasm. Run the terrain check after any segment/shape change,
-the physics ones after any player/collision/segment change, camera-shake after any change
-to the camera follow in `main.gd`, and chasm after anything touching voids, fall death or
-the boost velocity model. Commands, flags and watchdog mechanics in
-`docs/development/debugging.md`. Log any new seed that trips `FREEZE_REPRO` in
-`docs/research/freeze_bug.md` before fixing it.
+floor-flicker, camera-shake, chasm. Run the terrain check after any segment/shape change, the
+physics ones after any player/collision/segment change, camera-shake after any change to the
+camera follow in `main.gd`, and chasm after anything touching voids, fall death or the boost
+velocity model. Commands, flags and watchdog mechanics in `docs/development/debugging.md`.
+Log any new seed that trips `FREEZE_REPRO` in `docs/research/freeze_bug.md` before fixing it.
 
 **Only those six are maintained.** The other 18 files in `scripts/debug/` are archived
 one-offs that mostly predate the start screen — they measure a *paused* game and print
@@ -96,10 +95,13 @@ to touch `get_tree().paused` or a screen's visibility. Reasoning: `architecture.
 - **Any long-running harness needs `debug_chasm_disabled = true`**, next to the two
   `debug_spawning_disabled` flags, or a chasm death reports a confident wrong number
   (`freeze_search`/`camera_shake_probe` take `--chasms=1` to opt back in).
-- **A chasm is flat, and must stay flat** — zero added slope, steepest terrain still
-  20.13°. Anything ≥ `floor_max_angle` is a wall and wedges the player (`large_valley`,
-  three weeks). `terrain_invariant_check` asserts this, and via `CHASM_NOT_CLEARABLE`
-  that any future width/`exit_drop` is jumpable.
+- **A chasm's *void* is flat, and must stay flat** — zero added slope, steepest terrain still
+  20.13°. Anything ≥ `floor_max_angle` is a wall and wedges the player (`large_valley`, three
+  weeks). `exit_drop` is a **step exactly at the far lip**, never a ramp across the void (a
+  ramp aims a boosting player down it instead of returning the 0 that carries the skim).
+- **Scaling a hill scales length *and* amplitude together** (`BIG_HILL_SCALES`). Peak slope is
+  `atan(π·magnitude/length)` and both hill types already sit at the 20.13° ceiling, so raising
+  amplitude alone walks straight into that same wall-wedge failure.
 - **Every `Area2D` has terrain chunks entering it.** Player/chunks/obstacles are layer 1;
   coins/powerups layer 2; everything masks layer 1. `obstacle.gd`, `coin.gd`, `powerup.gd`
   each filter with `body.is_in_group("player")` — drop that and a chunk collects/kills.
@@ -114,15 +116,15 @@ to touch `get_tree().paused` or a screen's visibility. Reasoning: `architecture.
 
 ## Known issues
 
-- **A speed boost taken into an obstacle cluster was unavoidable death — FIXED** (2026-08-04):
-  `ObstacleSpawner` withholds a cluster spawn while `player.is_boosting`.
 - **Residual sub-pixel bounce on curved terrain — open, deferred**, not fixable at the
   input/movement level. Revisit only for a real, confirmed-visible complaint
   (`docs/research/terrain_jitter.md`).
 - **`mega_drop` shakiness — SEGMENT CUT, not fixed** (2026-08-01),
   `MEGA_DROP_SELECTION_WEIGHT = 0`. Six mitigations measured, none worked — read
   `docs/research/camera_shake.md` before spending more time here.
-- **`is_on_floor()` flicker on rising terrain — FIXED** (2026-07-29, `docs/research/floor_flicker.md`).
+- **FIXED, don't re-investigate:** boost-into-obstacle-cluster death (2026-08-04,
+  `ObstacleSpawner` withholds a cluster while `player.is_boosting`); `is_on_floor()` flicker
+  on rising terrain (2026-07-29, `docs/research/floor_flicker.md`).
 - **"View snaps forward/backward for half a second" — unreproduced**, watchdog counts stayed 0 every run to date.
 
 ## Dead / disabled code — check before "fixing"
@@ -134,10 +136,11 @@ background parallax were removed entirely, not left disabled — don't resurrect
 
 ## Build order / status
 
-1. Core loop (terrain + movement) — **working**. Includes **chasms**: a rare 160/220/280px
-   void every ~35–85s, jumped or fatal. `exit_drop` is still 0 — its blocker (boost-glide
-   over a lower far lip) is plausibly resolved by the glide landing-shield (§5) but is
-   still unbuilt (`terrain.md`)
+1. Core loop (terrain + movement) — **working**. **Chasms**: a rare void every ~30–95s — three
+   *hazard* widths (160/220/280) jumped or fatal, plus `chasm_drop` (320px void, 800px lower
+   far lip, ~1s airtime), a survivable spectacle beat run off the near lip. Drops are
+   **periodic, not weighted**: every 2nd chasm, ~1.5–2.8min. Hills roll a **10% oversized
+   variant**, ×1.5/×2 on *both* axes so slope stays 20.13° (`terrain.md`)
 2. Speed scaling — **working**. Two-phase ramp: 100→500 px/s over 10s, then 500→750 over
    the next 110s, capping at `MAX_SPEED` (750) at t=120s
 3. Coins + score — **working**. `SaveStore` (v2) persists a versioned best score, plus a

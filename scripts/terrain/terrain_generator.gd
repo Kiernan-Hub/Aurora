@@ -197,17 +197,45 @@ const CHASM_LEAD_IN_LENGTH: float = 900.0
 # the "big fall" spectacle beat, crossed by simply running off the near lip, and the checker
 # asserts the OPPOSITE property for it (see check_one_chasm).
 #
-#   drop      320  from index 28   800px lower far lip. Running off at the slowest speed this
+#   drop      320  weight 0        800px lower far lip. Running off at the slowest speed this
 #                                  can appear at (545 px/s) covers 545px against a 320px void,
 #                                  and 750px at cap -- so it is cleared with margin at every
 #                                  speed, and segment_length carries enough landing flat for
 #                                  the longest of those crossings.
+#
+# chasm_drop's weight is 0 ON PURPOSE: it is placed by CHASM_DROP_WINDOW_PERIOD, not drawn
+# from this table. See that constant for why a weight was the wrong tool. Weight 0 is
+# correctly skipped by get_chasm_variant()'s draw loop -- subtracting 0 can never take
+# remaining_weight from >=0 to <0 -- so it costs no special case there.
 const CHASM_VARIANTS: Array[Dictionary] = [
 	{"label": "chasm_narrow", "void_length": 160.0, "min_segment_index": 28, "weight": 3, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": 1600.0},
 	{"label": "chasm", "void_length": 220.0, "min_segment_index": 28, "weight": 4, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": 1600.0},
 	{"label": "chasm_wide", "void_length": 280.0, "min_segment_index": 112, "weight": 3, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": 1600.0},
-	{"label": "chasm_drop", "void_length": 320.0, "min_segment_index": 28, "weight": 3, "exit_drop": 800.0, "must_be_jumped": false, "segment_length": 2400.0},
+	{"label": "chasm_drop", "void_length": 320.0, "min_segment_index": 28, "weight": 0, "exit_drop": 800.0, "must_be_jumped": false, "segment_length": 2400.0},
 ]
+# Every Nth chasm is a drop chasm. Exactly one chasm exists per placement window, so the
+# window index IS the chasm ordinal and this is a plain period on it -- O(1), no extra hash,
+# no state.
+#
+# Why not a weight, when width is one: a weight is a per-chasm coin flip with no memory, and
+# the measured result of the shipping 3-of-13 draw was roughly ONE DROP PER 3-5 MINUTES. Four
+# seeds swept to 120,000 world_x (about four full runs) produced a single drop chasm between
+# them, so most runs never showed the feature at all. The same argument the placement window
+# already makes applies here: what is wanted is a spacing, and a weight cannot express one.
+#
+# A period turns "23% each time" into a HARD BOUND. Consecutive drops are exactly
+# CHASM_DROP_WINDOW_PERIOD windows apart, so the gap is 112 segments give or take the spread
+# of the two offset draws ([14, 41]) -- 85 to 139 segments. Note this is TIGHTER than doubling
+# the 29-83 single-chasm spacing: those extremes need adjacent windows to draw opposite
+# offsets, which two windows apart cannot compound.
+#
+# Measured over 8 seeds x 900 segments: gaps of 91-134 segments, 68,480-100,000 world_x, i.e.
+# roughly 1.5 to 2.8 minutes at the 600-750 px/s the ramp holds past the first chasm.
+#
+# Window 0 satisfies the period, so the FIRST void of every run is a drop: the player meets
+# the survivable void before one that can kill them. The cost, accepted: the first hazard
+# chasm now arrives one chasm later than it did.
+const CHASM_DROP_WINDOW_PERIOD: int = 2
 # Default far-lip height for a variant that does not state one. Kept at 0 so the hazard
 # variants above stay exactly as phase 2 shipped them.
 #
@@ -289,6 +317,31 @@ const CHASM_HASH_MIX_MULTIPLIER: int = 2654435761
 const CHASM_VARIANT_HASH_SALT: int = 0x5f3a71c9
 const SMALL_HILL_AMPLITUDE: float = 56.0
 const MEDIUM_HILL_AMPLITUDE: float = 74.0
+# --- Oversized hills ---------------------------------------------------------------
+# A rare hill/valley that is the SAME SHAPE scaled on BOTH AXES: length and magnitude are
+# multiplied by the same factor. That is the entire safety argument, and it is worth being
+# explicit about why, because the obvious version of this feature is a bug.
+#
+# The hill profile is sin^2(PI*p), so peak slope is atan(PI * magnitude / length) -- it
+# depends only on the RATIO. Both hill types already sit at this project's 20.13deg ceiling
+# (56*PI/480 and 74*PI/640), so raising amplitude ALONE raises slope, and slope at or above
+# floor_max_angle is what CharacterBody2D calls a wall and wedges the player on. That is the
+# large_valley bug and the mega_drop shake, i.e. the two features this generator has already
+# lost to steepness. Scaling both axes together leaves max_slope bit-identical at 20.13deg,
+# which terrain_invariant_check measures and reports on every run.
+#
+# Curvature is magnitude/length^2, so it DROPS by 1/scale: a big hill is geometrically
+# smoother than a normal one and cannot make the residual hill camera jerk worse
+# (docs/research/camera_shake.md).
+#
+# Scaling UP also keeps SMALL_SEGMENT_LENGTH true as "the shortest segment there is", which
+# is the hard lower bound CHASM_MIN_SEGMENT_INDEX and terrain_invariant_check convert
+# segment indices to world_x through. Nothing there needs to change.
+const BIG_HILL_CHANCE_PERCENT: int = 10
+const BIG_HILL_SCALES: Array[float] = [1.5, 2.0]
+# Salt so which hills grow is uncorrelated with the shape draw that chose them -- without it
+# get_segment_hash's sequence would decide both.
+const BIG_HILL_HASH_SALT: int = 0x2b7e1516
 const DEFAULT_WEIGHT_FLAT: int = 16
 const DEFAULT_WEIGHT_SMALL_HILL: int = 16
 const DEFAULT_WEIGHT_MEDIUM_HILL_VALLEY_MIX: int = 42
@@ -716,13 +769,27 @@ func is_chasm_segment_index(segment_index: int) -> bool:
 	# CHASM_MIN_SEGMENT_INDEX > 0, so the guard above means segment_index is positive here
 	# and GDScript's sign-following % cannot bite. Negative indices are real: initialize_chunks
 	# spawns from chunk_count_behind chunks before the player.
-	var window_segment_count: int = CHASM_REHEARSAL_WINDOW_SEGMENT_COUNT if debug_drop_chasm_rehearsal else CHASM_WINDOW_SEGMENT_COUNT
+	var window_segment_count: int = get_chasm_window_segment_count()
 	var edge_margin_segments: int = CHASM_REHEARSAL_WINDOW_EDGE_MARGIN_SEGMENTS if debug_drop_chasm_rehearsal else CHASM_WINDOW_EDGE_MARGIN_SEGMENTS
-	var window_index: int = segment_index / window_segment_count
 	var offset_in_window: int = segment_index % window_segment_count
 	var usable_offset_count: int = window_segment_count - (2 * edge_margin_segments)
-	var chasm_offset: int = edge_margin_segments + (get_chasm_hash(window_index) % usable_offset_count)
+	var chasm_offset: int = edge_margin_segments + (get_chasm_hash(get_chasm_window_index(segment_index)) % usable_offset_count)
 	return offset_in_window == chasm_offset
+
+
+func get_chasm_window_segment_count() -> int:
+	return CHASM_REHEARSAL_WINDOW_SEGMENT_COUNT if debug_drop_chasm_rehearsal else CHASM_WINDOW_SEGMENT_COUNT
+
+
+# The placement window a segment falls in. Exactly one chasm exists per window, so for a
+# segment that IS a chasm this doubles as that chasm's ORDINAL -- which is what
+# CHASM_DROP_WINDOW_PERIOD counts. Shared by placement and by the variant draw so the two
+# cannot drift apart about which window a chasm belongs to.
+#
+# Callers are past is_chasm_segment_index()'s segment_index >= CHASM_MIN_SEGMENT_INDEX (> 0)
+# guard, so GDScript's sign-following division cannot bite here either.
+func get_chasm_window_index(segment_index: int) -> int:
+	return segment_index / get_chasm_window_segment_count()
 
 
 # Separate hash from get_segment_hash: it is keyed on the WINDOW, not the segment, and using
@@ -743,10 +810,14 @@ func get_chasm_hash(window_index: int) -> int:
 # O(1) (a fixed 3-entry table), pure in (session_seed, segment_index), and reads no cache, for
 # the same reasons is_chasm_segment_index() does none of those things.
 func get_chasm_variant(segment_index: int) -> Dictionary:
-	if debug_drop_chasm_rehearsal:
-		for variant: Dictionary in CHASM_VARIANTS:
-			if float(variant.get("exit_drop", 0.0)) > 0.0:
-				return variant
+	# Every CHASM_DROP_WINDOW_PERIOD-th chasm is a drop, and the rehearsal flag makes every
+	# chasm one. Both fall through to the weighted draw if the drop variant is not legal this
+	# early, so raising its min_segment_index later degrades to "no drop yet" rather than
+	# placing one the speed ramp cannot carry the player across.
+	if debug_drop_chasm_rehearsal or (get_chasm_window_index(segment_index) % CHASM_DROP_WINDOW_PERIOD) == 0:
+		var drop_variant: Dictionary = get_drop_chasm_variant()
+		if not drop_variant.is_empty() and segment_index >= int(drop_variant["min_segment_index"]):
+			return drop_variant
 
 	var total_weight: int = 0
 	for variant: Dictionary in CHASM_VARIANTS:
@@ -768,6 +839,15 @@ func get_chasm_variant(segment_index: int) -> Dictionary:
 			return variant
 
 	return CHASM_VARIANTS[0]
+
+
+# The one drop variant in the table, or {} if a future edit removes it. Identified by
+# exit_drop rather than by label so the two callers cannot disagree with the table.
+func get_drop_chasm_variant() -> Dictionary:
+	for variant: Dictionary in CHASM_VARIANTS:
+		if float(variant.get("exit_drop", 0.0)) > 0.0:
+			return variant
+	return {}
 
 
 # Keyed on the SEGMENT, unlike get_chasm_hash() which is keyed on the window. See the salt.
@@ -1025,25 +1105,66 @@ func build_segment_spec(segment_index: int) -> Dictionary:
 			"magnitude": GENTLE_UPHILL_RISE,
 			"label": "gentle_uphill",
 		}
+	# Both hill branches multiply length and magnitude by the SAME scale -- see BIG_HILL_SCALES
+	# for why touching only one of them would reintroduce the wall-wedge failure.
 	if segment_selection == SEGMENT_SELECTION_SMALL_HILL:
+		var small_hill_scale: float = get_hill_scale(segment_index)
 		return {
 			"type": SEGMENT_TYPE_HILL,
 			"tier": SEGMENT_TIER_SMALL,
-			"length": SMALL_SEGMENT_LENGTH,
-			"magnitude": SMALL_HILL_AMPLITUDE,
-			"label": "small_hill",
+			"length": SMALL_SEGMENT_LENGTH * small_hill_scale,
+			"magnitude": SMALL_HILL_AMPLITUDE * small_hill_scale,
+			"label": get_hill_label("small_hill", small_hill_scale),
 		}
 
 	# SEGMENT_SELECTION_MEDIUM_HILL_VALLEY_MIX
 	var segment_type: int = get_medium_mix_segment_type(segment_index)
+	var medium_hill_scale: float = get_hill_scale(segment_index)
 	var label: String = "medium_hill" if segment_type == SEGMENT_TYPE_HILL else "medium_valley"
 	return {
 		"type": segment_type,
 		"tier": SEGMENT_TIER_MEDIUM,
-		"length": MEDIUM_SEGMENT_LENGTH,
-		"magnitude": MEDIUM_HILL_AMPLITUDE,
-		"label": label,
+		"length": MEDIUM_SEGMENT_LENGTH * medium_hill_scale,
+		"magnitude": MEDIUM_HILL_AMPLITUDE * medium_hill_scale,
+		"label": get_hill_label(label, medium_hill_scale),
 	}
+
+
+# 1.0 for an ordinary hill, a BIG_HILL_SCALES entry for the rare oversized one. Pure in
+# (session_seed, segment_index) like every other draw in this file, and reads no cache, so it
+# is safe to call from build_segment_spec.
+#
+# Each hill rolls independently, so big hills back to back are possible. That is left possible
+# on purpose: a big hill is the same shape at the same slope, so a run of them is a longer
+# rolling stretch, not a hazard, and suppressing it would need the neighbour lookback this
+# generator deliberately has none of.
+#
+# The two draws take different bit ranges of one hash (low two digits for the chance, higher
+# bits for which scale) so the scale picked is independent of whether the hill grew at all.
+func get_hill_scale(segment_index: int) -> float:
+	var hill_hash: int = get_big_hill_hash(segment_index)
+	if (hill_hash % 100) >= BIG_HILL_CHANCE_PERCENT:
+		return 1.0
+	return BIG_HILL_SCALES[(hill_hash >> 8) % BIG_HILL_SCALES.size()]
+
+
+# Distinct multiplier pair from get_segment_hash, plus a salt, so the oversize roll never
+# lines up with the segment-selection sequence that decided this was a hill.
+func get_big_hill_hash(segment_index: int) -> int:
+	var mixed_value: int = (session_seed ^ BIG_HILL_HASH_SALT ^ ((segment_index + 1) * CHASM_HASH_INDEX_MULTIPLIER)) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 13)) & HASH_MASK
+	mixed_value = (mixed_value * HASH_MIX_MULTIPLIER) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 15)) & HASH_MASK
+	return mixed_value
+
+
+# Oversized hills get their own debug label so probe output can tell them apart. Normal hills
+# keep their exact existing label -- archived probes match "small_hill"/"medium_hill"/
+# "medium_valley" as string literals.
+func get_hill_label(base_label: String, hill_scale: float) -> String:
+	if is_equal_approx(hill_scale, 1.0):
+		return base_label
+	return "%s_big" % base_label
 
 
 func get_mega_drop_angle() -> float:

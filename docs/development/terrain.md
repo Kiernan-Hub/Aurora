@@ -65,6 +65,35 @@ Fill polygon closes at `max(surface_y) + 4096` (`TERRAIN_FILL_DEPTH_MARGIN`),
 recomputed per chunk — never hardcode this depth, baselines drift thousands of px
 down over a run.
 
+## Oversized hills
+
+Every hill and valley rolls an independent `BIG_HILL_CHANCE_PERCENT` (10%) chance of being
+oversized, at a scale drawn from `BIG_HILL_SCALES` (×1.5 or ×2.0). Measured over 8 seeds ×
+900 segments: 10.2% of hills, split 231/208 between the two scales.
+
+**The scale multiplies `length` and `magnitude` together, and that is the whole safety
+argument.** Peak slope of the `sin²(πp)` profile is `atan(π·magnitude/length)` — a function of
+the *ratio* only. `SMALL_HILL_AMPLITUDE`/`SMALL_SEGMENT_LENGTH` (56/480) and
+`MEDIUM_HILL_AMPLITUDE`/`MEDIUM_SEGMENT_LENGTH` (74/640) already sit at this project's 20.13°
+ceiling, so raising amplitude alone raises slope — and slope at or above `floor_max_angle` is
+the wall-wedge failure that cost `large_valley` and `mega_drop`. Scaling both leaves
+`max_slope` bit-identical; `terrain_invariant_check` reports it as 20.13° before and after.
+
+Two consequences worth knowing:
+
+- Curvature is `magnitude/length²`, so it **drops by 1/scale**. A big hill is geometrically
+  *smoother* than a normal one and cannot worsen the residual hill camera jerk.
+- Scaling **up** keeps `SMALL_SEGMENT_LENGTH` true as "the shortest segment there is", which
+  is the hard bound `CHASM_MIN_SEGMENT_INDEX` and the checker convert segment indices to
+  world_x through. Nothing in that derivation needed to change. A future *shrinking* scale
+  would break it.
+
+Big hills roll independently, so two in a row are possible and deliberately left possible —
+same shape, same slope, so a run of them is a longer rolling stretch rather than a hazard, and
+suppressing it would need the neighbour lookback this generator has none of. Their debug label
+gains a `_big` suffix; normal hills keep their exact existing labels, which archived probes
+match as string literals.
+
 ## Complexity dial for bisecting terrain bugs
 
 `TerrainGenerator.debug_weight_*` (`debug_weight_flat`, `debug_weight_small_hill`,
@@ -146,9 +175,10 @@ table entirely: `build_segment_spec` checks `is_chasm_segment_index()` first. On
 start_x, and negative indices are real.
 
 **Width is a table, and the table is gated on speed** (phase 2, 2026-08-03). `CHASM_VARIANTS`
-holds three entries — narrow 160, standard 220, wide 280 — each with its own
-`min_segment_index`, drawn by a weighted hash restricted to the variants legal at that
-segment. Placement and width use separate hashes so the two are uncorrelated.
+holds four entries — the three *hazards* narrow 160, standard 220, wide 280, plus the
+`chasm_drop` described below — each with its own `min_segment_index`, drawn by a weighted hash
+restricted to the variants legal at that segment. Placement and width use separate hashes so
+the two are uncorrelated.
 
 The per-variant gate is not stylistic. `CHASM_MAX_REACH_FRACTION` (0.55 of jump reach) is the
 safety invariant, and the `SpeedManager` ramp has only reached ~545 px/s by the earliest
@@ -190,14 +220,54 @@ run-up from which an over-early jump lands short — for any lead-in `L` and rea
 window is `(L−R, L+width−R)`, which is never empty. Jumping much too early is a mistake the
 player can see; that is gameplay, not geometry.
 
-**`exit_drop` is still 0, deliberately deferred to phase 3.** It is not a data change. The
-field would need a step at the far lip — invisible to geometry, since no chord or fill edge
-survives inside a void, but visible to the checker's 1px sweep, to `get_slope_angle_at_x` and
-to `get_collision_chord_slope_angle`, all of which would need void guards. Decisively: a
-boosting player skims the void at **near**-lip height on a gravity-free grounded model, so it
-would arrive above a lower far lip with only `FLOOR_SNAP_LENGTH` (18px) of snap to catch it,
-and hover in mid-air until the boost expired. `chasm_probe`'s boost trial checks survival and
-reached-x, not contact, so it would not catch that as written.
+## Drop chasms (phase 3, shipped `b3d05fd`)
+
+`chasm_drop` is the fourth variant and the only one with a non-zero `exit_drop`: a 320px void
+whose far lip sits **800px lower**, giving ~1.0s of airtime
+(`sqrt(2·800/GRAVITY)`). It is deliberately **not a hazard** — `must_be_jumped` is `false`,
+and it is crossed by simply running off the near lip (545px of travel at the slowest speed it
+can appear at, against a 320px void). The checker asserts the *opposite* property for it:
+`CHASM_TRIVIALLY_CLEARABLE` is the requirement here, not the violation.
+
+**The drop is a step at the far lip, not a ramp across the void.** `get_exit_drop_offset()`
+returns 0 for the whole void and `exit_drop` from the far lip onward, so the field inside the
+void still reads flat at **near**-lip height and every existing query is bit-identical to
+phase 2 — no void guards anywhere. A ramp would have been continuous, but 800px over 320px is
+a 68° chord, and `get_collision_chord_slope_angle()` would then aim a boosting player straight
+down it instead of returning the 0 that carries the skim (`physics.md`, load-bearing).
+
+That step is the generator's only height-field discontinuity. It is safe because **nothing
+spans it**: the far lip is already a forced collision vertex (`add_lip_sample_world_x`) and a
+fill-run boundary (`split_surface_into_ground_runs`), so no chord and no polygon edge crosses
+it. `terrain_invariant_check` permits a step *only* at a far lip and asserts it equals that
+variant's `exit_drop` — strictly stronger than the blanket no-step check it replaced.
+
+Two consumers outside the generator close the loop:
+
+- `Player.is_boost_gliding_over_drop()` (`player.gd:494`) hands a boosting player to gravity
+  the moment ground reappears below them. Without it the gravity-free grounded model skims at
+  near-lip height and hovers in mid-air until the boost timer expires, with only
+  `FLOOR_SNAP_LENGTH` (18px) of snap to catch the lower lip.
+- `get_pending_exit_drop_at_world_x()` is added to the surface `Player.update_fall_death()`
+  measures against (`player.gd:562`). Without it the crossing itself reads as a fall: at
+  545 px/s a 320px void takes 0.587s ⇒ a 276px drop against `FALL_DEATH_DEPTH` of 200.
+
+**Frequency is periodic, not weighted** (2026-08-06). `chasm_drop` carries weight **0** and is
+placed by `CHASM_DROP_WINDOW_PERIOD` instead: exactly one chasm exists per window, so the
+window index *is* the chasm ordinal, and every 2nd one is a drop. This was a weighted 3-of-13
+draw, which measured **one drop per 3–5 minutes** — four seeds × 120,000 world_x produced a
+single drop chasm, so most runs contained none of the game's best beat.
+
+The period turns a 23% chance into a hard bound. Consecutive drops are exactly
+`CHASM_DROP_WINDOW_PERIOD` windows apart, so the gap is 112 segments ± the spread of the two
+offset draws (`[14, 41]`) ⇒ **85–139 segments**. That is *tighter* than doubling the 29–83
+single-chasm spacing, because those extremes require adjacent windows to draw opposite
+offsets and two windows apart cannot compound them. Measured over 8 seeds × 900 segments:
+gaps of 91–134 segments / 68,480–100,000 world_x ⇒ ≈**1.5–2.8 minutes**.
+
+Window 0 is a drop, so the **first void of every run is the survivable one** — the player
+learns what a void looks like before one can kill them. The cost is that the first *hazard*
+chasm now arrives one chasm later than it used to.
 
 ## Feature history
 
