@@ -27,6 +27,19 @@ would mean every expiring powerup silently wiped the player's purchase. Only
 `GameManager.apply_upgrades()` may write the upgrade one, and it skips headless runs so no
 probe measures physics derived from the developer's own `save.dat` — see `CLAUDE.md`.
 
+**Double jump — ruled out (2026-08-06).** Every chasm invariant in
+`terrain_invariant_check.gd` (`CHASM_LEAD_IN_LENGTH`, `CHASM_MAX_REACH_FRACTION`,
+`check_chasm_variant_table()`) is built on reach as a pure function of takeoff speed —
+`get_jump_reach(speed, multiplier)`, one continuous parabola. A double jump makes reach a
+function of *when* the player fires the second impulse mid-arc, which none of that math
+represents; it isn't a bigger number to re-bound, it's a different shape of function.
+A cooldown doesn't help — it limits how often the mechanic fires per run, not what happens
+the one time it's used right at a chasm's lead-in edge, which is exactly when a player
+would use it. Proving it safe would mean deriving and asserting a worst-case two-impulse
+reach bound the way `check_chasm_variant_table()` does for one impulse today — real,
+non-trivial verification work, not a multiplier tweak. Airborne tricks (CLAUDE.md Build
+order §5) were built instead — same "more airtime = more fun" fantasy, zero reach risk.
+
 The gate is `is_on_floor() and not is_jump_ascending`, **not** the former
 `velocity.y >= 0.0`. That old test was trying to let a jump escape the grounded model,
 but it also caught every *rising* frame, because the grounded model's own velocity is
