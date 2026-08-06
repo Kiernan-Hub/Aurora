@@ -66,6 +66,10 @@ var sfx_slider: HSlider
 var coin_spawner: CoinSpawner
 var coin_label: Label
 var coin_count: int = 0
+# Per completed 360 landed. Routed through _on_coin_collected so a trick reward gets
+# the same coin_multiplier (doubler powerup) and coin SFX as a real coin -- one score
+# path, not two.
+const TRICK_COIN_REWARD: int = 5
 var powerup_manager: PowerupManager
 var sfx_player: SfxPlayer
 var shop_screen: Control
@@ -126,6 +130,7 @@ func _ready() -> void:
 		return
 
 	player.jumped.connect(_on_player_jumped)
+	player.trick_completed.connect(_on_player_trick_completed)
 
 	start_screen = get_node_or_null(start_screen_path) as Control
 	start_button = get_node_or_null(start_button_path) as Button
@@ -350,6 +355,18 @@ func _on_player_jumped() -> void:
 
 func _on_powerup_collected() -> void:
 	sfx_player.play_powerup()
+
+
+func _on_player_trick_completed(spin_count: int) -> void:
+	_on_coin_collected(spin_count * TRICK_COIN_REWARD)
+	# Functional payoff on top of the coins: land a spin, get a real speed_boost, same
+	# effect a pickup grants (PowerupManager.start_speed_boost -> start_effect). No new
+	# velocity model -- this rides the existing LOAD-BEARING FOR CHASMS grounded-model
+	# override, just from a different trigger. Obstacle.gd lets a boosting player break
+	# through instead of dying, so a trick landed right before a cluster pays off Alto's-
+	# style instead of being wasted.
+	if powerup_manager != null:
+		powerup_manager.start_speed_boost()
 
 
 func _on_player_died() -> void:

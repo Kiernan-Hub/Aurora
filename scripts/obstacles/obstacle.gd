@@ -18,4 +18,11 @@ func _on_body_entered(body: Node2D) -> void:
 	has_triggered = true
 	set_deferred("monitoring", false)
 	var player: Player = body as Player
+	# A speed boost already forces the grounded, gravity-free velocity model regardless
+	# of terrain (see the LOAD-BEARING FOR CHASMS note on Player.is_using_grounded_model)
+	# -- letting it also plow through obstacles for free is the same "boosting is
+	# unstoppable" contract, not a new one. has_shield is untouched here, so a shielded
+	# but non-boosting hit still costs the shield exactly as before.
+	if player.is_boosting:
+		return
 	player.absorb_hit()

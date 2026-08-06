@@ -10,6 +10,9 @@ signal shield_consumed
 signal debug_freeze_detected(session_seed: int)
 signal debug_stall_recovered(session_seed: int, world_x: float)
 signal debug_stuck_detected(session_seed: int, world_x: float)
+# Purely cosmetic: emitted once per landing, and only when at least one full spin
+# completed in the air. GameManager scores it; nothing here reads a physics surface.
+signal trick_completed(spin_count: int)
 
 const SPEED_MANAGER_SCRIPT: Script = preload("res://scripts/systems/speed_manager.gd")
 const GRAVITY: float = 1600.0
@@ -38,6 +41,26 @@ const GLIDE_MAX_FALL_SPEED: float = 550.0
 # but strong enough to clear a noticeably higher hop than the original -350 before the
 # hold/thrust math takes over.
 const GLIDE_LAUNCH_VELOCITY: float = -480.0
+# Airborne trick spin (Phase 4): spins color_rect only, same as the rest of
+# update_visual_rotation -- collision_shape is never touched, so this has zero physics
+# surface. Shares is_glide_input_held() rather than a separate poll: hold means glide
+# while a glide effect is active and spin otherwise, one input, resolved where the two
+# branches meet in update_visual_rotation().
+#
+# Rate is tuned against real airtime, not picked for feel: a period of 0.9s (400 deg/s)
+# sits just above a flat grounded jump's airtime (2*JUMP_VELOCITY/GRAVITY = 0.8s, 0
+# flips) and just under a hill-into-valley jump's (0.95-0.99s at SMALL/MEDIUM_HILL_
+# AMPLITUDE, 1 flip). The old TAU*1.5 (0.67s/spin) landed inside the flat-jump window,
+# which is why every ordinary jump could complete one -- that was the bug, not a taste
+# choice. A clean 2nd flip would need ~1.6s+ of airtime; the tallest reachable combo
+# today (jump_boost powerup off a medium hill into a medium valley) only reaches
+# ~1.28s, so two flips stays a near-miss (~1.4 spins) rather than a guarantee. Hill/
+# valley amplitude was deliberately NOT raised to close that gap -- SMALL_HILL_AMPLITUDE
+# and MEDIUM_HILL_AMPLITUDE already sit right at the ~20.13deg slope this project
+# proved is the rideable ceiling (three failed steep-terrain attempts, see CLAUDE.md);
+# closing it would need a 5-10x amplitude increase, well past that.
+const TRICK_SPIN_PERIOD: float = 0.9
+const TRICK_SPIN_RATE: float = TAU / TRICK_SPIN_PERIOD
 # Fast enough to sweep the full INITIAL_SPEED..MAX_SPEED range in well under a
 # second, since the point is skipping the ~62s automatic ramp during testing.
 const MANUAL_SPEED_ADJUST_RATE: float = 300.0
@@ -154,6 +177,11 @@ var jump_boost_multiplier: float = 1.0
 var upgrade_jump_multiplier: float = 1.0
 var debug_rotation_timer: float = 0.0
 var airborne_rotation: float = 0.0
+# Reset every time a new airborne arc begins (see update_visual_rotation()'s takeoff
+# branch), so a trick can only ever be scored for spins completed since leaving the
+# ground, not carried over from a previous jump.
+var trick_rotation_progress: float = 0.0
+var trick_spin_count: int = 0
 var was_grounded_last_frame: bool = false
 var coyote_timer: float = 0.0
 var jump_buffer_timer: float = 0.0
@@ -326,6 +354,12 @@ func update_visual_rotation(delta: float) -> void:
 	var is_grounded: bool = is_on_floor()
 	var logged_target_angle: float = color_rect.rotation
 	if is_grounded:
+		# Landing: score whatever spun since the last takeoff, win or not -- no fail
+		# state, a missed rotation just scores nothing (see trick_completed's callers).
+		if not was_grounded_last_frame and trick_spin_count > 0:
+			trick_completed.emit(trick_spin_count)
+		trick_spin_count = 0
+		trick_rotation_progress = 0.0
 		var terrain_angle: float = terrain_generator.get_slope_angle_at_x(global_position.x)
 		# This exponential response is always in [0, 1), unlike smoothness * delta.
 		# Clamp it to the current target's side of upright so a rapidly reversing
@@ -338,11 +372,24 @@ func update_visual_rotation(delta: float) -> void:
 			color_rect.rotation = clampf(smoothed_rotation, terrain_angle, 0.0)
 		airborne_rotation = color_rect.rotation
 		logged_target_angle = terrain_angle
-	elif was_grounded_last_frame:
-		airborne_rotation = color_rect.rotation
-
-	if not is_grounded:
-		color_rect.rotation = airborne_rotation
+	else:
+		if was_grounded_last_frame:
+			airborne_rotation = color_rect.rotation
+			trick_rotation_progress = 0.0
+			trick_spin_count = 0
+		# Precedence, written down per the plan: hold means glide while a glide effect
+		# is active (existing behavior below, sprite locked to airborne_rotation) and
+		# spin otherwise.
+		if not is_glide_active and is_glide_input_held():
+			var spin_delta: float = TRICK_SPIN_RATE * delta
+			color_rect.rotation += spin_delta
+			trick_rotation_progress += spin_delta
+			while trick_rotation_progress >= TAU:
+				trick_rotation_progress -= TAU
+				trick_spin_count += 1
+			airborne_rotation = color_rect.rotation
+		else:
+			color_rect.rotation = airborne_rotation
 
 	if DEBUG_SLOPE_LOGGING:
 		debug_rotation_timer += delta
