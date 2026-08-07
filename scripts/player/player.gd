@@ -4,6 +4,8 @@ class_name Player
 
 signal died
 signal jumped
+# Emitted on the is_on_floor() false->true edge only -- see was_on_floor below.
+signal landed
 # Emitted when a held shield absorbs an obstacle hit instead of dying. PowerupManager
 # listens so it can clear its own bookkeeping without owning has_shield itself.
 signal shield_consumed
@@ -22,8 +24,17 @@ const JUMP_BUFFER_DURATION: float = 0.12
 const FLOOR_SNAP_LENGTH: float = 18.0
 const ROTATION_SMOOTHNESS: float = 12.0
 const DEBUG_SLOPE_LOGGING: bool = false
-const PLAYER_DEFAULT_COLOR: Color = Color(0.85, 0.93, 1.0)
+# No-tint modulate: animated_sprite shows its real art. PLAYER_SHIELD_COLOR below is
+# the only actual tint, applied as a modulate multiply while has_shield is true.
+const PLAYER_DEFAULT_COLOR: Color = Color(1.0, 1.0, 1.0)
 const PLAYER_SHIELD_COLOR: Color = Color(0.4, 0.85, 1.0)
+# Purely cosmetic scale punch on animated_sprite, eased back to sprite_base_scale by
+# play_squash_stretch(). Jump reads as a stretch (thin/tall), landing as a squash
+# (wide/short) -- same trick, opposite axis bias. Values are multipliers of
+# sprite_base_scale, not absolute scale.
+const JUMP_STRETCH_SCALE: Vector2 = Vector2(0.72, 1.35)
+const LAND_SQUASH_SCALE: Vector2 = Vector2(1.35, 0.72)
+const SQUASH_STRETCH_DURATION: float = 0.28
 # Glide lives entirely in the airborne (gravity) branch of _physics_process -- see the
 # LOAD-BEARING FOR CHASMS note below. is_using_grounded_model is never touched by it, so a
 # boosting player is unaffected and the chasm contract can't move by construction.
@@ -41,7 +52,7 @@ const GLIDE_MAX_FALL_SPEED: float = 550.0
 # but strong enough to clear a noticeably higher hop than the original -350 before the
 # hold/thrust math takes over.
 const GLIDE_LAUNCH_VELOCITY: float = -480.0
-# Airborne trick spin (Phase 4): spins color_rect only, same as the rest of
+# Airborne trick spin (Phase 4): spins animated_sprite only, same as the rest of
 # update_visual_rotation -- collision_shape is never touched, so this has zero physics
 # surface. Shares is_glide_input_held() rather than a separate poll: hold means glide
 # while a glide effect is active and spin otherwise, one input, resolved where the two
@@ -123,7 +134,7 @@ var DEBUG_SHOW_PLAYER_STATE: bool = OS.is_debug_build()
 var DEBUG_LOG_FREEZE_REPRO: bool = OS.is_debug_build()
 var DEBUG_FREEZE_HISTORY_FRAME_COUNT: int = 20
 
-@onready var color_rect: ColorRect = $ColorRect
+@onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var flight_trail: FlightTrail = $FlightTrail
 @onready var terrain_generator: TerrainGenerator = get_node_or_null("../TerrainGenerator") as TerrainGenerator
@@ -205,6 +216,14 @@ var is_using_grounded_model: bool = false
 # True from a jump impulse until the apex. Replaces reading `velocity.y < 0.0` as a
 # proxy for "ascending", which an uphill surface tangent also satisfies.
 var is_jump_ascending: bool = false
+# Tracked separately from is_on_floor() so the landing squash only fires on the
+# false->true edge, not every grounded frame.
+var was_on_floor: bool = false
+var squash_stretch_tween: Tween
+# animated_sprite's rest scale, as authored in player.tscn. play_squash_stretch()
+# multiplies against this rather than Vector2.ONE, since the sprite's rest scale
+# isn't 1:1 (it's sized down from the source art's native resolution).
+var sprite_base_scale: Vector2 = Vector2.ONE
 var debug_forced_floor_snap_count: int = 0
 var debug_forced_floor_snap_max_y: float = 0.0
 var debug_forced_floor_snap_last_y: float = 0.0
@@ -236,9 +255,9 @@ func _ready() -> void:
 	floor_stop_on_slope = false
 	floor_constant_speed = true
 	velocity = Vector2(speed_manager.current_speed, 0.0)
-	color_rect.color = PLAYER_DEFAULT_COLOR
-	color_rect.pivot_offset = color_rect.size * 0.5
-	airborne_rotation = color_rect.rotation
+	animated_sprite.modulate = PLAYER_DEFAULT_COLOR
+	sprite_base_scale = animated_sprite.scale
+	airborne_rotation = animated_sprite.rotation
 	if terrain_generator == null:
 		push_error("Player requires a TerrainGenerator sibling.")
 	setup_debug_state_label()
@@ -282,6 +301,7 @@ func _physics_process(delta: float) -> void:
 		jump_buffer_timer = 0.0
 		is_jump_ascending = true
 		jumped.emit()
+		play_squash_stretch(JUMP_STRETCH_SCALE)
 	elif is_jump_ascending and velocity.y >= 0.0:
 		# Apex: past here the jump is an ordinary fall, so a floor contact means a
 		# landing and the grounded model may take over again.
@@ -327,6 +347,10 @@ func _physics_process(delta: float) -> void:
 	debug_velocity_after_slide = velocity
 	apply_grounded_floor_snap()
 	debug_position_after_snap = global_position
+	if is_on_floor() and not was_on_floor:
+		landed.emit()
+		play_squash_stretch(LAND_SQUASH_SCALE)
+	was_on_floor = is_on_floor()
 	# Measured after the snap deliberately: the snap is part of this frame's motion,
 	# and the stall/stuck watchdogs downstream must see where the body actually ended.
 	last_physics_displacement = global_position - position_before_move
@@ -347,12 +371,27 @@ func _physics_process(delta: float) -> void:
 	record_freeze_repro_frame()
 
 
+# Purely cosmetic: scales animated_sprite from scale_multiplier * sprite_base_scale
+# back to sprite_base_scale around its own centered origin (AnimatedSprite2D is
+# centered=true, so no pivot_offset is needed the way ColorRect required one).
+# Killing any in-flight tween before restarting means a jump landed on immediately
+# after take-off (or vice versa) always reads as one clean punch, not two tweens
+# fighting over the same property.
+func play_squash_stretch(scale_multiplier: Vector2) -> void:
+	if squash_stretch_tween:
+		squash_stretch_tween.kill()
+	animated_sprite.scale = sprite_base_scale * scale_multiplier
+	squash_stretch_tween = create_tween()
+	squash_stretch_tween.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	squash_stretch_tween.tween_property(animated_sprite, "scale", sprite_base_scale, SQUASH_STRETCH_DURATION)
+
+
 func update_visual_rotation(delta: float) -> void:
 	if terrain_generator == null:
 		return
 
 	var is_grounded: bool = is_on_floor()
-	var logged_target_angle: float = color_rect.rotation
+	var logged_target_angle: float = animated_sprite.rotation
 	if is_grounded:
 		# Landing: score whatever spun since the last takeoff, win or not -- no fail
 		# state, a missed rotation just scores nothing (see trick_completed's callers).
@@ -365,16 +404,16 @@ func update_visual_rotation(delta: float) -> void:
 		# Clamp it to the current target's side of upright so a rapidly reversing
 		# slope cannot leave the sprite tilted farther than the sampled terrain.
 		var interpolation_weight: float = 1.0 - exp(-ROTATION_SMOOTHNESS * delta)
-		var smoothed_rotation: float = lerp_angle(color_rect.rotation, terrain_angle, interpolation_weight)
+		var smoothed_rotation: float = lerp_angle(animated_sprite.rotation, terrain_angle, interpolation_weight)
 		if terrain_angle >= 0.0:
-			color_rect.rotation = clampf(smoothed_rotation, 0.0, terrain_angle)
+			animated_sprite.rotation = clampf(smoothed_rotation, 0.0, terrain_angle)
 		else:
-			color_rect.rotation = clampf(smoothed_rotation, terrain_angle, 0.0)
-		airborne_rotation = color_rect.rotation
+			animated_sprite.rotation = clampf(smoothed_rotation, terrain_angle, 0.0)
+		airborne_rotation = animated_sprite.rotation
 		logged_target_angle = terrain_angle
 	else:
 		if was_grounded_last_frame:
-			airborne_rotation = color_rect.rotation
+			airborne_rotation = animated_sprite.rotation
 			trick_rotation_progress = 0.0
 			trick_spin_count = 0
 		# Precedence, written down per the plan: hold means glide while a glide effect
@@ -382,20 +421,20 @@ func update_visual_rotation(delta: float) -> void:
 		# spin otherwise.
 		if not is_glide_active and is_glide_input_held():
 			var spin_delta: float = TRICK_SPIN_RATE * delta
-			color_rect.rotation += spin_delta
+			animated_sprite.rotation += spin_delta
 			trick_rotation_progress += spin_delta
 			while trick_rotation_progress >= TAU:
 				trick_rotation_progress -= TAU
 				trick_spin_count += 1
-			airborne_rotation = color_rect.rotation
+			airborne_rotation = animated_sprite.rotation
 		else:
-			color_rect.rotation = airborne_rotation
+			animated_sprite.rotation = airborne_rotation
 
 	if DEBUG_SLOPE_LOGGING:
 		debug_rotation_timer += delta
 		if debug_rotation_timer >= 0.5:
 			debug_rotation_timer = 0.0
-			print("player x=", global_position.x, " target_angle=", logged_target_angle, " rotation=", color_rect.rotation, " grounded=", is_grounded, " velocity=", velocity)
+			print("player x=", global_position.x, " target_angle=", logged_target_angle, " rotation=", animated_sprite.rotation, " grounded=", is_grounded, " velocity=", velocity)
 
 	was_grounded_last_frame = is_grounded
 
@@ -856,7 +895,7 @@ func get_glide_velocity_y(delta: float) -> float:
 
 func gain_shield() -> void:
 	has_shield = true
-	color_rect.color = PLAYER_SHIELD_COLOR
+	animated_sprite.modulate = PLAYER_SHIELD_COLOR
 
 
 # Called by obstacle.gd instead of die() on every obstacle hit. Returns whether the
@@ -867,7 +906,7 @@ func absorb_hit() -> bool:
 	if has_shield:
 		has_shield = false
 		is_shield_from_glide_landing = false
-		color_rect.color = PLAYER_DEFAULT_COLOR
+		animated_sprite.modulate = PLAYER_DEFAULT_COLOR
 		shield_consumed.emit()
 		return true
 
@@ -892,7 +931,7 @@ func update_glide_landing_shield(delta: float) -> void:
 		if glide_landing_shield_timer <= 0.0:
 			has_shield = false
 			is_shield_from_glide_landing = false
-			color_rect.color = PLAYER_DEFAULT_COLOR
+			animated_sprite.modulate = PLAYER_DEFAULT_COLOR
 
 
 func die() -> void:
