@@ -15,10 +15,11 @@ too.
 `BackgroundGenerator` falls back to `/root/Main/Player` if `player_path` is unset.
 (Ignore any older doc claiming `GameState.gd` exists — it doesn't.)
 
-## The three spawners live under TerrainGenerator on purpose
+## The spawners live under TerrainGenerator on purpose
 
-`CoinSpawner`, `ObstacleSpawner` and `PowerupSpawner` are children of
-`TerrainGenerator`. Two separate reasons, both load-bearing:
+`CoinSpawner`, `ObstacleSpawner`, `PowerupSpawner`, `GroundTreeSpawner` (decorative,
+`docs/development/visuals.md`) and `GlideCoinSpawner` are children of `TerrainGenerator`.
+Two separate reasons, both load-bearing:
 
 **World rebasing.** `main.gd` shifts `TerrainGenerator.position.y` directly, so every
 descendant — chunks, coin groups, obstacles, pickups — is carried along for free. A
@@ -33,7 +34,18 @@ first `_physics_process`, never in `_ready()`.
 `CoinSpawner` (`has_initialized_coin_groups`) and `PowerupSpawner`
 (`has_initialized_schedule`) both do this. `ObstacleSpawner` sidesteps it — its first
 cluster time is a plain constant, and every later draw happens during
-`_physics_process`.
+`_physics_process`. `GlideCoinSpawner` sidesteps it differently: it never reads
+`session_seed` at all — a glide is powerup-timed and player-steered, not a function of
+`(session_seed, world_x)`, so there is nothing to precompute. It spawns coins ahead of the
+player's live x each physics frame instead, but each coin's y comes from
+`terrain_generator.get_terrain_height(x)`, not the player's own altitude — an earlier
+version anchored to the player and produced a straight vertical column of coins on any
+real climb, and worked against the mechanic's own point (an unbounded glide is meant to
+be discouraged, not rewarded, by the trail following the player up). Being a plain child
+of `TerrainGenerator` with no offset of its own is what makes this free: its local
+coordinates already are `get_terrain_height()`'s frame, so no `global_position`
+conversion is needed either, and it stays correctly aligned across a world rebase without
+needing to know one happened.
 
 Getting this wrong is **completely silent**. It was a real bug: `PowerupSpawner` drew
 its first-spawn times in `_ready()` and so hashed seed 0 every session, making three

@@ -10,16 +10,91 @@
 [ext_resource type="Script" uid="uid://8hfphtmvbmv0" path="res://scripts/systems/powerup_manager.gd" id="9_powerup"]
 [ext_resource type="Script" uid="uid://xplp0rgrqgp8" path="res://scripts/systems/powerup_spawner.gd" id="10_powerup_spawner"]
 [ext_resource type="Script" uid="uid://cbl2r5umx7t8l" path="res://scripts/systems/sfx_player.gd" id="11_sfx_player"]
+[ext_resource type="Script" path="res://scripts/systems/sky_backdrop.gd" id="12_sky"]
+[ext_resource type="Script" path="res://scripts/systems/snow_drift.gd" id="13_snow"]
+[ext_resource type="Script" path="res://scripts/systems/ground_tree_spawner.gd" id="14_ground_trees"]
+[ext_resource type="Script" path="res://scripts/systems/bird_flock.gd" id="15_birds"]
+[ext_resource type="Script" path="res://scripts/systems/glide_coin_spawner.gd" id="16_glide_coins"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
 
+[node name="SkyBackdrop" type="CanvasLayer" parent="."]
+layer = -200
+script = ExtResource("12_sky")
+
 [node name="ParallaxBackground" type="ParallaxBackground" parent="." unique_id=1047312801]
 
-[node name="ParallaxLayer" type="ParallaxLayer" parent="ParallaxBackground" unique_id=187302441]
+[node name="FarPeaks" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.03, 0)
+script = ExtResource("4")
+player_path = NodePath("../../Player")
+shape_kind = 0
+base_y_fraction = 0.34
+silhouette_color = Color(0.74, 0.81, 0.9, 1)
+ridge_height_min = 140.0
+ridge_height_max = 340.0
+ridge_period_scale = 2.6
+haze_color = Color(0.88, 0.92, 0.96, 0.4)
+haze_rise = 230.0
+rng_salt = 55
+
+[node name="FarRidge" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.06, 0)
+script = ExtResource("4")
+player_path = NodePath("../../Player")
+shape_kind = 0
+base_y_fraction = 0.44
+silhouette_color = Color(0.68, 0.77, 0.86, 1)
+ridge_height_min = 110.0
+ridge_height_max = 260.0
+ridge_period_scale = 1.7
+haze_color = Color(0.88, 0.92, 0.96, 0.5)
+haze_rise = 190.0
+rng_salt = 101
+
+[node name="MidRidge" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.14, 0)
+script = ExtResource("4")
+player_path = NodePath("../../Player")
+shape_kind = 0
+base_y_fraction = 0.52
+silhouette_color = Color(0.57, 0.68, 0.8, 1)
+ridge_height_min = 75.0
+ridge_height_max = 190.0
+ridge_period_scale = 1.0
+haze_color = Color(0.86, 0.9, 0.95, 0.44)
+haze_rise = 140.0
+rng_salt = 202
+
+[node name="PineLine" type="ParallaxLayer" parent="ParallaxBackground"]
 motion_scale = Vector2(0.3, 0)
 script = ExtResource("4")
-player_path = NodePath("../Player")
+player_path = NodePath("../../Player")
+shape_kind = 1
+base_y_fraction = 0.6
+silhouette_color = Color(0.45, 0.56, 0.69, 1)
+ridge_height_min = 18.0
+ridge_height_max = 58.0
+ridge_period_scale = 0.62
+haze_color = Color(0.85, 0.9, 0.95, 0.52)
+haze_rise = 100.0
+rng_salt = 303
+pine_spacing = 52.0
+pine_height_min = 26.0
+pine_height_max = 52.0
+
+[node name="BirdFlock" type="CanvasLayer" parent="."]
+layer = -60
+
+[node name="Flock" type="Node2D" parent="BirdFlock"]
+script = ExtResource("15_birds")
+
+[node name="SnowDrift" type="CanvasLayer" parent="."]
+layer = -50
+
+[node name="SnowParticles" type="GPUParticles2D" parent="SnowDrift"]
+script = ExtResource("13_snow")
 
 [node name="Player" parent="." unique_id=1995330198 instance=ExtResource("1")]
 position = Vector2(64, 136)
@@ -37,6 +112,12 @@ script = ExtResource("8_obstacle")
 
 [node name="PowerupSpawner" type="Node2D" parent="TerrainGenerator" unique_id=1131805352]
 script = ExtResource("10_powerup_spawner")
+
+[node name="GroundTreeSpawner" type="Node2D" parent="TerrainGenerator"]
+script = ExtResource("14_ground_trees")
+
+[node name="GlideCoinSpawner" type="Node2D" parent="TerrainGenerator"]
+script = ExtResource("16_glide_coins")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1352461072]
 position = Vector2(0, 136)

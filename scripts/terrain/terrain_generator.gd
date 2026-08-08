@@ -73,8 +73,30 @@ var segment_selection_weight_table: Array[Dictionary] = []
 var chunk_collision_sample_xs: Dictionary[int, PackedFloat64Array] = {}
 var chunk_collision_sample_heights: Dictionary[int, PackedFloat64Array] = {}
 
-const LIGHT_CHUNK_COLOR: Color = Color(0.92, 0.97, 1.0)
-const DARK_CHUNK_COLOR: Color = Color(0.78, 0.86, 0.93)
+# IDENTICAL on purpose (2026-08-06). These were 0.92/0.97/1.0 and 0.78/0.86/0.93, far
+# enough apart that the parity alternation in apply_chunk_color() read as hard vertical
+# banding at every chunk boundary -- the opposite of the continuous snowfield the layered
+# background is built around. A first pass merely narrowed the gap to ~2/255, which was
+# still visible: on a flat pale field that large, a hard 2-level step reads as a Mach band
+# even though the colours measure almost the same.
+#
+# Kept as TWO constants rather than collapsed into one so apply_chunk_color() and its
+# parity branch stay exactly as they were, and so the alternation remains available as a
+# debugging aid -- give these different values and every chunk boundary lights up.
+const LIGHT_CHUNK_COLOR: Color = Color(0.957, 0.975, 1.0)
+const DARK_CHUNK_COLOR: Color = Color(0.957, 0.975, 1.0)
+# Multiplies chunk_color (apply_chunk_color) via Polygon2D.vertex_colors: full brightness
+# at the surface line, darkest by FILL_GRADIENT_DEPTH below it, flat from there down to
+# fill_bottom_y. Exists so a deep camera excursion (a high glide, main.gd's
+# is_glide_vertical_follow_active) reads the fill as receding ground rather than as one
+# flat undifferentiated colour. See docs/development/visuals.md, "Terrain fill shading".
+const FILL_GRADIENT_TOP_TINT: Color = Color(1.0, 1.0, 1.0, 1.0)
+const FILL_GRADIENT_BOTTOM_TINT: Color = Color(0.58, 0.64, 0.77, 1.0)
+# How far below the surface the gradient reaches full darkness. Deliberately close to a
+# typical glide's ON-SCREEN depth (not TERRAIN_FILL_DEPTH_MARGIN's 4096px) -- see the
+# close_fill_run() comment for why tying this to the full fill depth made the first version
+# of this fix invisible.
+const FILL_GRADIENT_DEPTH: float = 560.0
 const SLOPE_SAMPLE_DISTANCE: float = 2.0
 const MAX_COLLISION_SEGMENT_LENGTH: float = 16.0
 # How far from the most recently requested chunk the collision-sample cache keeps
@@ -537,10 +559,12 @@ func build_chunk_fill(chunk: StaticBody2D, terrain_fill: Polygon2D, surface_poin
 		return
 
 	terrain_fill.polygon = close_fill_run(ground_runs[0], fill_bottom_y)
+	terrain_fill.vertex_colors = build_fill_vertex_colors(ground_runs[0])
 	for run_index: int in range(1, ground_runs.size()):
 		var extra_fill: Polygon2D = Polygon2D.new()
 		extra_fill.name = "TerrainFill%d" % run_index
 		extra_fill.polygon = close_fill_run(ground_runs[run_index], fill_bottom_y)
+		extra_fill.vertex_colors = build_fill_vertex_colors(ground_runs[run_index])
 		chunk.add_child(extra_fill)
 
 
@@ -566,9 +590,43 @@ func split_surface_into_ground_runs(surface_points: PackedVector2Array, surface_
 
 func close_fill_run(run_points: PackedVector2Array, fill_bottom_y: float) -> PackedVector2Array:
 	var fill_points: PackedVector2Array = run_points.duplicate()
-	fill_points.append(Vector2(run_points[run_points.size() - 1].x, fill_bottom_y))
-	fill_points.append(Vector2(run_points[0].x, fill_bottom_y))
+	var start_x: float = run_points[0].x
+	var end_x: float = run_points[run_points.size() - 1].x
+	# Vertex colors alone can't put the visible darkening within FILL_GRADIENT_DEPTH: with
+	# only these two far corners, Polygon2D.vertex_colors interpolates linearly across the
+	# WHOLE geometric span down to fill_bottom_y (TERRAIN_FILL_DEPTH_MARGIN, 4096px), so a
+	# 600-900px glide view -- most of the fill a high glide ever actually shows -- barely
+	# moved off full brightness (measured: ~4% darker). The extra gradient-stop pair below
+	# is what gives the darkening somewhere shallow enough to land on screen.
+	var gradient_stop_y: float = get_shallowest_y(run_points) + FILL_GRADIENT_DEPTH
+	fill_points.append(Vector2(end_x, gradient_stop_y))
+	fill_points.append(Vector2(end_x, fill_bottom_y))
+	fill_points.append(Vector2(start_x, fill_bottom_y))
+	fill_points.append(Vector2(start_x, gradient_stop_y))
 	return fill_points
+
+
+func get_shallowest_y(points: PackedVector2Array) -> float:
+	var shallowest_y: float = points[0].y
+	for point: Vector2 in points:
+		shallowest_y = minf(shallowest_y, point.y)
+	return shallowest_y
+
+
+# Parallels close_fill_run() vertex-for-vertex: light at every surface sample, dark from
+# the gradient-stop pair down through the two far bottom corners (same color for both, so
+# nothing continues to darken past FILL_GRADIENT_DEPTH -- it does not need to, that far
+# down is already off the bottom of the glide-view case this exists for). Godot
+# interpolates Polygon2D.vertex_colors per pixel across the triangulated fill, so this
+# alone is what turns close_fill_run()'s output into a gradient instead of a flat fill.
+func build_fill_vertex_colors(run_points: PackedVector2Array) -> PackedColorArray:
+	var vertex_colors: PackedColorArray = PackedColorArray()
+	vertex_colors.resize(run_points.size() + 4)
+	for point_index: int in range(run_points.size()):
+		vertex_colors[point_index] = FILL_GRADIENT_TOP_TINT
+	for extra_index: int in range(4):
+		vertex_colors[run_points.size() + extra_index] = FILL_GRADIENT_BOTTOM_TINT
+	return vertex_colors
 
 
 func get_fill_bottom_y(surface_points: PackedVector2Array) -> float:

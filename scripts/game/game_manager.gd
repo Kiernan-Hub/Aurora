@@ -12,6 +12,7 @@ class_name GameManager
 @export var restart_button_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/RestartButton")
 @export var death_home_button_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/DeathHomeButton")
 @export var coin_spawner_path: NodePath = NodePath("../TerrainGenerator/CoinSpawner")
+@export var glide_coin_spawner_path: NodePath = NodePath("../TerrainGenerator/GlideCoinSpawner")
 @export var coin_label_path: NodePath = NodePath("../CanvasLayer/CoinLabel")
 @export var powerup_manager_path: NodePath = NodePath("../PowerupManager")
 @export var sfx_player_path: NodePath = NodePath("../SfxPlayer")
@@ -64,6 +65,7 @@ var pause_home_button: Button
 var music_slider: HSlider
 var sfx_slider: HSlider
 var coin_spawner: CoinSpawner
+var glide_coin_spawner: GlideCoinSpawner
 var coin_label: Label
 var coin_count: int = 0
 # Per completed 360 landed. Routed through _on_coin_collected so a trick reward gets
@@ -208,6 +210,14 @@ func _ready() -> void:
 		return
 
 	coin_spawner.coin_collected.connect(_on_coin_collected)
+
+	# Optional, not required-and-return like coin_spawner/coin_label above: a missing
+	# GlideCoinSpawner should never take down the whole coin/score system, it just means
+	# no coins appear during a glide.
+	glide_coin_spawner = get_node_or_null(glide_coin_spawner_path) as GlideCoinSpawner
+	if glide_coin_spawner != null:
+		glide_coin_spawner.coin_collected.connect(_on_coin_collected)
+
 	update_coin_label()
 
 	powerup_manager = get_node_or_null(powerup_manager_path) as PowerupManager

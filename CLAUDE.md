@@ -17,6 +17,7 @@ This file is the map. Everything else is one level down, read on demand.
 | `docs/development/terrain.md` | Working inside the generator, chunk lifecycle, or segment shapes |
 | `docs/development/physics.md` | Changing player movement, collision, stall watchdogs, or the camera |
 | `docs/development/input.md` | Any input change — desktop *or* touch |
+| `docs/development/visuals.md` | Touching the background, scenery, palette or draw order |
 | `docs/development/debugging.md` | Running a gate, or reviving an archived probe |
 | `docs/development/dead_code.md` | Something looks reachable but isn't |
 | `docs/review/*.md` | Point-in-time external audits. Read the newest before a cleanup pass — it's the running list of known-but-unfixed debt |
@@ -56,7 +57,10 @@ confident, meaningless numbers rather than failing. Never trust one without revi
 
 ```
 Main (Node2D, scripts/main.gd)
-├── ParallaxBackground/ParallaxLayer  motion_scale (0.3,0) ← background_generator.gd
+├── SkyBackdrop       CanvasLayer -200, static gradient ← sky_backdrop.gd
+├── ParallaxBackground  FarRidge/MidRidge/PineLine, motion_scale.y ALWAYS 0
+│                     one background_generator.gd each, differing only by @export
+├── SnowDrift         CanvasLayer -50 (behind all gameplay) ← snow_drift.gd
 ├── Player            position (64,136), safe_margin 1.0  ← player.tscn
 ├── TerrainGenerator  player_path = ../Player
 │   ├── CoinSpawner       per-chunk coin slots
@@ -157,7 +161,9 @@ background parallax were removed entirely, not left disabled — don't resurrect
    jump/coin/powerup/death from a 6-voice pool, sliders drive their bus on drag end. No
    music track yet. Stays behind a locally-computed `is_headless` (`Services` isn't ready
    in harness `_init()`)
-8. Visual polish — placeholder rects only
+8. **Visual polish — background done** (2026-08-06), gameplay art still placeholder rects.
+   Layered daylight winter scenery: sky gradient, three parallax silhouette layers with
+   per-layer haze, drifting snow, de-banded terrain. Traps + palette in `visuals.md`
 9. **Upgrades — vertical slice working** (2026-08-04). One track (jump, five levels), SHOP
    screen, banked coins; player starts weak, buys to baseline. Missions/zones not started
 

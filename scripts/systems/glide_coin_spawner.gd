@@ -1,0 +1,207 @@
+extends Node2D
+
+class_name GlideCoinSpawner
+
+# Coins that only exist while the glide powerup is active (player.is_glide_active) -- 30
+# of them pop in individually, at random times, over the first FIELD_SPAWN_DURATION
+# seconds of the glide, plus one oversized bonus coin the instant the glide ends. Reuses
+# scenes/pickups/coin.tscn rather than a new scene: a coin is a coin, this just controls
+# when and where one appears.
+#
+# ANCHORED TO THE TERRAIN, NOT THE PLAYER. An early version placed each coin at the
+# player's OWN altitude at spawn time -- looked fine while the player held a level glide,
+# but a real climb (player.y swinging over hundreds of px, see player.gd's
+# GLIDE_MAX_RISE_SPEED) left a straight vertical column of coins hanging wherever the
+# player happened to be, disconnected from the ground below. That also worked against the
+# mechanic's own point: per CLAUDE.md, an unbounded glide is the one thing this game does
+# that Alto's doesn't. Every coin's y is terrain_generator.get_terrain_height(x) (a
+# randomised clearance above it), same local-space technique CoinSpawner's own ground
+# coins use.
+#
+# SCATTERED, NOT LINED UP. Two earlier versions still read as a shape once plotted: one
+# coin every fixed x-distance reads as a path (smooth or randomised height, walking x in
+# steps always does); one batch clamped to a narrow shared altitude reads as a tight
+# cluster. This version spawns coins one at a time on independently randomised timers
+# across FIELD_SPAWN_DURATION (so they pop in through the whole early glide, not all at
+# once), at a wide-open clearance range (TRAIL_CLEARANCE_MIN/MAX) so the full field's
+# vertical spread lands in the thousand-plus-px range, and rejects a candidate spot that
+# lands too close to any already-placed coin (MIN_COIN_SEPARATION) so nothing clusters or
+# overlaps.
+#
+# A child of TerrainGenerator, same reasoning as coin_spawner.gd's header comment: world
+# rebasing (main.gd, ~every 26s) shifts TerrainGenerator.position.y directly, and every
+# descendant inherits that shift for free -- and since this node sits directly under
+# TerrainGenerator with no offset of its own, a coin's local (position.x, position.y) IS
+# already TerrainGenerator-local, the same frame get_terrain_height()'s return value is
+# expressed in. No global_position conversion needed.
+@export var terrain_generator_path: NodePath = NodePath("..")
+@export var player_path: NodePath = NodePath("../../Player")
+@export var camera_path: NodePath = NodePath("../../Camera2D")
+
+signal coin_collected(value: int)
+
+const COIN_SCENE: PackedScene = preload("res://scenes/pickups/coin.tscn")
+const TRAIL_COIN_VALUE: int = 1
+const COIN_FIELD_COUNT: int = 30
+# All 30 pop-in times are drawn from [0, FIELD_SPAWN_DURATION) at glide start, then popped
+# off as the glide's own clock reaches them -- see spawn_timer / pending_spawn_times.
+const FIELD_SPAWN_DURATION: float = 7.0
+# How far PAST the visible right edge of the screen (see get_visible_right_edge_x()) a
+# coin spawns, not a fixed distance ahead of the player. An earlier version used a fixed
+# lead from the player's own x, which was well inside the camera's view at ordinary zoom
+# and scroll speed -- coins were popping into existence in plain sight a few hundred px in
+# front of the player instead of entering from off-screen the way the rest of the world's
+# scenery does. Anchoring to the screen edge instead of the player is also naturally
+# correct as speed ramps over a run: the same fixed px lead is a shrinking time margin as
+# MAX_SPEED climbs, while a screen-edge margin never is.
+const EDGE_SPAWN_MARGIN_MIN: float = 40.0
+const EDGE_SPAWN_MARGIN_MAX: float = 360.0
+# How far above the terrain's own height field a coin sits, same local-y units
+# get_terrain_height() uses (see CoinSpawner.COIN_SURFACE_CLEARANCE for the ordinary-coin
+# equivalent). Independently randomised per coin, and deliberately wide: across 30 coins
+# this is what puts ~1000-2000px between the highest and lowest coin in a glide, per the
+# brief -- a narrow range here was tried and just produced a tight, low cluster instead.
+const TRAIL_CLEARANCE_MIN: float = 60.0
+const TRAIL_CLEARANCE_MAX: float = 1900.0
+# Minimum euclidean distance between any two field coins. Checked against every
+# still-active coin at candidate time, with a bounded number of retries so a crowded late
+# glide can't spin forever -- see spawn_trail_coin().
+const MIN_COIN_SEPARATION: float = 220.0
+const MIN_COIN_SEPARATION_SQUARED: float = MIN_COIN_SEPARATION * MIN_COIN_SEPARATION
+const MAX_PLACEMENT_ATTEMPTS: int = 6
+# Every air coin renders at this scale, trail and bonus alike -- at the ordinary 16px
+# size they read as barely-there specks against how spread out and far away the field
+# already is; bigger is what actually makes a coin poking out of that empty sky readable.
+const AIR_COIN_SCALE: float = 1.9
+const BONUS_COIN_VALUE: int = 15
+const BONUS_COIN_LEAD_DISTANCE: float = 200.0
+const BONUS_SURFACE_CLEARANCE: float = 130.0
+# Brighter/richer than the base coin's 0.98,0.82,0.15 -- the one visual cue (besides size)
+# that this coin is the end-of-glide bonus, not a field coin.
+const BONUS_COIN_COLOR: Color = Color(1.0, 0.87, 0.22, 1.0)
+# A field coin the player flew past without collecting has no despawn trigger of its own
+# (unlike CoinSpawner's chunk-indexed groups) -- this is what frees it instead.
+const DESPAWN_BEHIND_DISTANCE: float = 700.0
+
+var terrain_generator: TerrainGenerator
+var player: CharacterBody2D
+var camera: Camera2D
+var was_glide_active: bool = false
+var spawn_timer: float = 0.0
+var pending_spawn_times: Array[float] = []
+var active_coins: Array[Coin] = []
+
+
+func _ready() -> void:
+	terrain_generator = get_node_or_null(terrain_generator_path) as TerrainGenerator
+	player = get_node_or_null(player_path) as CharacterBody2D
+	camera = get_node_or_null(camera_path) as Camera2D
+	if terrain_generator == null or player == null or camera == null:
+		push_error("GlideCoinSpawner requires a valid terrain_generator_path, player_path and camera_path.")
+		set_physics_process(false)
+
+
+func _physics_process(delta: float) -> void:
+	var is_glide_active: bool = player.is_glide_active
+
+	if is_glide_active and not was_glide_active:
+		start_coin_field()
+
+	if is_glide_active:
+		spawn_timer += delta
+		while not pending_spawn_times.is_empty() and pending_spawn_times[0] <= spawn_timer:
+			pending_spawn_times.remove_at(0)
+			spawn_trail_coin()
+
+	if was_glide_active and not is_glide_active:
+		pending_spawn_times.clear()
+		spawn_bonus_coin(player.global_position.x + BONUS_COIN_LEAD_DISTANCE)
+
+	was_glide_active = is_glide_active
+	despawn_trailing_coins()
+
+
+func start_coin_field() -> void:
+	spawn_timer = 0.0
+	pending_spawn_times.clear()
+	for _coin_index: int in range(COIN_FIELD_COUNT):
+		pending_spawn_times.append(randf_range(0.0, FIELD_SPAWN_DURATION))
+	pending_spawn_times.sort()
+
+
+func spawn_trail_coin() -> void:
+	var right_edge_x: float = get_visible_right_edge_x()
+	for _attempt: int in range(MAX_PLACEMENT_ATTEMPTS):
+		var world_x: float = right_edge_x + randf_range(EDGE_SPAWN_MARGIN_MIN, EDGE_SPAWN_MARGIN_MAX)
+		# A coin over a chasm void has no ground to hover above: get_terrain_height() only
+		# returns the lip height there, and baiting the player toward a fatal void is
+		# exactly what this mechanic should not do.
+		if not terrain_generator.has_ground_at_world_x(world_x):
+			continue
+		var clearance: float = randf_range(TRAIL_CLEARANCE_MIN, TRAIL_CLEARANCE_MAX)
+		var local_y: float = terrain_generator.get_terrain_height(world_x) - clearance
+		if is_far_enough_from_active_coins(world_x, local_y):
+			spawn_coin(world_x, local_y, TRAIL_COIN_VALUE, AIR_COIN_SCALE, null)
+			return
+	# Every attempt landed too close to something else -- place the last candidate anyway
+	# rather than silently dropping the coin. Rare: MIN_COIN_SEPARATION is small next to
+	# TRAIL_CLEARANCE_MAX's spread.
+
+
+# zoom.x, not a hardcoded viewport size: project.godot pins no window/size/viewport_* and
+# stretches with aspect="expand" (same reasoning as background_generator.gd's own
+# apply_viewport_size()), so both the viewport rect and the camera's zoom are read live
+# rather than assumed.
+func get_visible_right_edge_x() -> float:
+	var viewport_width: float = get_viewport_rect().size.x
+	var zoom_x: float = camera.zoom.x if camera.zoom.x > 0.0 else 1.0
+	return camera.global_position.x + ((viewport_width * 0.5) / zoom_x)
+
+
+func is_far_enough_from_active_coins(world_x: float, local_y: float) -> bool:
+	for coin: Coin in active_coins:
+		if not is_instance_valid(coin):
+			continue
+		if coin.position.distance_squared_to(Vector2(world_x, local_y)) < MIN_COIN_SEPARATION_SQUARED:
+			return false
+	return true
+
+
+func spawn_bonus_coin(world_x: float) -> void:
+	if not terrain_generator.has_ground_at_world_x(world_x):
+		world_x = terrain_generator.get_next_ground_world_x(world_x)
+	var local_y: float = terrain_generator.get_terrain_height(world_x) - BONUS_SURFACE_CLEARANCE
+	spawn_coin(world_x, local_y, BONUS_COIN_VALUE, AIR_COIN_SCALE, BONUS_COIN_COLOR)
+
+
+func spawn_coin(world_x: float, local_y: float, coin_value: int, coin_scale: float, tint: Variant) -> void:
+	var coin: Coin = COIN_SCENE.instantiate() as Coin
+	coin.value = coin_value
+	coin.collected.connect(_on_coin_collected)
+	coin.position = Vector2(world_x, local_y)
+	if coin_scale != 1.0:
+		coin.scale = Vector2(coin_scale, coin_scale)
+	if tint is Color:
+		var visual: ColorRect = coin.get_node_or_null("ColorRect") as ColorRect
+		if visual != null:
+			visual.color = tint
+	add_child(coin)
+	active_coins.append(coin)
+
+
+func despawn_trailing_coins() -> void:
+	var still_active: Array[Coin] = []
+	for coin: Coin in active_coins:
+		if not is_instance_valid(coin):
+			continue
+		# X is never world-rebased (world_rebaser.gd rebases Y only), so position.x is
+		# directly comparable to player.global_position.x with no conversion.
+		if player.global_position.x - coin.position.x > DESPAWN_BEHIND_DISTANCE:
+			coin.queue_free()
+			continue
+		still_active.append(coin)
+	active_coins = still_active
+
+
+func _on_coin_collected(value: int) -> void:
+	coin_collected.emit(value)
