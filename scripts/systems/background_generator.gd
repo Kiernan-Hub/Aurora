@@ -51,6 +51,16 @@ const SHAPE_PINES: int = 1
 # count: project.godot pins no viewport size and stretches with aspect="expand", so the
 # window height is genuinely unknown at author time. Read at _ready and again on resize.
 @export var base_y_fraction: float = 0.52
+# Where this layer sits in the depth stack: 0 = the furthest layer, 1 = the nearest. The
+# biome palette stores only a far and a near colour and every layer lerps between them by
+# this value, so adding a fifth parallax layer needs no edit to any of the eight palettes,
+# and no palette can accidentally invert the far/near ordering that produces the depth
+# read. Set per-instance in main.tscn alongside motion_scale.
+@export_range(0.0, 1.0) var depth_t: float = 0.5
+# Starting colours only. biome_director.gd overwrites both through apply_palette() on the
+# first frame of a run. They are still what shows under --headless (where the director
+# returns early having applied nothing, so the gates see the pre-biome background exactly)
+# and if the director ever fails to resolve this layer.
 @export var silhouette_color: Color = Color(0.62, 0.72, 0.83)
 @export var ridge_height_min: float = 40.0
 @export var ridge_height_max: float = 150.0
@@ -120,6 +130,8 @@ func _ready() -> void:
 
 	ridges_root = Node2D.new()
 	ridges_root.name = "Ridges"
+	# THE SILHOUETTE COLOUR LIVES HERE, not on the polygons -- see build_ridge_polygon.
+	ridges_root.modulate = silhouette_color
 	add_child(ridges_root)
 	haze_root = Node2D.new()
 	haze_root.name = "Haze"
@@ -132,6 +144,28 @@ func _ready() -> void:
 	haze_texture = build_haze_texture()
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	initialize_segments()
+
+
+# Called by biome_director.gd only. Never called under --headless.
+#
+# Two property writes for the entire layer, however many segments are live: the silhouette
+# rides ridges_root.modulate, and every haze band in this layer shares ONE GradientTexture2D
+# (build_haze_band hands out the same `haze_texture` to all of them), so recolouring that
+# single gradient recolours every band at once -- including bands spawned later.
+func apply_palette(palette: BiomePalette) -> void:
+	silhouette_color = palette.get_scenery_color(depth_t)
+	haze_color = palette.get_haze_color(depth_t)
+
+	if ridges_root != null:
+		ridges_root.modulate = silhouette_color
+	if haze_texture != null and haze_texture.gradient != null:
+		# Offsets are untouched: where the band reaches full opacity is a function of
+		# haze_rise and the viewport, not of the biome. Only the colours move.
+		haze_texture.gradient.colors = PackedColorArray([
+			Color(haze_color.r, haze_color.g, haze_color.b, 0.0),
+			haze_color,
+			haze_color,
+		])
 
 
 func resolve_player() -> CharacterBody2D:
@@ -250,7 +284,11 @@ func build_ridge_polygon(segment_origin_x: float) -> Polygon2D:
 	var ridge: Polygon2D = Polygon2D.new()
 	ridge.name = "Ridge"
 	ridge.polygon = points
-	ridge.color = silhouette_color
+	# WHITE, deliberately: ridges_root.modulate carries the actual silhouette colour and
+	# multiplies down through every segment and pine under it. That is what lets a biome
+	# transition recolour this whole layer with one property write per frame, including
+	# segments that have not spawned yet -- instead of walking every polygon in the layer.
+	ridge.color = Color.WHITE
 	return ridge
 
 
@@ -294,7 +332,8 @@ func build_pines(segment: Node2D, segment_origin_x: float) -> void:
 		# rather than floating in front of it.
 		pine.position = Vector2(tree_x - segment_origin_x, base_y - get_ridge_height(tree_x))
 		pine.polygon = build_pine_polygon(tree_height)
-		pine.color = silhouette_color
+		# White for the same reason as the ridge: ridges_root.modulate tints it.
+		pine.color = Color.WHITE
 		segment.add_child(pine)
 
 

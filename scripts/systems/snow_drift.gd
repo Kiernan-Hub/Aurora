@@ -51,6 +51,10 @@ const INTENSITY_SMOOTHNESS: float = 4.0
 
 var is_headless: bool = false
 var player: CharacterBody2D
+# Set by biome_director.gd. Scales the glide lerp below rather than replacing it, so a
+# low-snowfall biome still thickens during a glide -- the two are independent reasons for
+# the snow to change and neither should cancel the other out.
+var biome_density_scale: float = 1.0
 
 
 func _ready() -> void:
@@ -97,8 +101,17 @@ func resolve_player() -> CharacterBody2D:
 # above still runs exactly as before, just without the glide boost.
 func _process(delta: float) -> void:
 	var target_ratio: float = GLIDE_AMOUNT_RATIO if player.is_glide_active else BASE_AMOUNT_RATIO
+	target_ratio *= biome_density_scale
 	var interpolation_weight: float = 1.0 - exp(-INTENSITY_SMOOTHNESS * delta)
 	amount_ratio = lerpf(amount_ratio, target_ratio, interpolation_weight)
+
+
+# Called by biome_director.gd only. Never called under --headless -- and note this node's
+# own headless branch has already set_process(false) and returned by then, so the density
+# below would go nowhere anyway.
+func apply_palette(palette: BiomePalette) -> void:
+	modulate = palette.snow_tint
+	biome_density_scale = palette.snow_density_scale
 
 
 # Emitter geometry is the only thing here that depends on the window, and the window size

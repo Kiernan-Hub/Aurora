@@ -48,6 +48,17 @@ var debug_chasm_disabled: bool = false
 # serialised into main.tscn and silently persist (CLAUDE.md, "Things that break silently").
 var debug_drop_chasm_rehearsal: bool = false
 
+# The ice colours actually in use, as opposed to the FILL_GRADIENT_*/RIM_* constants, which
+# are now only their starting values. biome_director.gd moves these through apply_ice_palette();
+# under --headless it never runs, so these stay on the constants and every gate's terrain is
+# byte-identical to what it was before the biome pass. Plain vars, never @export: an exported
+# value can be serialised into main.tscn and silently persist (CLAUDE.md, "Things that break
+# silently") -- which for a colour would mean shipping whatever biome was last on screen.
+var ice_surface_tint: Color = FILL_GRADIENT_TOP_TINT
+var ice_depth_tint: Color = FILL_GRADIENT_BOTTOM_TINT
+var rim_core_tint: Color = RIM_CORE_COLOR
+var rim_glow_tint: Color = RIM_GLOW_COLOR
+
 var player: CharacterBody2D
 var next_chunk_index: int = 0
 var active_chunks: Dictionary[int, Node2D] = {}
@@ -73,18 +84,16 @@ var segment_selection_weight_table: Array[Dictionary] = []
 var chunk_collision_sample_xs: Dictionary[int, PackedFloat64Array] = {}
 var chunk_collision_sample_heights: Dictionary[int, PackedFloat64Array] = {}
 
-# IDENTICAL on purpose (2026-08-06), AND effectively unused for colour (2026-08-07
-# finding): build_fill_vertex_colors() always emits one PackedColorArray entry per
-# polygon vertex, and Polygon2D ignores `color` outright whenever `vertex_colors.size()`
-# matches the polygon -- confirmed by testing (setting these to a saturated blue produced
-# zero visible change; only the new rim Line2Ds, which don't go through this path,
-# showed up). The real fill colour is FILL_GRADIENT_TOP_TINT/BOTTOM_TINT below. Left at
-# neutral white and NOT collapsed into one constant so apply_chunk_color()'s parity
-# branch is still there if `color` ever becomes load-bearing again (e.g. an empty
-# vertex_colors path) -- give these different values and any such path lights up.
-const LIGHT_CHUNK_COLOR: Color = Color(1.0, 1.0, 1.0)
-const DARK_CHUNK_COLOR: Color = Color(1.0, 1.0, 1.0)
-# The ACTUAL fill colours (see note above): full ice blue at the surface line, darker and
+# LIGHT_CHUNK_COLOR / DARK_CHUNK_COLOR were removed here (2026-08-08). They fed
+# apply_chunk_color(), which set Polygon2D.color -- a property Polygon2D ignores outright
+# once vertex_colors is populated, which it always is here (visuals.md trap 9, confirmed
+# by setting them to a saturated blue and seeing zero change). They were kept as a canary
+# for any future path where `color` became load-bearing; that path never arrived, and the
+# traversal they justified is now repaint_chunk(), which writes vertex_colors for real.
+# Do not reintroduce them: per-chunk parity colouring is what the seamless surface pass
+# exists to prevent.
+#
+# The fill colours: full ice blue at the surface line, darker and
 # more saturated by FILL_GRADIENT_DEPTH below it, flat from there down to fill_bottom_y.
 # Godot interpolates Polygon2D.vertex_colors per pixel across the triangulated fill, so
 # this alone is what turns close_fill_run()'s output into a gradient instead of a flat
@@ -480,7 +489,10 @@ func spawn_chunk(chunk_index: int) -> void:
 
 	chunk.position = Vector2((float(chunk_index) * chunk_width) + (chunk_width * 0.5), ground_y)
 	build_chunk_surface(chunk, chunk_index)
-	apply_chunk_color(chunk, chunk_index)
+	# No colour call here any more: build_chunk_fill/add_surface_rim already read the live
+	# ice tints below, so a chunk is born in the current biome. repaint_chunk() (the old
+	# apply_chunk_color, repointed) exists for the chunks that were ALREADY on screen when
+	# the biome moved.
 	add_child(chunk)
 	active_chunks[chunk_index] = chunk
 	if DEBUG_TERRAIN_LOGGING:
@@ -624,7 +636,7 @@ func add_surface_rim(chunk: StaticBody2D, run_points: PackedVector2Array, run_in
 	glow.name = "TerrainRimGlow%d" % run_index
 	glow.points = run_points
 	glow.width = RIM_GLOW_WIDTH
-	glow.default_color = RIM_GLOW_COLOR
+	glow.default_color = rim_glow_tint
 	glow.antialiased = true
 	chunk.add_child(glow)
 
@@ -632,7 +644,7 @@ func add_surface_rim(chunk: StaticBody2D, run_points: PackedVector2Array, run_in
 	core.name = "TerrainRimCore%d" % run_index
 	core.points = run_points
 	core.width = RIM_CORE_WIDTH
-	core.default_color = RIM_CORE_COLOR
+	core.default_color = rim_core_tint
 	core.antialiased = true
 	chunk.add_child(core)
 
@@ -692,9 +704,9 @@ func build_fill_vertex_colors(run_points: PackedVector2Array) -> PackedColorArra
 	var vertex_colors: PackedColorArray = PackedColorArray()
 	vertex_colors.resize(run_points.size() + 4)
 	for point_index: int in range(run_points.size()):
-		vertex_colors[point_index] = FILL_GRADIENT_TOP_TINT
+		vertex_colors[point_index] = ice_surface_tint
 	for extra_index: int in range(4):
-		vertex_colors[run_points.size() + extra_index] = FILL_GRADIENT_BOTTOM_TINT
+		vertex_colors[run_points.size() + extra_index] = ice_depth_tint
 	return vertex_colors
 
 
@@ -1469,11 +1481,48 @@ func get_collision_chord_slope_angle(world_x: float) -> float:
 	)
 
 
+# Called by biome_director.gd only. Never called under --headless, so every gate keeps the
+# FILL_GRADIENT_*/RIM_* constants it has always had and its terrain pixels are unchanged.
+#
+# New chunks pick the tints up from the member vars at build time; this is only for the
+# handful already on screen. A biome transition is slower than a chunk's lifetime, so
+# without it the ice would visibly change colour at every chunk boundary during a fade.
+func apply_ice_palette(palette: BiomePalette) -> void:
+	ice_surface_tint = palette.ice_surface
+	ice_depth_tint = palette.ice_depth
+	rim_core_tint = palette.rim_core
+	rim_glow_tint = palette.rim_glow
+	for chunk: Node2D in active_chunks.values():
+		repaint_chunk(chunk)
+
+
 # Every Polygon2D child, not just TerrainFill: a chunk containing a chasm lip carries one
-# extra fill per contiguous ground run (build_chunk_fill).
-func apply_chunk_color(chunk: StaticBody2D, chunk_index: int) -> void:
-	var chunk_color: Color = LIGHT_CHUNK_COLOR if chunk_index % 2 == 0 else DARK_CHUNK_COLOR
+# extra fill per contiguous ground run (build_chunk_fill). Same traversal the old
+# apply_chunk_color() did -- it set Polygon2D.color, which Polygon2D ignores outright once
+# vertex_colors is populated (visuals.md trap 9), so it was doing nothing. Now it writes
+# the values that are actually rendered.
+#
+# The vertex colours are repainted WITHOUT reading the geometry: build_fill_vertex_colors()
+# always emits one entry per surface point followed by exactly the 4 that close_fill_run()
+# appends, so the split point is size - 4 whatever shape the run is. That is what keeps
+# this a flat array write rather than a polygon rebuild.
+func repaint_chunk(chunk: Node2D) -> void:
 	for child: Node in chunk.get_children():
 		var terrain_fill: Polygon2D = child as Polygon2D
 		if terrain_fill != null:
-			terrain_fill.color = chunk_color
+			var vertex_colors: PackedColorArray = terrain_fill.vertex_colors
+			var surface_vertex_count: int = vertex_colors.size() - 4
+			if surface_vertex_count < 1:
+				continue
+			for vertex_index: int in range(surface_vertex_count):
+				vertex_colors[vertex_index] = ice_surface_tint
+			for extra_index: int in range(4):
+				vertex_colors[surface_vertex_count + extra_index] = ice_depth_tint
+			# Reassigned as a whole array: PackedColorArray is a value type here, so
+			# mutating the local copy above does not touch the node until this line.
+			terrain_fill.vertex_colors = vertex_colors
+			continue
+
+		var rim: Line2D = child as Line2D
+		if rim != null:
+			rim.default_color = rim_glow_tint if rim.name.begins_with("TerrainRimGlow") else rim_core_tint

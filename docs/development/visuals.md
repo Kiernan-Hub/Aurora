@@ -41,8 +41,17 @@ it.
 Three independent cues, no shaders involved:
 
 1. **Colour.** Distant things sit closer to the sky colour. Under a *pale* sky that means
-   far = lighter, so `FarRidge` is the lightest scenery and `PineLine` the darkest. Terrain
-   is lighter than all of them, which is what keeps the play surface unambiguous.
+   far = lighter, so `FarRidge` is the lightest scenery and `PineLine` the darkest.
+
+   **The old corollary — "terrain is lighter than all of them" — is dead as of 2026-08-08.**
+   `one.png`, the target art, is *dark saturated ice under a pale sky*, and that inversion
+   is most of why it reads well. Since the biome pass the sky is not reliably pale either.
+   What replaced it is a contrast contract that survives any palette, and that
+   `biome_schedule_check.gd` enforces rather than merely documents: **the surface rim stays
+   bright** (that `Line2D` core, not the fill, is what the player tracks the ride surface
+   by), and **far and near scenery stay separated in luminance** so the recession below
+   still has something to work with. Ordering of *scenery* layers still holds; ordering of
+   terrain against scenery does not, and was never what made the surface readable.
 2. **Parallax rate.** `PineLine` keeps the `0.30` that was already shipped and proven; the
    two ridge layers are *slower*. The pass therefore only ever moves background pixels
    less per frame than before, never more.
@@ -205,6 +214,14 @@ they exist for, never as clutter over obstacles during ordinary play.
 
 ## Palette
 
+> **Since 2026-08-08 these are only the STARTING values, not the palette.**
+> `biome_director.gd` overwrites all of them on the first frame of a run and again through
+> every transition — see `docs/development/biomes.md`. They still describe exactly what is
+> on screen under `--headless` (the director returns early there, so all six gates see the
+> pre-biome look), and they are the fallback if the director fails to resolve a consumer.
+> The eight live palettes are `resources/biomes/*.tres`. **Editing a constant below changes
+> the gates and the fallback, not the game.**
+
 | Element | Value | Where |
 |---|---|---|
 | Sky top / mid / horizon | `0.60,0.72,0.86` → `0.74,0.83,0.91` → `0.88,0.92,0.96` | `sky_backdrop.gd` |
@@ -218,19 +235,24 @@ they exist for, never as clutter over obstacles during ordinary play.
 | Rim core | `0.97, 0.99, 1.0`, width 5 | `terrain_generator.gd` |
 | Rim glow | `0.85, 0.95, 1.0`, alpha 0.35, width 22 | `terrain_generator.gd` |
 
-**`LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` do not currently affect the fill's rendered
-colour at all** (2026-08-07 finding, still true after adding the texture): `Polygon2D`
-renders `texture_sample * vertex_color` and ignores its `color` property outright whenever
-`vertex_colors.size()` matches the polygon's vertex count, which it always does here
-(`build_fill_vertex_colors()`) — confirmed by testing, back when the fill had no texture
-and these two constants were set to a saturated blue that produced *zero* visible change.
-Terrain colour is controlled by `assets/textures/terrain/ice_terrain_one.png` (see "Ice
-texture" below) tinted by `FILL_GRADIENT_TOP_TINT`/`FILL_GRADIENT_BOTTOM_TINT` — not by the
-chunk-parity constants. `LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` are left at neutral white
-and kept as two separate constants only so `apply_chunk_color()`'s parity branch is still
-there to reach for if `color` ever becomes load-bearing again (e.g. a code path with an
-empty `vertex_colors`) — give them different values and any such path lights up instantly.
-Do not "fix" the terrain colour by editing these; it won't do anything.
+**`Polygon2D` renders `texture_sample * vertex_color` and ignores its `color` property
+outright whenever `vertex_colors.size()` matches the polygon's vertex count** — which it
+always does here (`build_fill_vertex_colors()`). Confirmed by testing, back when the fill
+had no texture and `LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` were set to a saturated blue that
+produced *zero* visible change. Terrain colour is
+`assets/textures/terrain/ice_terrain_one.png` (see "Ice texture" below) multiplied by
+`FILL_GRADIENT_TOP_TINT`/`FILL_GRADIENT_BOTTOM_TINT`. Do not try to "fix" terrain colour
+through `Polygon2D.color`; it won't do anything.
+
+That multiply is also **why the biome pass needed no shader** — it is exactly the operation
+an ice-tinting shader would perform, so the per-biome tint simply rides `vertex_colors`
+(`biomes.md`, "Why there is no shader"). The project still has zero `.gdshader` files.
+
+`LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` were **removed on 2026-08-08**. They had been kept as
+a canary for any future path where `color` became load-bearing; that path never arrived, and
+the `apply_chunk_color()` traversal that justified them is now `repaint_chunk()`, which
+writes `vertex_colors` for real. Don't reintroduce them — per-chunk parity colouring is
+precisely what the seamless-surface pass exists to prevent.
 
 ### Ice surface rim (2026-08-07)
 
@@ -249,6 +271,12 @@ ever pulled apart again for debugging (see above), the rim will still read as co
 since it doesn't key on `chunk_color` at all.
 
 ### Why daylight
+
+> **Partly superseded 2026-08-08.** The run no longer stays in daylight — it cycles through
+> eight moods including two genuinely dark ones (`biomes.md`). The *reasoning* below is
+> still exactly right, and is now the open task it implies: the coin and obstacle colours
+> were tuned against a bright backdrop and have **not** yet been re-judged. That is Phase 2,
+> and `coin_color`/`obstacle_color` already exist in every palette, read by nothing.
 
 The reference image is a night scene (sky ≈ `#40526F` → `#303F63`, sampled). Daylight was
 chosen over matching it literally, for a gameplay reason as much as an aesthetic one: the

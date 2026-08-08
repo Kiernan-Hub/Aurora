@@ -15,6 +15,7 @@
 [ext_resource type="Script" path="res://scripts/systems/ground_tree_spawner.gd" id="14_ground_trees"]
 [ext_resource type="Script" path="res://scripts/systems/bird_flock.gd" id="15_birds"]
 [ext_resource type="Script" path="res://scripts/systems/glide_coin_spawner.gd" id="16_glide_coins"]
+[ext_resource type="Script" path="res://scripts/systems/biome_director.gd" id="17_biome"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -30,6 +31,7 @@ motion_scale = Vector2(0.03, 0)
 script = ExtResource("4")
 player_path = NodePath("../../Player")
 shape_kind = 0
+depth_t = 0.0
 base_y_fraction = 0.34
 silhouette_color = Color(0.74, 0.81, 0.9, 1)
 ridge_height_min = 140.0
@@ -44,6 +46,7 @@ motion_scale = Vector2(0.06, 0)
 script = ExtResource("4")
 player_path = NodePath("../../Player")
 shape_kind = 0
+depth_t = 0.22
 base_y_fraction = 0.44
 silhouette_color = Color(0.68, 0.77, 0.86, 1)
 ridge_height_min = 110.0
@@ -58,6 +61,7 @@ motion_scale = Vector2(0.14, 0)
 script = ExtResource("4")
 player_path = NodePath("../../Player")
 shape_kind = 0
+depth_t = 0.58
 base_y_fraction = 0.52
 silhouette_color = Color(0.57, 0.68, 0.8, 1)
 ridge_height_min = 75.0
@@ -72,6 +76,7 @@ motion_scale = Vector2(0.3, 0)
 script = ExtResource("4")
 player_path = NodePath("../../Player")
 shape_kind = 1
+depth_t = 1.0
 base_y_fraction = 0.6
 silhouette_color = Color(0.45, 0.56, 0.69, 1)
 ridge_height_min = 18.0
@@ -118,6 +123,9 @@ script = ExtResource("14_ground_trees")
 
 [node name="GlideCoinSpawner" type="Node2D" parent="TerrainGenerator"]
 script = ExtResource("16_glide_coins")
+
+[node name="BiomeDirector" type="Node" parent="."]
+script = ExtResource("17_biome")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1352461072]
 position = Vector2(0, 136)

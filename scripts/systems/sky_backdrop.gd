@@ -20,6 +20,12 @@ extends CanvasLayer
 #
 # main.tscn sets layer = -200, behind ParallaxBackground's engine default of -100.
 
+# These are now only the STARTING sky, not the sky. biome_director.gd overwrites them
+# through apply_palette() below on the first frame of a run and again through every
+# transition. They still matter in two cases: under --headless, where the director returns
+# early having applied nothing (so all six gates see exactly the sky they saw before the
+# biome pass existed), and as the value on screen if the director ever fails to resolve.
+#
 # Day reading of the reference art (the reference itself is a night scene; the palette
 # family, the layering and the negative space carry over, the darkness does not). Pale
 # toward the horizon so the distant ridges have something to dissolve into, and so the
@@ -33,6 +39,12 @@ const SKY_HORIZON_COLOR: Color = Color(0.88, 0.92, 0.96)
 const SKY_MID_OFFSET: float = 0.58
 # Sampled vertically and stretched horizontally, so only the height needs resolution.
 const GRADIENT_TEXTURE_HEIGHT: int = 256
+
+# Held so apply_palette() can recolour the sky in place. A Gradient is mutable and
+# GradientTexture2D re-bakes itself when its gradient changes, so a biome transition costs
+# one 1x256 texture update per frame it actually moves -- no node work, no rebuild, and
+# nothing for the _process this file still deliberately does not have to do.
+var sky_gradient: Gradient
 
 
 func _ready() -> void:
@@ -49,10 +61,22 @@ func _ready() -> void:
 	add_child(sky)
 
 
+# Called by biome_director.gd only. Never called under --headless.
+func apply_palette(palette: BiomePalette) -> void:
+	if sky_gradient == null:
+		return
+	# offsets and colors assigned as whole arrays rather than element-wise: Gradient only
+	# emits its changed signal (and so only re-bakes the texture) on a property set, and a
+	# per-element set_color/set_offset would bake three times per frame instead of two.
+	sky_gradient.offsets = PackedFloat32Array([0.0, palette.sky_mid_offset, 1.0])
+	sky_gradient.colors = PackedColorArray([palette.sky_top, palette.sky_mid, palette.sky_horizon])
+
+
 func build_sky_texture() -> GradientTexture2D:
 	var gradient: Gradient = Gradient.new()
 	gradient.offsets = PackedFloat32Array([0.0, SKY_MID_OFFSET, 1.0])
 	gradient.colors = PackedColorArray([SKY_TOP_COLOR, SKY_MID_COLOR, SKY_HORIZON_COLOR])
+	sky_gradient = gradient
 
 	var texture: GradientTexture2D = GradientTexture2D.new()
 	texture.gradient = gradient

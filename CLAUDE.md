@@ -18,6 +18,7 @@ This file is the map. Everything else is one level down, read on demand.
 | `docs/development/physics.md` | Changing player movement, collision, stall watchdogs, or the camera |
 | `docs/development/input.md` | Any input change — desktop *or* touch |
 | `docs/development/visuals.md` | Touching the background, scenery, palette or draw order |
+| `docs/development/biomes.md` | Any colour that changes over a run — palettes, the director, a transition |
 | `docs/development/debugging.md` | Running a gate, or reviving an archived probe |
 | `docs/development/dead_code.md` | Something looks reachable but isn't |
 | `docs/review/*.md` | Point-in-time external audits. Read the newest before a cleanup pass — it's the running list of known-but-unfixed debt |
@@ -47,6 +48,8 @@ floor-flicker, camera-shake, chasm. Run the terrain check after any segment/shap
 physics ones after any player/collision/segment change, camera-shake after any change to the
 camera follow in `main.gd`, and chasm after anything touching voids, fall death or the boost
 velocity model. Commands, flags and watchdog mechanics in `docs/development/debugging.md`.
+**Plus `biome_schedule_check.gd`** (~1s, non-physics) after any palette change — the six
+above are blind to biome code, since `BiomeDirector` returns early under `--headless`.
 Log any new seed that trips `FREEZE_REPRO` in `docs/research/freeze_bug.md` before fixing it.
 
 **Only those six are maintained.** The other 18 files in `scripts/debug/` are archived
@@ -161,9 +164,11 @@ background parallax were removed entirely, not left disabled — don't resurrect
    jump/coin/powerup/death from a 6-voice pool, sliders drive their bus on drag end. No
    music track yet. Stays behind a locally-computed `is_headless` (`Services` isn't ready
    in harness `_init()`)
-8. **Visual polish — background done** (2026-08-06), gameplay art still placeholder rects.
-   Layered daylight winter scenery: sky gradient, three parallax silhouette layers with
-   per-layer haze, drifting snow, de-banded terrain. Traps + palette in `visuals.md`
+8. **Visual polish — background + biome cycle done** (2026-08-08), gameplay art still
+   placeholder rects. **Eight `BiomePalette`s cycle every 75 000 world-px**, crossfading on
+   five staggered channels. No shader — `Polygon2D` already renders `texture * vertex_color`.
+   Ice tints are *multipliers*: they need a **greyscale** tile, and the shipped one has blue
+   baked in, so warm biomes read muddy until it's replaced. All in `biomes.md`
 9. **Upgrades — vertical slice working** (2026-08-04). One track (jump, five levels), SHOP
    screen, banked coins; player starts weak, buys to baseline. Missions/zones not started
 

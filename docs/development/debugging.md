@@ -113,6 +113,14 @@ its `distance=` output is not 64.** Reviving one is a few lines, but it is never
 
 ## The six headless gates
 
+> **Plus one non-physics gate: `biome_schedule_check.gd`** (2026-08-08). It is listed
+> separately below because it is the odd one out — physics-free, ~1 second, and it exists
+> precisely because the six below **cannot see the biome system at all**. They all
+> instantiate `main.tscn` under `--headless`, and `BiomeDirector` deliberately returns early
+> under `--headless` having applied nothing. That is what makes it impossible for a colour
+> change to move a physics gate result, and equally what makes those gates blind to every
+> line of biome code — the same structural gap this file already records for powerups.
+
 **These run at real-time 60Hz, so budget by frame count, not by patience.** A headless
 `SceneTree` script awaiting `physics_frame` still steps at the physics rate: floor-flicker
 (6 seeds × 20,000) is ~33 min, freeze-replay (60,000) ~17 min, camera-shake (7,000) ~2 min. A
@@ -183,6 +191,30 @@ feature failures — the `camera_shake.md` lesson again: measure the quantity th
   grounded model, plus `get_collision_chord_slope_angle` returning 0 over the void), so it
   is exactly what a future refactor breaks silently. **This is the only gate that catches
   it.**
+
+## Biome check (`scripts/debug/biome_schedule_check.gd`)
+
+Physics-free, ~1 second, no seeds. Run it after touching `resources/biomes/*.tres`,
+`biome_palette.gd` or `biome_director.gd`. Expect `BIOME_CHECK PASS`:
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/biome_schedule_check.gd
+```
+
+It asserts that every palette loads and stays inside `[0,1]` (the Mobile renderer is LDR, so
+a value above 1.0 is silently clamped and the palette will not look like its numbers); that
+the **surface rim stays bright** and **far/near scenery stay separated** in every biome —
+the contrast contract that replaced `visuals.md`'s old "terrain lighter than background"
+rule; that the schedule is pure in `world_x`, swept forwards *and backwards* so any hidden
+per-call state shows up rather than passing on a monotonic sweep; that every channel curve
+is monotonic and lands exactly on 0 and 1; and that `BiomePalette.blend_into` never
+allocates, since it runs every frame of a transition.
+
+**It has been verified to fail**, by darkening `starlit_night.rim_core` and flattening its
+scenery separation — both were caught, and the file passed again on revert. Worth repeating
+if you extend it: this file's whole reason to exist is that nothing else can see this code.
+
+Full design notes: `docs/development/biomes.md`.
 
 ## Watchdog mechanics
 

@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="BiomePalette" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/biome_palette.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+sky_top = Color(0.34, 0.38, 0.56, 1)
+sky_mid = Color(0.48, 0.52, 0.68, 1)
+sky_horizon = Color(0.66, 0.7, 0.82, 1)
+sky_mid_offset = 0.55
+scenery_far = Color(0.52, 0.56, 0.72, 1)
+scenery_near = Color(0.22, 0.26, 0.42, 1)
+haze_far = Color(0.66, 0.7, 0.84, 0.4)
+haze_near = Color(0.6, 0.66, 0.82, 0.5)
+tree_tint = Color(0.62, 0.66, 0.82, 1)
+bird_tint = Color(0.5, 0.55, 0.72, 1)
+ice_surface = Color(0.8, 0.9, 1, 1)
+ice_depth = Color(0.3, 0.44, 0.72, 1)
+rim_core = Color(0.96, 0.99, 1, 1)
+rim_glow = Color(0.78, 0.92, 1, 0.42)
+snow_tint = Color(0.95, 0.98, 1, 0.46)
+snow_density_scale = 1.0
+mist_strength = 0.3
+reflection_strength = 0.35
+star_density = 0.4
