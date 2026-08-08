@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dhhx780mslyv"
-path="res://.godot/imported/ice_terrain_one.png-c69270fe9bb3e5184432ff6cfa5904fe.ctex"
+uid="uid://buv2pg6fu7y7f"
+path="res://.godot/imported/ice_depth_gradient.png-04c26b08dd598ed332dbfecbff7a0c2a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/terrain/ice_terrain_one.png"
-dest_files=["res://.godot/imported/ice_terrain_one.png-c69270fe9bb3e5184432ff6cfa5904fe.ctex"]
+source_file="res://assets/textures/terrain/ice_depth_gradient.png"
+dest_files=["res://.godot/imported/ice_depth_gradient.png-04c26b08dd598ed332dbfecbff7a0c2a.ctex"]
 
 [params]
 

@@ -45,7 +45,12 @@ const PALETTE_ARCTIC_DAWN: BiomePalette = preload("res://resources/biomes/arctic
 # A day arc, and it wraps: arctic_dawn leads back into pale_morning, so a long run reads as
 # time passing rather than as a shuffle. Adjacent entries are deliberately near neighbours
 # in colour -- the crossfade only has to cover one step, never day-to-night in one go.
+# STARTS ON A SATURATED BLUE, not on the palest entry. Every run begins at world_x 64, so
+# whatever sits at index 0 is the whole first impression -- and opening on pale_morning made
+# the ice read as grey concrete for the first ~2 minutes. Order is still a day arc, just
+# rotated to begin at dawn rather than mid-morning.
 const BIOME_CYCLE: Array[BiomePalette] = [
+	PALETTE_ARCTIC_DAWN,
 	PALETTE_PALE_MORNING,
 	PALETTE_GLACIER_TEAL,
 	PALETTE_MAUVE_HAZE,
@@ -53,7 +58,6 @@ const BIOME_CYCLE: Array[BiomePalette] = [
 	PALETTE_VIOLET_DUSK,
 	PALETTE_TWILIGHT_BLUE,
 	PALETTE_STARLIT_NIGHT,
-	PALETTE_ARCTIC_DAWN,
 ]
 
 # World px per biome. At MAX_SPEED (750 px/s) this is ~100s; through the early ramp, where

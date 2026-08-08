@@ -167,8 +167,10 @@ background parallax were removed entirely, not left disabled — don't resurrect
 8. **Visual polish — background + biome cycle done** (2026-08-08), gameplay art still
    placeholder rects. **Eight `BiomePalette`s cycle every 75 000 world-px**, crossfading on
    five staggered channels. No shader — `Polygon2D` already renders `texture * vertex_color`.
-   Ice tints are *multipliers*: they need a **greyscale** tile, and the shipped one has blue
-   baked in, so warm biomes read muddy until it's replaced. All in `biomes.md`
+   **The ice tile's V axis is depth below the ride surface**, so gloss, cracks, snow clumps
+   and the fill's vertical structure are all painted into one greyscale image and land right
+   on every hill. It is a *multiplier*, so palettes vary **hue, not brightness**, and a raw
+   panel must go through `scripts/tools/build_ice_texture.py` first. All in `biomes.md`
 9. **Upgrades — vertical slice working** (2026-08-04). One track (jump, five levels), SHOP
    screen, banked coins; player starts weak, buys to baseline. Missions/zones not started
 

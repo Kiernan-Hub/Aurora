@@ -48,20 +48,37 @@ new rendering technology. Do not add one here without a reason vertex colours ca
 The one thing they cannot do is vary *contrast* against the texture independently of hue
 (a `crack_strength` uniform); if that is ever wanted, it is an isolated addition.
 
-## The base ice tile — the one real art dependency
+## The base ice tile, and why V is depth (2026-08-08)
 
-`ice_surface`/`ice_depth` are **multipliers against `ice_terrain_one.png`**, not colours.
-That only produces the intended hue against a **greyscale** tile.
+`assets/textures/terrain/ice_depth_gradient.png` is **not a picture of ice**. Its vertical
+axis is *distance below the surface the player rides on*: snow band at the top, glossy pale
+sheen under it, deepening body, cracks at plausible depths. `apply_fill_texture()` maps V to
+exactly that — 0 at every surface vertex, maximal at the gradient-stop corners.
 
-The tile shipped today has blue baked into it, so a lavender or amber biome currently
-computes blue × amber and reads muddy. It also has no cracks or facets (it is a 2×2 mirror
-of a deliberately featureless 600×260 crop — see its provenance note in `visuals.md`), so
-there is very little detail for the tint to act on either.
+This is the single highest-leverage thing in the visual pass, because it collapses four
+separate features into one image. Gloss, crack lines, snow clumps and the fill's whole
+vertical colour structure are all *painted in*, and they land correctly on every hill, in
+every biome, with no shader and no per-slope maths.
 
-**The fix is the art, not the code.** What is needed is one greyscale, horizontally-tileable
-ice tile with real fracture lines and faceted plates — no colour, no baked top-edge highlight
-(the rim is separate `Line2D`s), no mirror symmetry. When it lands, drop it in and every
-palette becomes correct at once with no code change.
+Two consequences worth holding onto:
+
+- **`ice_surface`/`ice_depth` now carry hue, not brightness.** The tile owns the light-to-dark
+  ramp (1.0 → ~0.52). If the palette darkens with depth too, the two ramps multiply and deep
+  ice goes black. The gate enforces this.
+- **The surface rim `Line2D`s are gone.** The tile's top rows are the snow band now, which is
+  softer and physically sensible where a 5px stroke read as a drawn outline. Don't reintroduce
+  a stroke — strengthen the tile's top rows instead, where it stays correct on every slope.
+
+**Never drop a raw generated panel in here.** Run `scripts/tools/build_ice_texture.py`, which
+lifts the darks (a raw panel bottoms out near 0.09, and since the tile is a *multiplier* that
+takes every biome tint to black) and cross-fades the horizontal wrap. It deliberately does
+**not** mirror: mirroring guarantees a seamless join but stamps in a symmetry axis, which is
+the faint diamond artifact visible in the tile this replaced, and which long diagonal cracks
+would turn into a chevron every repeat.
+
+`ICE_TILE_WORLD_WIDTH` (1200) stretches the square tile sideways on purpose — it turns the
+source's steep cracks into the long lazy ones the reference has, and slows the repeat to
+~1.6 s at `MAX_SPEED` instead of ~0.5 s.
 
 ## How a transition works
 

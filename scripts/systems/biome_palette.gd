@@ -18,10 +18,9 @@ class_name BiomePalette
 # ICE_TERRAIN_TEXTURE, not the fill colour itself. This is also exactly the operation a
 # tint shader would perform, which is why this pass needs no shader at all.
 #
-# That multiply only produces the intended hue against a GREYSCALE tile. The tile shipped
-# today (ice_terrain_one.png) has blue baked in, so a lavender or amber biome currently
-# multiplies blue x amber and reads muddy. The fix is the art, not this file: see
-# docs/development/biomes.md, "The base ice tile".
+# That multiply only produces the intended hue against a GREYSCALE tile, which
+# ice_depth_gradient.png is. It also carries the whole light-to-dark depth ramp itself, so
+# the ice fields below must vary HUE rather than brightness -- see their note.
 #
 # PARALLAX COLOURS ARE FAR/NEAR ENDPOINTS, NOT ONE ENTRY PER LAYER. Each
 # BackgroundGenerator carries a depth_t (0 = furthest, 1 = nearest) and lerps between
@@ -66,15 +65,20 @@ const CHANNEL_COUNT: int = 5
 @export var bird_tint: Color = Color(1.0, 1.0, 1.0, 1.0)
 
 @export_group("Ice")
-# Multipliers against the ice texture: at the surface line, and FILL_GRADIENT_DEPTH below
-# it. Near-white at the surface lets the tile show through untouched.
+# Multipliers against the ice tile: at the surface line, and FILL_GRADIENT_DEPTH below it.
+#
+# THESE CARRY HUE, NOT BRIGHTNESS (changed 2026-08-08). The tile's V axis is now depth, so
+# the tile itself owns the whole light-to-dark ramp -- it runs 1.0 at the surface down to
+# ~0.52 at the gradient stop. If ice_depth is also much darker than ice_surface the two
+# ramps multiply and deep ice goes black. So keep them at similar luminance and let them
+# differ in HUE: pale and slightly desaturated at the surface, deeper and more saturated
+# below, which is what the reference art actually does.
+#
+# ice_surface is also what makes the ride line read, now that the rim Line2Ds are gone: the
+# tile's bright snow band is multiplied by it, so a dark ice_surface dims the one edge the
+# player tracks. biome_schedule_check.gd enforces a floor on it.
 @export var ice_surface: Color = Color(1.0, 1.0, 1.0, 1.0)
-@export var ice_depth: Color = Color(0.55, 0.58, 0.66, 1.0)
-# The two stacked Line2Ds that fake a bloom highlight along the surface. The core is the
-# single strongest read of "this is the edge you ride on", so no biome should take it far
-# from full brightness.
-@export var rim_core: Color = Color(0.97, 0.99, 1.0, 1.0)
-@export var rim_glow: Color = Color(0.85, 0.95, 1.0, 0.35)
+@export var ice_depth: Color = Color(0.83, 0.88, 0.98, 1.0)
 
 @export_group("Atmosphere")
 @export var snow_tint: Color = Color(1.0, 1.0, 1.0, 0.42)
@@ -120,8 +124,6 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	var ice: float = weights[CHANNEL_ICE]
 	out.ice_surface = from.ice_surface.lerp(to.ice_surface, ice)
 	out.ice_depth = from.ice_depth.lerp(to.ice_depth, ice)
-	out.rim_core = from.rim_core.lerp(to.rim_core, ice)
-	out.rim_glow = from.rim_glow.lerp(to.rim_glow, ice)
 
 	var atmosphere: float = weights[CHANNEL_ATMOSPHERE]
 	out.snow_tint = from.snow_tint.lerp(to.snow_tint, atmosphere)

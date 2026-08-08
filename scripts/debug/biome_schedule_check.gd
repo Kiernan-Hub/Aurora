@@ -14,9 +14,9 @@ extends SceneTree
 #
 # What it checks:
 #   1. Every palette in the cycle loads, and every colour component is in [0, 1].
-#   2. The rim stays bright in every biome. The surface rim is the single strongest read
-#      of "this is the edge you ride on", so a dark biome dimming it is a playability bug,
-#      not an art choice.
+#   2. ice_surface stays bright in every biome, and ice_depth stays close to it. The first
+#      is the read of "this is the edge you ride on"; the second stops the palette ramp and
+#      the tile's own depth ramp multiplying deep ice down to black.
 #   3. Far scenery stays separated from near scenery, so the depth read survives every
 #      palette (the far/near lerp in BiomePalette.get_scenery_color assumes it).
 #   4. The schedule is pure in world_x: same x always yields the same biome and progress,
@@ -38,10 +38,16 @@ const DEFAULT_SCHEDULE_STEPS: int = 2000
 const SWEEP_START_MULTIPLE: float = -2.5
 const SWEEP_END_MULTIPLE: float = 10.5
 
-# The rim core is what the player actually tracks the surface by. 0.80 is comfortably below
-# the darkest shipped value (starlit_night, ~0.95) and comfortably above anything that
-# would read as a dim edge.
-const MIN_RIM_CORE_LUMINANCE: float = 0.80
+# ice_surface is what the player actually tracks the ride line by, now that the rim Line2Ds
+# are gone (2026-08-08) and the tile's bright snow band is multiplied by this instead.
+# 0.70 sits below the darkest shipped value (starlit_night, ~0.80) and above anything that
+# would dim that band into the background.
+const MIN_ICE_SURFACE_LUMINANCE: float = 0.70
+# The tile's V axis now carries the whole depth ramp (1.0 -> ~0.52). If ice_depth is also
+# much darker than ice_surface the two ramps multiply and deep ice goes black, so these two
+# must stay close in luminance and differ in hue instead. Generous bound -- this is here to
+# catch a palette drifting back into "depth = darker", not to police art.
+const MAX_ICE_DEPTH_DARKENING: float = 0.45
 # Far and near scenery must differ by at least this much luminance or the parallax layers
 # collapse into one flat mass and the depth cue is gone.
 const MIN_SCENERY_SEPARATION: float = 0.08
@@ -91,14 +97,20 @@ func check_palettes() -> void:
 			"sky_top", "sky_mid", "sky_horizon",
 			"scenery_far", "scenery_near", "haze_far", "haze_near",
 			"tree_tint", "bird_tint",
-			"ice_surface", "ice_depth", "rim_core", "rim_glow",
+			"ice_surface", "ice_depth",
 			"snow_tint", "coin_color", "obstacle_color",
 		]:
 			assert_color_in_range(label + "." + field_name, palette.get(field_name))
 
-		if get_luminance(palette.rim_core) < MIN_RIM_CORE_LUMINANCE:
-			failures.append("%s.rim_core too dark (%.3f < %.3f) -- the ride surface edge stops reading"
-				% [label, get_luminance(palette.rim_core), MIN_RIM_CORE_LUMINANCE])
+		var surface_luminance: float = get_luminance(palette.ice_surface)
+		if surface_luminance < MIN_ICE_SURFACE_LUMINANCE:
+			failures.append("%s.ice_surface too dark (%.3f < %.3f) -- it multiplies the tile's snow band, so the ride line stops reading"
+				% [label, surface_luminance, MIN_ICE_SURFACE_LUMINANCE])
+
+		var depth_luminance: float = get_luminance(palette.ice_depth)
+		if depth_luminance < surface_luminance * (1.0 - MAX_ICE_DEPTH_DARKENING):
+			failures.append("%s.ice_depth much darker than ice_surface (%.3f vs %.3f) -- it multiplies with the tile's own depth ramp and deep ice goes black"
+				% [label, depth_luminance, surface_luminance])
 
 		var separation: float = absf(get_luminance(palette.scenery_far) - get_luminance(palette.scenery_near))
 		if separation < MIN_SCENERY_SEPARATION:
@@ -212,7 +224,7 @@ func check_blending() -> void:
 			var label: String = "blend[%d->%d]@%.2f" % [cycle_index, (cycle_index + 1) % cycle.size(), progress]
 			for field_name: String in ["sky_top", "sky_mid", "sky_horizon", "scenery_far",
 				"scenery_near", "haze_far", "haze_near", "ice_surface", "ice_depth",
-				"rim_core", "rim_glow", "snow_tint", "tree_tint", "bird_tint"]:
+				"snow_tint", "tree_tint", "bird_tint"]:
 				assert_color_in_range(label + "." + field_name, out.get(field_name))
 
 	# The endpoints must be exact, not merely close: at weight 0 the blend IS the source

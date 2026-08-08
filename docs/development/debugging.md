@@ -216,6 +216,26 @@ if you extend it: this file's whole reason to exist is that nothing else can see
 
 Full design notes: `docs/development/biomes.md`.
 
+## Visual capture (`scripts/debug/ice_look_capture.gd`)
+
+**Not a gate — it asserts nothing.** It runs `main.tscn` *with* a renderer (no `--headless`)
+and saves viewport PNGs at a few frame counts, so a terrain/texture change can be looked at
+without a human having to play the game and screenshot it.
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --path . --script res://scripts/debug/ice_look_capture.gd -- --out=/tmp/ice
+```
+
+It exists because the ice pass shipped a visibly broken frame twice in one session — a
+funnel-warped texture and a washed-out palette — both of which were obvious in one
+screenshot and invisible to all seven headless checks. **Run it before handing a visual
+change over.** It re-asserts `State.PLAYING` every frame (the capture window loses focus
+immediately, and `GameManager` pauses on `NOTIFICATION_APPLICATION_FOCUS_OUT`) and hides the
+UI `CanvasLayer`.
+
+The project owner still judges the final look in-game; this is for catching the gross
+breakage first.
+
 ## Watchdog mechanics
 
 `Player.recover_from_stall()` re-seats the body on the terrain height field after

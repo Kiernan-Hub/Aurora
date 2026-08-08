@@ -116,32 +116,42 @@ two bottom corners `close_fill_run` appends. There are only two vertex rows (top
 bottom), so this is one linear ramp over the full 4096px, not a curve; it doesn't need to
 be more than that; it only needs to not be flat.
 
-### Ice texture (2026-08-07)
+### Ice texture (2026-08-07, remapped to depth 2026-08-08)
 
-The fill is no longer a flat/gradient `Color` — `apply_fill_texture()` (called from
-`build_chunk_fill`, right after `close_fill_run`) assigns each fill polygon
-`assets/textures/terrain/ice_terrain_one.png` as its `texture`, with
-`texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED`. `Polygon2D` renders
-`texture_sample * vertex_color` per pixel — **not** `color * vertex_color`; `color` is
-only ever a fallback used when `vertex_colors` is empty, which it never is here (confirmed
-by testing: setting `LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` to a saturated blue produced no
-visible change before the texture existed). So `FILL_GRADIENT_TOP_TINT`/`BOTTOM_TINT` are
-now back to being multipliers — white at the surface (texture shows through untouched),
-neutral grey at depth (dims without fighting the texture's own hue) — and
-`LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` stay at neutral white, inert unless some future
-fill path ends up with no texture and no vertex_colors.
+`apply_fill_texture()` (called from `build_chunk_fill`, right after `close_fill_run`)
+assigns each fill polygon `assets/textures/terrain/ice_depth_gradient.png`, with
+`texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED`.
 
-**Texture provenance**: `ice_terrain_one.png` is a 1200×520 seamless tile, built (see
-scripts run during that session, not checked in) by cropping a 600×260 highlight/crack-free
-patch of ice body out of a reference ice-skating illustration the project owner generated,
-then mirroring it into a 2×2 grid (`ImageOps.mirror`/`flip`) so opposite edges match
-exactly — cheap, robust seamless tiling for a mostly-diffuse source image, at the cost of a
-faint mirror-symmetry "diamond" pattern if you look for it. The crack lines and bright
-gloss hotspot visible in the original reference were deliberately cropped out: the request
-that produced this was explicit that terrain should read as **one continuous surface**,
-with no per-segment/per-tile seam lines. A second reference (`two.png` in the project
-root, an 8-panel sheet of colour/mood variants) exists but has **not** been wired up to
-anything yet.
+**The tile is not a picture of ice — its vertical axis is depth below the ride surface.**
+Snow band at the top, glossy pale sheen under it, deepening body, thin cracks at plausible
+depths. `apply_fill_texture` maps V to exactly that: 0 at every surface vertex, maximal at
+the gradient-stop corners. So gloss, cracks, snow clumps and the fill's whole vertical
+colour structure are *painted in* and land correctly on every hill in every biome — four
+features from one image, no shader, no per-slope maths. Full rationale in `biomes.md`.
+
+Because the tile carries the light-to-dark ramp itself (1.0 → ~0.52),
+`FILL_GRADIENT_TOP_TINT`/`BOTTOM_TINT` and the palettes' `ice_surface`/`ice_depth` must vary
+**hue, not brightness**. Two darkening ramps multiplied together take deep ice to black;
+`biome_schedule_check.gd` enforces the bound.
+
+All four appended corners take the *same* maximal V, so the band below the gradient stop
+samples the tile's bottom row flat rather than wrapping. That V is a texel short of the true
+bottom (`ICE_TILE_V_INSET`) because **`texture_repeat` applies to both axes in Godot** — a V
+landing exactly on the texture height wraps to row 0, the bright snow band, painting a white
+line straight across the fill at the gradient stop.
+
+`ICE_TILE_WORLD_WIDTH` (1200) stretches the square tile sideways deliberately: it turns the
+source's steep cracks into the long lazy ones the reference art has, and slows the horizontal
+repeat to ~1.6 s at `MAX_SPEED` instead of ~0.5 s.
+
+**Texture provenance**: built by `scripts/tools/build_ice_texture.py` from a generated
+greyscale panel (`three.png` in the project root). **Run that script rather than dropping a
+raw image in** — it does two things the raw panel needs. It lifts the darks: a raw panel
+bottoms out near 0.09, and since `Polygon2D` multiplies, that takes every biome tint to
+black. And it cross-fades the horizontal wrap. It deliberately does **not** mirror, which is
+what the tile it replaced (`ice_terrain_one.png`, a 2×2 mirror of a featureless crop) did —
+mirroring guarantees a seamless join but stamps in a symmetry axis, visible as a faint
+diamond, and long diagonal cracks would turn that into a chevron every repeat.
 
 **UV.x is world_x, not local_x.** `build_chunk_surface`'s geometry is chunk-local by
 design (`local_x = world_x - chunk_start_x - chunk_width * 0.5`), but UV'ing the texture in
@@ -230,17 +240,16 @@ they exist for, never as clutter over obstacles during ordinary play.
 | Pine line | `0.45, 0.56, 0.69` | `main.tscn` export |
 | Haze bands | pale sky tint, alpha 0.44–0.52 | `main.tscn` export |
 | Snow | white, alpha 0.42 | `snow_drift.gd` |
-| Terrain fill | `assets/textures/terrain/ice_terrain_one.png`, tiled | `terrain_generator.gd` |
-| Terrain fill tint (surface → `FILL_GRADIENT_DEPTH` down) | `1.0,1.0,1.0` → `0.55,0.58,0.66` | `terrain_generator.gd` |
-| Rim core | `0.97, 0.99, 1.0`, width 5 | `terrain_generator.gd` |
-| Rim glow | `0.85, 0.95, 1.0`, alpha 0.35, width 22 | `terrain_generator.gd` |
+| Terrain fill | `assets/textures/terrain/ice_depth_gradient.png`, V = depth below surface | `terrain_generator.gd` |
+| Terrain fill tint (surface → `FILL_GRADIENT_DEPTH` down) | `1.0,1.0,1.0` → `0.83,0.88,0.98` — **hue shift, not darkening**; the tile owns the light-to-dark ramp | `terrain_generator.gd` |
+| Rim core / glow | **removed 2026-08-08** — the tile's top rows are the snow band now | — |
 
 **`Polygon2D` renders `texture_sample * vertex_color` and ignores its `color` property
 outright whenever `vertex_colors.size()` matches the polygon's vertex count** — which it
 always does here (`build_fill_vertex_colors()`). Confirmed by testing, back when the fill
 had no texture and `LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` were set to a saturated blue that
 produced *zero* visible change. Terrain colour is
-`assets/textures/terrain/ice_terrain_one.png` (see "Ice texture" below) multiplied by
+`assets/textures/terrain/ice_depth_gradient.png` (see "Ice texture" below) multiplied by
 `FILL_GRADIENT_TOP_TINT`/`FILL_GRADIENT_BOTTOM_TINT`. Do not try to "fix" terrain colour
 through `Polygon2D.color`; it won't do anything.
 
@@ -254,21 +263,17 @@ the `apply_chunk_color()` traversal that justified them is now `repaint_chunk()`
 writes `vertex_colors` for real. Don't reintroduce them — per-chunk parity colouring is
 precisely what the seamless-surface pass exists to prevent.
 
-### Ice surface rim (2026-08-07)
+### Ice surface rim — REMOVED 2026-08-08
 
-Terrain went from pale snow to a saturated ice blue, with a bright rim traced along the
-surface to read as a glossy edge, in the style of a reference "ice slide" screenshot. Two
-`Line2D`s per ground run (`add_surface_rim`, called from `build_chunk_fill`) — a wide,
-low-alpha glow line under a thin, near-opaque core line — fake a bloom highlight without a
-shader (this project has none, see above). Both are traced from the exact same
-`surface_points`/`run_points` the fill polygon and the collision chords already use, so
-the rim can never drift off the visible edge or misalign at a chunk boundary; it's built
-once per chunk spawn, not per frame.
+Two stacked `Line2D` per ground run used to trace the surface: a 22px low-alpha glow under a
+5px near-opaque core, faking a bloom highlight without a shader. Removed when the depth tile
+landed — its top rows are a real snow band, which is softer and physically sensible (snow
+settled on the lip) where the stroke read as a drawn outline.
 
-There is deliberately no per-segment or per-chunk seam in the rim or the fill — one
-continuous line/gradient, not a marker at every new segment. If chunk parity colours are
-ever pulled apart again for debugging (see above), the rim will still read as continuous
-since it doesn't key on `chunk_color` at all.
+**Don't reintroduce a stroke.** If the ride line ever needs strengthening it belongs in the
+tile's top rows, where it stays correct on every slope for free and costs no nodes. The
+palette's `ice_surface` is what now controls how bright that band reads, and
+`biome_schedule_check.gd` holds a floor under it.
 
 ### Why daylight
 
