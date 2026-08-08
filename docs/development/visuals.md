@@ -101,14 +101,48 @@ excursion never scrolls past the bottom of a chunk's paint. `TERRAIN_FILL_DEPTH_
 that fill on screen with the actual bumpy surface scrolled almost out of frame — at that
 point the fill *is* the picture, and a single flat `Color` reads as a blank screen.
 
-`build_fill_vertex_colors` fixes this by giving each fill polygon `Polygon2D.vertex_colors`
-instead of relying on the flat `color` alone: full brightness at every surface-line vertex,
-darker (`FILL_GRADIENT_BOTTOM_TINT`) at the two bottom corners `close_fill_run` appends.
-Godot interpolates vertex colors per pixel across the triangulated fill, multiplying against
-whatever `apply_chunk_color` sets afterward — so the light/dark parity debugging aid still
-works, it's just tinted rather than flat now. There are only two vertex rows (top and
+`build_fill_vertex_colors` fixes this by giving each fill polygon `Polygon2D.vertex_colors`:
+`FILL_GRADIENT_TOP_TINT` at every surface-line vertex, `FILL_GRADIENT_BOTTOM_TINT` at the
+two bottom corners `close_fill_run` appends. There are only two vertex rows (top and
 bottom), so this is one linear ramp over the full 4096px, not a curve; it doesn't need to
-be more than that; it only needs to not be zero.
+be more than that; it only needs to not be flat.
+
+### Ice texture (2026-08-07)
+
+The fill is no longer a flat/gradient `Color` — `apply_fill_texture()` (called from
+`build_chunk_fill`, right after `close_fill_run`) assigns each fill polygon
+`assets/textures/terrain/ice_terrain_one.png` as its `texture`, with
+`texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED`. `Polygon2D` renders
+`texture_sample * vertex_color` per pixel — **not** `color * vertex_color`; `color` is
+only ever a fallback used when `vertex_colors` is empty, which it never is here (confirmed
+by testing: setting `LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` to a saturated blue produced no
+visible change before the texture existed). So `FILL_GRADIENT_TOP_TINT`/`BOTTOM_TINT` are
+now back to being multipliers — white at the surface (texture shows through untouched),
+neutral grey at depth (dims without fighting the texture's own hue) — and
+`LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` stay at neutral white, inert unless some future
+fill path ends up with no texture and no vertex_colors.
+
+**Texture provenance**: `ice_terrain_one.png` is a 1200×520 seamless tile, built (see
+scripts run during that session, not checked in) by cropping a 600×260 highlight/crack-free
+patch of ice body out of a reference ice-skating illustration the project owner generated,
+then mirroring it into a 2×2 grid (`ImageOps.mirror`/`flip`) so opposite edges match
+exactly — cheap, robust seamless tiling for a mostly-diffuse source image, at the cost of a
+faint mirror-symmetry "diamond" pattern if you look for it. The crack lines and bright
+gloss hotspot visible in the original reference were deliberately cropped out: the request
+that produced this was explicit that terrain should read as **one continuous surface**,
+with no per-segment/per-tile seam lines. A second reference (`two.png` in the project
+root, an 8-panel sheet of colour/mood variants) exists but has **not** been wired up to
+anything yet.
+
+**UV.x is world_x, not local_x.** `build_chunk_surface`'s geometry is chunk-local by
+design (`local_x = world_x - chunk_start_x - chunk_width * 0.5`), but UV'ing the texture in
+that same local space would restart the texture's phase at every chunk boundary — the
+exact seam-per-segment look this exists to avoid. `apply_fill_texture` takes the polygon's
+local-space `uv` from `close_fill_run` and adds `chunk_start_x + chunk_width * 0.5` back
+onto every `x` before assigning it, so the texture phase is continuous across chunk
+boundaries. `world_x` grows unbounded over a long session (`main.gd`: "X is never
+world-rebased"); this doesn't introduce a new precision failure mode, since
+`chunk.position.x` already carries the same unbounded value.
 
 ## Birds (glide-only)
 
@@ -179,15 +213,40 @@ they exist for, never as clutter over obstacles during ordinary play.
 | Pine line | `0.45, 0.56, 0.69` | `main.tscn` export |
 | Haze bands | pale sky tint, alpha 0.44–0.52 | `main.tscn` export |
 | Snow | white, alpha 0.42 | `snow_drift.gd` |
-| Terrain | `0.957, 0.975, 1.0` | `terrain_generator.gd` |
+| Terrain fill | `assets/textures/terrain/ice_terrain_one.png`, tiled | `terrain_generator.gd` |
+| Terrain fill tint (surface → `FILL_GRADIENT_DEPTH` down) | `1.0,1.0,1.0` → `0.55,0.58,0.66` | `terrain_generator.gd` |
+| Rim core | `0.97, 0.99, 1.0`, width 5 | `terrain_generator.gd` |
+| Rim glow | `0.85, 0.95, 1.0`, alpha 0.35, width 22 | `terrain_generator.gd` |
 
-`LIGHT_CHUNK_COLOR` and `DARK_CHUNK_COLOR` are now **identical**. They were
-`0.92/0.97/1.0` and `0.78/0.86/0.93`, far enough apart that the parity alternation in
-`apply_chunk_color()` read as hard vertical banding at every chunk boundary. Narrowing the
-gap to ~2/255 was measured and still visible — on a flat pale field that large, a hard
-two-level step reads as a Mach band. Both constants are kept (rather than collapsed into
-one) so `apply_chunk_color()` stays exactly as it was, and because giving them different
-values is a genuinely useful debugging aid: every chunk boundary lights up instantly.
+**`LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` do not currently affect the fill's rendered
+colour at all** (2026-08-07 finding, still true after adding the texture): `Polygon2D`
+renders `texture_sample * vertex_color` and ignores its `color` property outright whenever
+`vertex_colors.size()` matches the polygon's vertex count, which it always does here
+(`build_fill_vertex_colors()`) — confirmed by testing, back when the fill had no texture
+and these two constants were set to a saturated blue that produced *zero* visible change.
+Terrain colour is controlled by `assets/textures/terrain/ice_terrain_one.png` (see "Ice
+texture" below) tinted by `FILL_GRADIENT_TOP_TINT`/`FILL_GRADIENT_BOTTOM_TINT` — not by the
+chunk-parity constants. `LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` are left at neutral white
+and kept as two separate constants only so `apply_chunk_color()`'s parity branch is still
+there to reach for if `color` ever becomes load-bearing again (e.g. a code path with an
+empty `vertex_colors`) — give them different values and any such path lights up instantly.
+Do not "fix" the terrain colour by editing these; it won't do anything.
+
+### Ice surface rim (2026-08-07)
+
+Terrain went from pale snow to a saturated ice blue, with a bright rim traced along the
+surface to read as a glossy edge, in the style of a reference "ice slide" screenshot. Two
+`Line2D`s per ground run (`add_surface_rim`, called from `build_chunk_fill`) — a wide,
+low-alpha glow line under a thin, near-opaque core line — fake a bloom highlight without a
+shader (this project has none, see above). Both are traced from the exact same
+`surface_points`/`run_points` the fill polygon and the collision chords already use, so
+the rim can never drift off the visible edge or misalign at a chunk boundary; it's built
+once per chunk spawn, not per frame.
+
+There is deliberately no per-segment or per-chunk seam in the rim or the fill — one
+continuous line/gradient, not a marker at every new segment. If chunk parity colours are
+ever pulled apart again for debugging (see above), the rim will still read as continuous
+since it doesn't key on `chunk_color` at all.
 
 ### Why daylight
 
