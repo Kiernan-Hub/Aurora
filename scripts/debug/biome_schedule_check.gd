@@ -40,14 +40,22 @@ const SWEEP_END_MULTIPLE: float = 10.5
 
 # ice_surface is what the player actually tracks the ride line by, now that the rim Line2Ds
 # are gone (2026-08-08) and the tile's bright snow band is multiplied by this instead.
-# 0.70 sits below the darkest shipped value (starlit_night, ~0.80) and above anything that
-# would dim that band into the background.
-const MIN_ICE_SURFACE_LUMINANCE: float = 0.70
+#
+# LOWERED 0.70 -> 0.55 after seeing it rendered. 0.70 was set before any of this existed on
+# screen, and it turned out to force ice_surface to be near-white -- which, multiplied by a
+# GREYSCALE tile, can only ever produce grey ice. That was the whole reason the cold biomes
+# read as grey rather than blue: brightness was being protected at the direct expense of the
+# only thing carrying biome colour in the shallow band, which is most of what is on screen.
+# 0.55 still leaves the lip the brightest thing in the darkest frame (starlit_night's sky
+# horizon is ~0.52), because the tile's own top rows are ~0.97 before this multiplies them.
+const MIN_ICE_SURFACE_LUMINANCE: float = 0.55
 # The tile's V axis now carries the whole depth ramp (1.0 -> ~0.52). If ice_depth is also
 # much darker than ice_surface the two ramps multiply and deep ice goes black, so these two
 # must stay close in luminance and differ in hue instead. Generous bound -- this is here to
-# catch a palette drifting back into "depth = darker", not to police art.
-const MAX_ICE_DEPTH_DARKENING: float = 0.45
+# catch a palette drifting back into "depth = darker", not to police art -- and relaxed
+# 0.45 -> 0.55 for the same reason as the floor above: a night biome legitimately wants deep
+# ice much darker than its surface, and the reference art's night panel does exactly that.
+const MAX_ICE_DEPTH_DARKENING: float = 0.55
 # Far and near scenery must differ by at least this much luminance or the parallax layers
 # collapse into one flat mass and the depth cue is gone.
 const MIN_SCENERY_SEPARATION: float = 0.08
