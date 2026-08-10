@@ -130,6 +130,26 @@ midday, sets low-right at `sunset_rose` (the strongest glow, 0.85), fades throug
 `violet_dusk` and `twilight_blue`, and `starlit_night` is a small cool halo high-left — the
 moon's, which Phase 1b will put a disc inside.
 
+**Strengths are calibrated by measurement, not by eye** — see
+`glow_contribution_check.gd`, which fails the build if any biome's glow peaks under 24/255.
+The first authoring pass looked reasonable as data and was invisible in game (11–52/255,
+most of it under 20). Two causes, and the second is the one that is easy to miss:
+
+- the strengths were simply too low, and
+- **the glow colours were too close to the sky colours they blend over.** A near-white glow on
+  a near-white sky moves nothing however high the strength goes. `glacier_teal`'s glow was
+  (240,252,255) over a sky of (184,199,219): 24% of a 53-unit gap is 12 units.
+
+A third effect showed up in the numbers: peak-per-unit-strength was **142** for
+`starlit_night` (`glow_position.y` 0.24) against **61** for `sunset_rose` (0.68). Glows placed
+low were spending their bright centre behind the ridges and the terrain. Every
+`glow_position.y` now sits in the 0.26–0.46 band.
+
+Current measured peaks run 40–93/255. The spread is deliberate and not a defect: the three
+pale daylight biomes (`pale_morning`, `glacier_teal`, `mauve_haze`) land at 40–43 because a
+bright overcast sky genuinely has less directional contrast to give, while the dawn/dusk/night
+biomes reach 82–93. Diffuse light *should* read as diffuse.
+
 **Starting value is `glow_strength = 0`.** All six headless gates instantiate `main.tscn` and
 `BiomeDirector` never applies a palette under `--headless`, so that constant is the sky they
 see: hidden, and byte-identical to the glow not existing.

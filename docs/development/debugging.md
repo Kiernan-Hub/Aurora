@@ -247,6 +247,37 @@ a throwaway probe — see `biomes.md`, "Testing" — not kept as a gate.
 
 Full design notes: `docs/development/biomes.md`.
 
+## Glow contribution check (`scripts/debug/glow_contribution_check.gd`)
+
+```
+/Applications/Godot.app/Contents/MacOS/Godot --path . --script res://scripts/debug/glow_contribution_check.gd
+```
+
+**A gate, but not a headless one — it has to render.** It measures what the sky glow actually
+puts on screen, in pixels, per biome, and exits non-zero if any biome falls under
+`MIN_PEAK_CONTRIBUTION` (24/255).
+
+It exists because `biome_schedule_check` cannot see this. That gate proves the glow *data* is
+well-formed — colours in range, anchors on screen, `blend_into` carrying every field — and the
+glow shipped in 92c7867 passed all of it while contributing **11/255** at its peak, which is
+invisible. *Numbers being valid* and *pixels being different* are two separate claims.
+
+Method: for each palette, two captures of the same frame differing only in `SkyGlow.visible`.
+Three things make the difference mean only the glow, and each was learned by getting it wrong:
+
+- **`Engine.time_scale = 0`.** Without it the world scrolls between captures and the diff
+  measures terrain motion. A first attempt reported 22% of pixels changed by a glow that was
+  contributing nothing.
+- **The palette goes straight to `SkyBackdrop.apply_palette()`**, not through a `world_x`, so
+  terrain and snow never move between biomes either.
+- **Apply, wait, then capture** — `root.get_texture()` returns the frame already rendered.
+  Same trap `biome_contact_sheet.gd` documents at its head.
+
+A failure is almost always one of three things: the glow sits where scenery covers it, its
+colour is too close to the sky colour it blends over, or the strength is too low. **The second
+is the least obvious and was the real cause the first time**: a near-white glow on a near-white
+sky moves nothing however high the strength goes.
+
 ## Visual capture (`scripts/debug/ice_look_capture.gd`)
 
 **Not a gate — it asserts nothing.** It runs `main.tscn` *with* a renderer (no `--headless`)
