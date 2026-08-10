@@ -19,6 +19,7 @@ This file is the map. Everything else is one level down, read on demand.
 | `docs/development/input.md` | Any input change — desktop *or* touch |
 | `docs/development/visuals.md` | Touching the background, scenery, palette or draw order |
 | `docs/development/biomes.md` | Any colour that changes over a run — palettes, the director, a transition |
+| `docs/development/ice_panels.md` | Making a new ice tile — panel requirements, prompts, the `--check` validator |
 | `docs/development/debugging.md` | Running a gate, or reviving an archived probe |
 | `docs/development/dead_code.md` | Something looks reachable but isn't |
 | `docs/review/*.md` | Point-in-time external audits. Read the newest before a cleanup pass — it's the running list of known-but-unfixed debt |

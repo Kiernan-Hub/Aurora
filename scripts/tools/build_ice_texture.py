@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Turn a raw generated ice panel into the game-ready depth tile.
 
-    python3 scripts/tools/build_ice_texture.py three.png
+    python3 scripts/tools/build_ice_texture.py --check panel.png   (validate a source panel)
+python3 scripts/tools/build_ice_texture.py three.png
     python3 scripts/tools/build_ice_texture.py four.png assets/textures/terrain/ice_faceted.png
 
 The output path is optional and defaults to DEFAULT_OUTPUT_PATH (the smooth tile
@@ -205,7 +206,71 @@ def make_horizontally_seamless(values):
     return rolled
 
 
+def inspect_panel(path):
+    """Report whether a SOURCE panel is usable, before building anything.
+
+    Every rejection here is something the build would otherwise paper over silently: the
+    builder lifts darks, matches the depth ramp and feathers the seam, so a panel that is
+    upside down or has no vertical structure still produces a tile -- just a wrong one, and
+    the only symptom is ice that looks flat in game. Cheaper to say so up front.
+    """
+    image = Image.open(path).convert("L")
+    values = np.asarray(image.resize(OUTPUT_SIZE, Image.LANCZOS), dtype=np.float64) / 255.0
+    rows = values.mean(axis=1)
+    top = rows[: OUTPUT_SIZE[1] // 8].mean()
+    bottom = rows[-OUTPUT_SIZE[1] // 8 :].mean()
+    within_row = values.std(axis=1).mean()
+
+    print("panel       ", path, image.size, "mode", image.mode)
+    print("top eighth  ", round(top, 3), " bottom eighth", round(bottom, 3))
+    print("within-row  ", round(within_row, 4), "(contrast that survives the ramp match)")
+
+    problems = []
+    if top <= bottom:
+        problems.append(
+            "TOP IS NOT BRIGHTER THAN THE BOTTOM. The vertical axis is DEPTH BELOW THE RIDE "
+            "SURFACE, not a side view of ice: snow band at the top, darkening downward. "
+            "A panel that is upside down builds fine and renders as ice lit from below."
+        )
+    elif top - bottom < 0.12:
+        problems.append(
+            "Barely any vertical structure (top-bottom %.3f). The tile IS the depth ramp; "
+            "without one there is nothing for V to mean." % (top - bottom)
+        )
+    if within_row < 0.02:
+        problems.append(
+            "Almost no WITHIN-ROW contrast (%.4f). match_depth_ramp() rescales each row onto "
+            "the default tile's brightness, so between-row contrast is normalised away by "
+            "design -- facets and cracks have to live ACROSS a row to survive." % within_row
+        )
+    # A WARNING, not a rejection: four.png is 1022x755 and produced a shipped tile. Upscaling
+    # costs sharpness, which is a quality call, not a correctness one.
+    warnings = []
+    if image.size[0] < OUTPUT_SIZE[0] or image.size[1] < OUTPUT_SIZE[1]:
+        warnings.append(
+            "Smaller than the %dx%d output, so it will be upscaled and slightly soft."
+            % OUTPUT_SIZE
+        )
+
+    if warnings:
+        print()
+        for warning in warnings:
+            print("  note:", warning)
+
+    if problems:
+        print()
+        print("NOT READY:")
+        for problem in problems:
+            print("  *", problem)
+        return 1
+    print()
+    print("OK -- build it with:  python3 scripts/tools/build_ice_texture.py", path, "<output.png>")
+    return 0
+
+
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--check":
+        raise SystemExit(inspect_panel(sys.argv[2]))
     if len(sys.argv) not in (2, 3):
         raise SystemExit(__doc__)
     output_path = sys.argv[2] if len(sys.argv) == 3 else DEFAULT_OUTPUT_PATH
