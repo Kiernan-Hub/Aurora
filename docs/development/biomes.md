@@ -317,6 +317,24 @@ band construction changes again.
 
 - **A parse error in `biome_director.gd` hangs the six gates rather than failing them**
   (`visuals.md` trap 3). Run one gate as soon as the file first parses, not at the end.
+- **A parse error in a *palette consumer* does the opposite, and it is worse: the gate runs
+  to completion and prints a normal-looking PASS.** Measured 2026-08-10 with a broken
+  `sky_backdrop.gd`: `camera_shake_probe` emitted three `SCRIPT ERROR` lines at the *top* of
+  its output, then loaded `main.tscn` without that script attached, produced ordinary jerk
+  numbers and printed `CAMERA_SHAKE_PROBE_END`. The scene does not fail to instantiate — it
+  instantiates with a node that has no behaviour. So **`tail` on a probe's output is not
+  verification.** Grep the whole log:
+
+  ```
+  godot --headless --path . --script res://scripts/debug/camera_shake_probe.gd > /tmp/g.log 2>&1
+  grep -n "SCRIPT ERROR\|Parse Error\|Failed to load" /tmp/g.log || echo NONE
+  ```
+
+  Cheaper still, for a single file: `godot --headless --path . --check-only --script res://<path>`.
+- **`const X: PackedFloat32Array = PackedFloat32Array([...])` is a parse error.** The explicit
+  constructor is a *call*, and a call is not a constant expression. Use a bare array literal —
+  `const X: PackedFloat32Array = [0.0, 1.0]` — and let the type annotation convert it. Inside a
+  function body the constructor form is fine, which is why the same line reads as legal.
 - **`is_headless` must come from `DisplayServer.get_name()`**, never `Services.is_headless` —
   `freeze_replay_runner.gd` builds Main inside `_init()`, before the autoload has flushed.
   `snow_drift.gd` shipped exactly this bug.

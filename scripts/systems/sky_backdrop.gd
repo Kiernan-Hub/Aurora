@@ -47,8 +47,13 @@ const GLOW_TEXTURE_SIZE: int = 256
 # Alpha falloff from the centre out. Roughly (1-t)^2 rather than the linear ramp two stops
 # would give -- a linear falloff has a visible hard outer circle where it reaches zero,
 # because the eye finds the discontinuity in the SLOPE, not in the value.
-const GLOW_FALLOFF_OFFSETS: PackedFloat32Array = PackedFloat32Array([0.0, 0.25, 0.5, 0.75, 1.0])
-const GLOW_FALLOFF_ALPHAS: PackedFloat32Array = PackedFloat32Array([1.0, 0.62, 0.32, 0.11, 0.0])
+#
+# ARRAY LITERAL, NOT PackedFloat32Array([...]). The explicit constructor is a CALL, and a call
+# is not a constant expression, so `const X: PackedFloat32Array = PackedFloat32Array([...])`
+# is a parse error -- while the bare literal converts at compile time and is fine. Do not
+# "tidy" these back into the constructor form; the type annotation already does that work.
+const GLOW_FALLOFF_OFFSETS: PackedFloat32Array = [0.0, 0.25, 0.5, 0.75, 1.0]
+const GLOW_FALLOFF_ALPHAS: PackedFloat32Array = [1.0, 0.62, 0.32, 0.11, 0.0]
 # The starting glow is OFF. Every one of the six headless gates instantiates main.tscn, and
 # biome_director never applies a palette under --headless -- so this value is the sky they
 # see. At 0 the node is hidden and this whole feature is byte-identical to not existing,
