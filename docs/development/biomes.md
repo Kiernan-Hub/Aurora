@@ -113,8 +113,18 @@ ice); the rest run 0.10–0.16, measured at 24–36/255 by `sky_layer_check`'s `
 ## The snow cap (Phase 2b)
 
 A third quad strip per ground run, sharing the ice band's top edge, with a lower edge
-displaced per-vertex by `get_snow_cap_depth(world_x)` between 10 and 44px. `snow_cap_color`
+displaced per-vertex by `get_snow_cap_depth(world_x)` between **3 and 13px**. `snow_cap_color`
 and `snow_cap_strength` on `CHANNEL_ICE`; 0 hides it.
+
+**Keep it thin.** The first cut ran 10–44px and read as a thick rolled edge — "snowboard-y" —
+and became the dominant thing on the slope, which is wrong: the ice's own cracks and facets
+are supposed to carry that. This is a frost line catching the light on the lip, and its
+*variation* is what makes it read, not its mass.
+
+Worth knowing when retuning: **depth changes the area, `snow_cap_strength` changes the peak.**
+`sky_layer_check` measures peak contribution, which comes from the fully-opaque top row — so
+thinning the band alone would have kept exactly the same number while fixing the actual
+complaint. The strengths came down ~40% alongside it.
 
 **Why geometry and not the tile.** The tile already paints a snow band in its top rows — but
 it repeats every `ICE_TILE_WORLD_WIDTH` (1200px), so the ride line has the *same profile

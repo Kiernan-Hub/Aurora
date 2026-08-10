@@ -803,12 +803,21 @@ const ICE_HUE_SHORT_WEIGHT: float = 0.4
 const ICE_HUE_PHASE_OFFSET: float = 1.7
 
 # --- Snow cap ------------------------------------------------------------------------------
-# Depth of the settled-snow band below the ride line, in px. The band's LOWER edge is displaced
-# by a function of world_x between these two, which is the whole point: the tile's own snow
-# band repeats every ICE_TILE_WORLD_WIDTH, so the ride line otherwise has the same profile
-# forever. Shallow -- this is a rim of snow, not a second terrain layer.
-const SNOW_CAP_DEPTH_MIN: float = 10.0
-const SNOW_CAP_DEPTH_MAX: float = 44.0
+# Depth of the frost line below the ride line, in px. The band's LOWER edge is displaced by a
+# function of world_x between these two, which is the whole point: the tile's own snow band
+# repeats every ICE_TILE_WORLD_WIDTH, so the ride line otherwise has the same profile forever.
+#
+# THIN, AND DELIBERATELY SO (retuned 2026-08-10). The first cut ran 10-44px, which read as a
+# thick rolled edge -- "snowboard-y" -- and became the dominant thing on the slope. The ice's
+# own cracks and facets are supposed to carry that. This is a frost line catching the light on
+# the lip, not a second terrain layer, so it stays under ~14px and its VARIATION is what makes
+# it read, not its mass.
+#
+# Note thinning does not lower what sky_layer_check measures: peak contribution comes from the
+# fully-opaque top row, so depth changes the AREA covered and snow_cap_strength changes the
+# peak. Thinning alone would have kept the same number while fixing the actual complaint.
+const SNOW_CAP_DEPTH_MIN: float = 3.0
+const SNOW_CAP_DEPTH_MAX: float = 13.0
 # Deliberately different wavelengths from the hue drift, and again unrelated to
 # ICE_TILE_WORLD_WIDTH (1200), so cap thickness, colour drift and texture repeat never line up.
 const SNOW_CAP_WAVELENGTH_LONG: float = 1700.0
