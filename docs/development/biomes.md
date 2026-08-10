@@ -156,12 +156,34 @@ The light *source*, where the glow is the light it casts. `celestial_color`,
 `celestial_position`, `celestial_size`, `celestial_strength`, all on `CHANNEL_SKY`, authored at
 the same position as the glow so the two agree about where the light comes from.
 
-**Four of the eight biomes have no disc, deliberately.** A disc in all eight reads as a decal
-rather than as weather. The ones that have it are where you would actually see it — a risen sun
-(`arctic_dawn`), a clear midday (`glacier_teal`), a setting sun (`sunset_rose`), a moon
-(`starlit_night`). The ones that do not are the two overcast/hazy biomes, where cloud is the
-reason, and the two dusk biomes, where the sun is already below the horizon. `celestial_strength
-= 0` skips the draw, and `sky_layer_check.gd` reports those as `--` rather than failing them.
+**Only three of the eight biomes have a disc, deliberately.** A disc in all eight reads as a
+decal rather than as weather. The three are where you would actually see one: a risen sun
+(`arctic_dawn`), a clear midday (`glacier_teal`), and the moon (`starlit_night`). The other
+five have a reason not to — cloud in the two overcast/hazy biomes, and the sun already at or
+below the horizon in the three evening ones. `celestial_strength = 0` skips the draw, and
+`sky_layer_check.gd` reports those as `--` rather than failing them.
+
+**`sunset_rose` has the strongest glow in the cycle and no disc at all**, which is the single
+most reference-accurate frame in the game. In the source art you cannot see the sun and you
+know exactly what it is doing. The three evening biomes are authored as one sequence: setting
+behind the peaks (`sunset_rose`, glow 1.0), just gone (`violet_dusk`), last afterglow
+(`twilight_blue`).
+
+### Put an evening glow ON the ridgeline, not in the sky
+
+The ridge tops sit at y 0.21–0.45, so the visual horizon is ~y 0.21–0.25. **A glow centred
+there has its lower half clipped by the mountains, and that clipping is what reads as light
+coming from behind them.** A glow centred high in open sky reads as midday whatever colour it
+is — which is exactly what the first pass after the composition change looked like, because
+everything had been pushed up to y 0.08–0.18 when the top 21% was the only sky that existed.
+
+So the arc runs low → high → low through the cycle: `arctic_dawn` 0.21 (just risen),
+`glacier_teal` 0.10 (midday), `sunset_rose` 0.24, `violet_dusk` 0.26, `twilight_blue` 0.28
+(progressively lower and more clipped), and `starlit_night` 0.10 for the moon.
+
+One thing this does **not** do: the mountains are flat palette silhouettes, so they never pick
+up warm light from the glow the way the reference's do. The compensation is in the palette —
+an evening biome's `scenery_far`/`scenery_near` carry the warmth themselves.
 
 **The disc is laid out in PIXELS, unlike everything else in `sky_backdrop.gd`** — because it
 has to be round. Anchors are per-axis fractions, so anchoring it the way the glow is anchored
