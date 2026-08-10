@@ -171,11 +171,15 @@ background parallax were removed entirely, not left disabled — don't resurrect
 7. **Audio — working (SFX only).** 6-voice pool on the SFX bus, sliders flush on drag end,
    no music track yet. Behind a locally-computed `is_headless` (`Services` isn't ready in
    harness `_init()`)
-8. **Visual polish — background + biome cycle done** (2026-08-08), gameplay art still
-   placeholder rects. **Eight `BiomePalette`s cycle every 75 000 world-px** on five
-   staggered channels; no shader. **The ice tile's V axis is depth below the ride surface**
-   and it is a *multiplier*, so palettes vary **hue, not brightness** — `biomes.md` before
-   touching any of it
+8. **Visual polish — sky pass and ice variation done** (2026-08-10), gameplay art still
+   placeholder rects. **Eight `BiomePalette`s cycle every 75 000 world-px**, crossfading on
+   five staggered channels. No shader — `Polygon2D` already renders `texture * vertex_color`.
+   **Sky**: five-stop gradient baked with a horizontal wash, a directional glow on the
+   ridgeline, a sun/moon disc on two biomes (the moon is a crescent), and a starfield. The
+   parallax layers were lowered so a sky exists at all — it was 2.4% of the frame.
+   **Ice**: the tile's V axis is depth below the ride surface, plus a world_x hue drift and a
+   snow cap whose depth varies with world_x. `biomes.md`, `visuals.md`, `ice_panels.md`
+
 9. **Upgrades — vertical slice working** (2026-08-04). One track (jump, five levels), SHOP
    screen, banked coins; player starts weak, buys to baseline. Missions/zones not started
 
