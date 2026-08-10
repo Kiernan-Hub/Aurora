@@ -25,6 +25,10 @@ extends SceneTree
 #      genuinely lead/trail each other rather than all moving together.
 #   6. Blending never produces an out-of-range colour, and never allocates -- blend_into
 #      must write into the caller's instance.
+#   7. Every ice_texture variant shares the default tile's depth ramp, so the two tiles on
+#      screen together during a pattern dissolve agree about brightness (MAX_ICE_RAMP_DEVIATION).
+#   8. blend_into never carries ice_texture, at any weight -- the pattern crossfade needs both
+#      endpoint tiles and cannot ride on a single blended value.
 #
 # Usage:
 #   godot --headless --path . --script res://scripts/debug/biome_schedule_check.gd
@@ -61,14 +65,51 @@ const MAX_ICE_DEPTH_DARKENING: float = 0.55
 const MIN_SCENERY_SEPARATION: float = 0.08
 # Float slop on smoothstep endpoints and colour lerps.
 const EPSILON: float = 0.0005
+# Every variant is built by scripts/tools/build_ice_texture.py at its OUTPUT_SIZE.
+const EXPECTED_ICE_TILE_SIZE: int = 1024
+# Catches EVERY variant vanishing at once -- a moved assets/ directory, a bad merge, a
+# renamed file -- which is the realistic failure mode, since a null ice_texture is a legal
+# value meaning "use the smooth tile". Deliberately not pinned to the exact count, so
+# adding a variant does not also require editing this gate.
+const MIN_ICE_VARIANTS: int = 1
+
+# The tile every biome without a variant uses, and therefore the depth ramp all the variants
+# have to agree with. Referenced through TerrainGenerator rather than re-preloaded so there
+# is one path in the project, not two.
+const DEFAULT_ICE_TILE: Texture2D = TerrainGenerator.ICE_TERRAIN_TEXTURE
+# How far a variant's per-row mean brightness may drift from the default tile's, averaged
+# over the sampled rows.
+#
+# WHY THIS IS A GATE. A biome swaps its tile one 512px chunk at a time, so there is a live
+# vertical boundary in game with the old tile on one side and the new one on the other. Both
+# are MULTIPLIERS, so if they disagree about how bright ice is at a given depth, that
+# boundary is a flat brightness step and reads as a hard cutoff whatever the patterns do.
+# build_ice_texture.py rescales every variant onto this ramp automatically -- but a tile
+# rebuilt by any other route, or hand-edited, looks completely correct as a resource and
+# loses that silently. Measured: the two matched variants sit at 0.002 and 0.004, while the
+# unmatched faceted tile this replaced was ~0.10 (0.86 at the ride line against the default's
+# 0.98). So this is set with ~5x headroom over a matched tile and ~5x under an unmatched one.
+const MAX_ICE_RAMP_DEVIATION: float = 0.02
+# The mismatch this catches is a whole-tile ramp disagreement, not a per-pixel one, so the
+# comparison subsamples hard. A full 1024x1024 walk in GDScript would cost more than the rest
+# of the gate put together and tell it nothing more.
+const ICE_RAMP_ROW_STRIDE: int = 16
+const ICE_RAMP_COLUMN_STRIDE: int = 8
+# Steps across the ice channel's weight when checking that no pattern snap has crept back in.
+# Swept rather than probed at the ends because a snap fires in the middle.
+const ICE_CROSSFADE_PROBE_STEPS: int = 64
 
 var failures: Array[String] = []
+var ice_variant_count: int = 0
 
 
 func _init() -> void:
 	var schedule_steps: int = get_int_argument("--steps", DEFAULT_SCHEDULE_STEPS)
 
 	check_palettes()
+	if ice_variant_count < MIN_ICE_VARIANTS:
+		failures.append("no palette resolved an ice_texture (expected at least %d) -- every pattern variant is missing, so the whole cycle silently fell back to the smooth tile"
+			% MIN_ICE_VARIANTS)
 	check_schedule_purity(schedule_steps)
 	check_channel_curves()
 	check_blending()
@@ -78,6 +119,7 @@ func _init() -> void:
 		print("BIOME_CHECK PASS  palettes=", BiomeDirector.BIOME_CYCLE.size(),
 			" biome_distance=", BiomeDirector.BIOME_DISTANCE,
 			" transition=", BiomeDirector.TRANSITION_DISTANCE,
+			" ice_variants=", ice_variant_count,
 			" steps=", schedule_steps)
 		quit(0)
 		return
@@ -124,6 +166,67 @@ func check_palettes() -> void:
 		if separation < MIN_SCENERY_SEPARATION:
 			failures.append("%s scenery_far/near separation %.3f < %.3f -- parallax depth collapses"
 				% [label, separation, MIN_SCENERY_SEPARATION])
+
+		# ice_texture is allowed to be null (= the default smooth tile), so a .tres whose
+		# ExtResource path went stale resolves to null and looks EXACTLY like a palette that
+		# never wanted a variant. Nothing else in the project would notice: the six physics
+		# gates disable the biome system outright, and in game the biome would simply keep
+		# the smooth tile. Counted here so a silent loss of every variant is visible in the
+		# PASS line rather than being something someone eventually notices by eye.
+		if palette.ice_texture != null:
+			ice_variant_count += 1
+			if palette.ice_texture.get_size() != Vector2(EXPECTED_ICE_TILE_SIZE, EXPECTED_ICE_TILE_SIZE):
+				failures.append("%s.ice_texture is %s, expected %dx%d -- a differently sized tile changes how fast the pattern repeats relative to the others"
+					% [label, palette.ice_texture.get_size(), EXPECTED_ICE_TILE_SIZE, EXPECTED_ICE_TILE_SIZE])
+			else:
+				check_ice_ramp_matches_default(label, palette.ice_texture)
+
+
+# See MAX_ICE_RAMP_DEVIATION for why a variant is required to share the default tile's
+# light-to-dark ramp: the chunk boundary during a biome change is a live seam between the two
+# tiles, and a ramp disagreement renders there as a brightness step.
+func check_ice_ramp_matches_default(label: String, variant_texture: Texture2D) -> void:
+	var reference_rows: PackedFloat32Array = sample_row_brightness(DEFAULT_ICE_TILE)
+	var variant_rows: PackedFloat32Array = sample_row_brightness(variant_texture)
+	if reference_rows.is_empty() or variant_rows.size() != reference_rows.size():
+		failures.append("%s.ice_texture could not be compared against the default tile (%d vs %d sampled rows)"
+			% [label, variant_rows.size(), reference_rows.size()])
+		return
+
+	var total_deviation: float = 0.0
+	var worst_deviation: float = 0.0
+	for row_index: int in range(reference_rows.size()):
+		var deviation: float = absf(variant_rows[row_index] - reference_rows[row_index])
+		total_deviation += deviation
+		worst_deviation = maxf(worst_deviation, deviation)
+	var mean_deviation: float = total_deviation / float(reference_rows.size())
+
+	if mean_deviation > MAX_ICE_RAMP_DEVIATION:
+		failures.append("%s.ice_texture's depth ramp is %.3f off the default tile's (max %.3f, worst row %.3f) -- rebuild it through scripts/tools/build_ice_texture.py, which matches the ramp automatically; unmatched, the chunk boundary at a biome change is a visible brightness step"
+			% [label, mean_deviation, MAX_ICE_RAMP_DEVIATION, worst_deviation])
+
+
+# Mean brightness of every ICE_RAMP_ROW_STRIDE-th row. The tiles are greyscale, so the red
+# channel alone is the value -- and the tile's V axis is depth below the ride surface, so
+# this array IS its depth ramp.
+func sample_row_brightness(texture: Texture2D) -> PackedFloat32Array:
+	var image: Image = texture.get_image()
+	if image == null:
+		return PackedFloat32Array()
+	# An imported texture can arrive VRAM-compressed depending on the import preset, and
+	# get_pixel() is not valid on a compressed Image.
+	if image.is_compressed() and image.decompress() != OK:
+		return PackedFloat32Array()
+
+	var row_brightness: PackedFloat32Array = PackedFloat32Array()
+	for y: int in range(0, image.get_height(), ICE_RAMP_ROW_STRIDE):
+		var row_total: float = 0.0
+		var sample_count: int = 0
+		for x: int in range(0, image.get_width(), ICE_RAMP_COLUMN_STRIDE):
+			row_total += image.get_pixel(x, y).r
+			sample_count += 1
+		row_brightness.append(row_total / float(sample_count))
+	return row_brightness
 
 
 # The whole reason the schedule is keyed on distance rather than a clock: it must be a pure
@@ -248,6 +351,54 @@ func check_blending() -> void:
 	BiomePalette.blend_into(cycle[0], cycle[1], weights, out)
 	if not out.sky_top.is_equal_approx(cycle[1].sky_top) or not out.ice_surface.is_equal_approx(cycle[1].ice_surface):
 		failures.append("blend at weight 1 does not reproduce the destination palette")
+
+	check_ice_pattern_crossfade()
+
+
+# The ice PATTERN is the one thing a blended palette cannot carry: a Polygon2D samples exactly
+# one texture, so dissolving between two tiles needs both endpoints AND the weight, which one
+# value cannot express. terrain_generator.gd stacks two bands per ground run and is handed the
+# pair directly (BiomePalette.ice_texture).
+#
+# So there are two things to hold here, and neither is visible to any other gate:
+#
+#   1. blend_into() must not carry ice_texture at ANY weight. Before 2026-08-09 it snapped the
+#      field at the midpoint of the ice channel, and terrain_generator read the result. If a
+#      snap comes back, the generator's `from` tile silently becomes a value that already
+#      jumped, the dissolve runs between a tile and itself for half the window and then between
+#      two different ones for the other half, and the hard seam returns -- while every colour
+#      check in this file still passes.
+#   2. Some adjacent pair must actually differ, or nothing in the game ever exercises the
+#      dissolve and (1) is vacuous.
+func check_ice_pattern_crossfade() -> void:
+	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
+	var from_palette: BiomePalette = null
+	var to_palette: BiomePalette = null
+	for cycle_index: int in range(cycle.size()):
+		var candidate_from: BiomePalette = cycle[cycle_index]
+		var candidate_to: BiomePalette = cycle[(cycle_index + 1) % cycle.size()]
+		if candidate_from.ice_texture != candidate_to.ice_texture:
+			from_palette = candidate_from
+			to_palette = candidate_to
+			break
+	if from_palette == null:
+		failures.append("every adjacent biome pair shares one ice_texture -- no pattern ever changes in game, so the crossfade is dead code and untestable here")
+		return
+
+	var out: BiomePalette = BiomePalette.new()
+	var weights: PackedFloat32Array = PackedFloat32Array()
+	weights.resize(BiomePalette.CHANNEL_COUNT)
+
+	# Swept rather than probed at the ends: a reintroduced snap fires somewhere in the middle,
+	# which is exactly where endpoint-only checks are blind.
+	for step_index: int in range(ICE_CROSSFADE_PROBE_STEPS + 1):
+		var ice: float = float(step_index) / float(ICE_CROSSFADE_PROBE_STEPS)
+		for channel_index: int in range(BiomePalette.CHANNEL_COUNT):
+			weights[channel_index] = ice
+		BiomePalette.blend_into(from_palette, to_palette, weights, out)
+		if out.ice_texture != null:
+			failures.append("blend_into wrote ice_texture at ice weight %.4f -- a blended palette must not carry the pattern, or terrain_generator dissolves from an already-snapped tile and the hard seam comes back" % ice)
+			return
 
 
 # Mirrors biome_director.apply_palette_for_world_x's index maths. Duplicated rather than

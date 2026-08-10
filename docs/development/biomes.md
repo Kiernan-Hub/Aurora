@@ -129,6 +129,95 @@ propagates to every segment and pine under it, including ones not spawned yet), 
 haze band in a layer shares **one** `GradientTexture2D`, so recolouring that single gradient
 recolours all of them.
 
+## Per-biome ice textures (2026-08-08)
+
+`two.png` contains **three** pattern families, not eight, so there are three tiles:
+
+| Tile | Source panel | Used by |
+|---|---|---|
+| `ice_depth_gradient.png` | `three.png` | the default — six of the eight biomes |
+| `ice_faceted_depth.png` | `four.png` | `glacier_teal` |
+| `ice_cracked_depth.png` | `five.png` | `mauve_haze` |
+
+A palette selects one through `BiomePalette.ice_texture`. **`null` means the default tile**,
+which is why six palettes leave the field unset rather than restating it.
+
+**Every variant must go through `build_ice_texture.py`**, which now takes an optional output
+path. That script's level work is what stops a raw panel (which bottoms out near 0.09)
+multiplying its biome tint to black — the tile is a multiplier, not a colour.
+
+### A variant carries pattern, never its own brightness ramp (2026-08-09)
+
+Passing an output path also means "this is a variant", and the script **rescales it per row
+onto the default tile's light-to-dark depth ramp**. What survives is the variant's
+high-frequency detail — its facets and cracks, the only reason it exists. What goes is any
+disagreement about how bright ice is at a given depth.
+
+That disagreement was the real reason the tile boundary read as a hard cutoff. The swap
+happens one chunk at a time (below), so there is a live vertical seam in game with the old
+tile one side and the new one the other; both are *multipliers*, so a ramp mismatch renders
+there as a flat brightness step, which is far more readable than any pattern change. The
+faceted tile was 0.86 at the ride line and 0.66 at half depth against the default's 0.98 and
+0.49 — a ~12% step across a vertical line at eye level.
+
+Two knobs, both in the script: `RAMP_MATCH_STRENGTH` (1.0 = full match; ease toward ~0.7 if a
+full match over-flattens a tile whose source has no structure where the reference is bright)
+and `RAMP_SMOOTH_SIGMA` (the correction is one scalar per row, so it is smoothed vertically
+or row-to-row noise stamps in horizontal banding).
+
+The biome gate enforces it — see `MAX_ICE_RAMP_DEVIATION`. It has to, because a tile rebuilt
+by any other route looks completely correct as a resource.
+
+### How the pattern crossfades: two stacked bands (2026-08-09)
+
+`Polygon2D` samples exactly one texture, so two tiles cannot be mixed the way two colours can.
+Three approaches were costed on 2026-08-08; **B shipped first and was replaced by A on
+2026-08-09** after it was judged in game.
+
+| | Approach | Outcome |
+|---|---|---|
+| **A** | **Two ice bands per run, the second's alpha driven by the ice channel** | **Current.** Exact crossfade. +1 `Polygon2D` per ground run, hidden outside a transition |
+| B | New chunks build with the new tile; existing chunks keep theirs | Shipped 2026-08-08, removed 2026-08-09 — the hard vertical seam at the boundary chunk was too visible |
+| C | Shader with two samplers and a mix uniform | Still rejected: it would be the project's first `.gdshader`, and A already gets the result |
+
+**Why B failed is worth keeping**, because the diagnosis was not the obvious one. The seam had
+*two* causes, and only one of them was the pattern. The larger was a brightness step — the
+variants did not share the default tile's depth ramp, and the tile is a multiplier, so the
+boundary was a flat ~12% jump across a vertical line. That is fixed in the tiles themselves
+(above) and was worth fixing on its own: during a dissolve **both tiles are on screen at
+once**, so a ramp mismatch would now read as a brightness wobble across the whole view. The
+remainder — the genuine pattern discontinuity — is what A removes.
+
+Mechanically A is three things:
+
+1. `blend_into()` **does not carry `ice_texture` at all** (it writes `null`). A single blended
+   palette structurally cannot express a crossfade between two textures — that needs both
+   endpoints *and* the weight. So `BiomeDirector.push_palette()` passes the pair and the ice
+   channel weight straight through to `terrain_generator.apply_ice_palette()`.
+2. `build_ice_band()` builds **two** `Polygon2D`s per ground run off one set of points and
+   UVs: `IceBand*` carries the outgoing tile at full opacity, and `IceOverlay*` — added second,
+   so it draws on top — carries the incoming tile at `alpha = ice weight`. Identical geometry
+   means the composite is exactly `tint * (tile_a*(1-w) + tile_b*w)`: a true dissolve of the
+   two patterns, with the colour crossfade riding on top untouched.
+3. `repaint_chunk()` writes base tile, overlay tile and alpha **unconditionally on every
+   call** — including `polygon.texture`, which the B-era code was explicitly forbidden to
+   touch.
+
+**That reversal is the subtle part.** The old rule existed because there was only one texture
+slot and therefore no way to be halfway between two tiles, so writing it meant popping every
+on-screen chunk in a single frame. With a second band there *is* a halfway, and the safe thing
+is now the opposite. Both files carry a comment saying so.
+
+The invariant that makes it pop-free at both ends of the window: every chunk — freshly built
+or repainted — derives its appearance from the same three values, so they cannot disagree; and
+at weight 1 the overlay fully covers the base, which renders the same pixels as the next
+frame's weight 0 with the base already swapped to that tile.
+
+The overlay is built even when the weight is 0 (`visible = false`), so the node set is the
+same in every chunk however it was born and `repaint_chunk()` never creates or frees anything
+mid-transition. Under `--headless` the weight is always 0, so every gate draws exactly the
+bands it always did.
+
 ## Testing
 
 `biome_schedule_check.gd` is the gate. It is physics-free and takes about a second:
@@ -149,6 +238,34 @@ schedule is pure in `world_x` (swept forwards *and* backwards, so hidden per-cal
 shows up); channel weights are monotonic and land exactly on 0 and 1; and `blend_into` never
 allocates. Verified to actually fail by darkening `starlit_night.rim_core` and flattening its
 scenery separation — both were caught.
+
+It also covers the ice textures, which nothing else can see. `ice_texture` is legally `null`,
+so a `.tres` whose `ExtResource` path went stale resolves to `null` and looks **identical** to
+a palette that never wanted a variant — the biome would just quietly keep the smooth tile. So
+the gate counts resolved variants (reported as `ice_variants=` on the PASS line, and failing
+at zero) and checks each is 1024×1024. On top of that it holds the two rules the crossfade
+depends on:
+
+- **Every variant shares the default tile's depth ramp** (`MAX_ICE_RAMP_DEVIATION`, compared
+  per row against `ICE_TERRAIN_TEXTURE`). Measured: the two matched variants sit at 0.002 and
+  0.004; the unmatched faceted tile that shipped on 2026-08-08 was ~0.10. Verified to fail by
+  tightening the tolerance to 0.001, which flagged both palettes.
+- **`blend_into` never carries `ice_texture`, at any weight** — swept across the ice channel
+  rather than probed at the ends, because a reintroduced snap fires in the middle. If one came
+  back, the generator's "outgoing" tile would silently be a value that had already jumped: the
+  dissolve would run between a tile and itself for half the window, then between two different
+  tiles for the other half, and the hard seam would return while every colour check still
+  passed.
+
+**What no gate can see is the band code itself** — `BiomeDirector` is inert under `--headless`,
+so `apply_ice_palette()` and therefore `repaint_chunk()` never run in any of the seven. The
+dual-band contract was verified once with a throwaway probe that built a real `Main` and drove
+`apply_ice_palette()` by hand across the weight: bands built in pairs, overlay hidden at
+weight 0, correct tile and alpha on each band mid-dissolve, a chunk born mid-dissolve matching
+the ones already on screen, and the weight-1 → next-frame-weight-0 handoff showing the same
+tile. It was checked against a deliberately broken `repaint_ice_band()` before being trusted.
+Not kept: it would join the 18 archived one-offs `CLAUDE.md` warns about. Rebuild it if the
+band construction changes again.
 
 ## Traps
 

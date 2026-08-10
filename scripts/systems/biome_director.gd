@@ -177,7 +177,10 @@ func apply_palette_for_world_x(world_x: float) -> void:
 	for channel_index: int in range(BiomePalette.CHANNEL_COUNT):
 		channel_weights[channel_index] = get_channel_weight(channel_index, progress)
 	BiomePalette.blend_into(from_palette, to_palette, channel_weights, blended)
-	push_palette(blended)
+	# The ice PATTERN is the one thing `blended` cannot carry -- a crossfade between two tiles
+	# needs both endpoints and the weight, not a single value. So they ride alongside it to the
+	# one consumer that renders ice. See BiomePalette.ice_texture.
+	push_palette(blended, from_palette.ice_texture, to_palette.ice_texture, channel_weights[BiomePalette.CHANNEL_ICE])
 
 
 func resolve_palette_consumer(consumer_path: NodePath) -> Node:
@@ -205,13 +208,13 @@ func get_channel_weight(channel_index: int, progress: float) -> float:
 	return smoothstep(curve.x, curve.y, progress)
 
 
-func push_palette(palette: BiomePalette) -> void:
+func push_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_texture: Texture2D, ice_weight: float) -> void:
 	if sky_backdrop != null:
 		sky_backdrop.apply_palette(palette)
 	for background_layer: BackgroundGenerator in background_layers:
 		background_layer.apply_palette(palette)
 	if terrain_generator != null:
-		terrain_generator.apply_ice_palette(palette)
+		terrain_generator.apply_ice_palette(palette, from_ice_texture, to_ice_texture, ice_weight)
 	if snow != null:
 		snow.apply_palette(palette)
 	# Trees and birds need no script change at all: a biome's effect on a foreground object

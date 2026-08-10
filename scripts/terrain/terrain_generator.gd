@@ -56,6 +56,19 @@ var debug_drop_chasm_rehearsal: bool = false
 # silently") -- which for a colour would mean shipping whatever biome was last on screen.
 var ice_surface_tint: Color = FILL_GRADIENT_TOP_TINT
 var ice_depth_tint: Color = FILL_GRADIENT_BOTTOM_TINT
+# The ice pattern, as the two ends of a crossfade plus where it currently sits. Same headless
+# argument as the two tints above: apply_ice_palette() never runs under --headless, so every
+# gate keeps ICE_TERRAIN_TEXTURE on both and a weight of 0.
+#
+# Two textures rather than one because a Polygon2D samples exactly ONE texture, so a pattern
+# change cannot be interpolated the way a tint can. Every ground run therefore carries two
+# stacked bands -- see build_ice_band().
+var ice_band_texture: Texture2D = ICE_TERRAIN_TEXTURE
+var ice_overlay_texture: Texture2D = ICE_TERRAIN_TEXTURE
+# 0 = only the base pattern is visible (the steady state, and every headless frame), 1 = only
+# the overlay's. Both bands read this at build time and at every repaint, so a chunk born
+# mid-transition matches the ones already on screen exactly.
+var ice_overlay_weight: float = 0.0
 
 var player: CharacterBody2D
 var next_chunk_index: int = 0
@@ -652,12 +665,25 @@ func build_chunk_fill(chunk: StaticBody2D, terrain_fill: Polygon2D, surface_poin
 # Continuity across chunks is automatic and needs no bookkeeping: a chunk's last surface
 # sample and the next chunk's first are the same world_x fed to the same get_terrain_height,
 # so they produce the same U and the same V. Same purity argument as the ridge silhouettes.
+#
+# WHY THERE ARE TWO BANDS PER RUN (2026-08-09). A Polygon2D samples exactly one texture, so
+# the ice PATTERN cannot be interpolated the way the tints can. Until this change the tile was
+# snapped instead, per chunk, which left a hard vertical seam riding across the screen at
+# every biome change. Two stacked bands with the same geometry dissolve between the two
+# patterns properly, so the change happens everywhere at once and at the same pace as the
+# colour crossfade. The cost is one extra Polygon2D per ground run, hidden whenever no
+# transition is running -- which is most of a run, and all of every headless frame.
 func build_ice_band(chunk: StaticBody2D, run_points: PackedVector2Array, chunk_start_x: float, run_index: int) -> void:
 	var sample_count: int = run_points.size()
 	if sample_count < 2:
 		return
 
-	var texture_size: Vector2 = ICE_TERRAIN_TEXTURE.get_size()
+	# Read off the BASE tile and used for BOTH bands, which is only correct because every tile
+	# is built at the same size -- build_ice_texture.py's OUTPUT_SIZE, asserted per palette by
+	# biome_schedule_check.gd's EXPECTED_ICE_TILE_SIZE. A differently sized variant would give
+	# the overlay UVs meant for the other tile and slide the two patterns against each other
+	# mid-dissolve. That gate is what makes sharing this safe; don't drop it.
+	var texture_size: Vector2 = ice_band_texture.get_size()
 	# Polygon2D UVs are in texture PIXELS, not normalised, so one repeat spans texture_size.x.
 	var horizontal_scale: float = texture_size.x / ICE_TILE_WORLD_WIDTH
 	var world_x_offset: float = chunk_start_x + (chunk_width * 0.5)
@@ -665,22 +691,18 @@ func build_ice_band(chunk: StaticBody2D, run_points: PackedVector2Array, chunk_s
 
 	var band_points: PackedVector2Array = PackedVector2Array()
 	var band_uv: PackedVector2Array = PackedVector2Array()
-	var band_colors: PackedColorArray = PackedColorArray()
 	band_points.resize(sample_count * 2)
 	band_uv.resize(sample_count * 2)
-	band_colors.resize(sample_count * 2)
 
 	for sample_index: int in range(sample_count):
 		var surface_point: Vector2 = run_points[sample_index]
 		var texture_u: float = (surface_point.x + world_x_offset) * horizontal_scale
 		band_points[sample_index] = surface_point
 		band_uv[sample_index] = Vector2(texture_u, 0.0)
-		band_colors[sample_index] = ice_surface_tint
 		# The lower row follows the surface rather than sitting on a flat line, which is
 		# what makes V mean the same thing at every x no matter what the terrain does.
 		band_points[sample_count + sample_index] = Vector2(surface_point.x, surface_point.y + ICE_BAND_DEPTH)
 		band_uv[sample_count + sample_index] = Vector2(texture_u, deep_v)
-		band_colors[sample_count + sample_index] = ice_depth_tint
 
 	var quads: Array[PackedInt32Array] = []
 	for sample_index: int in range(sample_count - 1):
@@ -691,17 +713,56 @@ func build_ice_band(chunk: StaticBody2D, run_points: PackedVector2Array, chunk_s
 			sample_count + sample_index,
 		]))
 
+	# The base carries the OUTGOING pattern at full opacity; the overlay carries the INCOMING
+	# one and fades in over it. Identical geometry and identical UVs, so the composite is
+	# exactly base*(1-w) + overlay*w -- and since both are multiplied by the same vertex tint,
+	# that is tint * (tile_a*(1-w) + tile_b*w): a true cross-dissolve of the two patterns with
+	# the colour crossfade riding on top of it, untouched.
+	chunk.add_child(make_ice_band_polygon(
+		"IceBand%d" % run_index, ice_band_texture, band_points, band_uv, quads, 1.0))
+	# Added SECOND so it draws over the base. Built even at weight 0 (when it is invisible),
+	# so the node set is the same in every chunk however it was born -- repaint_chunk() then
+	# only ever writes properties and never has to create or free anything mid-transition.
+	chunk.add_child(make_ice_band_polygon(
+		"IceOverlay%d" % run_index, ice_overlay_texture, band_points, band_uv, quads, ice_overlay_weight))
+
+
+# One band of the pair. `opacity` is 1.0 for the base and the current crossfade weight for
+# the overlay; at 0 the node is hidden outright rather than drawn fully transparent.
+func make_ice_band_polygon(band_name: String, texture: Texture2D, band_points: PackedVector2Array,
+		band_uv: PackedVector2Array, quads: Array[PackedInt32Array], opacity: float) -> Polygon2D:
 	var band: Polygon2D = Polygon2D.new()
-	band.name = "IceBand%d" % run_index
+	band.name = band_name
 	band.polygon = band_points
 	band.uv = band_uv
-	band.vertex_colors = band_colors
 	band.polygons = quads
-	band.texture = ICE_TERRAIN_TEXTURE
+	band.texture = texture
 	# X only in practice -- V never leaves the texture (see ICE_TILE_V_INSET) -- but
 	# texture_repeat in Godot is a single both-axes flag.
 	band.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	chunk.add_child(band)
+	paint_ice_band(band, band_points.size() / 2, opacity)
+	return band
+
+
+# Writes a band's vertex colours: the surface tint across the top row, the depth tint across
+# the bottom one, both scaled by `opacity`. Shared by build and repaint so the two can never
+# disagree about the layout -- first half surface, second half depth, exactly as
+# build_ice_band() lays the points out.
+func paint_ice_band(band: Polygon2D, row_size: int, opacity: float) -> void:
+	var surface_color: Color = ice_surface_tint
+	var depth_color: Color = ice_depth_tint
+	surface_color.a = ice_surface_tint.a * opacity
+	depth_color.a = ice_depth_tint.a * opacity
+
+	var band_colors: PackedColorArray = PackedColorArray()
+	band_colors.resize(row_size * 2)
+	for vertex_index: int in range(row_size):
+		band_colors[vertex_index] = surface_color
+		band_colors[row_size + vertex_index] = depth_color
+	band.vertex_colors = band_colors
+	# A fully transparent Polygon2D still costs a draw call, and outside a transition that is
+	# every ice band in the world.
+	band.visible = opacity > 0.0
 
 
 # A run breaks between two consecutive samples whose midpoint has no ground -- the same test
@@ -1556,9 +1617,18 @@ func get_collision_chord_slope_angle(world_x: float) -> float:
 # New chunks pick the tints up from the member vars at build time; this is only for the
 # handful already on screen. A biome transition is slower than a chunk's lifetime, so
 # without it the ice would visibly change colour at every chunk boundary during a fade.
-func apply_ice_palette(palette: BiomePalette) -> void:
+# The two tiles arrive as the biome pair's OWN ice_texture values rather than off `palette`,
+# because a blended palette cannot express a crossfade between two textures -- see
+# BiomePalette.ice_texture. ice_weight is the ice channel's weight: 0 at the start of a
+# transition, 1 at the end, and pinned at 0 the rest of the time.
+func apply_ice_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_texture: Texture2D, ice_weight: float) -> void:
 	ice_surface_tint = palette.ice_surface
 	ice_depth_tint = palette.ice_depth
+	# null means "this biome uses the default smooth tile"; six of the eight palettes leave
+	# it unset rather than restating it.
+	ice_band_texture = from_ice_texture if from_ice_texture != null else ICE_TERRAIN_TEXTURE
+	ice_overlay_texture = to_ice_texture if to_ice_texture != null else ICE_TERRAIN_TEXTURE
+	ice_overlay_weight = ice_weight
 	for chunk: Node2D in active_chunks.values():
 		repaint_chunk(chunk)
 
@@ -1567,32 +1637,53 @@ func apply_ice_palette(palette: BiomePalette) -> void:
 # up at build time; this is only for the ones already spawned, and without it the ice would
 # visibly change colour at each chunk boundary during a transition.
 #
-# Two node kinds, distinguished by name rather than by type -- both are Polygon2D:
-#   IceBand*     the textured quad strip. First half of its vertices is the surface row,
-#                second half the depth row, exactly as build_ice_band lays them out.
+# Three node kinds, distinguished by name rather than by type -- all are Polygon2D:
+#   IceOverlay*  the INCOMING pattern, fading in at ice_overlay_weight. Tested FIRST, because
+#                otherwise the IceBand test below would also match it.
+#   IceBand*     the OUTGOING pattern at full opacity, under it. First half of its vertices is
+#                the surface row, second half the depth row, as build_ice_band lays them out.
 #   TerrainFill* the untextured deep body, flat: it only continues the band's bottom row.
 #
-# Neither reads geometry: the vertex layouts are fixed, so both are flat array writes.
+# None of them reads geometry: the vertex layouts are fixed, so all three are flat array
+# writes.
+#
+# EVERY PROPERTY IS WRITTEN UNCONDITIONALLY, BOTH TEXTURES INCLUDED, AND THAT IS WHAT MAKES
+# THE DISSOLVE POP-FREE. A chunk built mid-transition and a chunk repainted mid-transition run
+# off the same three values (base tile, overlay tile, weight), so they cannot disagree about
+# what the ice looks like; and at the end of a window, weight 1 with the overlay fully
+# covering the base renders the same pixels as the next frame's weight 0 with the base already
+# swapped to that same tile.
+#
+# THIS REVERSES THE PREVIOUS RULE that repaint_chunk must never touch polygon.texture (which
+# was commented, correctly for its time, as a feature rather than an oversight). That rule
+# existed because there was only ONE texture slot and therefore no way to be halfway between
+# two tiles, so writing it meant flipping every on-screen chunk in a single frame. With a
+# second band there IS a halfway, and the safe thing is now the opposite: write both, every
+# time. See BiomePalette.ice_texture.
 func repaint_chunk(chunk: Node2D) -> void:
 	var deep_color: Color = get_deep_fill_color()
 	for child: Node in chunk.get_children():
 		var polygon: Polygon2D = child as Polygon2D
 		if polygon == null:
 			continue
-		var vertex_colors: PackedColorArray = polygon.vertex_colors
-
+		if polygon.name.begins_with("IceOverlay"):
+			repaint_ice_band(polygon, ice_overlay_texture, ice_overlay_weight)
+			continue
 		if polygon.name.begins_with("IceBand"):
-			var row_size: int = vertex_colors.size() / 2
-			if row_size < 2:
-				continue
-			for vertex_index: int in range(row_size):
-				vertex_colors[vertex_index] = ice_surface_tint
-				vertex_colors[row_size + vertex_index] = ice_depth_tint
-			polygon.vertex_colors = vertex_colors
+			repaint_ice_band(polygon, ice_band_texture, 1.0)
 			continue
 
+		var vertex_colors: PackedColorArray = polygon.vertex_colors
 		for vertex_index: int in range(vertex_colors.size()):
 			vertex_colors[vertex_index] = deep_color
 		# Reassigned as a whole array: PackedColorArray is a value type here, so mutating
 		# the local copy above does not touch the node until this line.
 		polygon.vertex_colors = vertex_colors
+
+
+func repaint_ice_band(band: Polygon2D, texture: Texture2D, opacity: float) -> void:
+	var row_size: int = band.vertex_colors.size() / 2
+	if row_size < 2:
+		return
+	band.texture = texture
+	paint_ice_band(band, row_size, opacity)

@@ -122,9 +122,26 @@ its `distance=` output is not 64.** Reviving one is a few lines, but it is never
 > line of biome code — the same structural gap this file already records for powerups.
 
 **These run at real-time 60Hz, so budget by frame count, not by patience.** A headless
-`SceneTree` script awaiting `physics_frame` still steps at the physics rate: floor-flicker
-(6 seeds × 20,000) is ~33 min, freeze-replay (60,000) ~17 min, camera-shake (7,000) ~2 min. A
-gate that has been "hanging" for twenty minutes is almost certainly just running — check
+`SceneTree` script awaiting `physics_frame` still steps at the physics rate: freeze-replay
+(60,000) ~17 min, camera-shake (7,000) ~2 min.
+
+**Floor-flicker at the full gate size is far slower than its frame count predicts, and nobody
+has explained why.** Measured 2026-08-09, all on one machine:
+
+| Run | Frames | Predicted at 60Hz | Actual |
+|---|---|---|---|
+| `--frames=2000` (6 seeds) | 12,000 | 3.3 min | **3.3 min** ✔ |
+| `--frames=20000` (6 seeds, the gate) | 120,000 | 33 min | **3h 20m** ✘ |
+| camera-shake `--frames=7000` | 7,000 | 2 min | **2 min** ✔ |
+
+So the tick rate is genuinely 60Hz — the short run and camera-shake both hit it exactly — and
+the full gate is ~6x off that anyway, at ~1% CPU the whole time (sleep-bound, not compute-
+bound). **Budget 3.5 hours for the bare gate form, not 33 minutes.** If you only need a smoke
+test, `--frames=2000` exercises every code path in 3 minutes and just covers less terrain.
+
+Worth someone's time eventually; it is a probe-runtime mystery, not a game bug.
+
+A gate that has been "hanging" for twenty minutes is almost certainly just running — check
 elapsed CPU time before killing it.
 
 **Terrain shape** (fast, physics-free) — no Y discontinuity, no slope exceeding
@@ -195,7 +212,8 @@ feature failures — the `camera_shake.md` lesson again: measure the quantity th
 ## Biome check (`scripts/debug/biome_schedule_check.gd`)
 
 Physics-free, ~1 second, no seeds. Run it after touching `resources/biomes/*.tres`,
-`biome_palette.gd` or `biome_director.gd`. Expect `BIOME_CHECK PASS`:
+`biome_palette.gd`, `biome_director.gd` or any ice tile under `assets/textures/terrain/`.
+Expect `BIOME_CHECK PASS`:
 
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/biome_schedule_check.gd
@@ -210,9 +228,22 @@ per-call state shows up rather than passing on a monotonic sweep; that every cha
 is monotonic and lands exactly on 0 and 1; and that `BiomePalette.blend_into` never
 allocates, since it runs every frame of a transition.
 
+It also guards the **per-biome ice textures**, which are invisible everywhere else: `ice_texture`
+is legally `null` (= use the default smooth tile), so a stale `ExtResource` path resolves to
+`null` and is indistinguishable from a palette that never wanted a variant. The PASS line
+therefore reports `ice_variants=N`, and the gate fails at zero, on a wrong tile size, if a
+variant's depth ramp drifts off the default tile's (`MAX_ICE_RAMP_DEVIATION`), or if
+`blend_into` starts carrying `ice_texture` again — the pattern rides a two-band dissolve in
+`terrain_generator.gd` and must not also be snapped onto the blended palette.
+
 **It has been verified to fail**, by darkening `starlit_night.rim_core` and flattening its
-scenery separation — both were caught, and the file passed again on revert. Worth repeating
+scenery separation, and (for the texture checks) by tightening `MAX_ICE_RAMP_DEVIATION` to
+0.001 — all were caught, and the file passed again on revert. Worth repeating
 if you extend it: this file's whole reason to exist is that nothing else can see this code.
+
+**What even this gate cannot see is the two-band build/repaint code**, because `BiomeDirector`
+is inert under `--headless` and never calls `apply_ice_palette()`. That was verified once with
+a throwaway probe — see `biomes.md`, "Testing" — not kept as a gate.
 
 Full design notes: `docs/development/biomes.md`.
 

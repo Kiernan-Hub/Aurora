@@ -79,6 +79,26 @@ const CHANNEL_COUNT: int = 5
 # player tracks. biome_schedule_check.gd enforces a floor on it.
 @export var ice_surface: Color = Color(1.0, 1.0, 1.0, 1.0)
 @export var ice_depth: Color = Color(0.83, 0.88, 0.98, 1.0)
+# The ice PATTERN for this biome, or null for terrain_generator.gd's default smooth tile.
+# Only the biomes whose reference panel is not smooth set this, so six of the eight palettes
+# leave it null rather than restating the default.
+#
+# THIS IS THE ONE FIELD blend_into() DOES NOT CARRY, and the reason is structural: a
+# Polygon2D samples exactly one texture, so a crossfade between two tiles needs BOTH
+# endpoints and the weight at once, which a single blended palette cannot express. So the
+# director hands the pair straight to terrain_generator.apply_ice_palette(), which stacks two
+# bands and dissolves between them. See docs/development/biomes.md.
+#
+# Was snapped at the midpoint of the ice channel until 2026-08-09 (option B), which left a
+# hard vertical edge at the boundary chunk. Two separate things made that read badly: a
+# brightness step, fixed in the tiles themselves, and the pattern break, fixed by the
+# dissolve. Do not reintroduce a snap here.
+#
+# The variants must all share the default tile's depth ramp -- build_ice_texture.py enforces
+# it and biome_schedule_check.gd gates it. During a dissolve BOTH tiles are on screen at
+# once, so a ramp mismatch is now a brightness wobble across the whole view rather than a
+# step at one seam.
+@export var ice_texture: Texture2D = null
 
 @export_group("Atmosphere")
 @export var snow_tint: Color = Color(1.0, 1.0, 1.0, 0.42)
@@ -124,6 +144,12 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	var ice: float = weights[CHANNEL_ICE]
 	out.ice_surface = from.ice_surface.lerp(to.ice_surface, ice)
 	out.ice_depth = from.ice_depth.lerp(to.ice_depth, ice)
+	# ice_texture is deliberately NOT written -- see its note. A blended palette structurally
+	# cannot express a pattern crossfade, which needs both endpoint tiles plus the weight, so
+	# the director passes those three to terrain_generator.apply_ice_palette() alongside this
+	# palette. Cleared rather than left holding the last run's value, so anything that reads
+	# ice_texture off a BLENDED palette fails visibly instead of rendering something stale.
+	out.ice_texture = null
 
 	var atmosphere: float = weights[CHANNEL_ATMOSPHERE]
 	out.snow_tint = from.snow_tint.lerp(to.snow_tint, atmosphere)

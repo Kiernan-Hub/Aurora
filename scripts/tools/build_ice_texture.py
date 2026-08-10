@@ -2,6 +2,13 @@
 """Turn a raw generated ice panel into the game-ready depth tile.
 
     python3 scripts/tools/build_ice_texture.py three.png
+    python3 scripts/tools/build_ice_texture.py four.png assets/textures/terrain/ice_faceted.png
+
+The output path is optional and defaults to DEFAULT_OUTPUT_PATH (the smooth tile
+every biome starts on). Pass it to build one of the pattern VARIANTS -- see
+docs/development/biomes.md, "Per-biome ice textures". Every variant must go
+through this same script: the levels work below is what stops a raw panel
+multiplying its biome tint to black.
 
 Checked in, unlike the ad-hoc script that produced ice_terrain_one.png (whose
 provenance had to be reconstructed from a comment). Re-run it to retune, or to
@@ -43,6 +50,20 @@ HOW THE WRAP IS MADE SEAMLESS
     Mirroring also guarantees a seamless join, but stamps a symmetry axis into the
     image -- the faint diamond artifact in the tile this replaced -- and with long
     diagonal cracks that reads as a chevron every repeat.
+
+WHY A VARIANT'S DEPTH RAMP IS MATCHED TO THE DEFAULT TILE'S
+    A biome change swaps the tile one 512px CHUNK at a time (biomes.md, "The
+    pattern does not crossfade"), so there is a live vertical boundary with the
+    old tile on one side and the new one on the other. The tile is a MULTIPLIER,
+    so if the two tiles disagree about how bright ice is at a given depth, that
+    boundary is a flat brightness STEP -- which reads as a hard cutoff no matter
+    how similar the patterns are. Measured before this: default 0.98 at the ride
+    line and 0.49 at half depth, faceted 0.86 and 0.66.
+
+    So every variant is rescaled per row to the default tile's own light-to-dark
+    ramp. What survives is the variant's high-frequency detail -- its cracks and
+    facets -- which is the whole reason it exists; what goes is the disagreement
+    about overall depth brightness, which was never a per-biome creative choice.
 """
 
 import sys
@@ -50,7 +71,11 @@ import sys
 import numpy as np
 from PIL import Image, ImageFilter
 
-OUTPUT_PATH = "assets/textures/terrain/ice_depth_gradient.png"
+DEFAULT_OUTPUT_PATH = "assets/textures/terrain/ice_depth_gradient.png"
+# Every variant is built at this size. terrain_generator.gd reads the tile's own
+# get_size() for its UVs, so a differently sized variant would not break -- but it
+# would change how fast the pattern repeats relative to the others, which is not a
+# knob worth having per texture when ICE_TILE_WORLD_WIDTH already owns that.
 OUTPUT_SIZE = (1024, 1024)
 
 # The value the deepest ice multiplies down to. The tile is a MULTIPLIER, so this
@@ -65,6 +90,19 @@ OUTPUT_CEILING = 1.0
 # -- the ice reaches its deep colour quickly, the way the reference art does,
 # instead of staying pale most of the way down.
 MIDTONE_GAMMA = 1.4
+
+# How hard a variant is pulled onto the default tile's depth ramp. 1.0 is a full
+# match. Lower it if a full match over-flattens a tile whose source has no real
+# structure where the reference is bright -- four.png has no snow band, so its top
+# rows get lifted into a band with little internal detail. That is the right trade
+# for the seam, but if it reads as a flat white bar in game, ease this to ~0.7
+# rather than turning the match off.
+RAMP_MATCH_STRENGTH = 1.0
+# Vertical sigma, in rows, that the per-row correction is smoothed over. The
+# correction is one scalar per row, so it cannot erase detail WITHIN a row -- but
+# row-to-row noise in it would stamp horizontal banding across the tile. Only the
+# low-frequency ramp is meant to move.
+RAMP_SMOOTH_SIGMA = 8.0
 
 # Half the width, in the rolled image, over which the (now central) original seam
 # is feathered. Narrow: the seam is in the middle of the tile and does not repeat,
@@ -86,6 +124,51 @@ def remap_levels(values):
     normalised = (values - low) / (high - low)
     curved = np.power(normalised, MIDTONE_GAMMA)
     return OUTPUT_FLOOR + (curved * (OUTPUT_CEILING - OUTPUT_FLOOR))
+
+
+def smooth_vertically(column, sigma):
+    """Gaussian-blur a 1-D profile, edge-extended. Hand-rolled so the tool keeps
+    its two dependencies (numpy, Pillow) and does not pull in scipy for this."""
+    radius = max(1, int(round(sigma * 3.0)))
+    offsets = np.arange(-radius, radius + 1, dtype=np.float64)
+    kernel = np.exp(-0.5 * np.square(offsets / sigma))
+    kernel /= kernel.sum()
+    padded = np.pad(column, radius, mode="edge")
+    return np.convolve(padded, kernel, mode="valid")
+
+
+def match_depth_ramp(values, reference_path):
+    """Rescale each row so the tile's light-to-dark depth ramp agrees with the
+    default tile's. See the module docstring for why -- in short, the chunk
+    boundary during a biome change is a live seam between two tiles, and both are
+    multipliers, so a ramp disagreement is a visible brightness step.
+
+    Multiplicative, not additive: the tile multiplies a biome tint, so scaling a
+    row preserves its internal contrast ratios, which is exactly the detail the
+    variant exists to provide.
+    """
+    reference = np.asarray(Image.open(reference_path).convert("L"), dtype=np.float64) / 255.0
+    if reference.shape[0] != values.shape[0]:
+        raise SystemExit(
+            "reference %s is %d rows, this tile is %d -- both must be OUTPUT_SIZE"
+            % (reference_path, reference.shape[0], values.shape[0]))
+
+    reference_rows = smooth_vertically(reference.mean(axis=1), RAMP_SMOOTH_SIGMA)
+    source_rows = smooth_vertically(values.mean(axis=1), RAMP_SMOOTH_SIGMA)
+    # Guarded because a row of an unlifted source can sit near zero; after
+    # remap_levels() nothing should, but a divide-by-zero here would silently
+    # produce a white tile rather than fail.
+    ratio = reference_rows / np.maximum(source_rows, 1e-6)
+    ratio = 1.0 + ((ratio - 1.0) * RAMP_MATCH_STRENGTH)
+
+    matched = values * ratio[:, None]
+    return np.clip(matched, OUTPUT_FLOOR, OUTPUT_CEILING)
+
+
+def format_ramp(values):
+    return " ".join(
+        f"{f:.0%}={values[int(f * (values.shape[0] - 1))].mean():.2f}"
+        for f in (0.0, 0.05, 0.15, 0.3, 0.5, 0.75, 1.0))
 
 
 def make_horizontally_seamless(values):
@@ -123,8 +206,9 @@ def make_horizontally_seamless(values):
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) not in (2, 3):
         raise SystemExit(__doc__)
+    output_path = sys.argv[2] if len(sys.argv) == 3 else DEFAULT_OUTPUT_PATH
 
     source = Image.open(sys.argv[1]).convert("L")
     print("source      ", source.size, "range", source.getextrema())
@@ -137,16 +221,27 @@ def main():
 
     values = np.asarray(resized, dtype=np.float64) / 255.0
     values = remap_levels(values)
+    # Keyed off "an output path was given", which is exactly the definition of a
+    # variant -- so there is no flag to forget on a rebuild, and the default tile
+    # (its own reference) cannot match against itself.
+    is_variant = output_path != DEFAULT_OUTPUT_PATH
+    if is_variant:
+        print("own ramp    ", format_ramp(values))
+        values = match_depth_ramp(values, DEFAULT_OUTPUT_PATH)
+    # Last, so the feather has the final word on the wrap. The row scaling above is
+    # seam-neutral (one scalar per row hits both edges equally), but ordering it
+    # this way means only one step can ever be responsible for a visible repeat.
     values = make_horizontally_seamless(values)
 
     output = Image.fromarray(np.clip(values * 255.0, 0, 255).astype(np.uint8), mode="L")
-    output.save(OUTPUT_PATH, optimize=True)
+    output.save(output_path, optimize=True)
 
     seam_error = float(np.abs(values[:, 0] - values[:, -1]).mean())
-    print("wrote       ", OUTPUT_PATH, output.size)
-    print("depth ramp  ", " ".join(
-        f"{f:.0%}={values[int(f * (values.shape[0] - 1))].mean():.2f}"
-        for f in (0.0, 0.05, 0.15, 0.3, 0.5, 0.75, 1.0)))
+    print("wrote       ", output_path, output.size)
+    print("depth ramp  ", format_ramp(values))
+    if is_variant:
+        reference = np.asarray(Image.open(DEFAULT_OUTPUT_PATH).convert("L"), dtype=np.float64) / 255.0
+        print("reference   ", format_ramp(reference), "  <- must track the line above")
     print("seam error  ", round(seam_error, 5), "(0 = exact wrap)")
 
 

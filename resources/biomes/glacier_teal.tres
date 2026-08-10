@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="BiomePalette" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="BiomePalette" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/systems/biome_palette.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://soj6i0qgen06" path="res://assets/textures/terrain/ice_faceted_depth.png" id="2"]
 
 [resource]
 script = ExtResource("1")
@@ -16,6 +17,7 @@ tree_tint = Color(1, 1, 1, 1)
 bird_tint = Color(1, 1, 1, 1)
 ice_surface = Color(0.55, 0.93, 0.88, 1)
 ice_depth = Color(0.18, 0.74, 0.68, 1)
+ice_texture = ExtResource("2")
 snow_tint = Color(1, 1, 1, 0.42)
 snow_density_scale = 1.0
 mist_strength = 0.2
