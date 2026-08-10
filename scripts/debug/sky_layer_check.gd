@@ -18,9 +18,18 @@ extends SceneTree
 # that layer's contribution. Three things make the difference mean only that layer, and each
 # was learned by getting it wrong:
 #
-#   1. Engine.time_scale = 0. Without it the world scrolls between the two captures and the
+#   1. SceneTree.paused. Without a freeze the world scrolls between the two captures and the
 #      diff measures terrain motion -- which is what made an earlier attempt report 22% of
 #      pixels changed by a glow that was actually contributing nothing.
+#
+#      IT MUST BE `paused`, NOT `Engine.time_scale = 0`, and this file shipped the wrong one
+#      once. time_scale 0 makes the physics delta zero, which trips the stall watchdog, fires
+#      a world rebase, and -- because the camera follow is delta-driven and therefore frozen
+#      too -- leaves the entire world off screen. Every capture is then a beautiful empty sky
+#      with nothing in front of it, so every layer measures as fully visible and the gate
+#      passes while the player can see none of it. That is exactly what happened: the glow
+#      and disc reported 37-97/255 against a blank frame while being completely hidden behind
+#      the parallax ridges in the real game.
 #   2. The palette is pushed straight to SkyBackdrop.apply_palette() rather than through a
 #      world_x, so terrain and snow never move between biomes either.
 #   3. APPLY, WAIT, *THEN* CAPTURE. root.get_texture() hands back the frame already rendered,
@@ -36,7 +45,7 @@ extends SceneTree
 # moves nothing however high the strength), or the strength is simply too low.
 
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
-const WARMUP_FRAMES: int = 40
+const WARMUP_FRAMES: int = 90
 const SETTLE_FRAMES: int = 6
 # Peak difference, in 0-255 units, that a claimed layer must produce somewhere on screen.
 # Calibrated against measurement, not taste: the original glow authoring produced 11-12 for
@@ -76,19 +85,25 @@ func _init() -> void:
 
 func _process(_delta: float) -> bool:
 	frame_index += 1
-	# The window loses focus immediately and GameManager pauses on FOCUS_OUT, so PLAYING is
-	# re-asserted every frame. The UI layer is hidden so labels never land in a capture.
-	var game_manager: GameManager = main.get_node("GameManager") as GameManager
-	if game_manager.state != GameManager.State.PLAYING:
-		game_manager.set_state(GameManager.State.PLAYING)
-	paused = false
+	# The UI layer is hidden so labels never land in a capture.
 	(main.get_node("CanvasLayer") as CanvasLayer).visible = false
+
 	if frame_index < WARMUP_FRAMES:
+		# During warmup only: the window loses focus immediately and GameManager pauses on
+		# FOCUS_OUT, so PLAYING is re-asserted until the world has built and settled.
+		var game_manager: GameManager = main.get_node("GameManager") as GameManager
+		if game_manager.state != GameManager.State.PLAYING:
+			game_manager.set_state(GameManager.State.PLAYING)
+		paused = false
 		return false
+
+	# From here the tree stays paused: nothing processes, nothing rebases, rendering
+	# continues, and the world stays exactly where it is between the two captures. This
+	# script is a SceneTree, so its own _process keeps running regardless.
+	paused = true
 
 	if not started:
 		started = true
-		Engine.time_scale = 0.0
 		# Hand control over, or the next frame recomputes the palette from the player's real x
 		# and overwrites whatever this script set.
 		(main.get_node("BiomeDirector") as BiomeDirector).set_process(false)

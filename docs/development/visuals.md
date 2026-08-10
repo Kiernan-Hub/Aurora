@@ -27,6 +27,7 @@ Front-to-back, as wired in `scenes/main.tscn`:
 | `ParallaxBackground/MidRidge` | `ParallaxLayer` | `(0.14, 0)` | `background_generator.gd` |
 | `ParallaxBackground/FarRidge` | `ParallaxLayer` | `(0.06, 0)` | `background_generator.gd` |
 | `ParallaxBackground/FarPeaks` | `ParallaxLayer` | `(0.03, 0)` | `background_generator.gd` |
+| `SkyBackdrop/SkyCelestial` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 | `SkyBackdrop/SkyGlow` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 | `SkyBackdrop/SkyGradient` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 
@@ -36,6 +37,37 @@ behind the world and in front of the sky.
 `SkyGlow` and `SkyGradient` share a `layer`, so their order is **tree order**: the glow is
 added second in `_ready()` and therefore draws over the gradient. There is no `z_index`
 anywhere in the project to override that with.
+
+### There has to BE a sky (2026-08-10)
+
+For the whole life of the background pass there was effectively none. `FarPeaks` sat at
+`base_y_fraction = 0.34` with heights up to **340px**, so its peaks topped out at y = −120 —
+*above the top of the screen* — and the four parallax layers covered the frame edge to edge.
+Measured with an opaque full-rect `ColorRect` on the `SkyBackdrop` layer: **2.4% of the frame**,
+confined to the top 7%, never more than 45% of any row. What read as "sky" was the pale
+`FarPeaks` silhouette.
+
+Nothing was wrong with the sky code; it had nowhere to draw. Both 1a's glow and 1b's disc
+rendered correctly and were completely invisible in game — all four discs measured **0/255**.
+
+The layers were lowered and compressed so the tallest peak now tops out at y ≈ 0.21:
+
+| Layer | `base_y_fraction` | heights | ridge tops |
+|---|---|---|---|
+| `FarPeaks` | 0.34 → **0.42** | 140–340 → **65–135** | y 0.21–0.32 |
+| `FarRidge` | 0.44 → **0.47** | 110–260 → **55–110** | y 0.30–0.39 |
+| `MidRidge` | 0.52 → **0.52** | 75–190 → **45–90** | y 0.38–0.45 |
+| `PineLine` | **unchanged** | unchanged | y 0.51–0.57 |
+
+**`PineLine` is deliberately untouched.** It is the near layer and its ridge line sits *below*
+the ice surface (~y 0.46), which is what makes the pines read as rooted behind the slope rather
+than standing on top of it. Raising it breaks that immediately.
+
+`haze_rise` came down with the heights (230/190/140 → 140/120/100), or the haze band starts
+above the ridge it is supposed to be veiling and washes out the new sky.
+
+**If you change the ridge geometry, re-measure the sky.** The composition is the constraint on
+everything in `sky_backdrop.gd`, and it is invisible from the code.
 
 ### Overdraw is the sky's real budget
 

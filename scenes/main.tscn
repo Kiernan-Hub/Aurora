@@ -32,13 +32,13 @@ script = ExtResource("4")
 player_path = NodePath("../../Player")
 shape_kind = 0
 depth_t = 0.0
-base_y_fraction = 0.34
+base_y_fraction = 0.42
 silhouette_color = Color(0.74, 0.81, 0.9, 1)
-ridge_height_min = 140.0
-ridge_height_max = 340.0
+ridge_height_min = 65.0
+ridge_height_max = 135.0
 ridge_period_scale = 2.6
 haze_color = Color(0.88, 0.92, 0.96, 0.4)
-haze_rise = 230.0
+haze_rise = 140.0
 rng_salt = 55
 
 [node name="FarRidge" type="ParallaxLayer" parent="ParallaxBackground"]
@@ -47,13 +47,13 @@ script = ExtResource("4")
 player_path = NodePath("../../Player")
 shape_kind = 0
 depth_t = 0.22
-base_y_fraction = 0.44
+base_y_fraction = 0.47
 silhouette_color = Color(0.68, 0.77, 0.86, 1)
-ridge_height_min = 110.0
-ridge_height_max = 260.0
+ridge_height_min = 55.0
+ridge_height_max = 110.0
 ridge_period_scale = 1.7
 haze_color = Color(0.88, 0.92, 0.96, 0.5)
-haze_rise = 190.0
+haze_rise = 120.0
 rng_salt = 101
 
 [node name="MidRidge" type="ParallaxLayer" parent="ParallaxBackground"]
@@ -64,11 +64,11 @@ shape_kind = 0
 depth_t = 0.58
 base_y_fraction = 0.52
 silhouette_color = Color(0.57, 0.68, 0.8, 1)
-ridge_height_min = 75.0
-ridge_height_max = 190.0
+ridge_height_min = 45.0
+ridge_height_max = 90.0
 ridge_period_scale = 1.0
 haze_color = Color(0.86, 0.9, 0.95, 0.44)
-haze_rise = 140.0
+haze_rise = 100.0
 rng_salt = 202
 
 [node name="PineLine" type="ParallaxLayer" parent="ParallaxBackground"]
