@@ -45,6 +45,23 @@ const CHANNEL_COUNT: int = 5
 @export var sky_top: Color = Color(0.60, 0.72, 0.86)
 @export var sky_mid: Color = Color(0.74, 0.83, 0.91)
 @export var sky_horizon: Color = Color(0.88, 0.92, 0.96)
+# Two extra stops, halfway through each of the segments above. Three stops can only produce a
+# ramp that is straight between them, so a real sky -- which holds its deep blue over most of
+# the frame and then turns hard near the horizon -- is not expressible. These let it BEND.
+# Set to the exact midpoint of their neighbours, the result is identical to the 3-stop ramp,
+# which is what most of the palettes do; only the evening ones bend.
+@export var sky_upper: Color = Color(0.67, 0.775, 0.885)
+@export var sky_lower: Color = Color(0.81, 0.875, 0.935)
+# Left-to-right MULTIPLIERS over the whole vertical ramp, so the sky varies horizontally as
+# well as vertically -- the other half of what makes the reference frames read as lit from
+# somewhere. Multipliers rather than colours for the same reason the ice tints are: they can
+# only ever darken, so they cannot push a channel past 1.0 on an LDR renderer. White is
+# "no horizontal variation" and is the default.
+#
+# These are a WASH, not a light source: the bloom is SkyGlow's job. Authored to agree with it,
+# warm on the side the glow sits and cool on the far side.
+@export var sky_tint_left: Color = Color(1.0, 1.0, 1.0, 1.0)
+@export var sky_tint_right: Color = Color(1.0, 1.0, 1.0, 1.0)
 # Where sky_mid sits between top and horizon. Past halfway keeps the pale band a horizon
 # effect rather than a wash over the whole screen.
 @export_range(0.05, 0.95) var sky_mid_offset: float = 0.58
@@ -174,6 +191,10 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	out.sky_top = from.sky_top.lerp(to.sky_top, sky)
 	out.sky_mid = from.sky_mid.lerp(to.sky_mid, sky)
 	out.sky_horizon = from.sky_horizon.lerp(to.sky_horizon, sky)
+	out.sky_upper = from.sky_upper.lerp(to.sky_upper, sky)
+	out.sky_lower = from.sky_lower.lerp(to.sky_lower, sky)
+	out.sky_tint_left = from.sky_tint_left.lerp(to.sky_tint_left, sky)
+	out.sky_tint_right = from.sky_tint_right.lerp(to.sky_tint_right, sky)
 	out.sky_mid_offset = lerpf(from.sky_mid_offset, to.sky_mid_offset, sky)
 	out.glow_color = from.glow_color.lerp(to.glow_color, sky)
 	# Position and radius interpolate too, so the light SOURCE travels across the sky during a

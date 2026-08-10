@@ -53,11 +53,20 @@ const SETTLE_FRAMES: int = 6
 # between them with margin on both sides.
 const MIN_PEAK_CONTRIBUTION: int = 24
 
-# node name under SkyBackdrop, palette field holding its 0-1 strength
+# [label, palette field, mode]
+#
+# MODE_VISIBLE toggles a child node of SkyBackdrop, which is how an optional overlay layer is
+# measured. MODE_TINT has no node to toggle: the horizontal sky tint is baked INTO the sky
+# gradient texture, so its baseline is the same palette with the tints neutralised to white
+# and the difference between the two bakes is its contribution. Same two-capture shape either
+# way, so the rest of this file does not care which it is.
+const MODE_VISIBLE: String = "visible"
+const MODE_TINT: String = "tint"
 const LAYERS: Array[Array] = [
-	["SkyGlow", "glow_strength"],
-	["SkyCelestial", "celestial_strength"],
-	["SkyStars", "star_density"],
+	["SkyGlow", "glow_strength", MODE_VISIBLE],
+	["SkyCelestial", "celestial_strength", MODE_VISIBLE],
+	["SkyStars", "star_density", MODE_VISIBLE],
+	["SkyTint", "", MODE_TINT],
 ]
 
 var main: Node2D
@@ -107,6 +116,9 @@ func _process(_delta: float) -> bool:
 		(main.get_node("BiomeDirector") as BiomeDirector).set_process(false)
 		backdrop = main.get_node("SkyBackdrop")
 		for layer: Array in LAYERS:
+			# MODE_TINT has no node of its own -- it is baked into the sky texture.
+			if layer[2] != MODE_VISIBLE:
+				continue
 			if backdrop.get_node_or_null(NodePath(layer[0])) == null:
 				print("SKY_LAYER_CHECK FAIL  SkyBackdrop has no ", layer[0], " child")
 				quit(1)
@@ -143,22 +155,40 @@ func _process(_delta: float) -> bool:
 		peaks.append(row)
 
 	# Skip a layer this biome does not claim, rather than measuring it as zero and failing.
-	if float(palette.get(LAYERS[layer_index][1])) <= 0.0:
+	if not claims_layer(palette, layer_index):
 		layer_index += 1
 		if layer_index >= LAYERS.size():
 			layer_index = 0
 			biome_index += 1
 		return false
 
-	# Applied straight to the backdrop, so terrain and everything else stay put and only the
-	# sky changes between biomes.
-	backdrop.apply_palette(palette)
-	# apply_palette sets each layer's visible from its strength; override only the layer under
-	# test, so every other layer is identical in both captures and cancels out of the diff.
-	(backdrop.get_node(NodePath(LAYERS[layer_index][0])) as CanvasItem).visible = phase == 1
+	if LAYERS[layer_index][2] == MODE_TINT:
+		# Phase 0 bakes the same sky with the horizontal tints removed. duplicate() so the
+		# real palette resource is never mutated -- it is the one the game loads.
+		var probe: BiomePalette = palette
+		if phase == 0:
+			probe = palette.duplicate() as BiomePalette
+			probe.sky_tint_left = Color.WHITE
+			probe.sky_tint_right = Color.WHITE
+		backdrop.apply_palette(probe)
+	else:
+		# Applied straight to the backdrop, so terrain and everything else stay put and only
+		# the sky changes between biomes.
+		backdrop.apply_palette(palette)
+		# apply_palette sets each layer's visible from its strength; override only the layer
+		# under test, so every other layer is identical in both captures and cancels out.
+		(backdrop.get_node(NodePath(LAYERS[layer_index][0])) as CanvasItem).visible = phase == 1
 	settle = SETTLE_FRAMES
 	armed = true
 	return false
+
+
+# A biome "claims" a toggled layer when its strength is above zero, and claims the horizontal
+# tint when either end is not white -- white being the documented "no horizontal variation".
+func claims_layer(palette: BiomePalette, index: int) -> bool:
+	if LAYERS[index][2] == MODE_TINT:
+		return palette.sky_tint_left != Color.WHITE or palette.sky_tint_right != Color.WHITE
+	return float(palette.get(LAYERS[index][1])) > 0.0
 
 
 # Exact peak per-channel difference over EVERY pixel, compared as raw bytes.
@@ -191,8 +221,8 @@ func measure_peak(without_layer: Image, with_layer: Image) -> int:
 func report() -> void:
 	var failures: Array[String] = []
 	print("")
-	print("biome              SkyGlow   SkyCelestial   SkyStars")
-	print("-----------------------------------------------------")
+	print("biome              SkyGlow   SkyCelestial   SkyStars   SkyTint")
+	print("---------------------------------------------------------------")
 	for cycle_index: int in range(peaks.size()):
 		var palette: BiomePalette = BiomeDirector.BIOME_CYCLE[cycle_index]
 		var cells: PackedStringArray = PackedStringArray()
@@ -205,7 +235,8 @@ func report() -> void:
 			if peak < MIN_PEAK_CONTRIBUTION:
 				failures.append("%s %s peaks at %d/255, below the %d floor -- it is on screen but not visible. Raise its strength, move it into unoccluded sky, or pick a colour further from this biome's sky colours"
 					% [palette.resource_path.get_file().get_basename(), LAYERS[column][0], peak, MIN_PEAK_CONTRIBUTION])
-		print("%-18s %s  %s  %s" % [palette.resource_path.get_file().get_basename(), cells[0], cells[1], cells[2]])
+		print("%-18s %s  %s  %s  %s" % [palette.resource_path.get_file().get_basename(),
+			cells[0], cells[1], cells[2], cells[3]])
 
 	var claimed: int = 0
 	for row: PackedInt32Array in peaks:

@@ -37,8 +37,20 @@ const SKY_HORIZON_COLOR: Color = Color(0.88, 0.92, 0.96)
 # its deeper blue over most of the frame and the pale band stays a horizon effect rather
 # than washing out the whole screen.
 const SKY_MID_OFFSET: float = 0.58
-# Sampled vertically and stretched horizontally, so only the height needs resolution.
+# Midpoints of the two segments, so the starting sky is the same straight ramp it always was.
+const SKY_UPPER_COLOR: Color = Color(0.67, 0.775, 0.885)
+const SKY_LOWER_COLOR: Color = Color(0.81, 0.875, 0.935)
 const GRADIENT_TEXTURE_HEIGHT: int = 256
+# The sky varies HORIZONTALLY as well now (palette.sky_tint_left/right), so the texture can no
+# longer be one stretched column -- and it can no longer be a GradientTexture2D at all, since
+# that is a 1-D gradient projected across the image and cannot express two independent axes.
+# It is baked by hand instead, from the vertical Gradient times a horizontal tint lerp.
+#
+# EIGHT columns is not a resolution compromise. The horizontal term is a straight lerp between
+# two colours, and the canvas filter interpolates linearly between texels, so two columns would
+# already be exact; eight is headroom for a future non-linear tint and still only 2048 pixels
+# to walk when a transition rebakes it every frame.
+const SKY_TEXTURE_WIDTH: int = 8
 
 # --- Directional glow ------------------------------------------------------------------
 # Square, and only 256 across: it is a smooth blob with no detail in it, so all the
@@ -97,11 +109,13 @@ const STAR_HALO_CHANCE: float = 0.22
 const STAR_HALO_ALPHA_SCALE: float = 0.3
 const STARTING_STAR_DENSITY: float = 0.0
 
-# Held so apply_palette() can recolour the sky in place. A Gradient is mutable and
-# GradientTexture2D re-bakes itself when its gradient changes, so a biome transition costs
-# one 1x256 texture update per frame it actually moves -- no node work, no rebuild, and
-# nothing for the _process this file still deliberately does not have to do.
+# The VERTICAL definition, five stops. Held so apply_palette() can recolour in place: it is
+# sampled per row when the sky is rebaked, never rendered directly.
 var sky_gradient: Gradient
+# Reused across rebakes rather than reallocated -- a transition rebakes every frame it moves,
+# and ImageTexture.update() wants the same size image each time anyway.
+var sky_image: Image
+var sky_texture: ImageTexture
 # The bloom. Recoloured, moved and resized through its ANCHORS in apply_palette(), so it
 # needs no _process, no resize handler and no viewport read -- see position_glow().
 var sky_glow: TextureRect
@@ -176,8 +190,9 @@ func apply_palette(palette: BiomePalette) -> void:
 	# offsets and colors assigned as whole arrays rather than element-wise: Gradient only
 	# emits its changed signal (and so only re-bakes the texture) on a property set, and a
 	# per-element set_color/set_offset would bake three times per frame instead of two.
-	sky_gradient.offsets = PackedFloat32Array([0.0, palette.sky_mid_offset, 1.0])
-	sky_gradient.colors = PackedColorArray([palette.sky_top, palette.sky_mid, palette.sky_horizon])
+	set_gradient_stops(palette.sky_mid_offset, palette.sky_top, palette.sky_upper,
+		palette.sky_mid, palette.sky_lower, palette.sky_horizon)
+	bake_sky_texture(palette.sky_tint_left, palette.sky_tint_right)
 
 	apply_stars(palette)
 	apply_glow(palette)
@@ -285,21 +300,62 @@ func layout_celestial() -> void:
 	sky_celestial.offset_bottom = halo_radius
 
 
-func build_sky_texture() -> GradientTexture2D:
-	var gradient: Gradient = Gradient.new()
-	gradient.offsets = PackedFloat32Array([0.0, SKY_MID_OFFSET, 1.0])
-	gradient.colors = PackedColorArray([SKY_TOP_COLOR, SKY_MID_COLOR, SKY_HORIZON_COLOR])
-	sky_gradient = gradient
+func build_sky_texture() -> ImageTexture:
+	sky_gradient = Gradient.new()
+	set_gradient_stops(SKY_MID_OFFSET, SKY_TOP_COLOR, SKY_UPPER_COLOR, SKY_MID_COLOR,
+		SKY_LOWER_COLOR, SKY_HORIZON_COLOR)
 
-	var texture: GradientTexture2D = GradientTexture2D.new()
-	texture.gradient = gradient
-	# 1px wide: the gradient is purely vertical, and STRETCH_SCALE with the project's
-	# default linear canvas filtering spreads that single column across any width.
-	texture.width = 1
-	texture.height = GRADIENT_TEXTURE_HEIGHT
-	texture.fill_from = Vector2(0.0, 0.0)
-	texture.fill_to = Vector2(0.0, 1.0)
-	return texture
+	sky_image = Image.create(SKY_TEXTURE_WIDTH, GRADIENT_TEXTURE_HEIGHT, false, Image.FORMAT_RGB8)
+	sky_texture = ImageTexture.create_from_image(sky_image)
+	bake_sky_texture(Color.WHITE, Color.WHITE)
+	return sky_texture
+
+
+# The five stops. The two extra offsets are DERIVED, at the midpoint of each segment, rather
+# than being two more palette fields: what the extra stops are for is bending the ramp's
+# colour, and letting their positions move too would be four interacting numbers to author per
+# biome for no gain the colours cannot already express.
+func set_gradient_stops(mid_offset: float, top: Color, upper: Color, mid: Color,
+		lower: Color, horizon: Color) -> void:
+	# Whole-array assignment, not per-element: Gradient emits `changed` on every property set,
+	# and this is rebaked every frame of a transition.
+	sky_gradient.offsets = PackedFloat32Array([
+		0.0,
+		mid_offset * 0.5,
+		mid_offset,
+		mid_offset + ((1.0 - mid_offset) * 0.5),
+		1.0,
+	])
+	sky_gradient.colors = PackedColorArray([top, upper, mid, lower, horizon])
+
+
+# Bakes the vertical ramp times the horizontal tint into sky_image.
+#
+# Separable, so it costs one Gradient sample per ROW plus a multiply per pixel, not a sample
+# per pixel. 8x256 is 2048 pixels; at 60fps through a transition that is well under a tenth of
+# a millisecond, and outside a transition apply_palette is not called at all (the director
+# early-outs on unchanged progress).
+#
+# The tints are MULTIPLIERS, so this can only darken -- which is what keeps it safe on an LDR
+# renderer where anything above 1.0 is silently clamped.
+func bake_sky_texture(tint_left: Color, tint_right: Color) -> void:
+	if sky_image == null:
+		return
+
+	# Hoisted out of the row loop: the horizontal term does not depend on y.
+	var column_tints: Array[Color] = []
+	for x: int in range(SKY_TEXTURE_WIDTH):
+		var across: float = float(x) / float(SKY_TEXTURE_WIDTH - 1)
+		column_tints.append(tint_left.lerp(tint_right, across))
+
+	for y: int in range(GRADIENT_TEXTURE_HEIGHT):
+		var down: float = float(y) / float(GRADIENT_TEXTURE_HEIGHT - 1)
+		var band: Color = sky_gradient.sample(down)
+		for x: int in range(SKY_TEXTURE_WIDTH):
+			var tint: Color = column_tints[x]
+			sky_image.set_pixel(x, y, Color(band.r * tint.r, band.g * tint.g, band.b * tint.b))
+
+	sky_texture.update(sky_image)
 
 
 # The bloom itself: white, fading to transparent. The COLOUR comes from the TextureRect's

@@ -254,10 +254,16 @@ Full design notes: `docs/development/biomes.md`.
 ```
 
 **A gate, but not a headless one — it has to render.** It measures what each optional sky
-layer (`SkyGlow`, `SkyCelestial`, `SkyStars`) actually puts on screen, in pixels,
+layer (`SkyGlow`, `SkyCelestial`, `SkyStars`, `SkyTint`) actually puts on screen, in pixels,
 per biome, and exits non-zero if any layer a biome *claims* falls under
-`MIN_PEAK_CONTRIBUTION` (24/255). A layer a biome does not claim — `celestial_strength = 0`,
-which four of the eight palettes set deliberately — reports as `--` and is skipped.
+`MIN_PEAK_CONTRIBUTION` (24/255). A layer a biome does not claim reports as `--` and is skipped — `celestial_strength = 0`
+(five of eight), `star_density = 0` (five of eight), or white sky tints (three of eight), all
+of which are deliberate authoring choices rather than omissions.
+
+`SkyTint` is measured differently from the other three: the horizontal sky wash is baked into
+the gradient texture and has no node to toggle, so its baseline is the same palette
+`duplicate()`d with the tints forced to white. Same two-capture shape, different way of
+producing the "off" frame.
 
 It exists because `biome_schedule_check` cannot see this. That gate proves the glow *data* is
 well-formed — colours in range, anchors on screen, `blend_into` carrying every field — and the

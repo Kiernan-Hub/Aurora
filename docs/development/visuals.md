@@ -30,7 +30,7 @@ Front-to-back, as wired in `scenes/main.tscn`:
 | `SkyBackdrop/SkyCelestial` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 | `SkyBackdrop/SkyStars` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 | `SkyBackdrop/SkyGlow` | `TextureRect` | `-200` | `sky_backdrop.gd` |
-| `SkyBackdrop/SkyGradient` | `TextureRect` | `-200` | `sky_backdrop.gd` |
+| `SkyBackdrop/SkyGradient` | `TextureRect` | `-200` | `sky_backdrop.gd` (baked 8×256 image, not a `GradientTexture2D`) |
 
 `ParallaxBackground` sits at the engine default `-100`, so everything it contains is
 behind the world and in front of the sky.

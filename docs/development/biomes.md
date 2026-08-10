@@ -98,6 +98,44 @@ Fading everything on one curve reads as somebody turning a dimmer; this reads as
 Each channel is a `smoothstep`, so it eases in *and* out: a linear ramp has a visible corner
 at both ends of the window, and both corners are readable as events.
 
+## The sky gradient: five stops, and two axes
+
+**The sky is no longer a `GradientTexture2D`.** That class is a 1-D gradient projected across
+an image and cannot express two independent axes, so the sky is baked by hand into a small
+`Image` instead — the vertical ramp sampled per row, times a horizontal tint lerp per column.
+
+| Field | Meaning |
+|---|---|
+| `sky_top` / `sky_mid` / `sky_horizon` | the three original stops |
+| `sky_upper` / `sky_lower` | two extra stops, at the **midpoint of each segment** |
+| `sky_mid_offset` | where `sky_mid` sits |
+| `sky_tint_left` / `sky_tint_right` | left-to-right **multipliers** over the whole ramp |
+
+**Why five stops.** Three can only produce a ramp that is straight between them, so a sky that
+holds its deep blue over most of the frame and then turns hard near the horizon is not
+expressible. The two extra let it *bend*. Their **offsets are derived**, not authored — what
+the stops are for is bending the ramp's colour, and letting their positions move too would be
+four interacting numbers per biome for nothing the colours cannot already do. Set to the exact
+midpoint of their neighbours the result is identical to the old 3-stop ramp, which is what the
+four non-evening palettes do; only the evening ones bend.
+
+**The tints are multipliers, not colours**, for the same reason the ice tints are: they can
+only ever darken, so they cannot push a channel past 1.0 on an LDR renderer. White means "no
+horizontal variation" and is both the default and a real authoring choice —
+`pale_morning` (uniform overcast), `glacier_teal` (clear midday, sun high and central) and
+`starlit_night` (only the moon's own bloom is directional) all use it, and
+`sky_layer_check.gd` then reports their `SkyTint` as `--` rather than failing them.
+
+**This is a wash, not a light source** — the bloom is `SkyGlow`'s job. Each biome's tints are
+authored to agree with its glow: warm on the side the glow sits, cool on the far side.
+
+**Cost is 8×256 baked per frame of a transition, and zero extra draw calls.** Eight columns is
+not a resolution compromise: the horizontal term is a straight lerp and the canvas filter
+interpolates linearly between texels, so two columns would already be exact. Getting the same
+effect by stacking another full-screen alpha rect would have cost real fill rate (`visuals.md`,
+"Overdraw is the sky's real budget"); baking it into a texture that was already being drawn
+costs none.
+
 ## The directional glow
 
 The sky gradient is **vertical**, so on its own every biome is lit uniformly from above and
