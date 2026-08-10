@@ -110,6 +110,32 @@ Costs nothing: no new nodes, no new textures, no extra draw calls — just a dif
 per vertex in a loop that already existed. `starlit_night` opts out at 0 (clean uniform night
 ice); the rest run 0.10–0.16, measured at 24–36/255 by `sky_layer_check`'s `IceHue` column.
 
+## The snow cap (Phase 2b)
+
+A third quad strip per ground run, sharing the ice band's top edge, with a lower edge
+displaced per-vertex by `get_snow_cap_depth(world_x)` between 10 and 44px. `snow_cap_color`
+and `snow_cap_strength` on `CHANNEL_ICE`; 0 hides it.
+
+**Why geometry and not the tile.** The tile already paints a snow band in its top rows — but
+it repeats every `ICE_TILE_WORLD_WIDTH` (1200px), so the ride line has the *same profile
+forever*. Uniformity was the actual complaint. Displacing real geometry by a function of
+`world_x` is the only way to get a cap that thickens and thins and never repeats.
+
+**This is not the reinstated `Line2D` stroke**, and the distinction is why it was allowed at
+all. A `Line2D` is a constant-width outline faking a bloom; this is a variable-depth band. The
+tombstone at the head of `terrain_generator.gd` says so explicitly — if someone ever wants a
+constant-width edge back, that is still the thing not to build.
+
+Untextured: vertex colours alone, opaque along the surface row and alpha 0 along the displaced
+lower row, so it dissolves into the ice rather than ending on a line. Costs **one extra
+`Polygon2D` per ground run** (terrain is now ~4 per run: fill, band, overlay, cap).
+
+**It interacts with 2a, and the measurement caught it.** The cap covers the top of the ice
+band, which is exactly where the hue drift is strongest — adding it knocked every `IceHue`
+reading down ~4 points and pushed three biomes under the floor. Their `ice_hue_variance` was
+raised to compensate. Worth remembering: these two features compete for the same pixels, so
+retuning one means re-measuring the other.
+
 ## How a transition works
 
 A biome change is **five overlapping crossfades, not one**. `CHANNEL_CURVES` in

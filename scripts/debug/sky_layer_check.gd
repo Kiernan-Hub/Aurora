@@ -73,6 +73,7 @@ const LAYERS: Array[Array] = [
 	["SkyStars", "star_density", MODE_VISIBLE],
 	["SkyTint", "", MODE_TINT],
 	["IceHue", "ice_hue_variance", MODE_ICE],
+	["SnowCap", "snow_cap_strength", MODE_ICE],
 ]
 
 var main: Node2D
@@ -195,7 +196,9 @@ func _process(_delta: float) -> bool:
 		var ice_probe: BiomePalette = palette
 		if phase == 0:
 			ice_probe = palette.duplicate() as BiomePalette
-			ice_probe.ice_hue_variance = 0.0
+			# Zero whichever field this row names, so one mode covers every terrain-side
+			# palette scalar rather than needing a mode per field.
+			ice_probe.set(LAYERS[layer_index][1], 0.0)
 		# Straight to the generator, the way BiomeDirector.push_palette() does it. Weight 0 and
 		# the same texture at both ends, so the pattern dissolve contributes nothing and the
 		# only difference between the two captures is the drift.
@@ -259,8 +262,8 @@ func measure_peak(without_layer: Image, with_layer: Image) -> int:
 func report() -> void:
 	var failures: Array[String] = []
 	print("")
-	print("biome              SkyGlow   SkyCelestial   SkyStars   SkyTint   IceHue")
-	print("------------------------------------------------------------------------")
+	print("biome              SkyGlow   SkyCelestial   SkyStars   SkyTint   IceHue   SnowCap")
+	print("---------------------------------------------------------------------------------")
 	for cycle_index: int in range(peaks.size()):
 		var palette: BiomePalette = BiomeDirector.BIOME_CYCLE[cycle_index]
 		var cells: PackedStringArray = PackedStringArray()
@@ -273,8 +276,8 @@ func report() -> void:
 			if peak < MIN_PEAK_CONTRIBUTION:
 				failures.append("%s %s peaks at %d/255, below the %d floor -- it is on screen but not visible. Raise its strength, move it into unoccluded sky, or pick a colour further from this biome's sky colours"
 					% [palette.resource_path.get_file().get_basename(), LAYERS[column][0], peak, MIN_PEAK_CONTRIBUTION])
-		print("%-18s %s  %s  %s  %s  %s" % [palette.resource_path.get_file().get_basename(),
-			cells[0], cells[1], cells[2], cells[3], cells[4]])
+		print("%-18s %s  %s  %s  %s  %s  %s" % [palette.resource_path.get_file().get_basename(),
+			cells[0], cells[1], cells[2], cells[3], cells[4], cells[5]])
 
 	var claimed: int = 0
 	for row: PackedInt32Array in peaks:

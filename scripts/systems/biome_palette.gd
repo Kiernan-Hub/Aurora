@@ -179,6 +179,16 @@ const CHANNEL_COUNT: int = 5
 #
 # 0 opts out, which is right for a biome whose ice should read as clean and uniform.
 @export_range(0.0, 0.3) var ice_hue_variance: float = 0.0
+# Snow settled on the ride line, as a band whose DEPTH varies with world_x.
+#
+# The tile already paints a snow band in its top rows, but the tile repeats every
+# ICE_TILE_WORLD_WIDTH (1200px), so that band has the same profile forever. This one never
+# repeats. It is a variable-depth geometric band, NOT the constant-width Line2D stroke that
+# was removed in 2026-08-08 -- see the tombstone in terrain_generator.gd.
+#
+# 0 hides it outright, which is right for a biome whose ice should read as bare and swept.
+@export var snow_cap_color: Color = Color(1.0, 1.0, 1.0, 1.0)
+@export_range(0.0, 1.0) var snow_cap_strength: float = 0.0
 
 @export_group("Atmosphere")
 @export var snow_tint: Color = Color(1.0, 1.0, 1.0, 0.42)
@@ -249,6 +259,8 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	out.ice_surface = from.ice_surface.lerp(to.ice_surface, ice)
 	out.ice_depth = from.ice_depth.lerp(to.ice_depth, ice)
 	out.ice_hue_variance = lerpf(from.ice_hue_variance, to.ice_hue_variance, ice)
+	out.snow_cap_color = from.snow_cap_color.lerp(to.snow_cap_color, ice)
+	out.snow_cap_strength = lerpf(from.snow_cap_strength, to.snow_cap_strength, ice)
 	# ice_texture is deliberately NOT written -- see its note. A blended palette structurally
 	# cannot express a pattern crossfade, which needs both endpoint tiles plus the weight, so
 	# the director passes those three to terrain_generator.apply_ice_palette() alongside this

@@ -72,6 +72,8 @@ var ice_overlay_weight: float = 0.0
 # 0 = today's behaviour exactly: one flat colour across every surface vertex. Set from the
 # palette, so it stays 0 under --headless where no palette is ever applied.
 var ice_hue_variance: float = 0.0
+var snow_cap_tint: Color = Color(1.0, 1.0, 1.0, 1.0)
+var snow_cap_strength: float = 0.0
 
 var player: CharacterBody2D
 var next_chunk_index: int = 0
@@ -131,6 +133,14 @@ const FILL_GRADIENT_DEPTH: float = 560.0
 # -- the single most "placeholder" thing left in the terrain. Don't reintroduce a stroke;
 # if the edge ever needs strengthening it belongs in the tile's top rows, where it stays
 # correct on every slope for free.
+#
+# THE SNOW CAP (2026-08-10) IS NOT A REINSTATED STROKE, and the distinction is the whole
+# reason it was allowed. A Line2D is a CONSTANT-WIDTH outline faking a bloom; the cap is a
+# variable-depth geometric band whose lower edge is displaced by a function of world_x, so it
+# thickens and thins and never repeats. Uniformity was the actual complaint against the tile's
+# snow band -- it repeats every ICE_TILE_WORLD_WIDTH (1200px), so the ride line has the same
+# profile forever. If someone ever wants a constant-width edge again, that is still the thing
+# not to build.
 # --- Fill texture (2026-08-07, remapped to depth 2026-08-08) ------------------------
 # A GREYSCALE DEPTH TILE, not a picture of ice: its vertical axis is distance below the
 # ride surface (snow band, glossy sheen, deepening body, cracks), and apply_fill_texture()
@@ -638,6 +648,9 @@ func build_chunk_fill(chunk: StaticBody2D, terrain_fill: Polygon2D, surface_poin
 	# chasm chunk adds, which are siblings added above.
 	for run_index: int in range(ground_runs.size()):
 		build_ice_band(chunk, ground_runs[run_index], chunk_start_x, run_index)
+	# Caps last of all, so settled snow draws over the ice it is sitting on.
+	for run_index: int in range(ground_runs.size()):
+		build_snow_cap(chunk, ground_runs[run_index], chunk_start_x, run_index)
 
 
 # The textured ice, as its OWN geometry hugging the surface -- not as a UV trick on the
@@ -789,6 +802,28 @@ const ICE_HUE_WAVELENGTH_SHORT: float = 900.0
 const ICE_HUE_SHORT_WEIGHT: float = 0.4
 const ICE_HUE_PHASE_OFFSET: float = 1.7
 
+# --- Snow cap ------------------------------------------------------------------------------
+# Depth of the settled-snow band below the ride line, in px. The band's LOWER edge is displaced
+# by a function of world_x between these two, which is the whole point: the tile's own snow
+# band repeats every ICE_TILE_WORLD_WIDTH, so the ride line otherwise has the same profile
+# forever. Shallow -- this is a rim of snow, not a second terrain layer.
+const SNOW_CAP_DEPTH_MIN: float = 10.0
+const SNOW_CAP_DEPTH_MAX: float = 44.0
+# Deliberately different wavelengths from the hue drift, and again unrelated to
+# ICE_TILE_WORLD_WIDTH (1200), so cap thickness, colour drift and texture repeat never line up.
+const SNOW_CAP_WAVELENGTH_LONG: float = 1700.0
+const SNOW_CAP_WAVELENGTH_SHORT: float = 430.0
+const SNOW_CAP_SHORT_WEIGHT: float = 0.55
+const SNOW_CAP_PHASE_OFFSET: float = 0.9
+
+
+# Depth of the cap at a given world_x. Pure, for exactly the reason get_ice_hue_shift is.
+func get_snow_cap_depth(world_x: float) -> float:
+	var long_octave: float = sin((world_x / SNOW_CAP_WAVELENGTH_LONG) * TAU)
+	var short_octave: float = sin(((world_x / SNOW_CAP_WAVELENGTH_SHORT) * TAU) + SNOW_CAP_PHASE_OFFSET)
+	var combined: float = (long_octave + (short_octave * SNOW_CAP_SHORT_WEIGHT)) / (1.0 + SNOW_CAP_SHORT_WEIGHT)
+	return lerpf(SNOW_CAP_DEPTH_MIN, SNOW_CAP_DEPTH_MAX, (combined + 1.0) * 0.5)
+
 
 func get_ice_hue_shift(world_x: float) -> float:
 	var long_octave: float = sin((world_x / ICE_HUE_WAVELENGTH_LONG) * TAU)
@@ -810,6 +845,74 @@ func shift_ice_hue(color: Color, shift: float) -> Color:
 	var warm: float = maxf(shift, 0.0) * ice_hue_variance
 	var cool: float = maxf(-shift, 0.0) * ice_hue_variance
 	return Color(color.r * (1.0 - cool), color.g, color.b * (1.0 - warm), color.a)
+
+
+# The settled-snow rim: a third quad strip per ground run, sharing the ice band's top edge but
+# with a lower edge displaced per-vertex by get_snow_cap_depth(world_x).
+#
+# WHY GEOMETRY AND NOT THE TILE. The tile already paints a snow band in its top rows, and that
+# is what the ride line has looked like since 2026-08-08 -- but the tile repeats every
+# ICE_TILE_WORLD_WIDTH (1200px), so its profile is identical forever. Displacing real geometry
+# by a function of world_x is the only way to get a cap that thickens and thins and never
+# repeats. It is NOT the constant-width Line2D stroke that was removed; see the tombstone at
+# the head of this file for why that distinction is the reason this was allowed.
+#
+# Untextured: vertex colours alone, opaque along the surface and fading to zero alpha at the
+# lower edge, so the cap dissolves into the ice rather than ending on a line. One extra
+# Polygon2D per ground run.
+func build_snow_cap(chunk: StaticBody2D, run_points: PackedVector2Array, chunk_start_x: float, run_index: int) -> void:
+	var sample_count: int = run_points.size()
+	if sample_count < 2:
+		return
+
+	var world_x_offset: float = chunk_start_x + (chunk_width * 0.5)
+	var cap_points: PackedVector2Array = PackedVector2Array()
+	cap_points.resize(sample_count * 2)
+
+	for sample_index: int in range(sample_count):
+		var surface_point: Vector2 = run_points[sample_index]
+		var world_x: float = surface_point.x + world_x_offset
+		cap_points[sample_index] = surface_point
+		# Straight down, like the ice band's lower row, so depth means the same thing at every
+		# x no matter what the terrain is doing underneath.
+		cap_points[sample_count + sample_index] = Vector2(
+			surface_point.x, surface_point.y + get_snow_cap_depth(world_x))
+
+	var quads: Array[PackedInt32Array] = []
+	for sample_index: int in range(sample_count - 1):
+		quads.append(PackedInt32Array([
+			sample_index,
+			sample_index + 1,
+			sample_count + sample_index + 1,
+			sample_count + sample_index,
+		]))
+
+	var cap: Polygon2D = Polygon2D.new()
+	cap.name = "SnowCap%d" % run_index
+	cap.polygon = cap_points
+	cap.polygons = quads
+	paint_snow_cap(cap, sample_count)
+	chunk.add_child(cap)
+
+
+# Opaque along the surface row, transparent along the displaced lower row. Shared by build and
+# repaint so the two can never disagree about the layout -- first half surface, second half
+# lower edge, exactly as build_snow_cap lays the points out.
+func paint_snow_cap(cap: Polygon2D, row_size: int) -> void:
+	var surface_color: Color = snow_cap_tint
+	surface_color.a = snow_cap_tint.a * snow_cap_strength
+	var fade_color: Color = surface_color
+	fade_color.a = 0.0
+
+	var cap_colors: PackedColorArray = PackedColorArray()
+	cap_colors.resize(row_size * 2)
+	for vertex_index: int in range(row_size):
+		cap_colors[vertex_index] = surface_color
+		cap_colors[row_size + vertex_index] = fade_color
+	cap.vertex_colors = cap_colors
+	# Same reasoning as the ice band's: a fully transparent Polygon2D still costs a draw call,
+	# and outside a snowy biome that would be every ground run in the world.
+	cap.visible = snow_cap_strength > 0.0
 
 
 # A run breaks between two consecutive samples whose midpoint has no ground -- the same test
@@ -1671,6 +1774,8 @@ func get_collision_chord_slope_angle(world_x: float) -> float:
 func apply_ice_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_texture: Texture2D, ice_weight: float) -> void:
 	ice_surface_tint = palette.ice_surface
 	ice_hue_variance = palette.ice_hue_variance
+	snow_cap_tint = palette.snow_cap_color
+	snow_cap_strength = palette.snow_cap_strength
 	ice_depth_tint = palette.ice_depth
 	# null means "this biome uses the default smooth tile"; six of the eight palettes leave
 	# it unset rather than restating it.
@@ -1719,6 +1824,11 @@ func repaint_chunk(chunk: Node2D) -> void:
 			continue
 		if polygon.name.begins_with("IceBand"):
 			repaint_ice_band(polygon, ice_band_texture, 1.0)
+			continue
+		if polygon.name.begins_with("SnowCap"):
+			# Geometry is a pure function of world_x and never changes with the palette, so only
+			# the colours are rewritten here.
+			paint_snow_cap(polygon, polygon.polygon.size() / 2)
 			continue
 
 		var vertex_colors: PackedColorArray = polygon.vertex_colors
