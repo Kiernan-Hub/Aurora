@@ -52,8 +52,8 @@ The one thing they cannot do is vary *contrast* against the texture independentl
 
 `assets/textures/terrain/ice_depth_gradient.png` is **not a picture of ice**. Its vertical
 axis is *distance below the surface the player rides on*: snow band at the top, glossy pale
-sheen under it, deepening body, cracks at plausible depths. `apply_fill_texture()` maps V to
-exactly that — 0 at every surface vertex, maximal at the gradient-stop corners.
+sheen under it, deepening body, cracks at plausible depths. `build_ice_band()` maps V to
+exactly that — 0 along the band's top row, `ICE_BAND_DEPTH` along its bottom one.
 
 This is the single highest-leverage thing in the visual pass, because it collapses four
 separate features into one image. Gloss, crack lines, snow clumps and the fill's whole
@@ -431,9 +431,12 @@ high-frequency detail — its facets and cracks, the only reason it exists. What
 disagreement about how bright ice is at a given depth.
 
 That disagreement was the real reason the tile boundary read as a hard cutoff. The swap
-happens one chunk at a time (below), so there is a live vertical seam in game with the old
-tile one side and the new one the other; both are *multipliers*, so a ramp mismatch renders
-there as a flat brightness step, which is far more readable than any pattern change. The
+*used to* happen one chunk at a time, giving a live vertical seam with the old tile one side
+and the new one the other; both are *multipliers*, so a ramp mismatch rendered there as a flat
+brightness step, far more readable than any pattern change. Since the dual-band dissolve
+replaced the snap (2026-08-09) both tiles are on screen together for the whole transition, so
+a mismatch is now a wobble across the entire view rather than a step at one seam — the same
+requirement, with more at stake. The
 faceted tile was 0.86 at the ride line and 0.66 at half depth against the default's 0.98 and
 0.49 — a ~12% step across a vertical line at eye level.
 

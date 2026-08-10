@@ -172,14 +172,25 @@ be more than that; it only needs to not be flat.
 
 ### Ice texture (2026-08-07, remapped to depth 2026-08-08)
 
-`apply_fill_texture()` (called from `build_chunk_fill`, right after `close_fill_run`)
-assigns each fill polygon `assets/textures/terrain/ice_depth_gradient.png`, with
+> **Corrected 2026-08-10.** This section described `apply_fill_texture()`, which put the tile
+> on the *fill* polygon. That function is gone. The fill is now **flat and untextured**
+> (`build_fill_vertex_colors()` writes one colour to every vertex), and the tile lives on its
+> own **quad-strip bands** built by `build_ice_band()`. The reason is in
+> `terrain_generator.gd`'s header: the fill has ~64 vertices along the top and exactly four at
+> the bottom, so Polygon2D fans it into long skinny triangles, and "depth below a curved
+> surface" is not affine — fanning it across those triangles smeared the texture into a funnel
+> that restarted at every chunk boundary. The band is one quad per surface sample instead, so
+> V is exact at every vertex.
+
+`build_ice_band()` (called from `build_chunk_fill`, once per ground run) builds a two-row quad
+strip hugging the surface and assigns it
+`assets/textures/terrain/ice_depth_gradient.png`, with
 `texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED`.
 
 **The tile is not a picture of ice — its vertical axis is depth below the ride surface.**
 Snow band at the top, glossy pale sheen under it, deepening body, thin cracks at plausible
-depths. `apply_fill_texture` maps V to exactly that: 0 at every surface vertex, maximal at
-the gradient-stop corners. So gloss, cracks, snow clumps and the fill's whole vertical
+depths. The band maps V to exactly that: 0 along its top row, `ICE_BAND_DEPTH` along its
+bottom one. So gloss, cracks, snow clumps and the fill's whole vertical
 colour structure are *painted in* and land correctly on every hill in every biome — four
 features from one image, no shader, no per-slope maths. Full rationale in `biomes.md`.
 
@@ -188,9 +199,8 @@ Because the tile carries the light-to-dark ramp itself (1.0 → ~0.52),
 **hue, not brightness**. Two darkening ramps multiplied together take deep ice to black;
 `biome_schedule_check.gd` enforces the bound.
 
-All four appended corners take the *same* maximal V, so the band below the gradient stop
-samples the tile's bottom row flat rather than wrapping. That V is a texel short of the true
-bottom (`ICE_TILE_V_INSET`) because **`texture_repeat` applies to both axes in Godot** — a V
+The band's lower row takes the same maximal V all the way across. That V is a texel short of
+the true bottom (`ICE_TILE_V_INSET`) because **`texture_repeat` applies to both axes in Godot** — a V
 landing exactly on the texture height wraps to row 0, the bright snow band, painting a white
 line straight across the fill at the gradient stop.
 
@@ -210,10 +220,11 @@ diamond, and long diagonal cracks would turn that into a chevron every repeat.
 **UV.x is world_x, not local_x.** `build_chunk_surface`'s geometry is chunk-local by
 design (`local_x = world_x - chunk_start_x - chunk_width * 0.5`), but UV'ing the texture in
 that same local space would restart the texture's phase at every chunk boundary — the
-exact seam-per-segment look this exists to avoid. `apply_fill_texture` takes the polygon's
-local-space `uv` from `close_fill_run` and adds `chunk_start_x + chunk_width * 0.5` back
-onto every `x` before assigning it, so the texture phase is continuous across chunk
-boundaries. `world_x` grows unbounded over a long session (`main.gd`: "X is never
+exact seam-per-segment look this exists to avoid. `build_ice_band` adds
+`chunk_start_x + chunk_width * 0.5` back onto every sample's `x` before scaling it into a U,
+so the texture phase is continuous across chunk boundaries. `paint_ice_band` then inverts that
+to recover `world_x` for the hue drift, which is why the drift can never fall out of step with
+the pattern. `world_x` grows unbounded over a long session (`main.gd`: "X is never
 world-rebased"); this doesn't introduce a new precision failure mode, since
 `chunk.position.x` already carries the same unbounded value.
 

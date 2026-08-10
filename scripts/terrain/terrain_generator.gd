@@ -143,7 +143,7 @@ const FILL_GRADIENT_DEPTH: float = 560.0
 # not to build.
 # --- Fill texture (2026-08-07, remapped to depth 2026-08-08) ------------------------
 # A GREYSCALE DEPTH TILE, not a picture of ice: its vertical axis is distance below the
-# ride surface (snow band, glossy sheen, deepening body, cracks), and apply_fill_texture()
+# ride surface (snow band, glossy sheen, deepening body, cracks), and build_ice_band()
 # maps V to exactly that. Built from a generated panel by scripts/tools/build_ice_texture.py
 # -- run that rather than dropping a raw image in here, because the raw panel bottoms out
 # near black and this tile is a MULTIPLIER (Polygon2D renders texture * vertex_color), so

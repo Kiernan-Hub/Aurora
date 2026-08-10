@@ -53,9 +53,12 @@ HOW THE WRAP IS MADE SEAMLESS
     diagonal cracks that reads as a chevron every repeat.
 
 WHY A VARIANT'S DEPTH RAMP IS MATCHED TO THE DEFAULT TILE'S
-    A biome change swaps the tile one 512px CHUNK at a time (biomes.md, "The
-    pattern does not crossfade"), so there is a live vertical boundary with the
-    old tile on one side and the new one on the other. The tile is a MULTIPLIER,
+    A biome change CROSS-DISSOLVES between two tiles (biomes.md, "approach A"),
+    so both are on screen at once for the whole transition. The reason predates
+    that: until 2026-08-09 the tile snapped one 512px chunk at a time, giving a
+    live vertical boundary with the old tile one side and the new one the other.
+    Matching still matters, and matters more -- a ramp mismatch is now a
+    brightness wobble across the WHOLE view rather than a step at one seam. The tile is a MULTIPLIER,
     so if the two tiles disagree about how bright ice is at a given depth, that
     boundary is a flat brightness STEP -- which reads as a hard cutoff no matter
     how similar the patterns are. Measured before this: default 0.98 at the ride
