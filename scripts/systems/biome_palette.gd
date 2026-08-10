@@ -108,6 +108,15 @@ const CHANNEL_COUNT: int = 5
 @export_range(0.0, 0.2) var celestial_size: float = 0.03
 # 0 means this biome has no disc at all, and skips the draw.
 @export_range(0.0, 1.0) var celestial_strength: float = 0.0
+# Crescent instead of a full disc. A sun and a moon that differ only in tint read as the same
+# pale dot in play, so the shape carries it.
+#
+# This is the ONE field here that snaps rather than blends -- see blend_into(). That is safe
+# only because no two ADJACENT biomes both have a disc, so celestial_strength is 0 somewhere in
+# every transition that changes this and the swap happens while nothing is drawn. Authoring a
+# second disc next to an existing one breaks that silently, which is why
+# biome_schedule_check.gd asserts the no-adjacent-discs rule directly.
+@export var celestial_is_moon: bool = false
 
 @export_group("Scenery")
 # Furthest parallax layer (depth_t 0) and nearest (depth_t 1); the layers in between
@@ -212,6 +221,10 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	out.celestial_position = from.celestial_position.lerp(to.celestial_position, sky)
 	out.celestial_size = lerpf(from.celestial_size, to.celestial_size, sky)
 	out.celestial_strength = lerpf(from.celestial_strength, to.celestial_strength, sky)
+	# Snaps at the halfway point: a bool cannot be interpolated, and the two textures cannot be
+	# cross-dissolved without a second node. Safe only under the no-adjacent-discs rule, which
+	# guarantees the disc is invisible whenever this value actually differs between endpoints.
+	out.celestial_is_moon = to.celestial_is_moon if sky >= 0.5 else from.celestial_is_moon
 
 	var scenery: float = weights[CHANNEL_SCENERY]
 	out.scenery_far = from.scenery_far.lerp(to.scenery_far, scenery)

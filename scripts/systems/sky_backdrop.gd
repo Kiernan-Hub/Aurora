@@ -84,6 +84,17 @@ const CELESTIAL_FALLOFF_ALPHAS: PackedFloat32Array = [1.0, 1.0, 0.62, 0.18, 0.0]
 # 1/2.6 = 0.385, which is where the alpha shoulder above sits.
 const CELESTIAL_HALO_SCALE: float = 2.6
 const STARTING_CELESTIAL_STRENGTH: float = 0.0
+# The moon is the SAME disc with a bite taken out of it. A sun and a moon that differ only in
+# tint are indistinguishable in play -- both read as "a pale dot" -- and a crescent is the one
+# shape nobody has to think about. Units are fractions of the texture's half-width, so they
+# line up with the gradient offsets above: the solid core ends around 0.39.
+const MOON_CUT_RADIUS: float = 0.36
+const MOON_CUT_OFFSET: Vector2 = Vector2(0.16, -0.05)
+# Not cut to fully transparent: a trace of the dark limb keeps it reading as a sphere rather
+# than as a detached sliver.
+const MOON_CUT_RESIDUAL: float = 0.06
+# Soft edge on the cut, in the same fractional units, so the terminator is not aliased.
+const MOON_CUT_SOFTNESS: float = 0.012
 
 # --- Stars -------------------------------------------------------------------------------
 # Built in code rather than shipped as a PNG, the same way snow_drift.gd builds its flake dot
@@ -125,6 +136,10 @@ var sky_stars: TextureRect
 var sky_celestial: TextureRect
 var celestial_position: Vector2 = Vector2(0.5, 0.3)
 var celestial_size: float = 0.03
+# Both built once; apply_celestial() swaps between them. Safe to swap outright rather than
+# cross-dissolve because NO TWO ADJACENT BIOMES BOTH HAVE A DISC -- see apply_celestial().
+var celestial_sun_texture: Texture2D
+var celestial_moon_texture: Texture2D
 
 
 func _ready() -> void:
@@ -167,9 +182,11 @@ func _ready() -> void:
 	add_child(sky_glow)
 
 	# Added last, so the disc draws over its own halo rather than under it.
+	celestial_sun_texture = build_celestial_texture()
+	celestial_moon_texture = build_moon_texture()
 	sky_celestial = TextureRect.new()
 	sky_celestial.name = "SkyCelestial"
-	sky_celestial.texture = build_celestial_texture()
+	sky_celestial.texture = celestial_sun_texture
 	sky_celestial.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	sky_celestial.stretch_mode = TextureRect.STRETCH_SCALE
 	sky_celestial.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -237,6 +254,12 @@ func apply_celestial(palette: BiomePalette) -> void:
 	sky_celestial.visible = palette.celestial_strength > 0.0
 	if not sky_celestial.visible:
 		return
+	# Swapped outright rather than cross-dissolved between two stacked nodes, the way the ice
+	# pattern has to be. That is only safe because no two ADJACENT biomes both have a disc, so
+	# celestial_strength is always 0 somewhere in every transition that changes this -- the
+	# swap happens while the node is invisible. If a second disc is ever authored next to an
+	# existing one, this becomes a visible pop mid-transition and needs the two-node treatment.
+	sky_celestial.texture = celestial_moon_texture if palette.celestial_is_moon else celestial_sun_texture
 	var celestial_modulate: Color = palette.celestial_color
 	celestial_modulate.a = palette.celestial_color.a * palette.celestial_strength
 	sky_celestial.modulate = celestial_modulate
@@ -434,3 +457,41 @@ func build_celestial_texture() -> GradientTexture2D:
 	texture.fill_from = Vector2(0.5, 0.5)
 	texture.fill_to = Vector2(1.0, 0.5)
 	return texture
+
+# The moon: the same disc and halo, with an offset circle subtracted to leave a crescent.
+#
+# Baked into an Image rather than assembled from gradients, because subtracting one circle
+# from another is not something a radial GradientTexture2D can express. Same falloff stops as
+# the sun, so the two still belong to the same sky -- only the SHAPE differs, which is the
+# whole point: a sun and a moon that differ only in tint are indistinguishable in play.
+func build_moon_texture() -> ImageTexture:
+	var falloff: Gradient = Gradient.new()
+	var moon_colors: PackedColorArray = PackedColorArray()
+	for stop_index: int in range(CELESTIAL_FALLOFF_ALPHAS.size()):
+		moon_colors.append(Color(1.0, 1.0, 1.0, CELESTIAL_FALLOFF_ALPHAS[stop_index]))
+	falloff.offsets = CELESTIAL_FALLOFF_OFFSETS
+	falloff.colors = moon_colors
+
+	var image: Image = Image.create(CELESTIAL_TEXTURE_SIZE, CELESTIAL_TEXTURE_SIZE, false, Image.FORMAT_LA8)
+	var half: float = float(CELESTIAL_TEXTURE_SIZE) * 0.5
+	var centre: Vector2 = Vector2(half, half)
+	var cut_centre: Vector2 = centre + (MOON_CUT_OFFSET * half)
+
+	for y: int in range(CELESTIAL_TEXTURE_SIZE):
+		for x: int in range(CELESTIAL_TEXTURE_SIZE):
+			var point: Vector2 = Vector2(float(x) + 0.5, float(y) + 0.5)
+			# Normalised so 1.0 is the edge midpoint -- the same units the gradient offsets and
+			# the MOON_CUT_* constants are written in.
+			var radius: float = point.distance_to(centre) / half
+			var alpha: float = falloff.sample(clampf(radius, 0.0, 1.0)).a
+
+			# 0 well inside the cut, 1 well outside, smooth across the terminator.
+			var outside_cut: float = smoothstep(
+				MOON_CUT_RADIUS - MOON_CUT_SOFTNESS,
+				MOON_CUT_RADIUS + MOON_CUT_SOFTNESS,
+				point.distance_to(cut_centre) / half)
+			alpha *= lerpf(MOON_CUT_RESIDUAL, 1.0, outside_cut)
+
+			image.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
+
+	return ImageTexture.create_from_image(image)

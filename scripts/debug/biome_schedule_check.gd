@@ -248,6 +248,10 @@ const MAX_CELESTIAL_POSITION: float = 1.2
 const MIN_MEANINGFUL_CELESTIAL_STRENGTH: float = 0.02
 # Stars fade by alpha, so the dead range is a little wider than the other two layers'.
 const MIN_MEANINGFUL_STAR_DENSITY: float = 0.05
+# How far a disc may sit from where its neighbour parks celestial_position, in screen
+# fractions, before the fade-in reads as travel rather than as an appearance. Small: the point
+# is that they should be identical, and this is only slack for authoring noise.
+const MAX_DISC_DRIFT: float = 0.02
 
 
 # Authoring rules only -- see check_glow_authoring for why these must never run against a
@@ -459,7 +463,43 @@ func check_blending() -> void:
 		failures.append("blend at weight 1 does not reproduce the destination palette")
 
 	check_blend_carries_sky_fields()
+	check_no_adjacent_discs()
+	check_disc_positions_are_stationary()
 	check_ice_pattern_crossfade()
+
+
+# THE INVARIANT THAT MAKES THE SUN/MOON TEXTURE SWAP SAFE. celestial_is_moon is a bool, so it
+# cannot be interpolated, and sky_backdrop swaps the texture outright rather than dissolving
+# between two stacked nodes the way the ice pattern has to. That is only invisible because
+# celestial_strength is 0 at one end of every transition -- i.e. no two ADJACENT biomes both
+# have a disc. Author a second disc next to an existing one and the swap becomes a visible pop
+# in the middle of the fade, with nothing else in this file noticing.
+func check_no_adjacent_discs() -> void:
+	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
+	for cycle_index: int in range(cycle.size()):
+		var here: BiomePalette = cycle[cycle_index]
+		var next: BiomePalette = cycle[(cycle_index + 1) % cycle.size()]
+		if here.celestial_strength > 0.0 and next.celestial_strength > 0.0:
+			failures.append("%s and %s are adjacent and BOTH have a disc -- celestial_is_moon snaps at the midpoint of the transition, so the sun/moon texture would swap while both are visible. Either drop one disc or give SkyCelestial the two-node dissolve treatment the ice band has"
+				% [here.resource_path.get_file().get_basename(), next.resource_path.get_file().get_basename()])
+
+
+# A disc-less biome still has a celestial_position, and it is not decoration: the disc fades in
+# and out AT it, because position interpolates on the same channel as strength. If a neighbour
+# disagrees with the biome that owns the disc, the disc flies across the sky while fading --
+# which is exactly what shipped in 1b and read as "the moon went from bottom right to top left".
+func check_disc_positions_are_stationary() -> void:
+	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
+	for cycle_index: int in range(cycle.size()):
+		var here: BiomePalette = cycle[cycle_index]
+		if here.celestial_strength <= 0.0:
+			continue
+		for neighbour_offset: int in [-1, 1]:
+			var neighbour: BiomePalette = cycle[posmod(cycle_index + neighbour_offset, cycle.size())]
+			if here.celestial_position.distance_to(neighbour.celestial_position) > MAX_DISC_DRIFT:
+				failures.append("%s has a disc at %s but its neighbour %s puts celestial_position at %s -- the disc will slide across the sky as it fades. A disc-less biome must copy its disc-having neighbour's celestial_position"
+					% [here.resource_path.get_file().get_basename(), here.celestial_position,
+						neighbour.resource_path.get_file().get_basename(), neighbour.celestial_position])
 
 
 # The glow's and disc's position/size/strength are the NON-COLOUR fields riding CHANNEL_SKY,
@@ -480,6 +520,7 @@ const SKY_FIELD_GROUPS: Array[Array] = [
 	["glow_position", "glow_radius", "glow_strength"],
 	["celestial_position", "celestial_size", "celestial_strength"],
 	["star_density"],
+	["celestial_is_moon"],
 ]
 
 
@@ -491,7 +532,7 @@ func check_blend_carries_sky_fields() -> void:
 	for group: Array in SKY_FIELD_GROUPS:
 		var pair: Array[BiomePalette] = find_pair_differing_on(group)
 		if pair.is_empty():
-			failures.append("no adjacent biome pair differs on all of %s -- those fields never change in game, so blend_into carrying them is untested"
+			failures.append("no pair of palettes differs on all of %s -- those fields are identical across the whole cycle, so blend_into carrying them is untested"
 				% ", ".join(PackedStringArray(group)))
 			continue
 
@@ -506,22 +547,32 @@ func check_blend_carries_sky_fields() -> void:
 						% [endpoint, field_name, out.get(field_name), expected.get(field_name)])
 
 
-# The first adjacent pair whose values differ on EVERY field in the group. All of them, not
-# any of them: a group is asserted as a unit, and one shared value is enough to hide an
-# omission behind the class default.
+# The first pair of palettes -- ANY two, not necessarily adjacent -- whose values differ on
+# EVERY field in the group. All of them, not any of them: a group is asserted as a unit, and
+# one shared value is enough to hide an omission behind the class default.
+#
+# NOT restricted to adjacent pairs, and that matters since celestial_position became
+# deliberately CONSTANT across neighbours (check_disc_positions_are_stationary requires it, so
+# a disc fades in and out where it belongs instead of sliding across the sky). blend_into is a
+# pure function of two palettes and a weight; nothing about testing it needs the two to be
+# neighbours in the cycle, and requiring that made a correctness check impossible to satisfy
+# for a field whose whole design is not to vary locally.
 func find_pair_differing_on(group: Array) -> Array[BiomePalette]:
 	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
-	for cycle_index: int in range(cycle.size()):
-		var candidate_from: BiomePalette = cycle[cycle_index]
-		var candidate_to: BiomePalette = cycle[(cycle_index + 1) % cycle.size()]
-		var all_differ: bool = true
-		for field_name: String in group:
-			if values_match(candidate_from.get(field_name), candidate_to.get(field_name)):
-				all_differ = false
-				break
-		if all_differ:
-			var pair: Array[BiomePalette] = [candidate_from, candidate_to]
-			return pair
+	for from_index: int in range(cycle.size()):
+		for to_index: int in range(cycle.size()):
+			if from_index == to_index:
+				continue
+			var candidate_from: BiomePalette = cycle[from_index]
+			var candidate_to: BiomePalette = cycle[to_index]
+			var all_differ: bool = true
+			for field_name: String in group:
+				if values_match(candidate_from.get(field_name), candidate_to.get(field_name)):
+					all_differ = false
+					break
+			if all_differ:
+				var pair: Array[BiomePalette] = [candidate_from, candidate_to]
+				return pair
 	return []
 
 
@@ -530,6 +581,8 @@ func find_pair_differing_on(group: Array) -> Array[BiomePalette]:
 func values_match(a: Variant, b: Variant) -> bool:
 	if a is Vector2:
 		return (a as Vector2).is_equal_approx(b as Vector2)
+	if typeof(a) == TYPE_BOOL:
+		return bool(a) == bool(b)
 	return is_equal_approx(float(a), float(b))
 
 

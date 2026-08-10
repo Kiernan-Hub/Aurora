@@ -194,11 +194,35 @@ The light *source*, where the glow is the light it casts. `celestial_color`,
 `celestial_position`, `celestial_size`, `celestial_strength`, all on `CHANNEL_SKY`, authored at
 the same position as the glow so the two agree about where the light comes from.
 
-**Only three of the eight biomes have a disc, deliberately.** A disc in all eight reads as a
-decal rather than as weather. The three are where you would actually see one: a risen sun
-(`arctic_dawn`), a clear midday (`glacier_teal`), and the moon (`starlit_night`). The other
-five have a reason not to — cloud in the two overcast/hazy biomes, and the sun already at or
-below the horizon in the three evening ones. `celestial_strength = 0` skips the draw, and
+### Two rules the gate now enforces, both learned from a playtest
+
+The disc shipped in 1b with two bugs that only showed up in motion, and both are now asserted
+by `biome_schedule_check.gd` rather than left to authoring care.
+
+**1. A disc-less biome must copy its disc-having neighbour's `celestial_position`.**
+Position interpolates on the same channel as strength, so if the neighbour disagrees the disc
+*flies across the sky while fading in*. `twilight_blue` parked it at (0.82, 0.26) while the
+moon lives at (0.30, 0.09), and the moon visibly travelled from the bottom-right to the
+top-left as night fell. `check_disc_positions_are_stationary()`.
+
+**2. No two adjacent biomes may both have a disc.** `celestial_is_moon` is a bool, so it
+cannot be interpolated — `sky_backdrop` swaps the texture outright instead of dissolving
+between two stacked nodes the way the ice pattern must. That is only invisible because
+strength is 0 at one end of any transition that changes it. `check_no_adjacent_discs()`.
+This is what cost `arctic_dawn` its sun: it sits next to `starlit_night` in the wrap, and a
+sun→moon swap mid-fade with both visible would pop.
+
+**Sun and moon must not look the same.** They differ only in tint otherwise, and in play both
+read as "a pale dot" — which is exactly what happened. The moon is a **crescent**: the same
+disc and halo with an offset circle subtracted, baked into an `Image` because subtracting one
+circle from another is not something a radial `GradientTexture2D` can express. Same falloff
+stops as the sun, so they still belong to the same sky; only the shape differs.
+
+**Only two of the eight biomes have a disc, deliberately.** A disc in all eight reads as a
+decal rather than as weather. Two, now: a clear midday sun (`glacier_teal`) and the
+crescent moon (`starlit_night`). The other six have a reason not to — cloud in the two
+overcast/hazy biomes, the sun at or below the horizon in the three evening ones, and
+`arctic_dawn` giving up its risen sun to satisfy the no-adjacent-discs rule above. `celestial_strength = 0` skips the draw, and
 `sky_layer_check.gd` reports those as `--` rather than failing them.
 
 **`sunset_rose` has the strongest glow in the cycle and no disc at all**, which is the single
@@ -216,8 +240,16 @@ is — which is exactly what the first pass after the composition change looked 
 everything had been pushed up to y 0.08–0.18 when the top 21% was the only sky that existed.
 
 So the arc runs low → high → low through the cycle: `arctic_dawn` 0.21 (just risen),
-`glacier_teal` 0.10 (midday), `sunset_rose` 0.24, `violet_dusk` 0.26, `twilight_blue` 0.28
+`glacier_teal` 0.10 (midday), `sunset_rose` 0.24, `violet_dusk` 0.26, `twilight_blue` 0.30
 (progressively lower and more clipped), and `starlit_night` 0.10 for the moon.
+
+**The glow must not sweep across the screen between two biomes.** Position interpolates, so a
+large gap between neighbours reads as the light source *flying* rather than drifting. The
+cycle wraps, so at least one reset is unavoidable — the fix is to spread it. `twilight_blue`'s
+afterglow was at x 0.82 against the moon's 0.30, a 0.52 sweep that was immediately obvious in
+play; moving it to 0.58 and dropping its strength to 0.5 turns the night end into three small
+steps (0.78 → 0.58 → 0.30 → 0.16) that read as the light quietly returning east. **Largest
+single step in the cycle is now 0.28.**
 
 One thing this does **not** do: the mountains are flat palette silhouettes, so they never pick
 up warm light from the glow the way the reference's do. The compensation is in the palette —
