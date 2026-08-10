@@ -247,15 +247,17 @@ a throwaway probe — see `biomes.md`, "Testing" — not kept as a gate.
 
 Full design notes: `docs/development/biomes.md`.
 
-## Glow contribution check (`scripts/debug/glow_contribution_check.gd`)
+## Sky layer check (`scripts/debug/sky_layer_check.gd`)
 
 ```
-/Applications/Godot.app/Contents/MacOS/Godot --path . --script res://scripts/debug/glow_contribution_check.gd
+/Applications/Godot.app/Contents/MacOS/Godot --path . --script res://scripts/debug/sky_layer_check.gd
 ```
 
-**A gate, but not a headless one — it has to render.** It measures what the sky glow actually
-puts on screen, in pixels, per biome, and exits non-zero if any biome falls under
-`MIN_PEAK_CONTRIBUTION` (24/255).
+**A gate, but not a headless one — it has to render.** It measures what each optional sky
+layer (`SkyGlow`, `SkyCelestial`, and whatever 1c/1d add) actually puts on screen, in pixels,
+per biome, and exits non-zero if any layer a biome *claims* falls under
+`MIN_PEAK_CONTRIBUTION` (24/255). A layer a biome does not claim — `celestial_strength = 0`,
+which four of the eight palettes set deliberately — reports as `--` and is skipped.
 
 It exists because `biome_schedule_check` cannot see this. That gate proves the glow *data* is
 well-formed — colours in range, anchors on screen, `blend_into` carrying every field — and the

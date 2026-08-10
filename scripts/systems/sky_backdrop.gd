@@ -60,6 +60,19 @@ const GLOW_FALLOFF_ALPHAS: PackedFloat32Array = [1.0, 0.62, 0.32, 0.11, 0.0]
 # which is what keeps 1a incapable of moving a gate result.
 const STARTING_GLOW_STRENGTH: float = 0.0
 
+# --- Sun / moon disc ---------------------------------------------------------------------
+# Solid across the first two stops, then a shoulder and a soft halo out to the rect edge. The
+# shoulder is two stops rather than one so the disc's edge is softened by roughly a pixel at
+# any size -- a hard cut would alias badly on a small bright circle over a flat sky.
+const CELESTIAL_TEXTURE_SIZE: int = 256
+const CELESTIAL_FALLOFF_OFFSETS: PackedFloat32Array = [0.0, 0.36, 0.42, 0.66, 1.0]
+const CELESTIAL_FALLOFF_ALPHAS: PackedFloat32Array = [1.0, 1.0, 0.62, 0.18, 0.0]
+# The rect is this much larger than the solid disc, so palette.celestial_size can mean the
+# radius of the disc you actually see rather than the radius of its invisible halo.
+# 1/2.6 = 0.385, which is where the alpha shoulder above sits.
+const CELESTIAL_HALO_SCALE: float = 2.6
+const STARTING_CELESTIAL_STRENGTH: float = 0.0
+
 # Held so apply_palette() can recolour the sky in place. A Gradient is mutable and
 # GradientTexture2D re-bakes itself when its gradient changes, so a biome transition costs
 # one 1x256 texture update per frame it actually moves -- no node work, no rebuild, and
@@ -68,6 +81,11 @@ var sky_gradient: Gradient
 # The bloom. Recoloured, moved and resized through its ANCHORS in apply_palette(), so it
 # needs no _process, no resize handler and no viewport read -- see position_glow().
 var sky_glow: TextureRect
+# The disc. Unlike the glow this is laid out in PIXELS (see palette.celestial_size), so its
+# layout inputs are retained and reapplied whenever the viewport resizes.
+var sky_celestial: TextureRect
+var celestial_position: Vector2 = Vector2(0.5, 0.3)
+var celestial_size: float = 0.03
 
 
 func _ready() -> void:
@@ -94,6 +112,22 @@ func _ready() -> void:
 	sky_glow.visible = STARTING_GLOW_STRENGTH > 0.0
 	add_child(sky_glow)
 
+	# Added last, so the disc draws over its own halo rather than under it.
+	sky_celestial = TextureRect.new()
+	sky_celestial.name = "SkyCelestial"
+	sky_celestial.texture = build_celestial_texture()
+	sky_celestial.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	sky_celestial.stretch_mode = TextureRect.STRETCH_SCALE
+	sky_celestial.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sky_celestial.visible = STARTING_CELESTIAL_STRENGTH > 0.0
+	add_child(sky_celestial)
+
+	# The disc is the one thing here sized in pixels, so it is the one thing that does not
+	# follow the viewport for free. Everything else in this file is anchored and needs no
+	# signal. Reapplied rather than recomputed from a palette, because the palette that was
+	# last pushed is a blended instance the director keeps mutating.
+	get_viewport().size_changed.connect(layout_celestial)
+
 
 # Called by biome_director.gd only. Never called under --headless.
 func apply_palette(palette: BiomePalette) -> void:
@@ -105,6 +139,11 @@ func apply_palette(palette: BiomePalette) -> void:
 	sky_gradient.offsets = PackedFloat32Array([0.0, palette.sky_mid_offset, 1.0])
 	sky_gradient.colors = PackedColorArray([palette.sky_top, palette.sky_mid, palette.sky_horizon])
 
+	apply_glow(palette)
+	apply_celestial(palette)
+
+
+func apply_glow(palette: BiomePalette) -> void:
 	if sky_glow == null:
 		return
 	# Hidden outright rather than drawn at alpha 0. A fully transparent full-screen TextureRect
@@ -118,6 +157,20 @@ func apply_palette(palette: BiomePalette) -> void:
 	glow_modulate.a = palette.glow_color.a * palette.glow_strength
 	sky_glow.modulate = glow_modulate
 	position_glow(palette.glow_position, palette.glow_radius)
+
+
+func apply_celestial(palette: BiomePalette) -> void:
+	if sky_celestial == null:
+		return
+	sky_celestial.visible = palette.celestial_strength > 0.0
+	if not sky_celestial.visible:
+		return
+	var celestial_modulate: Color = palette.celestial_color
+	celestial_modulate.a = palette.celestial_color.a * palette.celestial_strength
+	sky_celestial.modulate = celestial_modulate
+	celestial_position = palette.celestial_position
+	celestial_size = palette.celestial_size
+	layout_celestial()
 
 
 # Places the bloom by ANCHOR rather than by position/size in pixels.
@@ -145,6 +198,34 @@ func position_glow(glow_position: Vector2, glow_radius: Vector2) -> void:
 	sky_glow.offset_right = 0.0
 	sky_glow.offset_top = 0.0
 	sky_glow.offset_bottom = 0.0
+
+
+# The disc, laid out in PIXELS rather than by anchor box -- because it has to be round.
+#
+# All four anchors collapse to the same point (its centre), and the offsets then carry a
+# SQUARE pixel extent out from there. That is the whole trick: the anchor keeps the centre in
+# the right place on any viewport, while the offsets keep the shape circular regardless of
+# aspect ratio. Anchoring it the way the glow is anchored would make the radius a fraction of
+# width horizontally and of height vertically, squashing the sun by 1.78:1 on a 16:9 screen.
+#
+# Radius derives from viewport HEIGHT on both axes, so the disc keeps a constant apparent size
+# relative to how much sky there is, rather than growing on a wider phone.
+func layout_celestial() -> void:
+	if sky_celestial == null:
+		return
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	# The texture's solid core is only 1/CELESTIAL_HALO_SCALE of the rect, so the rect has to
+	# be scaled up for celestial_size to mean the radius of the disc that is actually visible.
+	var halo_radius: float = celestial_size * CELESTIAL_HALO_SCALE * viewport_size.y
+
+	sky_celestial.anchor_left = celestial_position.x
+	sky_celestial.anchor_right = celestial_position.x
+	sky_celestial.anchor_top = celestial_position.y
+	sky_celestial.anchor_bottom = celestial_position.y
+	sky_celestial.offset_left = -halo_radius
+	sky_celestial.offset_right = halo_radius
+	sky_celestial.offset_top = -halo_radius
+	sky_celestial.offset_bottom = halo_radius
 
 
 func build_sky_texture() -> GradientTexture2D:
@@ -186,6 +267,27 @@ func build_glow_texture() -> GradientTexture2D:
 	# Centre out to the middle of the right edge, so gradient offset 1.0 lands exactly on the
 	# rect's edge midpoint. The corners sit at distance ~1.41 and clamp to the final stop,
 	# which is fully transparent -- so the blob never shows the square it is drawn in.
+	texture.fill_from = Vector2(0.5, 0.5)
+	texture.fill_to = Vector2(1.0, 0.5)
+	return texture
+
+
+# The disc: an opaque core with a soft halo. Same radial idiom as the glow, but the alpha is
+# held flat at 1.0 across the first two stops, which is what makes it read as a body rather
+# than as a second, smaller bloom. White here too -- the colour rides on modulate.
+func build_celestial_texture() -> GradientTexture2D:
+	var gradient: Gradient = Gradient.new()
+	var disc_colors: PackedColorArray = PackedColorArray()
+	for stop_index: int in range(CELESTIAL_FALLOFF_ALPHAS.size()):
+		disc_colors.append(Color(1.0, 1.0, 1.0, CELESTIAL_FALLOFF_ALPHAS[stop_index]))
+	gradient.offsets = CELESTIAL_FALLOFF_OFFSETS
+	gradient.colors = disc_colors
+
+	var texture: GradientTexture2D = GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.width = CELESTIAL_TEXTURE_SIZE
+	texture.height = CELESTIAL_TEXTURE_SIZE
+	texture.fill = GradientTexture2D.FILL_RADIAL
 	texture.fill_from = Vector2(0.5, 0.5)
 	texture.fill_to = Vector2(1.0, 0.5)
 	return texture

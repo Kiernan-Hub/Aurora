@@ -144,7 +144,7 @@ func check_palettes() -> void:
 		var label: String = "palette[%d]" % cycle_index
 
 		for field_name: String in [
-			"sky_top", "sky_mid", "sky_horizon", "glow_color",
+			"sky_top", "sky_mid", "sky_horizon", "glow_color", "celestial_color",
 			"scenery_far", "scenery_near", "haze_far", "haze_near",
 			"tree_tint", "bird_tint",
 			"ice_surface", "ice_depth",
@@ -154,6 +154,8 @@ func check_palettes() -> void:
 
 		check_glow_authoring(label, palette)
 		check_glow_layout(label, palette)
+		check_celestial_authoring(label, palette)
+		check_celestial_layout(label, palette)
 
 		var surface_luminance: float = get_luminance(palette.ice_surface)
 		if surface_luminance < MIN_ICE_SURFACE_LUMINANCE:
@@ -233,6 +235,39 @@ func check_glow_layout(label: String, palette: BiomePalette) -> void:
 		if anchor < MIN_GLOW_ANCHOR or anchor > MAX_GLOW_ANCHOR:
 			failures.append("%s glow anchor %.3f outside [%.1f, %.1f] (position %s, radius %s) -- these are SCREEN FRACTIONS, not pixels; off-screen anchors lay out silently and the biome just has no glow"
 				% [label, anchor, MIN_GLOW_ANCHOR, MAX_GLOW_ANCHOR, palette.glow_position, palette.glow_radius])
+			return
+
+
+# The disc is laid out in PIXELS around an anchored centre point (sky_backdrop.layout_celestial),
+# so unlike the glow only its centre is a screen fraction. A disc is a body you are meant to
+# SEE, not a wash that reads fine hanging off an edge, so this is tighter than the glow's
+# bounds -- but still allows a little overhang for a sun sitting partly out of frame.
+const MIN_CELESTIAL_POSITION: float = -0.2
+const MAX_CELESTIAL_POSITION: float = 1.2
+const MIN_MEANINGFUL_CELESTIAL_STRENGTH: float = 0.02
+
+
+# Authoring rules only -- see check_glow_authoring for why these must never run against a
+# blended palette.
+func check_celestial_authoring(label: String, palette: BiomePalette) -> void:
+	if palette.celestial_strength <= 0.0:
+		return
+	if palette.celestial_size <= 0.0:
+		failures.append("%s.celestial_size is %.4f but celestial_strength is %.2f -- a disc with no radius draws nothing; set strength to 0 to say this biome has no disc"
+			% [label, palette.celestial_size, palette.celestial_strength])
+	if palette.celestial_strength < MIN_MEANINGFUL_CELESTIAL_STRENGTH:
+		failures.append("%s.celestial_strength %.4f is nonzero but invisible -- use exactly 0 to disable the disc, which also skips the draw"
+			% [label, palette.celestial_strength])
+
+
+# Safe against authored and blended palettes alike: the centre is a convex combination of the
+# endpoints', so if both ends are on screen so is every frame between them.
+func check_celestial_layout(label: String, palette: BiomePalette) -> void:
+	for axis: int in range(2):
+		var coordinate: float = palette.celestial_position[axis]
+		if coordinate < MIN_CELESTIAL_POSITION or coordinate > MAX_CELESTIAL_POSITION:
+			failures.append("%s.celestial_position%s = %.3f outside [%.1f, %.1f] -- this is a SCREEN FRACTION, and a disc this far out is off frame entirely"
+				% [label, ".x" if axis == 0 else ".y", coordinate, MIN_CELESTIAL_POSITION, MAX_CELESTIAL_POSITION])
 			return
 
 
@@ -387,7 +422,7 @@ func check_blending() -> void:
 				return
 
 			var label: String = "blend[%d->%d]@%.2f" % [cycle_index, (cycle_index + 1) % cycle.size(), progress]
-			for field_name: String in ["sky_top", "sky_mid", "sky_horizon", "glow_color",
+			for field_name: String in ["sky_top", "sky_mid", "sky_horizon", "glow_color", "celestial_color",
 				"scenery_far", "scenery_near", "haze_far", "haze_near", "ice_surface", "ice_depth",
 				"snow_tint", "tree_tint", "bird_tint"]:
 				assert_color_in_range(label + "." + field_name, out.get(field_name))
@@ -395,6 +430,7 @@ func check_blending() -> void:
 			# straight to sky_backdrop.position_glow() on every frame of the transition, and a
 			# mid-transition value is the one no endpoint check ever looks at.
 			check_glow_layout(label, out)
+			check_celestial_layout(label, out)
 
 	# The endpoints must be exact, not merely close: at weight 0 the blend IS the source
 	# palette, otherwise every biome shows a slightly wrong colour for its whole duration.
@@ -410,48 +446,75 @@ func check_blending() -> void:
 	if not out.sky_top.is_equal_approx(cycle[1].sky_top) or not out.ice_surface.is_equal_approx(cycle[1].ice_surface):
 		failures.append("blend at weight 1 does not reproduce the destination palette")
 
-	check_blend_carries_glow()
+	check_blend_carries_sky_fields()
 	check_ice_pattern_crossfade()
 
 
-# glow_position, glow_radius and glow_strength are the first NON-COLOUR, non-scalar fields to
-# ride a channel, and a field left out of blend_into() fails in a way nothing else here would
-# notice: `out` is a fresh BiomePalette, so an omitted field silently reads as the class
-# default -- a centred, strength-0 glow. Every colour check still passes and the glow simply
-# stops moving. So assert both endpoints reproduce exactly.
-func check_blend_carries_glow() -> void:
-	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
+# The glow's and disc's position/size/strength are the NON-COLOUR fields riding CHANNEL_SKY,
+# and a field left out of blend_into() fails in a way nothing else here would notice: `out` is
+# a fresh BiomePalette, so an omitted field silently reads as the class default -- a centred,
+# strength-0 layer. Every colour check still passes and the layer simply stops moving.
+#
+# EACH GROUP GETS ITS OWN PAIR, and that is load-bearing. The first version tested the disc
+# fields on whatever pair differed on the GLOW fields, and negative-testing found the hole: on
+# that pair both palettes happened to share celestial_size = 0.03, which is ALSO the class
+# default -- so deleting the celestial_size lerp from blend_into changed nothing observable and
+# the gate passed. An omitted field is only detectable against endpoints that actually differ
+# from the default, so the pair has to be chosen per group.
+const SKY_FIELD_GROUPS: Array[Array] = [
+	["glow_position", "glow_radius", "glow_strength"],
+	["celestial_position", "celestial_size", "celestial_strength"],
+]
+
+
+func check_blend_carries_sky_fields() -> void:
 	var out: BiomePalette = BiomePalette.new()
 	var weights: PackedFloat32Array = PackedFloat32Array()
 	weights.resize(BiomePalette.CHANNEL_COUNT)
 
-	# A pair that actually differs on every glow field, or the assertion is vacuous.
-	var from_palette: BiomePalette = null
-	var to_palette: BiomePalette = null
+	for group: Array in SKY_FIELD_GROUPS:
+		var pair: Array[BiomePalette] = find_pair_differing_on(group)
+		if pair.is_empty():
+			failures.append("no adjacent biome pair differs on all of %s -- those fields never change in game, so blend_into carrying them is untested"
+				% ", ".join(PackedStringArray(group)))
+			continue
+
+		for endpoint: int in [0, 1]:
+			var expected: BiomePalette = pair[endpoint]
+			for channel_index: int in range(BiomePalette.CHANNEL_COUNT):
+				weights[channel_index] = float(endpoint)
+			BiomePalette.blend_into(pair[0], pair[1], weights, out)
+			for field_name: String in group:
+				if not values_match(out.get(field_name), expected.get(field_name)):
+					failures.append("blend at weight %d lost %s (%s, expected %s) -- the field is missing from blend_into, and reads back as the BiomePalette class default"
+						% [endpoint, field_name, out.get(field_name), expected.get(field_name)])
+
+
+# The first adjacent pair whose values differ on EVERY field in the group. All of them, not
+# any of them: a group is asserted as a unit, and one shared value is enough to hide an
+# omission behind the class default.
+func find_pair_differing_on(group: Array) -> Array[BiomePalette]:
+	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
 	for cycle_index: int in range(cycle.size()):
 		var candidate_from: BiomePalette = cycle[cycle_index]
 		var candidate_to: BiomePalette = cycle[(cycle_index + 1) % cycle.size()]
-		if candidate_from.glow_position != candidate_to.glow_position \
-				and candidate_from.glow_radius != candidate_to.glow_radius \
-				and not is_equal_approx(candidate_from.glow_strength, candidate_to.glow_strength):
-			from_palette = candidate_from
-			to_palette = candidate_to
-			break
-	if from_palette == null:
-		failures.append("no adjacent biome pair differs on all of glow_position/glow_radius/glow_strength -- the glow never moves in game, so blend_into carrying it is untested")
-		return
+		var all_differ: bool = true
+		for field_name: String in group:
+			if values_match(candidate_from.get(field_name), candidate_to.get(field_name)):
+				all_differ = false
+				break
+		if all_differ:
+			var pair: Array[BiomePalette] = [candidate_from, candidate_to]
+			return pair
+	return []
 
-	for endpoint: int in [0, 1]:
-		var expected: BiomePalette = from_palette if endpoint == 0 else to_palette
-		for channel_index: int in range(BiomePalette.CHANNEL_COUNT):
-			weights[channel_index] = float(endpoint)
-		BiomePalette.blend_into(from_palette, to_palette, weights, out)
-		if not out.glow_position.is_equal_approx(expected.glow_position):
-			failures.append("blend at weight %d lost glow_position (%s, expected %s) -- the field is missing from blend_into" % [endpoint, out.glow_position, expected.glow_position])
-		if not out.glow_radius.is_equal_approx(expected.glow_radius):
-			failures.append("blend at weight %d lost glow_radius (%s, expected %s) -- the field is missing from blend_into" % [endpoint, out.glow_radius, expected.glow_radius])
-		if not is_equal_approx(out.glow_strength, expected.glow_strength):
-			failures.append("blend at weight %d lost glow_strength (%.4f, expected %.4f) -- the field is missing from blend_into" % [endpoint, out.glow_strength, expected.glow_strength])
+
+# Vector2 and float both ride these groups, and neither has a common approx-compare that works
+# through a Variant, so dispatch on the type.
+func values_match(a: Variant, b: Variant) -> bool:
+	if a is Vector2:
+		return (a as Vector2).is_equal_approx(b as Vector2)
+	return is_equal_approx(float(a), float(b))
 
 
 # The ice PATTERN is the one thing a blended palette cannot carry: a Polygon2D samples exactly

@@ -72,6 +72,26 @@ const CHANNEL_COUNT: int = 5
 # directional light at all and should not pay a full-screen alpha blend to say so.
 @export_range(0.0, 1.0) var glow_strength: float = 0.0
 
+# --- Sun / moon disc ------------------------------------------------------------------
+# The light SOURCE, where the glow above is the light it casts. Authored at the same
+# position as the glow so the two agree about where the light is coming from.
+#
+# NOT EVERY BIOME HAS ONE, and that is the point: a disc appearing in all eight would read as
+# a decal rather than as weather. The four that do are the ones where you would actually see
+# it -- a risen sun, a clear midday, a setting sun, a moon. The four that do not are the two
+# overcast/hazy biomes, where cloud is the reason you cannot see it, and the two dusk biomes,
+# where the sun has already gone below the horizon. Those are narrative beats, not omissions.
+@export var celestial_color: Color = Color(1.0, 0.96, 0.88, 1.0)
+@export var celestial_position: Vector2 = Vector2(0.5, 0.3)
+# Radius of the SOLID disc, as a fraction of viewport HEIGHT. Height rather than width
+# because it is the axis that reads as "how big in the sky"; and unlike the glow this is a
+# real pixel size, because a sun has to be ROUND. Anchors are per-axis fractions, so anchoring
+# a disc the way the glow is anchored would squash it by the aspect ratio -- 1.78:1 on a 16:9
+# screen. The soft halo around it extends further, by CELESTIAL_HALO_SCALE.
+@export_range(0.0, 0.2) var celestial_size: float = 0.03
+# 0 means this biome has no disc at all, and skips the draw.
+@export_range(0.0, 1.0) var celestial_strength: float = 0.0
+
 @export_group("Scenery")
 # Furthest parallax layer (depth_t 0) and nearest (depth_t 1); the layers in between
 # interpolate. Under a pale sky far must be LIGHTER than near, under a dark sky darker --
@@ -163,6 +183,14 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	out.glow_position = from.glow_position.lerp(to.glow_position, sky)
 	out.glow_radius = from.glow_radius.lerp(to.glow_radius, sky)
 	out.glow_strength = lerpf(from.glow_strength, to.glow_strength, sky)
+	out.celestial_color = from.celestial_color.lerp(to.celestial_color, sky)
+	# Position is interpolated even between a biome that has a disc and one that does not, so
+	# the disc fades out where it stands instead of sliding across the sky on its way to a
+	# position nobody authored. That only works because the disc-less palettes still author a
+	# sensible celestial_position -- see their note.
+	out.celestial_position = from.celestial_position.lerp(to.celestial_position, sky)
+	out.celestial_size = lerpf(from.celestial_size, to.celestial_size, sky)
+	out.celestial_strength = lerpf(from.celestial_strength, to.celestial_strength, sky)
 
 	var scenery: float = weights[CHANNEL_SCENERY]
 	out.scenery_far = from.scenery_far.lerp(to.scenery_far, scenery)

@@ -126,12 +126,12 @@ surrounds it, exactly as the reference does it.
 **Position and radius interpolate too**, so during a transition the light *travels* rather
 than one bloom fading out while another fades in elsewhere. The eight palettes are authored
 as one arc: the source rises low-left through `arctic_dawn`, tracks up and over through
-midday, sets low-right at `sunset_rose` (the strongest glow, 0.85), fades through
+midday, sets low-right at `sunset_rose` (the strongest glow, 1.0), fades through
 `violet_dusk` and `twilight_blue`, and `starlit_night` is a small cool halo high-left — the
-moon's, which Phase 1b will put a disc inside.
+moon's, with the disc sitting inside it.
 
 **Strengths are calibrated by measurement, not by eye** — see
-`glow_contribution_check.gd`, which fails the build if any biome's glow peaks under 24/255.
+`sky_layer_check.gd`, which fails the build if any biome's glow peaks under 24/255.
 The first authoring pass looked reasonable as data and was invisible in game (11–52/255,
 most of it under 20). Two causes, and the second is the one that is easy to miss:
 
@@ -149,6 +149,37 @@ Current measured peaks run 40–93/255. The spread is deliberate and not a defec
 pale daylight biomes (`pale_morning`, `glacier_teal`, `mauve_haze`) land at 40–43 because a
 bright overcast sky genuinely has less directional contrast to give, while the dawn/dusk/night
 biomes reach 82–93. Diffuse light *should* read as diffuse.
+
+## The sun / moon disc
+
+The light *source*, where the glow is the light it casts. `celestial_color`,
+`celestial_position`, `celestial_size`, `celestial_strength`, all on `CHANNEL_SKY`, authored at
+the same position as the glow so the two agree about where the light comes from.
+
+**Four of the eight biomes have no disc, deliberately.** A disc in all eight reads as a decal
+rather than as weather. The ones that have it are where you would actually see it — a risen sun
+(`arctic_dawn`), a clear midday (`glacier_teal`), a setting sun (`sunset_rose`), a moon
+(`starlit_night`). The ones that do not are the two overcast/hazy biomes, where cloud is the
+reason, and the two dusk biomes, where the sun is already below the horizon. `celestial_strength
+= 0` skips the draw, and `sky_layer_check.gd` reports those as `--` rather than failing them.
+
+**The disc is laid out in PIXELS, unlike everything else in `sky_backdrop.gd`** — because it
+has to be round. Anchors are per-axis fractions, so anchoring it the way the glow is anchored
+makes the radius a fraction of width horizontally and of height vertically, squashing the sun
+by 1.78:1 on a 16:9 screen. Instead all four anchors collapse to the centre point and the
+offsets carry a square pixel extent out from there: the anchor keeps the centre correct on any
+viewport, the offsets keep the shape circular. Radius derives from viewport **height** on both
+axes, so the disc keeps a constant apparent size rather than growing on a wider phone.
+
+That is also the one thing here that needs `size_changed` connected. Everything else is
+anchored and follows the viewport for free.
+
+**A disc must be brighter than its own glow**, and getting this backwards is the easy mistake.
+The disc sits *inside* the bloom, so it is composited over an already-brightened sky. First
+authoring made each disc *warmer* than its glow, which measured 28–32/255 — barely visible —
+because a warm disc over a warm glow has almost no gap to cover. The sun's disc is the
+brightest thing in the sky and its glow is the dimmer, more saturated spill; authored that way
+the same discs measure 56–97.
 
 **Starting value is `glow_strength = 0`.** All six headless gates instantiate `main.tscn` and
 `BiomeDirector` never applies a palette under `--headless`, so that constant is the sky they
