@@ -27,10 +27,31 @@ Front-to-back, as wired in `scenes/main.tscn`:
 | `ParallaxBackground/MidRidge` | `ParallaxLayer` | `(0.14, 0)` | `background_generator.gd` |
 | `ParallaxBackground/FarRidge` | `ParallaxLayer` | `(0.06, 0)` | `background_generator.gd` |
 | `ParallaxBackground/FarPeaks` | `ParallaxLayer` | `(0.03, 0)` | `background_generator.gd` |
+| `SkyBackdrop/SkyGlow` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 | `SkyBackdrop/SkyGradient` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 
 `ParallaxBackground` sits at the engine default `-100`, so everything it contains is
 behind the world and in front of the sky.
+
+`SkyGlow` and `SkyGradient` share a `layer`, so their order is **tree order**: the glow is
+added second in `_ready()` and therefore draws over the gradient. There is no `z_index`
+anywhere in the project to override that with.
+
+### Overdraw is the sky's real budget
+
+Every layer stacked over a pixel shades it again, and full-screen semi-transparent rects are
+where a mobile GPU actually pays. `SkyGradient` is opaque so it costs nothing extra;
+`SkyGlow` and `SnowDrift` are alpha. **Budget: at most 4 full-screen alpha layers at once.**
+
+Two rules follow, both already applied in `sky_backdrop.gd` and worth keeping:
+
+- **Hide a layer at zero, do not draw it transparent.** A fully transparent full-screen
+  `TextureRect` still rasterises every pixel it covers. Same reasoning as
+  `terrain_generator.paint_ice_band()`'s `visible = opacity > 0`.
+- **Size a rect to its content, not to the screen.** `SkyGlow` is anchored to its own box.
+  It is deliberately *not* clamped to the viewport: fragments outside are scissored before
+  shading, so a bloom hanging off an edge only costs the visible part — while clamping would
+  squash the texture and change the falloff's shape.
 
 Note the pre-existing quirk that terrain draws **over** the player: `TerrainGenerator`
 comes after `Player` in `main.tscn`. Not introduced by the visual pass and not changed by

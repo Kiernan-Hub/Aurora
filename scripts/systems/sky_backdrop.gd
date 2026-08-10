@@ -40,11 +40,29 @@ const SKY_MID_OFFSET: float = 0.58
 # Sampled vertically and stretched horizontally, so only the height needs resolution.
 const GRADIENT_TEXTURE_HEIGHT: int = 256
 
+# --- Directional glow ------------------------------------------------------------------
+# Square, and only 256 across: it is a smooth blob with no detail in it, so all the
+# resolution buys is fewer banding steps once it is stretched across most of the screen.
+const GLOW_TEXTURE_SIZE: int = 256
+# Alpha falloff from the centre out. Roughly (1-t)^2 rather than the linear ramp two stops
+# would give -- a linear falloff has a visible hard outer circle where it reaches zero,
+# because the eye finds the discontinuity in the SLOPE, not in the value.
+const GLOW_FALLOFF_OFFSETS: PackedFloat32Array = PackedFloat32Array([0.0, 0.25, 0.5, 0.75, 1.0])
+const GLOW_FALLOFF_ALPHAS: PackedFloat32Array = PackedFloat32Array([1.0, 0.62, 0.32, 0.11, 0.0])
+# The starting glow is OFF. Every one of the six headless gates instantiates main.tscn, and
+# biome_director never applies a palette under --headless -- so this value is the sky they
+# see. At 0 the node is hidden and this whole feature is byte-identical to not existing,
+# which is what keeps 1a incapable of moving a gate result.
+const STARTING_GLOW_STRENGTH: float = 0.0
+
 # Held so apply_palette() can recolour the sky in place. A Gradient is mutable and
 # GradientTexture2D re-bakes itself when its gradient changes, so a biome transition costs
 # one 1x256 texture update per frame it actually moves -- no node work, no rebuild, and
 # nothing for the _process this file still deliberately does not have to do.
 var sky_gradient: Gradient
+# The bloom. Recoloured, moved and resized through its ANCHORS in apply_palette(), so it
+# needs no _process, no resize handler and no viewport read -- see position_glow().
+var sky_glow: TextureRect
 
 
 func _ready() -> void:
@@ -60,6 +78,17 @@ func _ready() -> void:
 	sky.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(sky)
 
+	# Added AFTER the gradient so it draws over it. Both are children of this CanvasLayer, so
+	# draw order is tree order -- there is no z_index anywhere in the project.
+	sky_glow = TextureRect.new()
+	sky_glow.name = "SkyGlow"
+	sky_glow.texture = build_glow_texture()
+	sky_glow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	sky_glow.stretch_mode = TextureRect.STRETCH_SCALE
+	sky_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sky_glow.visible = STARTING_GLOW_STRENGTH > 0.0
+	add_child(sky_glow)
+
 
 # Called by biome_director.gd only. Never called under --headless.
 func apply_palette(palette: BiomePalette) -> void:
@@ -70,6 +99,47 @@ func apply_palette(palette: BiomePalette) -> void:
 	# per-element set_color/set_offset would bake three times per frame instead of two.
 	sky_gradient.offsets = PackedFloat32Array([0.0, palette.sky_mid_offset, 1.0])
 	sky_gradient.colors = PackedColorArray([palette.sky_top, palette.sky_mid, palette.sky_horizon])
+
+	if sky_glow == null:
+		return
+	# Hidden outright rather than drawn at alpha 0. A fully transparent full-screen TextureRect
+	# still rasterises every pixel it covers, and on a mobile GPU stacked full-screen alpha is
+	# the fill-rate cost that actually matters here -- same reasoning as
+	# terrain_generator.paint_ice_band()'s `visible = opacity > 0`.
+	sky_glow.visible = palette.glow_strength > 0.0
+	if not sky_glow.visible:
+		return
+	var glow_modulate: Color = palette.glow_color
+	glow_modulate.a = palette.glow_color.a * palette.glow_strength
+	sky_glow.modulate = glow_modulate
+	position_glow(palette.glow_position, palette.glow_radius)
+
+
+# Places the bloom by ANCHOR rather than by position/size in pixels.
+#
+# Anchors are fractions of the parent rect, which is exactly what glow_position and
+# glow_radius already are -- so the layout is correct on any viewport with no resize signal
+# to connect, no get_viewport_rect() read, and nothing to recompute when the window changes.
+# That matters more here than usual: project.godot pins no viewport size and stretches with
+# aspect="expand", so the visible rect genuinely differs per device (see this file's header).
+#
+# The rect is deliberately NOT clamped to the screen. Fragments outside the viewport are
+# scissored by the rasteriser before shading, so a bloom hanging off the left edge costs only
+# the part you can see; clamping would instead squash the texture and change the shape of the
+# falloff. The worst case is a centred glow large enough to cover everything, which is one
+# full-screen alpha layer -- the budget this pass is working to.
+func position_glow(glow_position: Vector2, glow_radius: Vector2) -> void:
+	sky_glow.anchor_left = glow_position.x - glow_radius.x
+	sky_glow.anchor_right = glow_position.x + glow_radius.x
+	sky_glow.anchor_top = glow_position.y - glow_radius.y
+	sky_glow.anchor_bottom = glow_position.y + glow_radius.y
+	# Anchors alone do not move a Control -- the offsets are pixel deltas from them, and they
+	# retain whatever the previous layout left behind. Zeroing them is what makes the rect
+	# exactly the anchored box.
+	sky_glow.offset_left = 0.0
+	sky_glow.offset_right = 0.0
+	sky_glow.offset_top = 0.0
+	sky_glow.offset_bottom = 0.0
 
 
 func build_sky_texture() -> GradientTexture2D:
@@ -86,4 +156,31 @@ func build_sky_texture() -> GradientTexture2D:
 	texture.height = GRADIENT_TEXTURE_HEIGHT
 	texture.fill_from = Vector2(0.0, 0.0)
 	texture.fill_to = Vector2(0.0, 1.0)
+	return texture
+
+
+# The bloom itself: white, fading to transparent. The COLOUR comes from the TextureRect's
+# modulate, so one texture serves every biome and a transition never rebakes it -- only the
+# vertical sky gradient above does that.
+#
+# Same GradientTexture2D idiom snow_drift.gd already uses for its flake dot, just larger and
+# with a softer tail.
+func build_glow_texture() -> GradientTexture2D:
+	var gradient: Gradient = Gradient.new()
+	var glow_colors: PackedColorArray = PackedColorArray()
+	for stop_index: int in range(GLOW_FALLOFF_ALPHAS.size()):
+		glow_colors.append(Color(1.0, 1.0, 1.0, GLOW_FALLOFF_ALPHAS[stop_index]))
+	gradient.offsets = GLOW_FALLOFF_OFFSETS
+	gradient.colors = glow_colors
+
+	var texture: GradientTexture2D = GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.width = GLOW_TEXTURE_SIZE
+	texture.height = GLOW_TEXTURE_SIZE
+	texture.fill = GradientTexture2D.FILL_RADIAL
+	# Centre out to the middle of the right edge, so gradient offset 1.0 lands exactly on the
+	# rect's edge midpoint. The corners sit at distance ~1.41 and clamp to the final stop,
+	# which is fully transparent -- so the blob never shows the square it is drawn in.
+	texture.fill_from = Vector2(0.5, 0.5)
+	texture.fill_to = Vector2(1.0, 0.5)
 	return texture

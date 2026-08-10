@@ -144,13 +144,16 @@ func check_palettes() -> void:
 		var label: String = "palette[%d]" % cycle_index
 
 		for field_name: String in [
-			"sky_top", "sky_mid", "sky_horizon",
+			"sky_top", "sky_mid", "sky_horizon", "glow_color",
 			"scenery_far", "scenery_near", "haze_far", "haze_near",
 			"tree_tint", "bird_tint",
 			"ice_surface", "ice_depth",
 			"snow_tint", "coin_color", "obstacle_color",
 		]:
 			assert_color_in_range(label + "." + field_name, palette.get(field_name))
+
+		check_glow_authoring(label, palette)
+		check_glow_layout(label, palette)
 
 		var surface_luminance: float = get_luminance(palette.ice_surface)
 		if surface_luminance < MIN_ICE_SURFACE_LUMINANCE:
@@ -180,6 +183,57 @@ func check_palettes() -> void:
 					% [label, palette.ice_texture.get_size(), EXPECTED_ICE_TILE_SIZE, EXPECTED_ICE_TILE_SIZE])
 			else:
 				check_ice_ramp_matches_default(label, palette.ice_texture)
+
+
+# The directional glow is placed by ANCHOR, in screen fractions -- sky_backdrop.position_glow().
+# Anchors outside [0,1] are legal to Godot and will happily lay out a rect that is entirely
+# off screen, so a typo here is not a crash and not a visible error either: it is a biome that
+# quietly has no glow. These bounds are deliberately loose rather than [0,1], because a bloom
+# hanging PARTLY off the edge is the normal case and the good-looking one (that is how a light
+# source sits just past the frame). What they catch is a value in the wrong unit entirely --
+# pixels instead of fractions, or a degrees/percent mix-up.
+const MIN_GLOW_ANCHOR: float = -1.0
+const MAX_GLOW_ANCHOR: float = 2.0
+# Below this the layer is drawn but contributes nothing a player could see, which is almost
+# certainly a mistake -- 0 exactly is the supported way to say "this biome has no directional
+# light", and it skips the draw entirely.
+const MIN_MEANINGFUL_GLOW_STRENGTH: float = 0.02
+
+
+# Split from check_glow_layout deliberately. These two are AUTHORING rules -- they describe
+# what a human may write in a .tres -- and neither is a valid thing to assert about a blended
+# palette, because a crossfade legitimately passes through values no author would ever type.
+# glow_strength is the sharp case: 0 is the documented way to say "this biome has no
+# directional light", so every transition into or out of such a biome sweeps the whole range
+# below MIN_MEANINGFUL_GLOW_STRENGTH on its way up. Running this check on blends would fail
+# the gate for correct data. (It does not fire today only because no palette currently uses
+# 0 -- caught by negative-testing this gate rather than by it passing.)
+func check_glow_authoring(label: String, palette: BiomePalette) -> void:
+	if palette.glow_radius.x <= 0.0 or palette.glow_radius.y <= 0.0:
+		failures.append("%s.glow_radius %s has a non-positive axis -- the rect collapses and the bloom vanishes"
+			% [label, palette.glow_radius])
+	if palette.glow_strength > 0.0 and palette.glow_strength < MIN_MEANINGFUL_GLOW_STRENGTH:
+		failures.append("%s.glow_strength %.4f is nonzero but invisible -- use exactly 0 to disable the glow, which also skips the draw"
+			% [label, palette.glow_strength])
+
+
+# Safe to assert about an authored palette AND a blended one: the anchors are a convex
+# combination of the endpoints', so if both ends lay out on screen every frame between them
+# does too -- and if one end does not, this catches it at both the endpoint and the blend.
+func check_glow_layout(label: String, palette: BiomePalette) -> void:
+	# Only the extremes need checking: the rect is the box between them, so if both corners are
+	# in range every anchor derived from them is too.
+	var anchors: Array[float] = [
+		palette.glow_position.x - palette.glow_radius.x,
+		palette.glow_position.x + palette.glow_radius.x,
+		palette.glow_position.y - palette.glow_radius.y,
+		palette.glow_position.y + palette.glow_radius.y,
+	]
+	for anchor: float in anchors:
+		if anchor < MIN_GLOW_ANCHOR or anchor > MAX_GLOW_ANCHOR:
+			failures.append("%s glow anchor %.3f outside [%.1f, %.1f] (position %s, radius %s) -- these are SCREEN FRACTIONS, not pixels; off-screen anchors lay out silently and the biome just has no glow"
+				% [label, anchor, MIN_GLOW_ANCHOR, MAX_GLOW_ANCHOR, palette.glow_position, palette.glow_radius])
+			return
 
 
 # See MAX_ICE_RAMP_DEVIATION for why a variant is required to share the default tile's
@@ -333,10 +387,14 @@ func check_blending() -> void:
 				return
 
 			var label: String = "blend[%d->%d]@%.2f" % [cycle_index, (cycle_index + 1) % cycle.size(), progress]
-			for field_name: String in ["sky_top", "sky_mid", "sky_horizon", "scenery_far",
-				"scenery_near", "haze_far", "haze_near", "ice_surface", "ice_depth",
+			for field_name: String in ["sky_top", "sky_mid", "sky_horizon", "glow_color",
+				"scenery_far", "scenery_near", "haze_far", "haze_near", "ice_surface", "ice_depth",
 				"snow_tint", "tree_tint", "bird_tint"]:
 				assert_color_in_range(label + "." + field_name, out.get(field_name))
+			# The blended glow has to be layout-safe too, not just in-range as a colour: it is fed
+			# straight to sky_backdrop.position_glow() on every frame of the transition, and a
+			# mid-transition value is the one no endpoint check ever looks at.
+			check_glow_layout(label, out)
 
 	# The endpoints must be exact, not merely close: at weight 0 the blend IS the source
 	# palette, otherwise every biome shows a slightly wrong colour for its whole duration.
@@ -352,7 +410,48 @@ func check_blending() -> void:
 	if not out.sky_top.is_equal_approx(cycle[1].sky_top) or not out.ice_surface.is_equal_approx(cycle[1].ice_surface):
 		failures.append("blend at weight 1 does not reproduce the destination palette")
 
+	check_blend_carries_glow()
 	check_ice_pattern_crossfade()
+
+
+# glow_position, glow_radius and glow_strength are the first NON-COLOUR, non-scalar fields to
+# ride a channel, and a field left out of blend_into() fails in a way nothing else here would
+# notice: `out` is a fresh BiomePalette, so an omitted field silently reads as the class
+# default -- a centred, strength-0 glow. Every colour check still passes and the glow simply
+# stops moving. So assert both endpoints reproduce exactly.
+func check_blend_carries_glow() -> void:
+	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
+	var out: BiomePalette = BiomePalette.new()
+	var weights: PackedFloat32Array = PackedFloat32Array()
+	weights.resize(BiomePalette.CHANNEL_COUNT)
+
+	# A pair that actually differs on every glow field, or the assertion is vacuous.
+	var from_palette: BiomePalette = null
+	var to_palette: BiomePalette = null
+	for cycle_index: int in range(cycle.size()):
+		var candidate_from: BiomePalette = cycle[cycle_index]
+		var candidate_to: BiomePalette = cycle[(cycle_index + 1) % cycle.size()]
+		if candidate_from.glow_position != candidate_to.glow_position \
+				and candidate_from.glow_radius != candidate_to.glow_radius \
+				and not is_equal_approx(candidate_from.glow_strength, candidate_to.glow_strength):
+			from_palette = candidate_from
+			to_palette = candidate_to
+			break
+	if from_palette == null:
+		failures.append("no adjacent biome pair differs on all of glow_position/glow_radius/glow_strength -- the glow never moves in game, so blend_into carrying it is untested")
+		return
+
+	for endpoint: int in [0, 1]:
+		var expected: BiomePalette = from_palette if endpoint == 0 else to_palette
+		for channel_index: int in range(BiomePalette.CHANNEL_COUNT):
+			weights[channel_index] = float(endpoint)
+		BiomePalette.blend_into(from_palette, to_palette, weights, out)
+		if not out.glow_position.is_equal_approx(expected.glow_position):
+			failures.append("blend at weight %d lost glow_position (%s, expected %s) -- the field is missing from blend_into" % [endpoint, out.glow_position, expected.glow_position])
+		if not out.glow_radius.is_equal_approx(expected.glow_radius):
+			failures.append("blend at weight %d lost glow_radius (%s, expected %s) -- the field is missing from blend_into" % [endpoint, out.glow_radius, expected.glow_radius])
+		if not is_equal_approx(out.glow_strength, expected.glow_strength):
+			failures.append("blend at weight %d lost glow_strength (%.4f, expected %.4f) -- the field is missing from blend_into" % [endpoint, out.glow_strength, expected.glow_strength])
 
 
 # The ice PATTERN is the one thing a blended palette cannot carry: a Polygon2D samples exactly

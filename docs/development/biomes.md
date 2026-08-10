@@ -98,6 +98,52 @@ Fading everything on one curve reads as somebody turning a dimmer; this reads as
 Each channel is a `smoothstep`, so it eases in *and* out: a linear ramp has a visible corner
 at both ends of the window, and both corners are readable as events.
 
+## The directional glow
+
+The sky gradient is **vertical**, so on its own every biome is lit uniformly from above and
+reads flat however the stops are tuned. `SkyGlow` is a soft radial bloom placed at a point on
+screen — the thing that makes the reference art's dawn and sunset frames read as *lit* rather
+than as a colour ramp. Four palette fields, all on `CHANNEL_SKY`:
+
+| Field | Meaning |
+|---|---|
+| `glow_color` | bloom colour; its alpha scales with `glow_strength` |
+| `glow_position` | centre, in **screen fractions** — `(0,0)` top-left, `(1,1)` bottom-right |
+| `glow_radius` | half-extent as a fraction of viewport width (x) and height (y) |
+| `glow_strength` | `0` hides the layer outright and skips the draw |
+
+**Placed by anchor, not by pixels.** Anchors are fractions of the parent rect, which is
+exactly what these fields already are — so the layout is right on any viewport with no resize
+signal, no `get_viewport_rect()` read and no `_process`. That matters more here than usual
+because `project.godot` pins no viewport size (see `visuals.md`). Two axes rather than one
+radius so the bloom's *shape* is authored rather than inherited from the device's aspect.
+
+**Straight alpha, not additive.** A warm bloom over a blue sky should pull the sky toward the
+warm hue, which is what alpha does; additive pushes toward white and loses the hue the biome
+is named for. The Mobile renderer is LDR anyway — a bright glow comes from darkening what
+surrounds it, exactly as the reference does it.
+
+**Position and radius interpolate too**, so during a transition the light *travels* rather
+than one bloom fading out while another fades in elsewhere. The eight palettes are authored
+as one arc: the source rises low-left through `arctic_dawn`, tracks up and over through
+midday, sets low-right at `sunset_rose` (the strongest glow, 0.85), fades through
+`violet_dusk` and `twilight_blue`, and `starlit_night` is a small cool halo high-left — the
+moon's, which Phase 1b will put a disc inside.
+
+**Starting value is `glow_strength = 0`.** All six headless gates instantiate `main.tscn` and
+`BiomeDirector` never applies a palette under `--headless`, so that constant is the sky they
+see: hidden, and byte-identical to the glow not existing.
+
+### A gate trap this pass hit
+
+`MIN_MEANINGFUL_GLOW_STRENGTH` ("nonzero but invisible") is an **authoring** rule and must
+only ever run against a `.tres`, never against a blended palette — which is why
+`biome_schedule_check.gd` splits `check_glow_authoring()` from `check_glow_layout()`. A
+crossfade out of a `glow_strength = 0` biome legitimately passes through every tiny value on
+its way up, so running the authoring check on blends fails the gate for *correct* data. It
+does not fire today only because no palette currently uses 0. Found by negative-testing the
+new gate, not by it passing — worth doing for any check added here.
+
 ## Why distance, not a clock
 
 The schedule is a pure function of `player.global_position.x` — which `main.gd` never

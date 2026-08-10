@@ -49,6 +49,29 @@ const CHANNEL_COUNT: int = 5
 # effect rather than a wash over the whole screen.
 @export_range(0.05, 0.95) var sky_mid_offset: float = 0.58
 
+# --- Directional glow -----------------------------------------------------------------
+# A soft radial bloom over the gradient, at a point on screen. The reason it exists: the sky
+# is a VERTICAL gradient, so without this every biome is lit uniformly from above and reads
+# flat. The reference art's dawn and sunset frames are the same palette family as ours -- what
+# separates them is that the light visibly comes from somewhere.
+#
+# Straight alpha, not additive. A warm bloom over a blue sky should pull the sky toward the
+# warm hue, which is what an alpha blend does; additive pushes toward white and loses the hue
+# the biome is named for. The Mobile renderer is LDR (components clamp at 1.0), so a bright
+# glow is achieved by darkening what surrounds it, not by overbright -- same as the reference.
+@export var glow_color: Color = Color(1.0, 0.92, 0.80, 1.0)
+# Centre, in SCREEN fractions: (0,0) top-left, (1,1) bottom-right. Fractions rather than
+# pixels because project.godot pins no viewport size and uses stretch/aspect="expand", so
+# there is no pixel coordinate that means the same thing on two devices.
+@export var glow_position: Vector2 = Vector2(0.5, 0.62)
+# Half-extent, as a fraction of viewport width (x) and height (y). Two axes rather than one
+# radius so the bloom can be a wide horizon wash rather than only ever a circle -- and so its
+# shape is authored, not inherited from whatever aspect ratio the device happens to have.
+@export var glow_radius: Vector2 = Vector2(0.55, 0.45)
+# 0 hides the layer outright, which is the common case: a flat overcast biome wants no
+# directional light at all and should not pay a full-screen alpha blend to say so.
+@export_range(0.0, 1.0) var glow_strength: float = 0.0
+
 @export_group("Scenery")
 # Furthest parallax layer (depth_t 0) and nearest (depth_t 1); the layers in between
 # interpolate. Under a pale sky far must be LIGHTER than near, under a dark sky darker --
@@ -132,6 +155,14 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	out.sky_mid = from.sky_mid.lerp(to.sky_mid, sky)
 	out.sky_horizon = from.sky_horizon.lerp(to.sky_horizon, sky)
 	out.sky_mid_offset = lerpf(from.sky_mid_offset, to.sky_mid_offset, sky)
+	out.glow_color = from.glow_color.lerp(to.glow_color, sky)
+	# Position and radius interpolate too, so the light SOURCE travels across the sky during a
+	# transition rather than one bloom fading out while a second fades in somewhere else. When
+	# either end has strength 0 the moving glow is invisible anyway, so this costs nothing in
+	# the common case and is the whole effect in a dawn-to-sunset pair.
+	out.glow_position = from.glow_position.lerp(to.glow_position, sky)
+	out.glow_radius = from.glow_radius.lerp(to.glow_radius, sky)
+	out.glow_strength = lerpf(from.glow_strength, to.glow_strength, sky)
 
 	var scenery: float = weights[CHANNEL_SCENERY]
 	out.scenery_far = from.scenery_far.lerp(to.scenery_far, scenery)
