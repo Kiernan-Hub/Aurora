@@ -28,4 +28,4 @@ snow_tint = Color(0.95, 0.98, 1, 0.46)
 snow_density_scale = 1.0
 mist_strength = 0.3
 reflection_strength = 0.35
-star_density = 0.4
+star_density = 0.6

@@ -28,6 +28,7 @@ Front-to-back, as wired in `scenes/main.tscn`:
 | `ParallaxBackground/FarRidge` | `ParallaxLayer` | `(0.06, 0)` | `background_generator.gd` |
 | `ParallaxBackground/FarPeaks` | `ParallaxLayer` | `(0.03, 0)` | `background_generator.gd` |
 | `SkyBackdrop/SkyCelestial` | `TextureRect` | `-200` | `sky_backdrop.gd` |
+| `SkyBackdrop/SkyStars` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 | `SkyBackdrop/SkyGlow` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 | `SkyBackdrop/SkyGradient` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 

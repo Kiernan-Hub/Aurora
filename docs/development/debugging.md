@@ -254,7 +254,7 @@ Full design notes: `docs/development/biomes.md`.
 ```
 
 **A gate, but not a headless one — it has to render.** It measures what each optional sky
-layer (`SkyGlow`, `SkyCelestial`, and whatever 1c/1d add) actually puts on screen, in pixels,
+layer (`SkyGlow`, `SkyCelestial`, `SkyStars`) actually puts on screen, in pixels,
 per biome, and exits non-zero if any layer a biome *claims* falls under
 `MIN_PEAK_CONTRIBUTION` (24/255). A layer a biome does not claim — `celestial_strength = 0`,
 which four of the eight palettes set deliberately — reports as `--` and is skipped.

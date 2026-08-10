@@ -52,14 +52,12 @@ const SETTLE_FRAMES: int = 6
 # the weakest biomes and read as "no glow at all" in game, while 33+ read as present. 24 sits
 # between them with margin on both sides.
 const MIN_PEAK_CONTRIBUTION: int = 24
-# Every 4th pixel on both axes. Fine for the glow, which is a smooth blob hundreds of pixels
-# across -- but the DISC is small, so see the stride note in measure_peak().
-const SAMPLE_STRIDE: int = 4
 
 # node name under SkyBackdrop, palette field holding its 0-1 strength
 const LAYERS: Array[Array] = [
 	["SkyGlow", "glow_strength"],
 	["SkyCelestial", "celestial_strength"],
+	["SkyStars", "star_density"],
 ]
 
 var main: Node2D
@@ -163,48 +161,38 @@ func _process(_delta: float) -> bool:
 	return false
 
 
-# Peak per-channel difference. Strided for speed, but the stride is dropped for a SMALL layer:
-# the disc can be ~14px in radius, and a 4px stride over a 28px circle samples it thinly
-# enough to under-report its peak. Anything under DENSE_SCAN_AREA is walked at full density.
-const DENSE_SCAN_AREA: int = 200 * 200
-
-
+# Exact peak per-channel difference over EVERY pixel, compared as raw bytes.
+#
+# Full density, not strided, and that matters as soon as a layer is made of small features: a
+# star is a ONE PIXEL dot, and a 4px stride samples any given one with probability 1/16. The
+# earlier strided-plus-dense-window version was written for the glow (a smooth blob hundreds
+# of pixels across) and would have under-reported the starfield badly enough to fail it.
+#
+# Raw bytes rather than get_pixel(): converting both frames to RGB8 and walking the
+# PackedByteArrays is a flat integer loop, which is fast enough in GDScript to afford full
+# density over ~750k pixels, where 1.5M get_pixel() calls per measurement would not be.
+# Converting mutates the images, which is fine -- each is used for exactly one comparison.
 func measure_peak(without_layer: Image, with_layer: Image) -> int:
-	var width: int = without_layer.get_width()
-	var height: int = without_layer.get_height()
-	var peak: float = 0.0
-	# First pass, strided, to find where the layer lives at all.
-	var found_x: int = -1
-	var found_y: int = -1
-	for y: int in range(0, height, SAMPLE_STRIDE):
-		for x: int in range(0, width, SAMPLE_STRIDE):
-			var difference: float = channel_difference(without_layer, with_layer, x, y)
-			if difference > peak:
-				peak = difference
-				found_x = x
-				found_y = y
+	without_layer.convert(Image.FORMAT_RGB8)
+	with_layer.convert(Image.FORMAT_RGB8)
+	var without_bytes: PackedByteArray = without_layer.get_data()
+	var with_bytes: PackedByteArray = with_layer.get_data()
+	if without_bytes.size() != with_bytes.size():
+		return 0
 
-	# Second pass, dense, in a window around the strongest sample -- so a small bright disc
-	# reports its true peak rather than whatever the coarse grid happened to land on.
-	if found_x >= 0:
-		var half: int = int(sqrt(float(DENSE_SCAN_AREA))) / 2
-		for y: int in range(maxi(0, found_y - half), mini(height, found_y + half)):
-			for x: int in range(maxi(0, found_x - half), mini(width, found_x + half)):
-				peak = maxf(peak, channel_difference(without_layer, with_layer, x, y))
-	return int(round(peak * 255.0))
-
-
-func channel_difference(a_image: Image, b_image: Image, x: int, y: int) -> float:
-	var a: Color = a_image.get_pixel(x, y)
-	var b: Color = b_image.get_pixel(x, y)
-	return maxf(maxf(absf(b.r - a.r), absf(b.g - a.g)), absf(b.b - a.b))
+	var peak: int = 0
+	for byte_index: int in range(without_bytes.size()):
+		var difference: int = absi(int(with_bytes[byte_index]) - int(without_bytes[byte_index]))
+		if difference > peak:
+			peak = difference
+	return peak
 
 
 func report() -> void:
 	var failures: Array[String] = []
 	print("")
-	print("biome              SkyGlow   SkyCelestial")
-	print("------------------------------------------")
+	print("biome              SkyGlow   SkyCelestial   SkyStars")
+	print("-----------------------------------------------------")
 	for cycle_index: int in range(peaks.size()):
 		var palette: BiomePalette = BiomeDirector.BIOME_CYCLE[cycle_index]
 		var cells: PackedStringArray = PackedStringArray()
@@ -217,7 +205,7 @@ func report() -> void:
 			if peak < MIN_PEAK_CONTRIBUTION:
 				failures.append("%s %s peaks at %d/255, below the %d floor -- it is on screen but not visible. Raise its strength, move it into unoccluded sky, or pick a colour further from this biome's sky colours"
 					% [palette.resource_path.get_file().get_basename(), LAYERS[column][0], peak, MIN_PEAK_CONTRIBUTION])
-		print("%-18s %s  %s" % [palette.resource_path.get_file().get_basename(), cells[0], cells[1]])
+		print("%-18s %s  %s  %s" % [palette.resource_path.get_file().get_basename(), cells[0], cells[1], cells[2]])
 
 	var claimed: int = 0
 	for row: PackedInt32Array in peaks:

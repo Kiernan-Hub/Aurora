@@ -156,6 +156,7 @@ func check_palettes() -> void:
 		check_glow_layout(label, palette)
 		check_celestial_authoring(label, palette)
 		check_celestial_layout(label, palette)
+		check_star_authoring(label, palette)
 
 		var surface_luminance: float = get_luminance(palette.ice_surface)
 		if surface_luminance < MIN_ICE_SURFACE_LUMINANCE:
@@ -245,6 +246,8 @@ func check_glow_layout(label: String, palette: BiomePalette) -> void:
 const MIN_CELESTIAL_POSITION: float = -0.2
 const MAX_CELESTIAL_POSITION: float = 1.2
 const MIN_MEANINGFUL_CELESTIAL_STRENGTH: float = 0.02
+# Stars fade by alpha, so the dead range is a little wider than the other two layers'.
+const MIN_MEANINGFUL_STAR_DENSITY: float = 0.05
 
 
 # Authoring rules only -- see check_glow_authoring for why these must never run against a
@@ -258,6 +261,15 @@ func check_celestial_authoring(label: String, palette: BiomePalette) -> void:
 	if palette.celestial_strength < MIN_MEANINGFUL_CELESTIAL_STRENGTH:
 		failures.append("%s.celestial_strength %.4f is nonzero but invisible -- use exactly 0 to disable the disc, which also skips the draw"
 			% [label, palette.celestial_strength])
+
+
+# Same authoring-only rule as the other two layers: 0 is how a biome says "no stars", and
+# anything between 0 and the floor is a value that draws a layer nobody can see. The pixel
+# floor lives in sky_layer_check.gd; this only catches the obviously-dead range.
+func check_star_authoring(label: String, palette: BiomePalette) -> void:
+	if palette.star_density > 0.0 and palette.star_density < MIN_MEANINGFUL_STAR_DENSITY:
+		failures.append("%s.star_density %.4f is nonzero but invisible -- use exactly 0 to disable the starfield, which also skips the draw"
+			% [label, palette.star_density])
 
 
 # Safe against authored and blended palettes alike: the centre is a convex combination of the
@@ -461,9 +473,13 @@ func check_blending() -> void:
 # default -- so deleting the celestial_size lerp from blend_into changed nothing observable and
 # the gate passed. An omitted field is only detectable against endpoints that actually differ
 # from the default, so the pair has to be chosen per group.
+# star_density rides CHANNEL_ATMOSPHERE rather than CHANNEL_SKY -- stars are weather, not
+# light -- but it is a sky LAYER's strength and fails the same way, so it is asserted here
+# with the rest. A single-field group is fine: the pair only has to differ on that one field.
 const SKY_FIELD_GROUPS: Array[Array] = [
 	["glow_position", "glow_radius", "glow_strength"],
 	["celestial_position", "celestial_size", "celestial_strength"],
+	["star_density"],
 ]
 
 

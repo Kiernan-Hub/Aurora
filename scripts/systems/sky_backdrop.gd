@@ -73,6 +73,30 @@ const CELESTIAL_FALLOFF_ALPHAS: PackedFloat32Array = [1.0, 1.0, 0.62, 0.18, 0.0]
 const CELESTIAL_HALO_SCALE: float = 2.6
 const STARTING_CELESTIAL_STRENGTH: float = 0.0
 
+# --- Stars -------------------------------------------------------------------------------
+# Built in code rather than shipped as a PNG, the same way snow_drift.gd builds its flake dot
+# and build_sky_texture() builds the gradient. One less asset to import, and it cannot go
+# stale against a palette.
+#
+# 16:9 so the scale factor is the same on both axes at the common aspect, which keeps stars
+# ROUND. A square texture stretched to a 16:9 viewport squashes every dot to 0.63 of its
+# height, and a one-pixel dot squashed like that flickers in and out as it lands on and off
+# the pixel grid.
+const STAR_TEXTURE_SIZE: Vector2i = Vector2i(1024, 576)
+# Scattered uniformly, so only the ones that land in the open sky band above the ridgeline are
+# ever seen -- roughly a third. That is correct (stars do not show through mountains) and the
+# count is chosen for what survives, not for what is drawn.
+const STAR_COUNT: int = 300
+# Fixed, so the sky is the same every run. NOT derived from session_seed: background code must
+# never read it (visuals.md), and a starfield that reshuffles per run is a bug, not variety.
+const STAR_RNG_SEED: int = 20260810
+# Ceiling on the brightest star at star_density 1.0. Full white reads as pinpricks of paint.
+const STAR_MAX_ALPHA: float = 0.9
+# Fraction of stars that get a faint halo ring, so the field has a couple of sizes in it.
+const STAR_HALO_CHANCE: float = 0.22
+const STAR_HALO_ALPHA_SCALE: float = 0.3
+const STARTING_STAR_DENSITY: float = 0.0
+
 # Held so apply_palette() can recolour the sky in place. A Gradient is mutable and
 # GradientTexture2D re-bakes itself when its gradient changes, so a biome transition costs
 # one 1x256 texture update per frame it actually moves -- no node work, no rebuild, and
@@ -81,6 +105,7 @@ var sky_gradient: Gradient
 # The bloom. Recoloured, moved and resized through its ANCHORS in apply_palette(), so it
 # needs no _process, no resize handler and no viewport read -- see position_glow().
 var sky_glow: TextureRect
+var sky_stars: TextureRect
 # The disc. Unlike the glow this is laid out in PIXELS (see palette.celestial_size), so its
 # layout inputs are retained and reapplied whenever the viewport resizes.
 var sky_celestial: TextureRect
@@ -100,6 +125,21 @@ func _ready() -> void:
 	sky.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	sky.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(sky)
+
+	# Above the gradient but BELOW the glow, so a dawn or dusk bloom washes the stars out near
+	# the light instead of stars sitting on top of the sun. Draw order is tree order.
+	sky_stars = TextureRect.new()
+	sky_stars.name = "SkyStars"
+	sky_stars.texture = build_star_texture()
+	sky_stars.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	# COVERED, not SCALE. Scaling to fit would stretch the field by the viewport's aspect and
+	# turn every star into an ellipse; covering crops instead, so stars stay round on any
+	# device and the only cost is losing some off the edges -- of which there are 300.
+	sky_stars.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	sky_stars.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sky_stars.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	sky_stars.visible = STARTING_STAR_DENSITY > 0.0
+	add_child(sky_stars)
 
 	# Added AFTER the gradient so it draws over it. Both are children of this CanvasLayer, so
 	# draw order is tree order -- there is no z_index anywhere in the project.
@@ -139,8 +179,25 @@ func apply_palette(palette: BiomePalette) -> void:
 	sky_gradient.offsets = PackedFloat32Array([0.0, palette.sky_mid_offset, 1.0])
 	sky_gradient.colors = PackedColorArray([palette.sky_top, palette.sky_mid, palette.sky_horizon])
 
+	apply_stars(palette)
 	apply_glow(palette)
 	apply_celestial(palette)
+
+
+# star_density has been authored in all eight palettes since the biome pass landed and read by
+# nothing until now. It rides CHANNEL_ATMOSPHERE, with the snow -- stars are weather, not light.
+#
+# Density scales ALPHA rather than hiding individual stars, and the field is baked with a wide
+# spread of per-star brightness so that works out: as alpha comes down the faint majority drop
+# below perception first and only the brightest remain. Fading a uniform field would read as
+# "dimmer stars"; fading a varied one reads as "fewer stars", which is what is wanted.
+func apply_stars(palette: BiomePalette) -> void:
+	if sky_stars == null:
+		return
+	sky_stars.visible = palette.star_density > 0.0
+	if not sky_stars.visible:
+		return
+	sky_stars.modulate = Color(1.0, 1.0, 1.0, palette.star_density * STAR_MAX_ALPHA)
 
 
 func apply_glow(palette: BiomePalette) -> void:
@@ -270,6 +327,36 @@ func build_glow_texture() -> GradientTexture2D:
 	texture.fill_from = Vector2(0.5, 0.5)
 	texture.fill_to = Vector2(1.0, 0.5)
 	return texture
+
+
+# The starfield, scattered once at a fixed seed.
+#
+# LA8 rather than RGBA8: the stars are white and their colour comes from modulate, so only
+# luminance and alpha are ever needed. Halves the image to ~1.1MB.
+func build_star_texture() -> ImageTexture:
+	var image: Image = Image.create(STAR_TEXTURE_SIZE.x, STAR_TEXTURE_SIZE.y, false, Image.FORMAT_LA8)
+	image.fill(Color(1.0, 1.0, 1.0, 0.0))
+
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = STAR_RNG_SEED
+
+	for star_index: int in range(STAR_COUNT):
+		# Inset by one pixel so a halo never needs bounds-checking.
+		var x: int = rng.randi_range(1, STAR_TEXTURE_SIZE.x - 2)
+		var y: int = rng.randi_range(1, STAR_TEXTURE_SIZE.y - 2)
+		# The wide brightness spread is what makes star_density read as COUNT rather than as
+		# dimming -- see apply_stars().
+		var brightness: float = rng.randf_range(0.3, 1.0)
+		image.set_pixel(x, y, Color(1.0, 1.0, 1.0, brightness))
+
+		if rng.randf() < STAR_HALO_CHANCE:
+			var halo: Color = Color(1.0, 1.0, 1.0, brightness * STAR_HALO_ALPHA_SCALE)
+			image.set_pixel(x - 1, y, halo)
+			image.set_pixel(x + 1, y, halo)
+			image.set_pixel(x, y - 1, halo)
+			image.set_pixel(x, y + 1, halo)
+
+	return ImageTexture.create_from_image(image)
 
 
 # The disc: an opaque core with a soft halo. Same radial idiom as the glow, but the alpha is

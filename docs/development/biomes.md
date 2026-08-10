@@ -203,6 +203,38 @@ because a warm disc over a warm glow has almost no gap to cover. The sun's disc 
 brightest thing in the sky and its glow is the dimmer, more saturated spill; authored that way
 the same discs measure 56–97.
 
+## Stars
+
+`star_density` was authored in all eight palettes when the biome pass landed and read by
+nothing until 2026-08-10. It rides `CHANNEL_ATMOSPHERE`, with the snow — **stars are weather,
+not light** — and drives one `SkyStars` `TextureRect`.
+
+**Built in code, not shipped as a PNG**, the same way `snow_drift.gd` builds its flake dot.
+300 dots scattered once at a fixed seed into a 1024×576 `LA8` image (white, so only luminance
+and alpha are ever needed; the colour comes from `modulate`).
+
+- **`STAR_RNG_SEED` is a constant and must never come from `session_seed`.** Background code
+  may not read it at all (`visuals.md`), and a starfield that reshuffles every run is a bug,
+  not variety.
+- **16:9, and `STRETCH_KEEP_ASPECT_COVERED`, so stars stay round.** A square texture scaled to
+  fit a 16:9 viewport squashes every dot to 0.63 of its height, and a 1px dot squashed like
+  that flickers as it lands on and off the pixel grid. Covering crops instead of distorting.
+- **Drawn above the gradient but below the glow**, so a dawn or dusk bloom washes stars out
+  near the light rather than stars sitting on top of the sun.
+- Scattered uniformly, so only the third or so that land above the ridgeline are ever seen.
+  That is correct — stars do not show through mountains — and `STAR_COUNT` is chosen for what
+  survives, not for what is drawn.
+
+**Density scales alpha, and the field is baked with a wide per-star brightness spread so that
+reads as *count*.** As alpha comes down the faint majority drop below perception first and
+only the brightest remain. Fading a uniform field would read as "dimmer stars"; fading a
+varied one reads as "fewer stars", which is what is wanted.
+
+The schedule is physical: no stars in the three daylight biomes, **none at `sunset_rose`
+either** — the sun has only just reached the horizon and that is the brightest sky in the
+cycle. First stars at `violet_dusk` (0.3), more at `twilight_blue` (0.6), full field at
+`starlit_night` (1.0), and a few of the brightest lingering into `arctic_dawn` (0.28).
+
 **Starting value is `glow_strength = 0`.** All six headless gates instantiate `main.tscn` and
 `BiomeDirector` never applies a palette under `--headless`, so that constant is the sky they
 see: hidden, and byte-identical to the glow not existing.
