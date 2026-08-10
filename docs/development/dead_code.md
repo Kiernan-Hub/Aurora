@@ -11,7 +11,8 @@ history.
 > lived inside `terrain_generator.gd`. Obstacles themselves are **live again** —
 > `scripts/systems/obstacle_spawner.gd` is wired into `main.tscn` under
 > `TerrainGenerator`, spawns `scenes/obstacles/obstacle.tscn`, and a hit calls
-> `Player.die()`. Until 2026-08-03 this file and `CLAUDE.md` both still said
+> `Player.absorb_hit()` (which dies *unless* a shield is held, and is skipped entirely
+> while boosting). Until 2026-08-03 this file and `CLAUDE.md` both still said
 > obstacles were unreferenced, which is why the note is here: don't read the
 > paragraph below as "there are no obstacles".
 
@@ -32,7 +33,8 @@ t≈0.10s, killing the run and making every manual playtest and the harness's
 
 ## Vertical parallax — tried, reverted
 
-Background parallax is **horizontal only** (`motion_scale = (0.3, 0)`). Vertical
+Background parallax is **horizontal only** — four layers, `motion_scale.x` 0.03 to 0.3,
+`motion_scale.y` always 0 on every one of them. Vertical
 parallax is deliberately off: it made the layer jump ~0.3× the camera's Y move, so
 each world rebase (~every 26s) snapped the background, and the layer's
 `y ∈ [-1024,1024]` coverage vanished after a few mega drops. With `motion_scale.y = 0`

@@ -80,6 +80,36 @@ would turn into a chevron every repeat.
 source's steep cracks into the long lazy ones the reference has, and slows the repeat to
 ~1.6 s at `MAX_SPEED` instead of ~0.5 s.
 
+## Ice hue drift (Phase 2a)
+
+`ice_surface` is written to every surface vertex identically, and the tile is greyscale, so
+before this a whole screen of ice was exactly one colour — the tile supplied texture but no
+colour variation at all. `ice_hue_variance` drifts the surface tint warm/cool as a
+low-frequency function of **world_x**.
+
+- **Pure in `world_x`**, exactly like `get_terrain_height` and the ridge silhouettes. A
+  chunk's last surface sample and the next chunk's first are the same `world_x`, so they get
+  the same shift and the drift crosses chunk boundaries seamlessly. Anything keyed on a chunk
+  index or a local x would crawl.
+- **`world_x` comes back out of the UVs.** `build_ice_band()` wrote `uv.x = world_x ×
+  horizontal_scale`, so `paint_ice_band()` inverts that instead of storing or recomputing it.
+  The drift therefore cannot fall out of step with the pattern, and repaint needs no idea
+  which chunk it is looking at.
+- **Surface row only.** The depth row keeps `ice_depth` untouched, so the band still meets the
+  flat deep fill at exactly the colour the fill uses and no seam appears where the band ends.
+  It is also the truer read — patches are a surface phenomenon.
+- **The shift only ever darkens a channel** (warm removes blue, cool removes red). Same LDR
+  discipline as every other tint: `sunset_rose`'s `ice_surface` is already `(1.0, 0.88, 0.88)`,
+  and scaling up would silently clamp — flattening the drift to nothing on exactly the biomes
+  with the most saturated ice.
+- Two octaves at 2600 and 900 px, both much longer than the ~1150px viewport (so it reads as a
+  wash, not stripes) and both deliberately **unrelated to `ICE_TILE_WORLD_WIDTH` (1200)**, so
+  the colour drift and the texture repeat never lock into a visible beat.
+
+Costs nothing: no new nodes, no new textures, no extra draw calls — just a different colour
+per vertex in a loop that already existed. `starlit_night` opts out at 0 (clean uniform night
+ice); the rest run 0.10–0.16, measured at 24–36/255 by `sky_layer_check`'s `IceHue` column.
+
 ## How a transition works
 
 A biome change is **five overlapping crossfades, not one**. `CHANNEL_CURVES` in

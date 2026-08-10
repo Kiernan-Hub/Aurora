@@ -60,17 +60,24 @@ const MIN_PEAK_CONTRIBUTION: int = 24
 # gradient texture, so its baseline is the same palette with the tints neutralised to white
 # and the difference between the two bakes is its contribution. Same two-capture shape either
 # way, so the rest of this file does not care which it is.
+# MODE_ICE is a third shape again: the ice hue drift is written into terrain vertex colours,
+# so its baseline is the same palette with ice_hue_variance zeroed and pushed through
+# TerrainGenerator.apply_ice_palette() rather than through the backdrop. Still two captures of
+# one frame differing in one thing, which is all the rest of this file assumes.
 const MODE_VISIBLE: String = "visible"
 const MODE_TINT: String = "tint"
+const MODE_ICE: String = "ice"
 const LAYERS: Array[Array] = [
 	["SkyGlow", "glow_strength", MODE_VISIBLE],
 	["SkyCelestial", "celestial_strength", MODE_VISIBLE],
 	["SkyStars", "star_density", MODE_VISIBLE],
 	["SkyTint", "", MODE_TINT],
+	["IceHue", "ice_hue_variance", MODE_ICE],
 ]
 
 var main: Node2D
 var backdrop: Node
+var terrain: TerrainGenerator
 var frame_index: int = 0
 var biome_index: int = 0
 var layer_index: int = 0
@@ -78,12 +85,30 @@ var phase: int = 0
 var settle: int = 0
 var armed: bool = false
 var started: bool = false
+# quit() inside _init() does not stop the tree from running _process once, and by then `main`
+# is still null -- so the abort below has to be latched and re-checked there.
+var aborted: bool = false
 var baseline: Image
 # [biome_index][layer_index] -> peak, or -1 for "biome does not claim this layer"
 var peaks: Array[PackedInt32Array] = []
 
 
 func _init() -> void:
+	# REFUSES to run under --headless rather than measuring it. There is no rendering device
+	# there, so root.get_texture().get_image() hands back a blank frame, every layer diffs to
+	# 0/255, and this gate reports every claimed layer in every biome as invisible -- 19
+	# confident, meaningless violations. That is the same blank-frame failure this file's header
+	# already records for Engine.time_scale = 0, just with the sign flipped (there everything
+	# measured as fully visible and the gate PASSED). Both directions are worse than an error,
+	# which is what CLAUDE.md means about archived probes printing numbers instead of failing.
+	if DisplayServer.get_name() == "headless":
+		print("SKY_LAYER_CHECK FAIL  cannot run under --headless: this gate has to render.")
+		print("    Re-run without --headless (it opens a window):")
+		print("    /Applications/Godot.app/Contents/MacOS/Godot --path . --script res://scripts/debug/sky_layer_check.gd")
+		aborted = true
+		quit(1)
+		return
+
 	main = MAIN_SCENE.instantiate() as Node2D
 	(main.get_node("GameManager") as GameManager).require_start_screen = false
 	root.add_child(main)
@@ -91,6 +116,9 @@ func _init() -> void:
 
 
 func _process(_delta: float) -> bool:
+	if aborted:
+		return true
+
 	frame_index += 1
 	# The UI layer is hidden so labels never land in a capture.
 	(main.get_node("CanvasLayer") as CanvasLayer).visible = false
@@ -115,6 +143,7 @@ func _process(_delta: float) -> bool:
 		# and overwrites whatever this script set.
 		(main.get_node("BiomeDirector") as BiomeDirector).set_process(false)
 		backdrop = main.get_node("SkyBackdrop")
+		terrain = main.get_node("TerrainGenerator") as TerrainGenerator
 		for layer: Array in LAYERS:
 			# MODE_TINT has no node of its own -- it is baked into the sky texture.
 			if layer[2] != MODE_VISIBLE:
@@ -162,7 +191,16 @@ func _process(_delta: float) -> bool:
 			biome_index += 1
 		return false
 
-	if LAYERS[layer_index][2] == MODE_TINT:
+	if LAYERS[layer_index][2] == MODE_ICE:
+		var ice_probe: BiomePalette = palette
+		if phase == 0:
+			ice_probe = palette.duplicate() as BiomePalette
+			ice_probe.ice_hue_variance = 0.0
+		# Straight to the generator, the way BiomeDirector.push_palette() does it. Weight 0 and
+		# the same texture at both ends, so the pattern dissolve contributes nothing and the
+		# only difference between the two captures is the drift.
+		terrain.apply_ice_palette(ice_probe, ice_probe.ice_texture, ice_probe.ice_texture, 0.0)
+	elif LAYERS[layer_index][2] == MODE_TINT:
 		# Phase 0 bakes the same sky with the horizontal tints removed. duplicate() so the
 		# real palette resource is never mutated -- it is the one the game loads.
 		var probe: BiomePalette = palette
@@ -221,8 +259,8 @@ func measure_peak(without_layer: Image, with_layer: Image) -> int:
 func report() -> void:
 	var failures: Array[String] = []
 	print("")
-	print("biome              SkyGlow   SkyCelestial   SkyStars   SkyTint")
-	print("---------------------------------------------------------------")
+	print("biome              SkyGlow   SkyCelestial   SkyStars   SkyTint   IceHue")
+	print("------------------------------------------------------------------------")
 	for cycle_index: int in range(peaks.size()):
 		var palette: BiomePalette = BiomeDirector.BIOME_CYCLE[cycle_index]
 		var cells: PackedStringArray = PackedStringArray()
@@ -235,8 +273,8 @@ func report() -> void:
 			if peak < MIN_PEAK_CONTRIBUTION:
 				failures.append("%s %s peaks at %d/255, below the %d floor -- it is on screen but not visible. Raise its strength, move it into unoccluded sky, or pick a colour further from this biome's sky colours"
 					% [palette.resource_path.get_file().get_basename(), LAYERS[column][0], peak, MIN_PEAK_CONTRIBUTION])
-		print("%-18s %s  %s  %s  %s" % [palette.resource_path.get_file().get_basename(),
-			cells[0], cells[1], cells[2], cells[3]])
+		print("%-18s %s  %s  %s  %s  %s" % [palette.resource_path.get_file().get_basename(),
+			cells[0], cells[1], cells[2], cells[3], cells[4]])
 
 	var claimed: int = 0
 	for row: PackedInt32Array in peaks:

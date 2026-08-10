@@ -54,10 +54,16 @@ time). Fixed 2026-08-03.
 
 ## GameManager owns all state transitions
 
-`GameManager` runs an explicit `State { START, PLAYING, PAUSED, DEAD }` machine.
+`GameManager` runs an explicit `State { START, PLAYING, PAUSED, DEAD, SHOP }` machine.
 `set_state()` is the **only** place in the project allowed to touch `get_tree().paused`
 or any screen's visibility — don't set either anywhere else. Adding a transition means
 adding it to the enum, not writing `paused = true` somewhere new.
+
+`SHOP` needs no pause semantics of its own — `paused = new_state != PLAYING` already covers
+it. It is a *modal* over whichever screen opened it (START's Upgrades button or DEAD's Shop
+button), so `shop_return_state` records which, and that screen stays visible underneath;
+closing returns there rather than always to DEAD. Purchases apply to the next run, and there
+is deliberately no path that mutates player stats mid-run.
 
 This was previously implicit in "`get_tree().paused` plus whichever `Control` happens to
 be visible". That works for two screens and stops working at four: a pause screen makes

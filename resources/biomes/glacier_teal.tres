@@ -30,6 +30,7 @@ tree_tint = Color(1, 1, 1, 1)
 bird_tint = Color(1, 1, 1, 1)
 ice_surface = Color(0.55, 0.93, 0.88, 1)
 ice_depth = Color(0.18, 0.74, 0.68, 1)
+ice_hue_variance = 0.12
 ice_texture = ExtResource("2")
 snow_tint = Color(1, 1, 1, 0.42)
 snow_density_scale = 1.0

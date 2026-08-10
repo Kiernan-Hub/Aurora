@@ -168,6 +168,17 @@ const CHANNEL_COUNT: int = 5
 # once, so a ramp mismatch is now a brightness wobble across the whole view rather than a
 # step at one seam.
 @export var ice_texture: Texture2D = null
+# How far the surface tint drifts warm/cool along the ride line, as a low-frequency function
+# of world_x. Without it a whole screen of ice is exactly one colour, because ice_surface is
+# written to every surface vertex identically -- the tile supplies texture but no colour
+# variation at all, since it is greyscale.
+#
+# Surface row only: the depth row keeps ice_depth untouched, so the band still meets the flat
+# deep fill at exactly the colour the fill uses and no seam appears at the bottom of the band.
+# It is also the truer read -- patches are a surface phenomenon.
+#
+# 0 opts out, which is right for a biome whose ice should read as clean and uniform.
+@export_range(0.0, 0.3) var ice_hue_variance: float = 0.0
 
 @export_group("Atmosphere")
 @export var snow_tint: Color = Color(1.0, 1.0, 1.0, 0.42)
@@ -237,6 +248,7 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	var ice: float = weights[CHANNEL_ICE]
 	out.ice_surface = from.ice_surface.lerp(to.ice_surface, ice)
 	out.ice_depth = from.ice_depth.lerp(to.ice_depth, ice)
+	out.ice_hue_variance = lerpf(from.ice_hue_variance, to.ice_hue_variance, ice)
 	# ice_texture is deliberately NOT written -- see its note. A blended palette structurally
 	# cannot express a pattern crossfade, which needs both endpoint tiles plus the weight, so
 	# the director passes those three to terrain_generator.apply_ice_palette() alongside this

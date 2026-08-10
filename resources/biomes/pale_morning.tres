@@ -29,6 +29,7 @@ tree_tint = Color(0.94, 0.96, 1, 1)
 bird_tint = Color(0.9, 0.93, 1, 1)
 ice_surface = Color(0.76, 0.88, 1.0, 1)
 ice_depth = Color(0.48, 0.72, 0.98, 1)
+ice_hue_variance = 0.1
 snow_tint = Color(1, 1, 1, 0.34)
 snow_density_scale = 0.7
 mist_strength = 0.75

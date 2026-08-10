@@ -269,12 +269,6 @@ func update_camera_scroll_rate(player_x: float, delta: float) -> void:
 	camera_scroll_rate = lerpf(camera_scroll_rate, raw_scroll_rate, rate_weight)
 
 
-# Only ever followed DOWNWARD until Phase 3 (glide) -- maxf(baseline, descent) meant a
-# player who climbed more than VERTICAL_FOLLOW_MARGIN above the baseline (previously only
-# a jump, now a sustained glide) had the camera pin at the baseline and stop following.
-# Symmetric now: the middle zone (within one margin either side of baseline) still holds
-# still, exactly as before -- ordinary terrain undulation isn't worth chasing -- but going
-# far enough past the margin in EITHER direction now follows.
 # Turns tight glide-follow on the instant a glide starts, and only turns it back off
 # once the player is grounded again -- see is_glide_vertical_follow_active's comment
 # for why landing, not the effect ending, is the right release point.
@@ -288,6 +282,12 @@ func update_glide_vertical_follow_state() -> void:
 		is_glide_vertical_follow_active = false
 
 
+# Only ever followed DOWNWARD until Phase 3 (glide) -- maxf(baseline, descent) meant a
+# player who climbed more than VERTICAL_FOLLOW_MARGIN above the baseline (previously only
+# a jump, now a sustained glide) had the camera pin at the baseline and stop following.
+# Symmetric now: the middle zone (within one margin either side of baseline) still holds
+# still, exactly as before -- ordinary terrain undulation isn't worth chasing -- but going
+# far enough past the margin in EITHER direction now follows.
 func get_vertical_camera_target() -> float:
 	var descent_camera_y: float = player.global_position.y - VERTICAL_FOLLOW_MARGIN
 	if descent_camera_y > camera_baseline_y:

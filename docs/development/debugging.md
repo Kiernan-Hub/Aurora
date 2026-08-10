@@ -247,6 +247,48 @@ a throwaway probe — see `biomes.md`, "Testing" — not kept as a gate.
 
 Full design notes: `docs/development/biomes.md`.
 
+## Shipping values check (`scripts/debug/shipping_values_check.gd`)
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/shipping_values_check.gd
+```
+
+~0.2s, no scene stepped, no seeds. **Run it before every commit.** Fails if any "turn this off
+before you commit" knob is left flipped.
+
+Added 2026-08-10 to close a real hole. Every debug knob here is a plain `var` rather than an
+`@export` *on purpose*, so the editor cannot serialise it into `main.tscn` — that is the
+`world_rebase_enabled` regression's mechanism. The unpaid cost of that choice: a plain var is
+invisible to every other gate, so **nothing caught one left on.** `ObstacleSpawner.
+debug_spawning_disabled` was documented here as "check by hand", and `biome_distance` was
+described as having a "tripwire" that was only ever a *printed number* — `biome_schedule_check`
+returns `PASS` at any value, verified against a live TEMP of `7500.0`.
+
+It checks two things, and the second is the stronger one:
+
+1. **The source-level default of each knob**, by `.new()`-ing the script and reading the
+   property (`_ready()` only runs on tree entry, so nothing resolves a NodePath or spawns).
+   Covers `debug_chasm_disabled`, `debug_drop_chasm_rehearsal`, `debug_log_segment_selection`,
+   `debug_replay_session_seed`, `debug_weight_mega_drop`, both `debug_spawning_disabled`,
+   `debug_forced_effect`, `world_rebase_enabled`, `require_start_screen`, `BIOME_DISTANCE`,
+   `TRANSITION_DISTANCE`.
+2. **That `main.tscn` serialises no override**, by scanning the scene as **text** for any line
+   starting `debug_`, `world_rebase_enabled` or `require_start_screen`. Deliberately a text
+   scan rather than a property read on an instantiated scene: the text catches a property this
+   file has never heard of, which is the entire failure mode. Verified by injecting
+   `world_rebase_enabled = false` into `main.tscn` — caught at the exact line. Note the script
+   *default* still read `true` throughout that test, which is exactly why reading defaults
+   alone is not enough.
+
+`--allow-temp` downgrades every failure to a `WARN` and exits 0, for deliberately eyeballing a
+run with knobs flipped (same opt-out idiom as `freeze_search --chasms=1`). The point is that
+silencing it has to be something you typed.
+
+**Two things it deliberately does not fail on:** `debug_first_powerup_time_override` and
+`debug_first_powerup_effect_override` both derive from `OS.is_debug_build()`, and a gate runs on
+the editor binary — which *is* a debug build — so their non-shipping value is correct in every
+context this can run in. They are printed for information.
+
 ## Sky layer check (`scripts/debug/sky_layer_check.gd`)
 
 ```

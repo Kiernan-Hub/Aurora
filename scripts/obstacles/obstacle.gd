@@ -1,5 +1,7 @@
 extends Area2D
 
+class_name Obstacle
+
 var has_triggered: bool = false
 
 

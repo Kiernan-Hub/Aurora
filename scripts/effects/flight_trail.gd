@@ -34,7 +34,7 @@ func play(duration: float) -> void:
 
 
 func _spawn_streak() -> void:
-	var streak := Line2D.new()
+	var streak: Line2D = Line2D.new()
 	streak.width = 2.0
 	streak.default_color = STREAK_COLOR
 	var y_offset: float = randf_range(-VERTICAL_SPREAD, VERTICAL_SPREAD)

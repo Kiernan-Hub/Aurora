@@ -69,6 +69,9 @@ var ice_overlay_texture: Texture2D = ICE_TERRAIN_TEXTURE
 # the overlay's. Both bands read this at build time and at every repaint, so a chunk born
 # mid-transition matches the ones already on screen exactly.
 var ice_overlay_weight: float = 0.0
+# 0 = today's behaviour exactly: one flat colour across every surface vertex. Set from the
+# palette, so it stays 0 under --headless where no palette is ever applied.
+var ice_hue_variance: float = 0.0
 
 var player: CharacterBody2D
 var next_chunk_index: int = 0
@@ -348,18 +351,12 @@ const CHASM_DROP_WINDOW_PERIOD: int = 2
 # The other half of phase 3 is Player.is_boost_gliding_over_drop(), which hands a boosting
 # player to gravity the moment ground reappears below them instead of hovering at near-lip
 # height until the boost timer expires.
-# Height of the far lip relative to the near lip. Still 0: level lips are the only
-# configuration where the height field inside the void is indistinguishable from ordinary flat
-# ground, so terrain_invariant_check needs no exemption for the void span and every existing
-# consumer is trivially unaffected.
 #
-# Phase 2 deliberately varied WIDTH ONLY and left this alone. A non-zero drop is not a data
-# change: the field would need a step at the far lip (invisible to geometry, since no chord or
-# fill edge survives inside a void, but visible to the 1px sweep, to get_slope_angle_at_x and
-# to get_collision_chord_slope_angle, all of which would need void guards) -- and, decisively,
-# a boosting player skims the void at NEAR-lip height on a gravity-free grounded model and
-# would arrive above a lower far lip with only FLOOR_SNAP_LENGTH (18px) of snap to catch them,
-# hovering in mid-air until the boost expired. Deferred to Phase 3 with that fix.
+# This constant is now only the DEFAULT for a variant with no exit_drop key of its own. The
+# shipping drop lives in CHASM_VARIANTS ("chasm_drop", 800.0); leaving this at 0 is what keeps
+# the three hazard variants level-lipped, which is the configuration where the height field
+# inside a void is indistinguishable from ordinary flat ground and terrain_invariant_check
+# needs no exemption for the void span.
 const CHASM_EXIT_DROP: float = 0.0
 # Placement: exactly one chasm per window of CHASM_WINDOW_SEGMENT_COUNT segments, at a
 # hash-chosen offset constrained to the window's middle. The edge margin is what turns "one
@@ -754,15 +751,65 @@ func paint_ice_band(band: Polygon2D, row_size: int, opacity: float) -> void:
 	surface_color.a = ice_surface_tint.a * opacity
 	depth_color.a = ice_depth_tint.a * opacity
 
+	# world_x per vertex comes back out of the UVs rather than being stored or recomputed.
+	# build_ice_band() wrote uv.x = world_x * horizontal_scale, so this inverts exactly what it
+	# did -- which means the drift cannot drift out of step with the pattern, and repaint needs
+	# no knowledge of which chunk it is looking at. Safe because every tile is the same size
+	# (biome_schedule_check's EXPECTED_ICE_TILE_SIZE).
+	var horizontal_scale: float = ice_band_texture.get_size().x / ICE_TILE_WORLD_WIDTH
+
 	var band_colors: PackedColorArray = PackedColorArray()
 	band_colors.resize(row_size * 2)
 	for vertex_index: int in range(row_size):
-		band_colors[vertex_index] = surface_color
+		var world_x: float = band.uv[vertex_index].x / horizontal_scale
+		band_colors[vertex_index] = shift_ice_hue(surface_color, get_ice_hue_shift(world_x))
+		# Depth row deliberately UNSHIFTED -- see BiomePalette.ice_hue_variance. It keeps the
+		# bottom of the band at exactly the colour the flat deep fill below it uses, so no
+		# seam appears there, and the drift reads as a surface patch fading with depth.
 		band_colors[row_size + vertex_index] = depth_color
 	band.vertex_colors = band_colors
 	# A fully transparent Polygon2D still costs a draw call, and outside a transition that is
 	# every ice band in the world.
 	band.visible = opacity > 0.0
+
+
+# Low-frequency warm/cool drift along the ride line, PURE in world_x.
+#
+# Purity is the whole requirement, exactly as it is for get_terrain_height and the ridge
+# silhouettes: a chunk's last surface sample and the next chunk's first are the same world_x,
+# so they get the same shift and the drift crosses chunk boundaries without a seam. Anything
+# keyed on a chunk index or a local x would crawl instead.
+#
+# Two octaves so it does not read as a regular pulse. Both wavelengths are much longer than
+# the ~1150px viewport, so what you see is a slow wash across the whole screen rather than
+# stripes -- and both are deliberately unrelated to ICE_TILE_WORLD_WIDTH (1200), so the colour
+# drift and the texture repeat never lock into a visible beat.
+const ICE_HUE_WAVELENGTH_LONG: float = 2600.0
+const ICE_HUE_WAVELENGTH_SHORT: float = 900.0
+const ICE_HUE_SHORT_WEIGHT: float = 0.4
+const ICE_HUE_PHASE_OFFSET: float = 1.7
+
+
+func get_ice_hue_shift(world_x: float) -> float:
+	var long_octave: float = sin((world_x / ICE_HUE_WAVELENGTH_LONG) * TAU)
+	var short_octave: float = sin(((world_x / ICE_HUE_WAVELENGTH_SHORT) * TAU) + ICE_HUE_PHASE_OFFSET)
+	# Normalised back into [-1, 1] so ice_hue_variance means the same thing whatever the
+	# octave weights are.
+	return (long_octave + (short_octave * ICE_HUE_SHORT_WEIGHT)) / (1.0 + ICE_HUE_SHORT_WEIGHT)
+
+
+# Rotates a colour warm/cool by DARKENING one channel, never brightening either.
+#
+# Same discipline as every other tint in the project: the Mobile renderer is LDR, and several
+# palettes already sit at 1.0 on a channel (sunset_rose's ice_surface is (1.0, 0.88, 0.88)).
+# Scaling up there would silently clamp, which flattens the drift to nothing on exactly the
+# biomes with the most saturated ice. So warm removes blue and cool removes red.
+func shift_ice_hue(color: Color, shift: float) -> Color:
+	if ice_hue_variance <= 0.0:
+		return color
+	var warm: float = maxf(shift, 0.0) * ice_hue_variance
+	var cool: float = maxf(-shift, 0.0) * ice_hue_variance
+	return Color(color.r * (1.0 - cool), color.g, color.b * (1.0 - warm), color.a)
 
 
 # A run breaks between two consecutive samples whose midpoint has no ground -- the same test
@@ -1149,16 +1196,6 @@ func evaluate_segment_offset(spec: Dictionary, segment_progress: float) -> float
 	return get_curve_profile(segment_progress) * magnitude
 
 
-# 0 everywhere up to a drop chasm's far lip, exit_drop from the far lip onward -- so the void
-# itself reads as ordinary flat ground at NEAR-lip height and only the far lip steps down. See
-# the CHASM_EXIT_DROP block for why a step beats a ramp here.
-#
-# Evaluating this at progress 1.0 yields exit_drop, which is exactly the segment's baseline
-# delta, so the following segment starts at the lower height with no separate bookkeeping --
-# the same "derive the delta from the shape" contract every other profile honours.
-#
-# Non-chasm flat segments carry no exit_drop key and return 0.0 through the first branch, so
-# this is a no-op for them.
 # How much further down real ground lies than get_terrain_height() reports at this world_x.
 # Non-zero ONLY inside a drop chasm's void, where the field deliberately reads NEAR-lip height
 # but the ground the player is falling toward is the far lip, exit_drop below.
@@ -1180,6 +1217,16 @@ func get_pending_exit_drop_at_world_x(world_x: float) -> float:
 	return float(spec.get("exit_drop", 0.0))
 
 
+# 0 everywhere up to a drop chasm's far lip, exit_drop from the far lip onward -- so the void
+# itself reads as ordinary flat ground at NEAR-lip height and only the far lip steps down. See
+# the CHASM_EXIT_DROP block for why a step beats a ramp here.
+#
+# Evaluating this at progress 1.0 yields exit_drop, which is exactly the segment's baseline
+# delta, so the following segment starts at the lower height with no separate bookkeeping --
+# the same "derive the delta from the shape" contract every other profile honours.
+#
+# Non-chasm flat segments carry no exit_drop key and return 0.0 through the first branch, so
+# this is a no-op for them.
 func get_exit_drop_offset(spec: Dictionary, segment_progress: float) -> float:
 	var exit_drop: float = float(spec.get("exit_drop", 0.0))
 	if exit_drop <= 0.0:
@@ -1623,6 +1670,7 @@ func get_collision_chord_slope_angle(world_x: float) -> float:
 # transition, 1 at the end, and pinned at 0 the rest of the time.
 func apply_ice_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_texture: Texture2D, ice_weight: float) -> void:
 	ice_surface_tint = palette.ice_surface
+	ice_hue_variance = palette.ice_hue_variance
 	ice_depth_tint = palette.ice_depth
 	# null means "this biome uses the default smooth tile"; six of the eight palettes leave
 	# it unset rather than restating it.

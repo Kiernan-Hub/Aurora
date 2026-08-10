@@ -497,26 +497,6 @@ func get_slope_tangent() -> Vector2:
 	return Vector2(cos(terrain_angle), sin(terrain_angle))
 
 
-# Closes the sub-pixel gap that Godot declines to close itself. CharacterBody2D's
-# own floor snapping early-returns whenever the velocity faces up_direction
-# (_snap_on_floor -> vel_dir_facing_up), and on this terrain that is every rising
-# frame, since the grounded model aims velocity along the surface. The step is then
-# tangential, move_and_slide() reports no contact at all (slide_collision_count == 0),
-# and nothing re-seats the body: is_on_floor() goes false while the capsule sits
-# ~0.4px off the terrain, and the next frame runs the gravity model to fall that
-# 0.4px back down. That two-frame cycle was the measured is_on_floor() flicker --
-# ~60% of gentle_uphill frames, ~36% of all rising frames, against <1% on falling
-# ground. The body never actually left the surface; only the engine's floor
-# bookkeeping did. apply_floor_snap() has no velocity gate.
-#
-# Deliberately scoped to exactly the suppressed case. When velocity faces down,
-# Godot's stock snapping already runs and this must not second-guess it -- and note
-# that stock snapping glues the body over the same FLOOR_SNAP_LENGTH in that
-# direction, so this cannot cancel airtime the engine would otherwise have granted.
-#
-# While boosting, the velocity.y gate is dropped entirely: a boost is meant to be
-# ground-locked with zero airtime, including the brief upward hop a bump can impart,
-# not just the tangential-velocity case this function was originally written for.
 # The one case where a boost must NOT force the grounded model: the player has skimmed
 # across a void and the ground that reappeared is a drop chasm's far lip, far below.
 #
@@ -541,6 +521,26 @@ func is_boost_gliding_over_drop() -> bool:
 	return gap_below_feet > FLOOR_SNAP_LENGTH
 
 
+# Closes the sub-pixel gap that Godot declines to close itself. CharacterBody2D's
+# own floor snapping early-returns whenever the velocity faces up_direction
+# (_snap_on_floor -> vel_dir_facing_up), and on this terrain that is every rising
+# frame, since the grounded model aims velocity along the surface. The step is then
+# tangential, move_and_slide() reports no contact at all (slide_collision_count == 0),
+# and nothing re-seats the body: is_on_floor() goes false while the capsule sits
+# ~0.4px off the terrain, and the next frame runs the gravity model to fall that
+# 0.4px back down. That two-frame cycle was the measured is_on_floor() flicker --
+# ~60% of gentle_uphill frames, ~36% of all rising frames, against <1% on falling
+# ground. The body never actually left the surface; only the engine's floor
+# bookkeeping did. apply_floor_snap() has no velocity gate.
+#
+# Deliberately scoped to exactly the suppressed case. When velocity faces down,
+# Godot's stock snapping already runs and this must not second-guess it -- and note
+# that stock snapping glues the body over the same FLOOR_SNAP_LENGTH in that
+# direction, so this cannot cancel airtime the engine would otherwise have granted.
+#
+# While boosting, the velocity.y gate is dropped entirely: a boost is meant to be
+# ground-locked with zero airtime, including the brief upward hop a bump can impart,
+# not just the tangential-velocity case this function was originally written for.
 func apply_grounded_floor_snap() -> void:
 	if not is_using_grounded_model or is_on_floor():
 		return
@@ -916,15 +916,26 @@ func absorb_hit() -> bool:
 
 # Grants GLIDE_LANDING_SHIELD_DURATION of has_shield the instant a glide-or-fall-from-
 # glide touches down, and expires it on its own timer -- it does NOT go through
-# PowerupManager, so a real shield powerup picked up mid-flight is untouched by it.
+# PowerupManager, so a real shield powerup is untouched by it.
+#
+# THE `not has_shield` GUARD IS WHAT MAKES THAT LAST CLAIM TRUE, and without it the claim was
+# simply false (fixed 2026-08-10). A shield powerup is UNTIMED -- it sits in
+# PowerupManager.active_effects at INF until an obstacle spends it -- so "already holding one
+# when a glide ends" is an ordinary situation, not a corner case. Taking the branch anyway set
+# is_shield_from_glide_landing on a shield this function did not grant, and the expiry below
+# then cleared has_shield after 1s while PowerupManager still had EFFECT_SHIELD active and
+# nothing emitted shield_consumed: the two disagreed, the tint was gone, and the next obstacle
+# killed a player who had paid for a shield. Skipping the grant entirely is right rather than
+# refreshing the timer -- an untimed shield outlasts any 1s window, so there is nothing to add.
 func update_glide_landing_shield(delta: float) -> void:
 	if is_glide_active:
 		is_glide_landing_shield_pending = true
 	elif is_glide_landing_shield_pending and is_on_floor():
 		is_glide_landing_shield_pending = false
-		gain_shield()
-		is_shield_from_glide_landing = true
-		glide_landing_shield_timer = GLIDE_LANDING_SHIELD_DURATION
+		if not has_shield:
+			gain_shield()
+			is_shield_from_glide_landing = true
+			glide_landing_shield_timer = GLIDE_LANDING_SHIELD_DURATION
 
 	if is_shield_from_glide_landing:
 		glide_landing_shield_timer -= delta

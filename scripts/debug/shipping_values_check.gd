@@ -1,0 +1,171 @@
+extends SceneTree
+
+# Fails if any "turn this off before you commit" knob is left on. ~0.2s, no scene instantiated
+# for the flag checks, no physics, no seeds.
+#
+#   godot --headless --path . --script res://scripts/debug/shipping_values_check.gd
+#
+# WHY THIS EXISTS. Every debug knob in this project is a plain `var` rather than an `@export`,
+# deliberately, so the editor cannot serialise it into main.tscn (CLAUDE.md, "Things that break
+# silently" -- the world_rebase_enabled regression). That choice has a cost nobody had covered:
+# a plain var is invisible to every other gate, so nothing at all catches one left flipped. The
+# obstacle flag was explicitly documented as "check by hand", and biome_distance was described
+# as having a "tripwire" that was only ever a printed number -- biome_schedule_check returns
+# PASS at any value, which was verified against a live TEMP value of 7500.0.
+#
+# So this checks the two things that are actually checkable without running the game:
+#
+#   1. THE SOURCE-LEVEL DEFAULTS of each knob, by instantiating the script and reading the
+#      property. Not by parsing the .gd text -- that would be fragile to formatting, and the
+#      declared default is exactly what a fresh node in a shipped build gets.
+#   2. THAT main.tscn SERIALISES NO OVERRIDE for any of them, by scanning the scene as TEXT.
+#      Deliberately a text scan and not a property read on an instantiated scene: the text
+#      catches a property this file has never heard of, which is the whole failure mode (the
+#      freeze bug was `world_rebase_enabled = false` appearing in the scene file on its own).
+#      A property read can only ever confirm the values someone already thought to enumerate.
+#
+# WHAT IT CANNOT CHECK, and why that is fine: the two PowerupSpawner first-spawn overrides
+# derive from OS.is_debug_build(), so they are legitimately non-shipping values in every
+# context this gate can run in (a gate runs on the editor binary, which IS a debug build).
+# They are reported for information and never failed on. See the note at the bottom of report().
+#
+# --allow-temp downgrades every failure to a warning and still exits 0, for deliberately
+# eyeballing a run with knobs flipped. Same opt-out idiom as freeze_search's --chasms=1. The
+# point of the flag is that silencing this has to be a thing you typed.
+
+const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
+
+# [label, shipping value, actual value]. Built in check_flag_defaults().
+var findings: Array[Array] = []
+var failures: Array[String] = []
+
+
+func _init() -> void:
+	var allow_temp: bool = has_flag("--allow-temp")
+
+	check_flag_defaults()
+	check_scene_has_no_debug_overrides()
+	report(allow_temp)
+
+
+# Instantiated with .new() and freed immediately: _ready() only runs on tree entry, so nothing
+# resolves a NodePath, spawns a chunk or touches the seed here.
+func check_flag_defaults() -> void:
+	var terrain: TerrainGenerator = TerrainGenerator.new()
+	expect_bool("TerrainGenerator.debug_chasm_disabled", terrain.debug_chasm_disabled, false)
+	expect_bool("TerrainGenerator.debug_drop_chasm_rehearsal", terrain.debug_drop_chasm_rehearsal, false)
+	expect_bool("TerrainGenerator.debug_log_segment_selection", terrain.debug_log_segment_selection, false)
+	expect_int("TerrainGenerator.debug_replay_session_seed", terrain.debug_replay_session_seed, -1)
+	# mega_drop is SEGMENT CUT, not fixed (CLAUDE.md / camera_shake.md). A non-zero weight here
+	# reintroduces the one feature with a known unfixed visible shake.
+	expect_int("TerrainGenerator.debug_weight_mega_drop", terrain.debug_weight_mega_drop,
+		TerrainGenerator.MEGA_DROP_SELECTION_WEIGHT)
+	terrain.free()
+
+	var obstacles: ObstacleSpawner = ObstacleSpawner.new()
+	expect_bool("ObstacleSpawner.debug_spawning_disabled", obstacles.debug_spawning_disabled, false)
+	obstacles.free()
+
+	var powerups: PowerupSpawner = PowerupSpawner.new()
+	expect_bool("PowerupSpawner.debug_spawning_disabled", powerups.debug_spawning_disabled, false)
+	expect_string("PowerupSpawner.debug_forced_effect", String(powerups.debug_forced_effect), "")
+	powerups.free()
+
+	var main: Main = Main.new()
+	expect_bool("Main.world_rebase_enabled", main.world_rebase_enabled, true)
+	main.free()
+
+	var game_manager: GameManager = GameManager.new()
+	expect_bool("GameManager.require_start_screen", game_manager.require_start_screen, true)
+	game_manager.free()
+
+	expect_float("BiomeDirector.BIOME_DISTANCE", BiomeDirector.BIOME_DISTANCE, 75000.0)
+	expect_float("BiomeDirector.TRANSITION_DISTANCE", BiomeDirector.TRANSITION_DISTANCE, 12000.0)
+
+
+# The freeze-bug check, generalised. Any of these appearing as a serialised property in the
+# scene means the editor wrote a debug knob into it -- which is the exact mechanism that
+# disabled world rebasing for weeks. Matched on the property name at the start of a line, so a
+# mention inside a comment or a NodePath cannot trip it.
+func check_scene_has_no_debug_overrides() -> void:
+	var forbidden_prefixes: PackedStringArray = PackedStringArray([
+		"debug_", "world_rebase_enabled", "require_start_screen",
+	])
+
+	var file: FileAccess = FileAccess.open(MAIN_SCENE_PATH, FileAccess.READ)
+	if file == null:
+		failures.append("could not open %s to scan for serialised debug overrides" % MAIN_SCENE_PATH)
+		return
+
+	var line_number: int = 0
+	while not file.eof_reached():
+		var line: String = file.get_line()
+		line_number += 1
+		for prefix: String in forbidden_prefixes:
+			if not line.begins_with(prefix):
+				continue
+			failures.append("%s:%d serialises `%s` -- a debug knob must never reach the scene file. Delete the line in the editor (or by hand); this is the world_rebase_enabled regression's exact mechanism (docs/research/freeze_bug.md)"
+				% [MAIN_SCENE_PATH, line_number, line.strip_edges()])
+	file.close()
+
+
+func expect_bool(label: String, actual: bool, shipping: bool) -> void:
+	record(label, str(shipping), str(actual), actual == shipping)
+
+
+func expect_int(label: String, actual: int, shipping: int) -> void:
+	record(label, str(shipping), str(actual), actual == shipping)
+
+
+func expect_float(label: String, actual: float, shipping: float) -> void:
+	record(label, "%.1f" % shipping, "%.1f" % actual, is_equal_approx(actual, shipping))
+
+
+func expect_string(label: String, actual: String, shipping: String) -> void:
+	record(label, "\"%s\"" % shipping, "\"%s\"" % actual, actual == shipping)
+
+
+func record(label: String, shipping: String, actual: String, is_ok: bool) -> void:
+	findings.append([label, shipping, actual, is_ok])
+	if not is_ok:
+		failures.append("%s is %s, shipping value is %s" % [label, actual, shipping])
+
+
+func report(allow_temp: bool) -> void:
+	print("")
+	for finding: Array in findings:
+		print("  %-48s %-10s %s" % [finding[0], finding[2], "" if finding[3] else "!= %s" % finding[1]])
+
+	# Reported, never failed on: both derive from OS.is_debug_build(), so a gate (which runs on
+	# the editor binary) always sees the debug value. They are the reason an editor playtest
+	# never exercises the real first-spawn draw -- worth seeing, not worth blocking on.
+	var powerups: PowerupSpawner = PowerupSpawner.new()
+	print("")
+	print("  editor-only (is_debug_build, not checked):")
+	print("    first powerup time override    %.1f" % powerups.debug_first_powerup_time_override)
+	print("    first powerup effect override  \"%s\"" % powerups.debug_first_powerup_effect_override)
+	powerups.free()
+	print("")
+
+	if failures.is_empty():
+		print("SHIPPING_VALUES_CHECK PASS  ", findings.size(), " knobs at shipping values, scene clean")
+		quit(0)
+		return
+
+	if allow_temp:
+		print("SHIPPING_VALUES_CHECK WARN  ", failures.size(), " knob(s) not at shipping values (--allow-temp)")
+		for failure: String in failures:
+			print("    ", failure)
+		print("  NOT SHIPPABLE. Revert before committing.")
+		quit(0)
+		return
+
+	print("SHIPPING_VALUES_CHECK FAIL  ", failures.size(), " knob(s) not at shipping values")
+	for failure: String in failures:
+		print("    ", failure)
+	print("  Re-run with --allow-temp if these are deliberate for an eyeballing session.")
+	quit(1)
+
+
+func has_flag(flag_name: String) -> bool:
+	return OS.get_cmdline_user_args().has(flag_name)

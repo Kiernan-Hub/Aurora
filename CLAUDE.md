@@ -48,11 +48,18 @@ floor-flicker, camera-shake, chasm. Run the terrain check after any segment/shap
 physics ones after any player/collision/segment change, camera-shake after any change to the
 camera follow in `main.gd`, and chasm after anything touching voids, fall death or the boost
 velocity model. Commands, flags and watchdog mechanics in `docs/development/debugging.md`.
-**Plus `biome_schedule_check.gd`** (~1s, non-physics) after any palette change — the six
-above are blind to biome code, since `BiomeDirector` returns early under `--headless`.
+**Plus four visual checks**, because the six above are blind to biome code (`BiomeDirector`
+returns early under `--headless`): `biome_schedule_check.gd` (~1s, palette data) and — all
+three of these **must run WITHOUT `--headless`**, they diff or save rendered frames —
+`sky_layer_check.gd`, `ice_look_capture.gd`, `biome_contact_sheet.gd`.
 Log any new seed that trips `FREEZE_REPRO` in `docs/research/freeze_bug.md` before fixing it.
 
-**Only those six are maintained.** The other 18 files in `scripts/debug/` are archived
+**Before every commit: `shipping_values_check.gd`** (~0.2s). Every debug knob is a plain `var`
+so the editor can't serialise it — which also means no other gate can see one left flipped.
+This one fails on all of them, and on any `debug_*` override reaching `main.tscn`.
+`--allow-temp` to WARN instead while eyeballing.
+
+**Only those ten are maintained.** The other ~19 files in `scripts/debug/` are archived
 one-offs that mostly predate the start screen — they measure a *paused* game and print
 confident, meaningless numbers rather than failing. Never trust one without reviving it.
 
@@ -60,20 +67,25 @@ confident, meaningless numbers rather than failing. Never trust one without revi
 
 ```
 Main (Node2D, scripts/main.gd)
-├── SkyBackdrop       CanvasLayer -200, static gradient ← sky_backdrop.gd
-├── ParallaxBackground  FarRidge/MidRidge/PineLine, motion_scale.y ALWAYS 0
+├── SkyBackdrop       CanvasLayer -200 ← sky_backdrop.gd; gradient + stars/glow/sun-moon,
+│                     rebaked only while a transition moves
+├── ParallaxBackground  FarPeaks/FarRidge/MidRidge/PineLine, motion_scale.y ALWAYS 0
 │                     one background_generator.gd each, differing only by @export
+├── BirdFlock         CanvasLayer -60, visible only while gliding ← bird_flock.gd
 ├── SnowDrift         CanvasLayer -50 (behind all gameplay) ← snow_drift.gd
 ├── Player            position (64,136), safe_margin 1.0  ← player.tscn
 ├── TerrainGenerator  player_path = ../Player
 │   ├── CoinSpawner       per-chunk coin slots
 │   ├── ObstacleSpawner   timed clusters; a hit calls Player.absorb_hit()
-│   └── PowerupSpawner    timed pickups, one weighted table (see Build order §5)
-├── Camera2D          position (0,136)
-├── GameManager       State { START, PLAYING, PAUSED, DEAD }
+│   ├── PowerupSpawner    timed pickups, one weighted table (see Build order §5)
+│   ├── GroundTreeSpawner decorative, global grid keyed on session_seed
+│   └── GlideCoinSpawner  air coins, only while Player.is_glide_active
+├── BiomeDirector     the ONLY reader of a BiomePalette; returns early under --headless
+├── Camera2D          position (0,136), zoom 0.833
+├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP }
 ├── PowerupManager    effect timers; drives Player.start_boost etc.
 ├── SfxPlayer         6-voice AudioStreamPlayer pool on the SFX bus
-└── CanvasLayer       StartScreen / PauseScreen / DeathScreen (all process_mode=ALWAYS),
+└── CanvasLayer       Start/Pause/Death/ShopScreen (all process_mode=ALWAYS),
 					  PauseButton, Timer/Coin/Powerup labels
 ```
 
@@ -106,9 +118,9 @@ to touch `get_tree().paused` or a screen's visibility. Reasoning: `architecture.
   20.13°. Anything ≥ `floor_max_angle` is a wall and wedges the player (`large_valley`, three
   weeks). `exit_drop` is a **step exactly at the far lip**, never a ramp across the void (a
   ramp aims a boosting player down it instead of returning the 0 that carries the skim).
-- **Scaling a hill scales length *and* amplitude together** (`BIG_HILL_SCALES`). Peak slope is
-  `atan(π·magnitude/length)` and both hill types already sit at the 20.13° ceiling, so raising
-  amplitude alone walks straight into that same wall-wedge failure.
+- **Scaling a hill scales length *and* amplitude together** (`BIG_HILL_SCALES`): peak slope is
+  `atan(π·magnitude/length)`, and both hill types already sit at the 20.13° ceiling, so
+  raising amplitude alone walks into that same wall-wedge failure.
 - **Every `Area2D` has terrain chunks entering it.** Player/chunks/obstacles are layer 1;
   coins/powerups layer 2; everything masks layer 1. `obstacle.gd`, `coin.gd`, `powerup.gd`
   each filter with `body.is_in_group("player")` — drop that and a chunk collects/kills.
@@ -124,15 +136,13 @@ to touch `get_tree().paused` or a screen's visibility. Reasoning: `architecture.
 ## Known issues
 
 - **Residual sub-pixel bounce on curved terrain — open, deferred**, not fixable at the
-  input/movement level. Revisit only for a real, confirmed-visible complaint
-  (`docs/research/terrain_jitter.md`).
+  input/movement level. Revisit only on a confirmed-visible complaint (`terrain_jitter.md`).
 - **`mega_drop` shakiness — SEGMENT CUT, not fixed** (2026-08-01),
   `MEGA_DROP_SELECTION_WEIGHT = 0`. Six mitigations measured, none worked — read
   `docs/research/camera_shake.md` before spending more time here.
-- **FIXED, don't re-investigate:** boost-into-obstacle-cluster death (2026-08-04,
-  `ObstacleSpawner` withholds a cluster while `player.is_boosting`); `is_on_floor()` flicker
-  on rising terrain (2026-07-29, `docs/research/floor_flicker.md`).
-- **"View snaps forward/backward for half a second" — unreproduced**, watchdog counts stayed 0 every run to date.
+- **FIXED, don't re-investigate:** boost-into-obstacle-cluster death (2026-08-04);
+  `is_on_floor()` flicker on rising terrain (2026-07-29, `floor_flicker.md`).
+- **"View snaps forward/backward for half a second" — unreproduced**, watchdogs stayed 0.
 
 ## Dead / disabled code — check before "fixing"
 
@@ -143,11 +153,9 @@ background parallax were removed entirely, not left disabled — don't resurrect
 
 ## Build order / status
 
-1. Core loop (terrain + movement) — **working**. **Chasms**: a rare void every ~30–95s — three
-   *hazard* widths (160/220/280) jumped or fatal, plus `chasm_drop` (320px void, 800px lower
-   far lip, ~1s airtime), a survivable spectacle beat run off the near lip. Drops are
-   **periodic, not weighted**: every 2nd chasm, ~1.5–2.8min. Hills roll a **10% oversized
-   variant**, ×1.5/×2 on *both* axes so slope stays 20.13° (`terrain.md`)
+1. Core loop (terrain + movement) — **working**. **Chasms**: a void every ~30–95s, three
+   *hazard* widths plus a survivable `chasm_drop` every 2nd chasm (**periodic, not
+   weighted**). Hills roll a **10% oversized variant**, ×1.5/×2 on *both* axes (`terrain.md`)
 2. Speed scaling — **working**. Two-phase ramp: 100→500 px/s over 10s, then 500→750 over
    the next 110s, capping at `MAX_SPEED` (750) at t=120s
 3. Coins + score — **working**. `SaveStore` (v2) persists a versioned best score, plus a
@@ -155,32 +163,28 @@ background parallax were removed entirely, not left disabled — don't resurrect
 4. Obstacles + death — **working**. Singles from t=20s, then every 12–30s. A boosting
    player breaks through instead of dying (see §5)
 5. **Powerups — working, six kinds** (2026-08-06): speed boost, jump boost, coin magnet,
-   doubler, shield, glide — one `PowerupSpawner.POWERUP_TABLE` row each, one
-   `PowerupManager.active_effects` dict; `can_end_effect()` blocks speed boost/glide from
-   expiring over a void. **Airborne tricks** (hold to spin, land a rotation for coins)
-   pay a bonus `speed_boost` through this same effect path — no new velocity model
+   doubler, shield, glide — one `POWERUP_TABLE` row and one `active_effects` entry each;
+   `can_end_effect()` blocks speed boost/glide from expiring over a void. **Airborne
+   tricks** pay a bonus `speed_boost` down that same path — no new velocity model
 6. Screens — **working**. START/PLAYING/PAUSED/DEAD/SHOP
-7. **Audio — working (SFX only).** `M111/stopaster → Music, SFX`; `SfxPlayer` plays
-   jump/coin/powerup/death from a 6-voice pool, sliders drive their bus on drag end. No
-   music track yet. Stays behind a locally-computed `is_headless` (`Services` isn't ready
-   in harness `_init()`)
+7. **Audio — working (SFX only).** 6-voice pool on the SFX bus, sliders flush on drag end,
+   no music track yet. Behind a locally-computed `is_headless` (`Services` isn't ready in
+   harness `_init()`)
 8. **Visual polish — background + biome cycle done** (2026-08-08), gameplay art still
-   placeholder rects. **Eight `BiomePalette`s cycle every 75 000 world-px**, crossfading on
-   five staggered channels. No shader — `Polygon2D` already renders `texture * vertex_color`.
-   **The ice tile's V axis is depth below the ride surface**, so gloss, cracks, snow clumps
-   and the fill's vertical structure are all painted into one greyscale image and land right
-   on every hill. It is a *multiplier*, so palettes vary **hue, not brightness**, and a raw
-   panel must go through `scripts/tools/build_ice_texture.py` first. All in `biomes.md`
+   placeholder rects. **Eight `BiomePalette`s cycle every 75 000 world-px** on five
+   staggered channels; no shader. **The ice tile's V axis is depth below the ride surface**
+   and it is a *multiplier*, so palettes vary **hue, not brightness** — `biomes.md` before
+   touching any of it
 9. **Upgrades — vertical slice working** (2026-08-04). One track (jump, five levels), SHOP
    screen, banked coins; player starts weak, buys to baseline. Missions/zones not started
 
 Debug instrumentation derives from `OS.is_debug_build()` — on under the editor and every
 probe, off in a release export, so it can't ship by forgetting a flag (`physics.md`).
 
-**Still unset: the base viewport size.** No `window/size/viewport_width`/`height` in
-`project.godot`, so `stretch/aspect="expand"` lets visible world width vary with device
-aspect ratio — a difficulty difference between phones on an auto-runner, not a cosmetic
-one. Needs a deliberate decision — `docs/review/2026-08-03-architecture-audit.md` §B4.
+**Still unset: the base viewport size.** No `window/size/viewport_width`/`height`, so
+`aspect="expand"` lets visible world width vary with device aspect ratio — a difficulty
+difference between phones on an auto-runner, not a cosmetic one. Needs a deliberate
+decision — `docs/review/2026-08-03-architecture-audit.md` §B4.
 
 ---
 

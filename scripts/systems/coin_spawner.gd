@@ -56,6 +56,13 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Explicit null guard rather than trusting _ready()'s set_physics_process(false): that call
+	# is documented (docs/development/debugging.md) as not reliably suppressing _physics_process
+	# in headless harness runs, and everything below dereferences both of these. Same guard, for
+	# the same reason, as ObstacleSpawner and PowerupSpawner.
+	if terrain_generator == null or player == null:
+		return
+
 	# Deliberately not done in _ready(): this node is a child of TerrainGenerator
 	# (see terrain_generator_path doc comment above), and Godot runs _ready() on
 	# children before their parent, so TerrainGenerator's own _ready() -- which

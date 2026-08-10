@@ -52,6 +52,13 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	# Explicit null guard rather than trusting _ready()'s set_physics_process(false): that call
+	# is documented (docs/development/debugging.md) as not reliably suppressing _physics_process
+	# in headless harness runs, and everything below dereferences both of these. Same guard, for
+	# the same reason, as ObstacleSpawner and PowerupSpawner.
+	if terrain_generator == null or player == null:
+		return
+
 	# session_seed isn't ready in _ready() -- same ordering trap as every other spawner
 	# under TerrainGenerator (children ready before their parent).
 	if not has_initialized_tree_groups:

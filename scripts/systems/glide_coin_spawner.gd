@@ -102,6 +102,13 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Explicit null guard rather than trusting _ready()'s set_physics_process(false): that call
+	# is documented (docs/development/debugging.md) as not reliably suppressing _physics_process
+	# in headless harness runs, and everything below dereferences all three. Same guard, for the
+	# same reason, as ObstacleSpawner and PowerupSpawner.
+	if terrain_generator == null or player == null or camera == null:
+		return
+
 	var is_glide_active: bool = player.is_glide_active
 
 	if is_glide_active and not was_glide_active:
@@ -131,6 +138,12 @@ func start_coin_field() -> void:
 
 func spawn_trail_coin() -> void:
 	var right_edge_x: float = get_visible_right_edge_x()
+	# Last candidate that was on real ground but too close to an existing coin -- the fallback
+	# below. A candidate that failed the VOID check is deliberately never eligible: it is not a
+	# crowding problem and placing it anyway is the one outcome this function must never have.
+	var fallback_position: Vector2 = Vector2.ZERO
+	var has_fallback: bool = false
+
 	for _attempt: int in range(MAX_PLACEMENT_ATTEMPTS):
 		var world_x: float = right_edge_x + randf_range(EDGE_SPAWN_MARGIN_MIN, EDGE_SPAWN_MARGIN_MAX)
 		# A coin over a chasm void has no ground to hover above: get_terrain_height() only
@@ -143,9 +156,18 @@ func spawn_trail_coin() -> void:
 		if is_far_enough_from_active_coins(world_x, local_y):
 			spawn_coin(world_x, local_y, TRAIL_COIN_VALUE, AIR_COIN_SCALE, null)
 			return
-	# Every attempt landed too close to something else -- place the last candidate anyway
-	# rather than silently dropping the coin. Rare: MIN_COIN_SEPARATION is small next to
+		fallback_position = Vector2(world_x, local_y)
+		has_fallback = true
+
+	# Every attempt landed too close to something else -- place the last candidate anyway rather
+	# than silently dropping the coin. Rare: MIN_COIN_SEPARATION is small next to
 	# TRAIL_CLEARANCE_MAX's spread.
+	#
+	# This branch was MISSING until 2026-08-10 while the comment above claimed it existed, so a
+	# crowded late glide quietly dropped coins from its field. has_fallback stays false when
+	# every attempt failed the void check instead, which is the case that must still drop.
+	if has_fallback:
+		spawn_coin(fallback_position.x, fallback_position.y, TRAIL_COIN_VALUE, AIR_COIN_SCALE, null)
 
 
 # zoom.x, not a hardcoded viewport size: project.godot pins no window/size/viewport_* and
