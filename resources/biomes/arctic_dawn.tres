@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="BiomePalette" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="BiomePalette" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/systems/biome_palette.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://bgmlhqgc1ly23" path="res://assets/textures/terrain/ice_rime_depth.png" id="2"]
 
 [resource]
 script = ExtResource("1")
@@ -33,6 +34,7 @@ ice_hue_variance = 0.11
 ice_contrast = 1.18
 snow_cap_color = Color(0.98, 0.99, 1, 1)
 snow_cap_strength = 0.45
+ice_texture = ExtResource("2")
 snow_tint = Color(0.96, 0.98, 1, 0.44)
 snow_density_scale = 1.0
 mist_strength = 0.5

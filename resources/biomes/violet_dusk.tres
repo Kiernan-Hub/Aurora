@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="BiomePalette" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="BiomePalette" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/systems/biome_palette.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://65nyva14irkh" path="res://assets/textures/terrain/ice_shattered_depth.png" id="2"]
 
 [resource]
 script = ExtResource("1")
@@ -33,6 +34,7 @@ ice_hue_variance = 0.13
 ice_contrast = 0.82
 snow_cap_color = Color(0.98, 0.97, 1, 1)
 snow_cap_strength = 0.4
+ice_texture = ExtResource("2")
 snow_tint = Color(0.98, 0.97, 1, 0.42)
 snow_density_scale = 1.0
 mist_strength = 0.4

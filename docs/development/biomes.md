@@ -418,23 +418,43 @@ recolours all of them.
 
 ## Per-biome ice textures (2026-08-08)
 
-`two.png` contained **three** pattern families, not eight; a fourth was added in 2026-08-11
-from a separately generated panel:
+`two.png` contained **three** pattern families, not eight; three more were added on
+2026-08-11 from separately generated panels, hitting the plan's target of ~6:
 
 | Tile | Source panel | Used by |
 |---|---|---|
-| `ice_depth_gradient.png` | `three.png` | the default — five of the eight biomes |
+| `ice_depth_gradient.png` | `three.png` | the default — three of the eight biomes |
 | `ice_faceted_depth.png` | `four.png` | `glacier_teal` |
 | `ice_cracked_depth.png` | `five.png` | `mauve_haze` |
 | `ice_windswept_depth.png` | `six.png` | `twilight_blue` |
+| `ice_rime_depth.png` | `seven.png` | `arctic_dawn` |
+| `ice_shattered_depth.png` | `eight.png` | `violet_dusk` |
 
-`ice_windswept_depth` is long wind-scoured streaks. It went to `twilight_blue` because that
-broke the run's longest stretch of identical ice — `sunset_rose` through `arctic_dawn` was
-four consecutive biomes on the default tile, so the pattern never changed across half the
-cycle. It is also the cleanest tile in the project on the axis that matters: localized
-vertical edges measure 2.17/255 at 1.88x the median column, against 3.0-9.97 and 3.0-3.3x for
-the other three. Vertical is the dangerous axis because the tile repeats every 1200 world px;
-a horizontal edge sits at one depth and never repeats.
+**The three were placed to spread the pattern, not per-biome taste.** Before them,
+`sunset_rose` through `arctic_dawn` was four consecutive biomes on the default tile, so the
+ice pattern never changed across half the cycle. Now **no two adjacent biomes both use the
+default**, and `cracked`/`shattered` — the two most similar families — are deliberately kept
+one biome apart so the dissolve between them still reads as a change.
+
+**Vertical edge is the number to watch on a new tile**, because the tile repeats every 1200
+world px and a coherent vertical feature becomes a permanent line on screen; a horizontal
+edge sits at one depth and never repeats. Localized, smoothed over 64px, worst against the
+median column:
+
+| Tile | Worst | Ratio to median |
+|---|---|---|
+| `ice_windswept_depth` | 2.17/255 | 1.88x — the cleanest in the project |
+| `ice_rime_depth` | 4.80/255 | 1.99x |
+| `ice_depth_gradient` | 3.33/255 | 3.00x |
+| `ice_faceted_depth` | 3.06/255 | 3.21x |
+| `ice_shattered_depth` | 8.95/255 | 3.13x — see below |
+| `ice_cracked_depth` | 9.97/255 | 3.34x — the known facet boundary at x=782 |
+
+`ice_shattered_depth` lands in the same band as `ice_cracked_depth`'s already-shipped
+artifact, and at a suspiciously similar column (789 vs 780). The other four peak at 437/561/
+615/956, so there is no fixed pipeline column and this reads as content in two panels that are
+both large-plate patterns. If either reads as a line in play, the fix is regenerating the
+panel, not more pipeline work.
 
 A palette selects one through `BiomePalette.ice_texture`. **`null` means the default tile**,
 which is why six palettes leave the field unset rather than restating it.

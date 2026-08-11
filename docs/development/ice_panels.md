@@ -50,9 +50,17 @@ variants measure 0.002–0.004.
 
 ## Families worth having
 
-Four exist (smooth `ice_depth_gradient`, `ice_faceted_depth`, `ice_cracked_depth`,
-`ice_windswept_depth`) against eight biomes -- so wind-scoured streaks is struck from the list
-below. Prompts below; all of them should end with:
+Six exist as of 2026-08-11 (smooth `ice_depth_gradient`, `ice_faceted_depth`,
+`ice_cracked_depth`, `ice_windswept_depth`, `ice_rime_depth`, `ice_shattered_depth`) against
+eight biomes, which meets the plan's target -- so wind-scoured streaks, frozen froth and the
+crack web are struck from the list below. What is still missing is **slushy/granular** and the
+**near-mirror gloss** the Phase 4 lake would want.
+
+**The failure mode to watch for when generating.** Four of the seven panels generated for this
+pass were rejected by `--check` for the same reason: no vertical light-to-dark ramp (top-bottom
+range 0.028-0.085, against ~0.25 for a good one). The tile's V axis IS depth below the ride
+surface, so a uniformly-lit panel has nothing for V to mean. Generate at 1024x1024 or larger --
+undersized panels are upscaled and come out soft. Prompts below; all of them should end with:
 
 > Greyscale only. Top of the image is bright packed snow, growing gradually darker toward the
 > bottom. Detail is horizontal — features spread left-to-right across the image, not top-to-
