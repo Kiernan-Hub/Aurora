@@ -52,7 +52,10 @@ velocity model. Commands, flags and watchdog mechanics in `docs/development/debu
 **Plus four visual checks**, because the six above are blind to biome code (`BiomeDirector`
 returns early under `--headless`): `biome_schedule_check.gd` (~1s, palette data) and — all
 three of these **must run WITHOUT `--headless`**, they diff or save rendered frames —
-`sky_layer_check.gd`, `ice_look_capture.gd`, `biome_contact_sheet.gd`.
+`sky_layer_check.gd`, `ice_look_capture.gd`, `biome_contact_sheet.gd`. **Plus one maintained
+*diagnostic*** (windowed too): `ice_seam_probe.gd` A/Bs tile bytes inside one frozen frame to
+tell a tile's content from a rendering artifact. It prints and never fails — read it, don't
+gate on it. Reach for it when a new ice tile reads as a line on screen.
 Log any new seed that trips `FREEZE_REPRO` in `docs/research/freeze_bug.md` before fixing it.
 
 **Before every commit: `shipping_values_check.gd`** (~0.2s). Every debug knob is a plain `var`
@@ -60,7 +63,7 @@ so the editor can't serialise it — which also means no other gate can see one 
 This one fails on all of them, and on any `debug_*` override reaching `main.tscn`.
 `--allow-temp` to WARN instead while eyeballing.
 
-**Only those ten are maintained.** The other ~19 files in `scripts/debug/` are archived
+**Only those eleven are maintained.** The other ~19 files in `scripts/debug/` are archived
 one-offs that mostly predate the start screen — they measure a *paused* game and print
 confident, meaningless numbers rather than failing. Never trust one without reviving it.
 

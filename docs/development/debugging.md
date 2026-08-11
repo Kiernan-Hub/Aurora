@@ -86,10 +86,10 @@ the tell: if a camera measurement looks inflated, check `scroll_rate_x` against 
 
 ## Archived probes are NOT gates — and most of them no longer run
 
-`scripts/debug/` holds 23 GDScript files, but only the **five gates** below (four in
-this section plus the camera shake probe's own) are maintained. Everything else is a one-off from a closed
-investigation, kept for its measurements and its comments. **Audited 2026-08-03, and
-most of them silently lie now:**
+`scripts/debug/` holds 30 GDScript files, but only the **eleven** listed in `CLAUDE.md` are
+maintained — the six headless gates, the four visual checks, and `ice_seam_probe.gd`.
+Everything else is a one-off from a closed investigation, kept for its measurements and its
+comments. **Audited 2026-08-03, and most of them silently lie now:**
 
 | Probe | State |
 |---|---|
@@ -347,6 +347,40 @@ UI `CanvasLayer`.
 
 The project owner still judges the final look in-game; this is for catching the gross
 breakage first.
+
+## Ice seam probe (`scripts/debug/ice_seam_probe.gd`)
+
+**Not a gate — it prints, it never fails.** Kept maintained (2026-08-11) because it is the only
+instrument that measures the ice as *rendered*. `build_ice_texture.py --check` reads a tile's
+source bytes and catches both known defect classes offline in ~1s; use that first. This is for
+the question it cannot answer: *does this read as a line on screen, and is that the tile's
+content or the renderer?*
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --path . --script res://scripts/debug/ice_seam_probe.gd -- --out=/tmp/seam --old=/tmp/old-tiles
+```
+
+No `--headless`: `BiomeDirector` returns early there, so `ice_hue_variance` stays 0 and the
+drift under investigation never runs. `--old=DIR` points at previous-version tiles with the
+**same basenames**; omit it to capture and report without an A/B.
+
+Three things it does that a naive version of the same script got wrong, each having produced a
+confidently false answer during the 2026-08-11 seam hunt:
+
+- **It A/Bs inside ONE frozen frame.** The seed is per-session and the player is moving, so two
+  *runs* are two different landscapes — measured camera drift ~25 world px by the first capture.
+  It settles, pauses the tree, captures, swaps the tile textures in place, captures again.
+- **It hides Player, snow, birds and all four spawners.** A vertical sprite edge is precisely
+  what a vertical-seam detector is built to find. Four false positives came from this — a
+  28/255 "step" that was a tree trunk crossing the sample row, and a 7.4/255 "line at 9.9×
+  median" that was the same trunk's edge.
+- **It scrolls the world between captures** (`DRIFT_CAPTURES`). A feature of the *ice* travels
+  with the camera; a feature of the *rendering* stays put on screen. Nothing else here splits
+  those two apart, and every earlier detector could find either without knowing which it had.
+
+`SceneTree.paused` for the freeze, never `Engine.time_scale = 0` — that zeroes the physics
+delta, trips the stall watchdog and fires a world rebase, leaving the world off screen. Full
+list of the measurement traps in `docs/research/` and at the head of the file itself.
 
 ## Watchdog mechanics
 
