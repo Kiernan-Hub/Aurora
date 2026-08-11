@@ -418,13 +418,23 @@ recolours all of them.
 
 ## Per-biome ice textures (2026-08-08)
 
-`two.png` contains **three** pattern families, not eight, so there are three tiles:
+`two.png` contained **three** pattern families, not eight; a fourth was added in 2026-08-11
+from a separately generated panel:
 
 | Tile | Source panel | Used by |
 |---|---|---|
-| `ice_depth_gradient.png` | `three.png` | the default — six of the eight biomes |
+| `ice_depth_gradient.png` | `three.png` | the default — five of the eight biomes |
 | `ice_faceted_depth.png` | `four.png` | `glacier_teal` |
 | `ice_cracked_depth.png` | `five.png` | `mauve_haze` |
+| `ice_windswept_depth.png` | `six.png` | `twilight_blue` |
+
+`ice_windswept_depth` is long wind-scoured streaks. It went to `twilight_blue` because that
+broke the run's longest stretch of identical ice — `sunset_rose` through `arctic_dawn` was
+four consecutive biomes on the default tile, so the pattern never changed across half the
+cycle. It is also the cleanest tile in the project on the axis that matters: localized
+vertical edges measure 2.17/255 at 1.88x the median column, against 3.0-9.97 and 3.0-3.3x for
+the other three. Vertical is the dangerous axis because the tile repeats every 1200 world px;
+a horizontal edge sits at one depth and never repeats.
 
 A palette selects one through `BiomePalette.ice_texture`. **`null` means the default tile**,
 which is why six palettes leave the field unset rather than restating it.

@@ -50,8 +50,9 @@ variants measure 0.002–0.004.
 
 ## Families worth having
 
-Three exist (smooth `ice_depth_gradient`, `ice_faceted_depth`, `ice_cracked_depth`) against
-eight biomes. Prompts below; all of them should end with:
+Four exist (smooth `ice_depth_gradient`, `ice_faceted_depth`, `ice_cracked_depth`,
+`ice_windswept_depth`) against eight biomes -- so wind-scoured streaks is struck from the list
+below. Prompts below; all of them should end with:
 
 > Greyscale only. Top of the image is bright packed snow, growing gradually darker toward the
 > bottom. Detail is horizontal — features spread left-to-right across the image, not top-to-
