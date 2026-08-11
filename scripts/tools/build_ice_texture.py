@@ -160,10 +160,6 @@ FLATTEN_DEPTH_SIGMA = 48.0
 # the source panel was generated, and it repeats forever.
 FLATTEN_STRENGTH = 1.0
 
-# Half the width, in the rolled image, over which the (now central) original seam
-# is feathered. Narrow: the seam is in the middle of the tile and does not repeat,
-# so it needs hiding, not disguising.
-SEAM_FEATHER = 90
 # Generated panels carry fine grain that reads as noise once the tile is stretched
 # over 1200 world px. The reference ice is glossy and smooth; cracks are far wider
 # than this radius and survive it.
@@ -241,24 +237,45 @@ def make_horizontally_seamless(values):
 
     # Linear cross-fade across the seam at x == half, between the two sides
     # extended through it. Weight 0 on the left of the band, 1 on the right.
-    left = max(0, half - SEAM_FEATHER)
-    right = min(width, half + SEAM_FEATHER)
-    band_width = right - left
-    if band_width < 2:
-        return rolled
-    weights = np.linspace(0.0, 1.0, band_width)[None, :]
-    before = rolled[:, left - 1: left].repeat(band_width, axis=1) if left > 0 else rolled[:, left: left + 1].repeat(band_width, axis=1)
-    after = rolled[:, right - 1: right].repeat(band_width, axis=1)
-    # Blend the band toward a straight ramp between its two neighbours, then
-    # average that with the original content so texture detail survives.
-    ramp = (before * (1.0 - weights)) + (after * weights)
-    # Weighted toward the ORIGINAL content, not the ramp: the ramp only has to remove the
-    # level step across the seam. Leaning on it harder flattens texture detail into a smooth
-    # vertical band, which is itself visible against the detailed ice either side of it --
-    # that was the faint line still showing at 0.55.
-    blend_strength = np.sin(np.linspace(0.0, np.pi, band_width))[None, :] * 0.42
-    rolled[:, left:right] = (rolled[:, left:right] * (1.0 - blend_strength)) + (ramp * blend_strength)
-    return rolled
+    return remove_seam_gradient(rolled, half - 1)
+
+
+# THIS IS WHAT THE REPORTED VERTICAL LINE WAS (2026-08-11). Measured on the built tiles,
+# strongest column-coherent edge over the top third: +4.14/255 at 11.5x the median column,
+# at tile x=511 -- the roll centre -- in ALL THREE tiles independently, which is what
+# identified it. On screen the tile repeats every ICE_TILE_WORLD_WIDTH, so that residual is a
+# faint straight line every 1200 world px, at world_x = 599 mod 1200 (tile x 511 of 1024).
+#
+# TWO WRONG FIXES CAME FIRST, and both are instructive enough to name:
+#
+#   * A CROSS-FADE of the two sides over a feather band. That is a double exposure of two
+#     pieces of ice that were never adjacent, so it ghosts; and at the 0.42 strength needed to
+#     keep the ghosting invisible it still left 58% of the step. Turning it up traded the line
+#     for a smeared band that was visible in its own right.
+#   * Subtracting the band's LOW-FREQUENCY profile and substituting a ramp. This looks right
+#     and is not: a one-pixel step is BROADBAND, so its sharp edge sits almost entirely in the
+#     detail the method is trying to preserve. Measured, it made the line worse -- 4.14 ->
+#     7.06/255 -- because it removed the gentle part of the step and kept the abrupt part.
+#
+# The step is a single bad GRADIENT, so remove it in the gradient domain and leave every other
+# pixel relationship alone: zero the one column-to-column difference that spans the join, then
+# add back a linear ramp across the full width so the tile still wraps.
+#
+# Exact, not approximate. After this the difference across the seam is seam_gradient / 1023 --
+# about 0.004/255 -- and the compensating ramp is that same total spread over the whole tile,
+# a slope far below what any display can show. Every other gradient in the image, which is to
+# say every crack and every facet, is bit-for-bit what it was.
+def remove_seam_gradient(values, seam_index):
+    width = values.shape[1]
+    # The one difference that spans two columns which were never neighbours in the source.
+    seam_gradient = values[:, seam_index + 1] - values[:, seam_index]
+    corrected = values.copy()
+    corrected[:, seam_index + 1:] -= seam_gradient[:, None]
+    # Re-close the wrap: the shift above would otherwise move the right edge away from the
+    # left one, which is the one join that was previously exact.
+    ramp = (np.arange(width, dtype=np.float64) / float(width - 1))[None, :]
+    corrected += seam_gradient[:, None] * ramp
+    return np.clip(corrected, OUTPUT_FLOOR, OUTPUT_CEILING)
 
 
 def smooth_circularly(profile, sigma):
