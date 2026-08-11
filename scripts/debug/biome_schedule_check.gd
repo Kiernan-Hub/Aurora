@@ -588,8 +588,9 @@ func values_match(a: Variant, b: Variant) -> bool:
 
 # The ice PATTERN is the one thing a blended palette cannot carry: a Polygon2D samples exactly
 # one texture, so dissolving between two tiles needs both endpoints AND the weight, which one
-# value cannot express. terrain_generator.gd stacks two bands per ground run and is handed the
-# pair directly (BiomePalette.ice_texture).
+# value cannot express. terrain_generator.gd builds one band per ground run, whose shader takes
+# the incoming tile as a second sampler, and is handed the pair directly
+# (BiomePalette.ice_texture).
 #
 # So there are two things to hold here, and neither is visible to any other gate:
 #

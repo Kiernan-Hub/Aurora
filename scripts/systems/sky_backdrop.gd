@@ -238,7 +238,7 @@ func apply_glow(palette: BiomePalette) -> void:
 	# Hidden outright rather than drawn at alpha 0. A fully transparent full-screen TextureRect
 	# still rasterises every pixel it covers, and on a mobile GPU stacked full-screen alpha is
 	# the fill-rate cost that actually matters here -- same reasoning as
-	# terrain_generator.paint_ice_band()'s `visible = opacity > 0`.
+	# terrain_generator.paint_snow_cap()'s `visible = snow_cap_strength > 0`.
 	sky_glow.visible = palette.glow_strength > 0.0
 	if not sky_glow.visible:
 		return
