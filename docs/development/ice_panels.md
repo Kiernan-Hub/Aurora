@@ -51,10 +51,17 @@ variants measure 0.002–0.004.
 ## Families worth having
 
 Six exist as of 2026-08-11 (smooth `ice_depth_gradient`, `ice_faceted_depth`,
-`ice_cracked_depth`, `ice_windswept_depth`, `ice_rime_depth`, `ice_shattered_depth`) against
-eight biomes, which meets the plan's target -- so wind-scoured streaks, frozen froth and the
-crack web are struck from the list below. What is still missing is **slushy/granular** and the
-**near-mirror gloss** the Phase 4 lake would want.
+`ice_cracked_depth`, `ice_granular_depth`, `ice_rime_depth`, `ice_shattered_depth`) against
+eight biomes, which meets the plan's target -- so frozen froth, the crack web and
+slushy/granular are struck from the list below. What is still missing is the **near-mirror
+gloss** the Phase 4 lake would want.
+
+**Wind-scoured streaks is struck for a different reason: it was built, shipped and pulled.**
+`six.png` is still in the repo root and still builds, but the tile is not in
+`assets/textures/terrain/` because a long-streak pattern is the one thing that cannot ride a
+sloped band -- see below. **It is reserved for the Phase 4 flat lake**, where there is no slope
+to shear it and long horizontal streaks are exactly what the reference wants. Rebuild it with
+`build_ice_texture.py six.png <output>` when that biome exists.
 
 **The failure mode to watch for when generating.** Four of the seven panels generated for this
 pass were rejected by `--check` for the same reason: no vertical light-to-dark ramp (top-bottom
@@ -75,9 +82,29 @@ within-row contrast survives, which is the number `--check` prints.
 (`terrain_generator.gd:726`), so the texture shears to follow the slope. A pattern with no
 dominant direction — facets, crack webs, crinkle, plates — shears invisibly. A pattern made of
 **long continuous lines spanning the panel** does not: on a downhill the lines fan downward and
-read as flowing hair or water rather than ice. That is what `ice_windswept_depth`'s first
-version did, and no tile metric caught it, because the vertical-edge and banding checks measure
-TILING artifacts and are blind to how directional a pattern reads on a slope.
+read as flowing hair or water rather than ice. That is what `ice_windswept_depth` did, and no
+tile metric caught it, because the vertical-edge and banding checks measure TILING artifacts and
+are blind to how directional a pattern reads on a slope.
+
+**The statistic that does catch it is horizontal coherence LENGTH** -- how far a feature stays
+correlated (>0.5) along each axis, with the depth ramp removed first. Measured across all seven
+tiles built for this pass:
+
+| Tile | x-coherence | y-coherence | ratio |
+|---|---|---|---|
+| `ice_windswept_depth` (pulled) | **35px** | 6px | **5.83x** |
+| `ice_depth_gradient` | 10px | 4px | 2.50x |
+| `ice_faceted_depth` | 8px | 4px | 2.00x |
+| `ice_shattered_depth` | 7px | 5px | 1.40x |
+| `ice_cracked_depth` | 5px | 4px | 1.25x |
+| `ice_rime_depth` | 4px | 3px | 1.33x |
+| `ice_granular_depth` | 3px | 2px | 1.50x |
+
+The pulled tile is an outlier on ABSOLUTE x-coherence -- 35px against 3-10px for everything
+else -- not merely on the ratio. Note the ratio alone is not sufficient: the default smooth tile
+sits at 2.50x and has never looked wrong, because it has almost no contrast to draw a line
+with. Judge a candidate on both, or just check that nothing stays coherent for tens of pixels
+along x.
 
 So: **short, broken, irregular features that differ from their neighbours along x** — not
 continuous strata. Judge a candidate panel by squinting at it rotated 20°; if it suddenly looks

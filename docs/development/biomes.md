@@ -426,9 +426,15 @@ recolours all of them.
 | `ice_depth_gradient.png` | `three.png` | the default — three of the eight biomes |
 | `ice_faceted_depth.png` | `four.png` | `glacier_teal` |
 | `ice_cracked_depth.png` | `five.png` | `mauve_haze` |
-| `ice_windswept_depth.png` | `six.png` | `twilight_blue` |
+| `ice_granular_depth.png` | `eleven.png` | `twilight_blue` |
 | `ice_rime_depth.png` | `seven.png` | `arctic_dawn` |
 | `ice_shattered_depth.png` | `eight.png` | `violet_dusk` |
+
+> **`ice_windswept_depth` was built, shipped and pulled the same day.** It measured as the
+> cleanest tile in the project on every metric that existed, and was still wrong: its long
+> streaks stayed coherent for 35px along x, so on a slope they fanned downward and read as
+> flowing hair. Reported from a playtest, not caught by a gate. `six.png` is kept for the
+> Phase 4 flat lake, where nothing shears it. See `ice_panels.md`.
 
 **The three were placed to spread the pattern, not per-biome taste.** Before them,
 `sunset_rose` through `arctic_dawn` was four consecutive biomes on the default tile, so the
@@ -443,8 +449,8 @@ median column:
 
 | Tile | Worst | Ratio to median |
 |---|---|---|
-| `ice_windswept_depth` | 2.17/255 | 1.88x — the cleanest in the project |
-| `ice_rime_depth` | 4.80/255 | 1.99x |
+| `ice_granular_depth` | 7.00/255 | 2.59x |
+| `ice_rime_depth` | 4.80/255 | 1.99x — the cleanest in the project |
 | `ice_depth_gradient` | 3.33/255 | 3.00x |
 | `ice_faceted_depth` | 3.06/255 | 3.21x |
 | `ice_shattered_depth` | 8.95/255 | 3.13x — see below |

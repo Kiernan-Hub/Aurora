@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b0u0l3cgnb3ob"
-path="res://.godot/imported/ice_windswept_depth.png-1e590cad1b8628fa82500194e8d136e1.ctex"
+uid="uid://bfk2gcq1o735x"
+path="res://.godot/imported/ice_granular_depth.png-535e1c423bf86480ec6fc3f16589dec3.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/terrain/ice_windswept_depth.png"
-dest_files=["res://.godot/imported/ice_windswept_depth.png-1e590cad1b8628fa82500194e8d136e1.ctex"]
+source_file="res://assets/textures/terrain/ice_granular_depth.png"
+dest_files=["res://.godot/imported/ice_granular_depth.png-535e1c423bf86480ec6fc3f16589dec3.ctex"]
 
 [params]
 
