@@ -462,7 +462,7 @@ func check_blending() -> void:
 	if not out.sky_top.is_equal_approx(cycle[1].sky_top) or not out.ice_surface.is_equal_approx(cycle[1].ice_surface):
 		failures.append("blend at weight 1 does not reproduce the destination palette")
 
-	check_blend_carries_sky_fields()
+	check_blend_carries_fields()
 	check_no_adjacent_discs()
 	check_disc_positions_are_stationary()
 	check_ice_pattern_crossfade()
@@ -516,20 +516,24 @@ func check_disc_positions_are_stationary() -> void:
 # star_density rides CHANNEL_ATMOSPHERE rather than CHANNEL_SKY -- stars are weather, not
 # light -- but it is a sky LAYER's strength and fails the same way, so it is asserted here
 # with the rest. A single-field group is fine: the pair only has to differ on that one field.
-const SKY_FIELD_GROUPS: Array[Array] = [
+# ice_contrast is the same shape again on CHANNEL_ICE: a bare float whose class default (1.0)
+# is also its identity, so an omitted lerp would leave every biome rendering the untouched
+# tile -- exactly what shipped before it was authored, and invisible to every colour check.
+const BLEND_FIELD_GROUPS: Array[Array] = [
 	["glow_position", "glow_radius", "glow_strength"],
 	["celestial_position", "celestial_size", "celestial_strength"],
 	["star_density"],
 	["celestial_is_moon"],
+	["ice_contrast"],
 ]
 
 
-func check_blend_carries_sky_fields() -> void:
+func check_blend_carries_fields() -> void:
 	var out: BiomePalette = BiomePalette.new()
 	var weights: PackedFloat32Array = PackedFloat32Array()
 	weights.resize(BiomePalette.CHANNEL_COUNT)
 
-	for group: Array in SKY_FIELD_GROUPS:
+	for group: Array in BLEND_FIELD_GROUPS:
 		var pair: Array[BiomePalette] = find_pair_differing_on(group)
 		if pair.is_empty():
 			failures.append("no pair of palettes differs on all of %s -- those fields are identical across the whole cycle, so blend_into carrying them is untested"

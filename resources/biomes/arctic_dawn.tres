@@ -30,6 +30,7 @@ bird_tint = Color(0.55, 0.62, 0.78, 1)
 ice_surface = Color(0.58, 0.8, 1.0, 1)
 ice_depth = Color(0.24, 0.55, 1.0, 1)
 ice_hue_variance = 0.11
+ice_contrast = 1.18
 snow_cap_color = Color(0.98, 0.99, 1, 1)
 snow_cap_strength = 0.45
 snow_tint = Color(0.96, 0.98, 1, 0.44)

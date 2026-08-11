@@ -1824,6 +1824,11 @@ func apply_ice_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ic
 	if ice_material != null:
 		ice_material.set_shader_parameter("overlay_tile", ice_overlay_texture)
 		ice_material.set_shader_parameter("overlay_weight", ice_overlay_weight)
+		# Already blended on the ice channel by the time it gets here, so this crossfades with
+		# the tints rather than snapping at the boundary. Global for the same reason the two
+		# above are: contrast is a property of the biome, not of a chunk, and every band in the
+		# world shares this one material.
+		ice_material.set_shader_parameter("contrast", palette.ice_contrast)
 	for chunk: Node2D in active_chunks.values():
 		repaint_chunk(chunk)
 

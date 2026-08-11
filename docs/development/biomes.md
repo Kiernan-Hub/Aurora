@@ -528,13 +528,35 @@ and they are the three things vertex colours provably cannot do:
 |---|---|---|
 | `overlay_tile` / `overlay_weight` | — / `0.0` | the two-tile dissolve above |
 | `dissolve_softness` | `0.12` | width of a patch's soft edge |
-| `contrast` | `1.0` | tile contrast **independent of hue** — the palette's `ice_surface`/`ice_depth` are a hue ramp by contract, so they cannot express this |
+| `contrast` | `1.0` | tile contrast **independent of hue** — the palette's `ice_surface`/`ice_depth` are a hue ramp by contract, so they cannot express this. Driven by `BiomePalette.ice_contrast`, below |
 | `gloss_strength` / `gloss_depth` / `gloss_softness` | `0.0` / `0.16` / `0.12` | a sheen for a later flat-lake biome; parameterised now, left off |
 
 **Every default is an exact identity**, and that is verified rather than asserted: with the
 material swapped in place inside one frozen frame, `ice.gdshader` at its defaults renders
 **pixel-identical** (max delta 0/255, 9 bands × 3 positions) to no material at all — which is
 what the old build drew at weight 0, since its second band was hidden there.
+
+### `ice_contrast` — the palette field that drives it (2026-08-11)
+
+`BiomePalette.ice_contrast` blends on `CHANNEL_ICE` alongside the tints and is pushed onto the
+shared material in `apply_ice_palette()`, so it crossfades with them instead of snapping at a
+chunk boundary. It is the **one ice field that is not a hue**: every other one multiplies a
+greyscale tile, which scales light and dark by the same factor and can never move the ratio
+between them.
+
+**Its effect is asymmetric on purpose.** The tile's surface rows sit near 1.0, so a value
+above 1 clamps there — the snow band is left alone while cracks and mid-tones deepen. A value
+below 1 pulls everything toward `CONTRAST_PIVOT` at once, which is the flat, veiled read the
+hazy and dusk biomes want. Authored along the day arc: clear light crisp
+(`glacier_teal` 1.28, `starlit_night` 1.20 — moonlight is a hard small source), haze and dusk
+flat (`mauve_haze` 0.78, `twilight_blue` 0.80).
+
+**The measured peak is ≈ `78 × |1 − ice_contrast|`**, near-constant across the eight, because
+the pixels that move most are those surface rows and they sit a fixed distance from the pivot.
+So `sky_layer_check`'s `IceContrast` floor (10/255, its own — the 24 calibrated for the sky
+overlays is unreachable here without washing the ice out) is really a floor on the *authoring*:
+below `|1 − contrast| ≈ 0.13` the field is set but is not a decision anyone sees. The first
+authoring pass had two biomes under it, at 5 and 9/255, and that is what caught them.
 
 Two rules the file depends on, both easy to break:
 

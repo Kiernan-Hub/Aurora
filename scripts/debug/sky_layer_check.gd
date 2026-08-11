@@ -52,8 +52,16 @@ const SETTLE_FRAMES: int = 6
 # the weakest biomes and read as "no glow at all" in game, while 33+ read as present. 24 sits
 # between them with margin on both sides.
 const MIN_PEAK_CONTRIBUTION: int = 24
+# The ice band's contrast has its own floor -- see the note on LAYERS for why it cannot be held
+# to the one above. Calibrated by measurement: across the eight biomes the peak comes out at
+# very close to 78 * |1 - ice_contrast|, because the pixels that move most are the tile's
+# surface rows and they are a fixed distance from CONTRAST_PIVOT. So this floor is really a
+# floor on the AUTHORING -- 10/255 is |1 - contrast| >= 0.13, below which the field is set but
+# is not a decision anyone would see. The first authoring pass had two biomes under it (5 and
+# 9/255) and that is exactly what this caught.
+const MIN_ICE_CONTRAST_CONTRIBUTION: int = 10
 
-# [label, palette field, mode]
+# [label, palette field, mode, OFF value, floor]
 #
 # MODE_VISIBLE toggles a child node of SkyBackdrop, which is how an optional overlay layer is
 # measured. MODE_TINT has no node to toggle: the horizontal sky tint is baked INTO the sky
@@ -64,16 +72,29 @@ const MIN_PEAK_CONTRIBUTION: int = 24
 # so its baseline is the same palette with ice_hue_variance zeroed and pushed through
 # TerrainGenerator.apply_ice_palette() rather than through the backdrop. Still two captures of
 # one frame differing in one thing, which is all the rest of this file assumes.
+#
+# THE OFF VALUE IS NOT ALWAYS 0. Every layer here was a strength until ice_contrast, whose
+# identity is 1.0 -- so "the same palette with this turned off" and "this biome claims this
+# layer" both have to be asked against the field's own identity, not against zero. Zeroing
+# ice_contrast would not be a baseline at all: it would flatten the tile to a flat grey and
+# measure a difference far larger than the effect being tested.
+#
+# THE FLOOR IS PER ROW for the same reason. MIN_PEAK_CONTRIBUTION was calibrated on the sky
+# overlays, which composite over open sky and can move a pixel most of the way to their own
+# colour. Contrast cannot: it moves the tile toward or away from a pivot the tile is already
+# near, and the surface rows it affects most sit at ~1.0 where a value above 1 clamps outright.
+# Holding it to the sky floor would demand a flattening strong enough to wash the ice out.
 const MODE_VISIBLE: String = "visible"
 const MODE_TINT: String = "tint"
 const MODE_ICE: String = "ice"
 const LAYERS: Array[Array] = [
-	["SkyGlow", "glow_strength", MODE_VISIBLE],
-	["SkyCelestial", "celestial_strength", MODE_VISIBLE],
-	["SkyStars", "star_density", MODE_VISIBLE],
-	["SkyTint", "", MODE_TINT],
-	["IceHue", "ice_hue_variance", MODE_ICE],
-	["SnowCap", "snow_cap_strength", MODE_ICE],
+	["SkyGlow", "glow_strength", MODE_VISIBLE, 0.0, MIN_PEAK_CONTRIBUTION],
+	["SkyCelestial", "celestial_strength", MODE_VISIBLE, 0.0, MIN_PEAK_CONTRIBUTION],
+	["SkyStars", "star_density", MODE_VISIBLE, 0.0, MIN_PEAK_CONTRIBUTION],
+	["SkyTint", "", MODE_TINT, 0.0, MIN_PEAK_CONTRIBUTION],
+	["IceHue", "ice_hue_variance", MODE_ICE, 0.0, MIN_PEAK_CONTRIBUTION],
+	["SnowCap", "snow_cap_strength", MODE_ICE, 0.0, MIN_PEAK_CONTRIBUTION],
+	["IceContrast", "ice_contrast", MODE_ICE, 1.0, MIN_ICE_CONTRAST_CONTRIBUTION],
 ]
 
 var main: Node2D
@@ -196,9 +217,9 @@ func _process(_delta: float) -> bool:
 		var ice_probe: BiomePalette = palette
 		if phase == 0:
 			ice_probe = palette.duplicate() as BiomePalette
-			# Zero whichever field this row names, so one mode covers every terrain-side
-			# palette scalar rather than needing a mode per field.
-			ice_probe.set(LAYERS[layer_index][1], 0.0)
+			# Set whichever field this row names to ITS OWN off value, so one mode covers every
+			# terrain-side palette scalar rather than needing a mode per field.
+			ice_probe.set(LAYERS[layer_index][1], LAYERS[layer_index][3])
 		# Straight to the generator, the way BiomeDirector.push_palette() does it. Weight 0 and
 		# the same texture at both ends, so the pattern dissolve contributes nothing and the
 		# only difference between the two captures is the drift.
@@ -224,12 +245,13 @@ func _process(_delta: float) -> bool:
 	return false
 
 
-# A biome "claims" a toggled layer when its strength is above zero, and claims the horizontal
-# tint when either end is not white -- white being the documented "no horizontal variation".
+# A biome "claims" a layer when its field differs from that field's OFF value, and claims the
+# horizontal tint when either end is not white -- white being the documented "no horizontal
+# variation". Not `> 0.0`: ice_contrast is off at 1.0 and a biome may deliberately sit below it.
 func claims_layer(palette: BiomePalette, index: int) -> bool:
 	if LAYERS[index][2] == MODE_TINT:
 		return palette.sky_tint_left != Color.WHITE or palette.sky_tint_right != Color.WHITE
-	return float(palette.get(LAYERS[index][1])) > 0.0
+	return not is_equal_approx(float(palette.get(LAYERS[index][1])), float(LAYERS[index][3]))
 
 
 # Exact peak per-channel difference over EVERY pixel, compared as raw bytes.
@@ -262,22 +284,27 @@ func measure_peak(without_layer: Image, with_layer: Image) -> int:
 func report() -> void:
 	var failures: Array[String] = []
 	print("")
-	print("biome              SkyGlow   SkyCelestial   SkyStars   SkyTint   IceHue   SnowCap")
-	print("---------------------------------------------------------------------------------")
+	# Header built from LAYERS rather than written out, so adding a row cannot silently shift
+	# every column under the wrong heading. Column width matches the "%4d LOW!" cells below.
+	var header: String = "%-18s" % "biome"
+	for layer: Array in LAYERS:
+		header += "%-13s" % layer[0]
+	print(header)
+	print("-".repeat(header.length()))
 	for cycle_index: int in range(peaks.size()):
 		var palette: BiomePalette = BiomeDirector.BIOME_CYCLE[cycle_index]
-		var cells: PackedStringArray = PackedStringArray()
+		var row_text: String = "%-18s" % palette.resource_path.get_file().get_basename()
 		for column: int in range(LAYERS.size()):
 			var peak: int = peaks[cycle_index][column]
 			if peak < 0:
-				cells.append("      --")
+				row_text += "%-13s" % "  --"
 				continue
-			cells.append("%4d%s" % [peak, " LOW!" if peak < MIN_PEAK_CONTRIBUTION else "     "])
-			if peak < MIN_PEAK_CONTRIBUTION:
-				failures.append("%s %s peaks at %d/255, below the %d floor -- it is on screen but not visible. Raise its strength, move it into unoccluded sky, or pick a colour further from this biome's sky colours"
-					% [palette.resource_path.get_file().get_basename(), LAYERS[column][0], peak, MIN_PEAK_CONTRIBUTION])
-		print("%-18s %s  %s  %s  %s  %s  %s" % [palette.resource_path.get_file().get_basename(),
-			cells[0], cells[1], cells[2], cells[3], cells[4], cells[5]])
+			var floor_value: int = int(LAYERS[column][4])
+			row_text += "%-13s" % ("%4d%s" % [peak, " LOW!" if peak < floor_value else ""])
+			if peak < floor_value:
+				failures.append("%s %s peaks at %d/255, below its %d floor -- it is on screen but not visible. Raise its strength, move it into unoccluded sky, or pick a colour further from this biome's sky colours"
+					% [palette.resource_path.get_file().get_basename(), LAYERS[column][0], peak, floor_value])
+		print(row_text)
 
 	var claimed: int = 0
 	for row: PackedInt32Array in peaks:
@@ -286,8 +313,8 @@ func report() -> void:
 				claimed += 1
 	print("")
 	if failures.is_empty():
-		print("SKY_LAYER_CHECK PASS  biomes=%d  layers_measured=%d  floor=%d/255"
-			% [peaks.size(), claimed, MIN_PEAK_CONTRIBUTION])
+		print("SKY_LAYER_CHECK PASS  biomes=%d  layers_measured=%d  floor=%d/255 (ice contrast %d/255)"
+			% [peaks.size(), claimed, MIN_PEAK_CONTRIBUTION, MIN_ICE_CONTRAST_CONTRIBUTION])
 		quit(0)
 		return
 	print("SKY_LAYER_CHECK FAIL  ", failures.size(), " violation(s)")

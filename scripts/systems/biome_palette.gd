@@ -179,6 +179,22 @@ const CHANNEL_COUNT: int = 5
 #
 # 0 opts out, which is right for a biome whose ice should read as clean and uniform.
 @export_range(0.0, 0.3) var ice_hue_variance: float = 0.0
+# How hard the tile's own light/dark structure is pushed away from (>1) or toward (<1) a
+# fixed pivot, by shaders/ice.gdshader. 1.0 leaves the tile exactly as authored.
+#
+# THIS IS THE ONE ICE FIELD THAT IS NOT A HUE. Everything else in this group is a multiplier
+# against a greyscale tile, so it can only ever restate the tile's own contrast -- multiplying
+# scales light and dark by the SAME factor and the ratio between them never moves. Separating
+# "how blue" from "how crisp" is the entire reason the shader exists; see its header.
+#
+# Its effect is asymmetric, and deliberately so. The tile's surface rows sit near 1.0, so
+# values above 1 clamp there and leave the snow band alone while deepening the cracks and
+# mid-tones -- more definition, no blown highlight. Values below 1 pull everything toward the
+# pivot at once, which is the flat, veiled read an overcast or hazy biome wants.
+#
+# Fades out with depth inside the shader, so the bottom row of the band still meets the flat
+# deep fill at exactly the colour that fill uses.
+@export_range(0.5, 1.5) var ice_contrast: float = 1.0
 # Snow settled on the ride line, as a band whose DEPTH varies with world_x.
 #
 # The tile already paints a snow band in its top rows, but the tile repeats every
@@ -259,6 +275,7 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	out.ice_surface = from.ice_surface.lerp(to.ice_surface, ice)
 	out.ice_depth = from.ice_depth.lerp(to.ice_depth, ice)
 	out.ice_hue_variance = lerpf(from.ice_hue_variance, to.ice_hue_variance, ice)
+	out.ice_contrast = lerpf(from.ice_contrast, to.ice_contrast, ice)
 	out.snow_cap_color = from.snow_cap_color.lerp(to.snow_cap_color, ice)
 	out.snow_cap_strength = lerpf(from.snow_cap_strength, to.snow_cap_strength, ice)
 	# ice_texture is deliberately NOT written -- see its note. A blended palette structurally
