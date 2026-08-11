@@ -60,24 +60,53 @@ crack web are struck from the list below. What is still missing is **slushy/gran
 pass were rejected by `--check` for the same reason: no vertical light-to-dark ramp (top-bottom
 range 0.028-0.085, against ~0.25 for a good one). The tile's V axis IS depth below the ride
 surface, so a uniformly-lit panel has nothing for V to mean. Generate at 1024x1024 or larger --
-undersized panels are upscaled and come out soft. Prompts below; all of them should end with:
+undersized panels are upscaled and come out soft.
+
+### Detail must VARY along x, but must not RUN along x (2026-08-11)
+
+These sound like the same instruction and are opposites, and getting them confused shipped a
+tile that had to be regenerated.
+
+**Vary along x — required.** `match_depth_ramp()` rescales each row's brightness onto the
+reference ramp, so anything constant across a row is normalised away completely. Only
+within-row contrast survives, which is the number `--check` prints.
+
+**Run along x — avoid.** `build_ice_band()` pins the tile's `V=0` row to the terrain surface
+(`terrain_generator.gd:726`), so the texture shears to follow the slope. A pattern with no
+dominant direction — facets, crack webs, crinkle, plates — shears invisibly. A pattern made of
+**long continuous lines spanning the panel** does not: on a downhill the lines fan downward and
+read as flowing hair or water rather than ice. That is what `ice_windswept_depth`'s first
+version did, and no tile metric caught it, because the vertical-edge and banding checks measure
+TILING artifacts and are blind to how directional a pattern reads on a slope.
+
+So: **short, broken, irregular features that differ from their neighbours along x** — not
+continuous strata. Judge a candidate panel by squinting at it rotated 20°; if it suddenly looks
+like flow lines, it will do that on every hill in the game.
+
+Prompts below; all of them should end with:
 
 > Greyscale only. Top of the image is bright packed snow, growing gradually darker toward the
-> bottom. Detail is horizontal — features spread left-to-right across the image, not top-to-
-> bottom. No text, no border, no vignette, no colour. Seamless tiling not required. 1024×1024.
+> bottom. Detail is broken up and irregular, varying left-to-right, with no single feature
+> running unbroken across the width of the image. No text, no border, no vignette, no colour.
+> Seamless tiling not required. 1024×1024.
 
 1. **Air bubbles / frozen froth** — "Clusters of small pale circular bubbles suspended at
    varying depths in clear ice, denser and smaller near the top, sparser and larger lower
    down."
-2. **Wind-scoured streaks** — "Long shallow horizontal wind-carved grooves in packed snow and
-   ice, like sastrugi, strongest in the upper third and fading with depth."
+2. **Wind-scoured streaks** — "Short, broken, overlapping wind-carved scours in packed snow
+   and ice, like sastrugi ridges seen from above — each one only a fraction of the image wide,
+   at staggered offsets and slightly different angles, never forming a continuous line across
+   the picture. Strongest in the upper third, fading with depth." *(Rewritten 2026-08-11: the
+   original asked for "long horizontal grooves" and produced exactly the flow-line failure
+   above.)*
 3. **Slush / granular** — "Coarse granular refrozen slush, a fine irregular pebbled texture
    near the surface softening into smoother ice below."
 4. **Shatter / impact web** — "A radiating web of fine fracture lines spreading outward from
    two or three points, hairline-thin, over otherwise clear deep ice."
-5. **Near-mirror gloss** — "Almost featureless polished black ice with a few very faint long
-   horizontal reflection streaks near the surface." *(This is the one the flat-lake biome in
-   Phase 4 will want.)*
+5. **Near-mirror gloss** — "Almost featureless polished black ice with a few very faint,
+   short, broken reflection glints near the surface." *(This is the one the flat-lake biome in
+   Phase 4 will want. Kept short/broken for the same reason as 2 — though a flat lake is the
+   one place a long streak would be safe, since there is no slope to shear it.)*
 
 ## Where the files go
 
