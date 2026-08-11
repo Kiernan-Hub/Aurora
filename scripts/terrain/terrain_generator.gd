@@ -845,18 +845,42 @@ func get_ice_hue_shift(world_x: float) -> float:
 	return (long_octave + (short_octave * ICE_HUE_SHORT_WEIGHT)) / (1.0 + ICE_HUE_SHORT_WEIGHT)
 
 
+# How much GREEN the warm direction takes out alongside the blue, as a fraction of the blue it
+# removes. 0.0 is the original behaviour: warm == remove blue, nothing else.
+#
+# WHY THIS IS NOT 0 (2026-08-10). "Warm" as pure blue-removal is only warm if the colour has
+# somewhere warm to go. This project's ice is pale and blue-heavy by design, and subtracting
+# blue from pale blue does not land on amber -- it lands on YELLOW-GREEN. Measured in a real
+# frame on pale_morning, ride line to mid-slope: R 141 -> 147, G 164 -> 169, B 189 -> 178. Red
+# and green essentially still, blue down 15. The result was a 13 degree hue rotation (212 -> 198
+# degrees) and a +6.2/255 green excess, reported from playtest as the ice "looking greener in
+# the middle" -- correctly, and on three separate biomes.
+#
+# Taking a little green with the blue turns the same drift back into a warm shading: at 0.5 that
+# same sample moves from +6.2 to -2.8 green excess. It costs nothing in headroom because it only
+# ever subtracts, which is the whole reason the function was written this way -- see below.
+#
+# The COOL direction needs no equivalent. It removes red from ice that is already blue, which
+# deepens the blue it started with; there is no third channel for it to stumble into.
+const WARM_GREEN_FALLOFF: float = 0.5
+
 # Rotates a colour warm/cool by DARKENING one channel, never brightening either.
 #
 # Same discipline as every other tint in the project: the Mobile renderer is LDR, and several
 # palettes already sit at 1.0 on a channel (sunset_rose's ice_surface is (1.0, 0.88, 0.88)).
 # Scaling up there would silently clamp, which flattens the drift to nothing on exactly the
-# biomes with the most saturated ice. So warm removes blue and cool removes red.
+# biomes with the most saturated ice. So warm removes blue (and a little green, see
+# WARM_GREEN_FALLOFF) and cool removes red.
 func shift_ice_hue(color: Color, shift: float) -> Color:
 	if ice_hue_variance <= 0.0:
 		return color
 	var warm: float = maxf(shift, 0.0) * ice_hue_variance
 	var cool: float = maxf(-shift, 0.0) * ice_hue_variance
-	return Color(color.r * (1.0 - cool), color.g, color.b * (1.0 - warm), color.a)
+	return Color(
+		color.r * (1.0 - cool),
+		color.g * (1.0 - (warm * WARM_GREEN_FALLOFF)),
+		color.b * (1.0 - warm),
+		color.a)
 
 
 # The settled-snow rim: a third quad strip per ground run, sharing the ice band's top edge but
