@@ -32,9 +32,7 @@ Consumers expose `apply_palette()` and never look anything up themselves: `sky_b
 Trees and birds need no code at all — the director writes their `modulate` directly, because
 a biome's effect on a foreground object genuinely *is* a multiplicative tint.
 
-## Why there is no shader
-
-There was going to be one. There doesn't need to be.
+## Why colour is still not a shader's job
 
 `Polygon2D` renders `texture_sample × vertex_color`, and ignores `.color` outright once
 `vertex_colors` is populated (this is `visuals.md` trap 9, and the reason the old
@@ -43,10 +41,11 @@ operation an ice-tinting shader would perform. So the ice tint rides `vertex_col
 `ice_surface` on every surface vertex, `ice_depth` on the four that `close_fill_run()`
 appends, and the per-pixel gradient between them falls out of Godot's interpolation for free.
 
-Consequence: **this project still has zero shaders**, and the whole biome pass introduced no
-new rendering technology. Do not add one here without a reason vertex colours cannot cover.
-The one thing they cannot do is vary *contrast* against the texture independently of hue
-(a `crack_strength` uniform); if that is ever wanted, it is an isolated addition.
+**That is still true and still what ships.** There is now exactly one shader in the project
+(`shaders/ice.gdshader`, 2026-08-10, see "The ice shader" below), and it does **not** touch any
+of the above — the tints, the hue drift and the depth ramp all still ride vertex colours. It
+exists only for the three things vertex colours provably cannot do. Do not move colour work
+into it, and do not add a second shader anywhere without the same standard of justification.
 
 ## The base ice tile, and why V is depth (2026-08-08)
 
@@ -58,7 +57,7 @@ exactly that — 0 along the band's top row, `ICE_BAND_DEPTH` along its bottom o
 This is the single highest-leverage thing in the visual pass, because it collapses four
 separate features into one image. Gloss, crack lines, snow clumps and the fill's whole
 vertical colour structure are all *painted in*, and they land correctly on every hill, in
-every biome, with no shader and no per-slope maths.
+every biome, with no per-slope maths — and none of it moved into the shader when one arrived.
 
 Two consequences worth holding onto:
 
@@ -138,7 +137,8 @@ constant-width edge back, that is still the thing not to build.
 
 Untextured: vertex colours alone, opaque along the surface row and alpha 0 along the displaced
 lower row, so it dissolves into the ice rather than ending on a line. Costs **one extra
-`Polygon2D` per ground run** (terrain is now ~4 per run: fill, band, overlay, cap).
+`Polygon2D` per ground run** (terrain is ~3 per run: fill, band, cap — it was 4 until the
+shader folded the overlay band away on 2026-08-10).
 
 **It interacts with 2a, and the measurement caught it.** The cap covers the top of the ice
 band, which is exactly where the hue drift is strongest — adding it knocked every `IceHue`
@@ -443,7 +443,7 @@ disagreement about how bright ice is at a given depth.
 That disagreement was the real reason the tile boundary read as a hard cutoff. The swap
 *used to* happen one chunk at a time, giving a live vertical seam with the old tile one side
 and the new one the other; both are *multipliers*, so a ramp mismatch rendered there as a flat
-brightness step, far more readable than any pattern change. Since the dual-band dissolve
+brightness step, far more readable than any pattern change. Since a real dissolve
 replaced the snap (2026-08-09) both tiles are on screen together for the whole transition, so
 a mismatch is now a wobble across the entire view rather than a step at one seam — the same
 requirement, with more at stake. The
@@ -458,55 +458,120 @@ or row-to-row noise stamps in horizontal banding).
 The biome gate enforces it — see `MAX_ICE_RAMP_DEVIATION`. It has to, because a tile rebuilt
 by any other route looks completely correct as a resource.
 
-### How the pattern crossfades: two stacked bands (2026-08-09)
+### How the pattern crossfades: one band, two samplers (2026-08-10)
 
 `Polygon2D` samples exactly one texture, so two tiles cannot be mixed the way two colours can.
-Three approaches were costed on 2026-08-08; **B shipped first and was replaced by A on
-2026-08-09** after it was judged in game.
+Three approaches were costed on 2026-08-08. **B shipped first, was replaced by A on 2026-08-09,
+and C — rejected twice — shipped on 2026-08-10** once there was an independent reason to have a
+shader at all.
 
 | | Approach | Outcome |
 |---|---|---|
-| **A** | **Two ice bands per run, the second's alpha driven by the ice channel** | **Current.** Exact crossfade. +1 `Polygon2D` per ground run, hidden outside a transition |
+| **C** | **One band; the incoming tile is a `uniform sampler2D` and the shader dissolves on a noise mask** | **Current.** One `Polygon2D` per ground run, and a patchy dissolve instead of a uniform fade |
+| A | Two ice bands per run, the second's alpha driven by the ice channel | Shipped 2026-08-09, removed 2026-08-10. Correct, but a whole extra `Polygon2D` per run and only ever a uniform fade |
 | B | New chunks build with the new tile; existing chunks keep theirs | Shipped 2026-08-08, removed 2026-08-09 — the hard vertical seam at the boundary chunk was too visible |
-| C | Shader with two samplers and a mix uniform | Still rejected: it would be the project's first `.gdshader`, and A already gets the result |
 
 **Why B failed is worth keeping**, because the diagnosis was not the obvious one. The seam had
 *two* causes, and only one of them was the pattern. The larger was a brightness step — the
 variants did not share the default tile's depth ramp, and the tile is a multiplier, so the
 boundary was a flat ~12% jump across a vertical line. That is fixed in the tiles themselves
 (above) and was worth fixing on its own: during a dissolve **both tiles are on screen at
-once**, so a ramp mismatch would now read as a brightness wobble across the whole view. The
-remainder — the genuine pattern discontinuity — is what A removes.
+once**, so a ramp mismatch reads as a brightness wobble across the whole view rather than a
+step at one seam. That requirement did not change when C replaced A.
 
-Mechanically A is three things:
+**Why C was rejected twice and then taken.** The standing objection was that it would be the
+project's first `.gdshader` for a result A already achieved. What changed is that the ice
+needed contrast independent of hue and a gloss uniform — neither expressible in vertex
+colours — so the shader was going to exist regardless. Once it does, the second band is pure
+cost, and folding the mix into the shader is strictly better than A: one node fewer per ground
+run always, and the mix can be a **noise-masked dissolve** rather than a uniform alpha fade, so
+the new pattern arrives in patches instead of the whole screen ghosting through a half-and-half
+state.
 
-1. `blend_into()` **does not carry `ice_texture` at all** (it writes `null`). A single blended
-   palette structurally cannot express a crossfade between two textures — that needs both
-   endpoints *and* the weight. So `BiomeDirector.push_palette()` passes the pair and the ice
-   channel weight straight through to `terrain_generator.apply_ice_palette()`.
-2. `build_ice_band()` builds **two** `Polygon2D`s per ground run off one set of points and
-   UVs: `IceBand*` carries the outgoing tile at full opacity, and `IceOverlay*` — added second,
-   so it draws on top — carries the incoming tile at `alpha = ice weight`. Identical geometry
-   means the composite is exactly `tint * (tile_a*(1-w) + tile_b*w)`: a true dissolve of the
-   two patterns, with the colour crossfade riding on top untouched.
-3. `repaint_chunk()` writes base tile, overlay tile and alpha **unconditionally on every
-   call** — including `polygon.texture`, which the B-era code was explicitly forbidden to
-   touch.
+Mechanically C is three things:
+
+1. `blend_into()` **does not carry `ice_texture` at all** (it writes `null`), unchanged from A.
+   A single blended palette structurally cannot express a crossfade between two textures — that
+   needs both endpoints *and* the weight. So `BiomeDirector.push_palette()` passes the pair and
+   the ice channel weight straight through to `terrain_generator.apply_ice_palette()`.
+2. `build_ice_band()` builds **one** `Polygon2D` per ground run. Its own `texture` is the
+   outgoing tile — which it must keep, because `Polygon2D` normalises `uv` by its own texture's
+   size and the band writes UVs in texture pixels. The incoming tile and the weight are
+   uniforms on **one shared `ShaderMaterial`**, so a transition moves them with a single write
+   instead of a walk, and no two bands can hold different values for them.
+3. `repaint_chunk()` still walks, but only for the vertex tints — which are genuinely
+   per-vertex, since the hue drift is a function of `world_x` — plus the base tile. It writes
+   `polygon.texture` **unconditionally on every call**, which the B-era code was explicitly
+   forbidden to do.
 
 **That reversal is the subtle part.** The old rule existed because there was only one texture
 slot and therefore no way to be halfway between two tiles, so writing it meant popping every
-on-screen chunk in a single frame. With a second band there *is* a halfway, and the safe thing
-is now the opposite. Both files carry a comment saying so.
+on-screen chunk in a single frame. The shader provides the halfway, and the safe thing is now
+the opposite. Both files carry a comment saying so.
 
-The invariant that makes it pop-free at both ends of the window: every chunk — freshly built
-or repainted — derives its appearance from the same three values, so they cannot disagree; and
-at weight 1 the overlay fully covers the base, which renders the same pixels as the next
-frame's weight 0 with the base already swapped to that tile.
+The invariant that makes it pop-free at both ends of the window: every chunk — freshly built or
+repainted — derives its appearance from the same values, so they cannot disagree; and at weight
+1 the shader outputs the overlay tile everywhere, which is the same pixels as the next frame's
+weight 0 with the base already swapped to that tile. **Both ends were measured at max delta
+0/255** against dedicated single-tile reference frames.
 
-The overlay is built even when the weight is 0 (`visible = false`), so the node set is the
-same in every chunk however it was born and `repaint_chunk()` never creates or frees anything
-mid-transition. Under `--headless` the weight is always 0, so every gate draws exactly the
-bands it always did.
+Under `--headless` the weight is always 0 and every uniform stays at its default, so every gate
+draws exactly the pixels it always did.
+
+## The ice shader (2026-08-10)
+
+`shaders/ice.gdshader` is the **only** shader in the project, and it is on the ice band and
+nothing else. Sky, obstacles, player and UI stay `Polygon2D`/`TextureRect`. It has three jobs,
+and they are the three things vertex colours provably cannot do:
+
+| Uniform | Default | What it is for |
+|---|---|---|
+| `overlay_tile` / `overlay_weight` | — / `0.0` | the two-tile dissolve above |
+| `dissolve_softness` | `0.12` | width of a patch's soft edge |
+| `contrast` | `1.0` | tile contrast **independent of hue** — the palette's `ice_surface`/`ice_depth` are a hue ramp by contract, so they cannot express this |
+| `gloss_strength` / `gloss_depth` / `gloss_softness` | `0.0` / `0.16` / `0.12` | a sheen for a later flat-lake biome; parameterised now, left off |
+
+**Every default is an exact identity**, and that is verified rather than asserted: with the
+material swapped in place inside one frozen frame, `ice.gdshader` at its defaults renders
+**pixel-identical** (max delta 0/255, 9 bands × 3 positions) to no material at all — which is
+what the old build drew at weight 0, since its second band was hidden there.
+
+Two rules the file depends on, both easy to break:
+
+- **`contrast` and `gloss_strength` must fade to exactly zero effect before the band's bottom
+  row.** `get_deep_fill_color()` hardcodes that row as `ICE_TILE_DEPTH_FLOOR * ice_depth_tint`
+  so the flat deep fill meets it without a step; anything that moved it would open a seam
+  across the whole world at `ICE_BAND_DEPTH`. Both are multiplied by a depth fade that reaches
+  0 at `UV.y = 0.95`. Measured: each visibly changes the band (34 and 45/255) while leaving the
+  bottom 4% pixel-identical.
+- **The dissolve mask wraps on a fixed lattice period.** `UV.x` is `world_x /
+  ICE_TILE_WORLD_WIDTH` and `world_x` is never rebased, so it grows without bound over a long
+  session — and `fract()`-based hashing loses its fractional bits once the input gets large,
+  which would degrade the mask into flat blocks late in a run. The integer cell is wrapped
+  (not the sample point, which would seam) on a period of ~76 800 world px: longer than a whole
+  biome, so it cannot read as a repeat.
+
+### The trap that made this shader necessary to get right
+
+In a `canvas_item` shader `COLOR` is **in-out**, and on entry to `fragment()` it already holds
+`vertex_color * texture(TEXTURE, UV)`. So the identity body is `COLOR = COLOR;` (or an empty
+`fragment()`), **not**
+
+```glsl
+COLOR = texture(TEXTURE, UV) * COLOR;   // WRONG: multiplies the tile in twice
+```
+
+which is the 3D/`ALBEDO` convention and looks like the obvious no-op. It squares the texture —
+invisible at 1.0, worst at the dark end, and this tile's V axis is depth with a 1.0 → ~0.38
+ramp down it, so the symptom is ice that looks right at the ride line and progressively too
+dark with depth (measured: up to 55/255). It is not a colour-space bug, not a `render_mode`
+bug, and nothing to do with how `Polygon2D` feeds `vertex_colors` — all three were ruled out by
+measurement. **No `render_mode` line is needed**: `blend_mix` is already the default and there
+are no 2D lights in this project.
+
+Because of that same in-out semantic the shader cannot read the raw vertex tint in
+`fragment()`; it captures `COLOR` in `vertex()`, where it is still untouched, and carries it
+across in a varying. Full log: `docs/research/ice_shader_color_semantics.md`.
 
 ## Testing
 
@@ -548,14 +613,23 @@ depends on:
   passed.
 
 **What no gate can see is the band code itself** — `BiomeDirector` is inert under `--headless`,
-so `apply_ice_palette()` and therefore `repaint_chunk()` never run in any of the seven. The
-dual-band contract was verified once with a throwaway probe that built a real `Main` and drove
-`apply_ice_palette()` by hand across the weight: bands built in pairs, overlay hidden at
-weight 0, correct tile and alpha on each band mid-dissolve, a chunk born mid-dissolve matching
-the ones already on screen, and the weight-1 → next-frame-weight-0 handoff showing the same
-tile. It was checked against a deliberately broken `repaint_ice_band()` before being trusted.
-Not kept: it would join the 18 archived one-offs `CLAUDE.md` warns about. Rebuild it if the
-band construction changes again.
+so `apply_ice_palette()` and therefore `repaint_chunk()` never run in any of the seven, and
+every shader uniform stays at its default there. The dissolve contract was verified with
+throwaway probes that built a real `Main`, froze it on an exact physics tick, and drove
+`apply_ice_palette()` by hand across the weight with two genuinely different tiles: weight 0
+renders exactly the base tile and weight 1 exactly the overlay tile (max delta 0/255 against
+dedicated single-tile reference frames — the pop-free handoff at both ends), monotone and
+strongly bimodal in between, and the shader at default uniforms pixel-identical to no material.
+Not kept: they would join the archived one-offs `CLAUDE.md` warns about. Rebuild them if the
+band construction changes again — `docs/research/ice_shader_color_semantics.md` records what
+they measured and, more usefully, **how to build one that is actually sound**:
+
+> Two separate runs cannot be diffed, even with the seed *and* the physics tick pinned. Render
+> frames and physics ticks drift apart; coins, obstacles and the player sprite animate on the
+> render clock; and two runs of different builds still diverge sub-pixel in `player_x`, which
+> fills the diff with tree and surface-line edges. The sound test swaps the material **in place
+> inside one frozen frame of one run**, where geometry, camera and lighting are identical by
+> construction.
 
 ## Traps
 

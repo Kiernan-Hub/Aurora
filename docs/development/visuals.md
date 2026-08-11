@@ -1,9 +1,10 @@
 # Visuals — background, scenery and palette
 
 Everything on screen except the player sprite is an untextured `Polygon2D` / `ColorRect` /
-`TextureRect`. There are no shaders, no `WorldEnvironment`, no MSAA and no `z_index`
-anywhere in the project — draw order is scene-tree order plus `CanvasLayer.layer`, and
-that is deliberate.
+`TextureRect`. There is exactly **one** shader — `shaders/ice.gdshader`, on the ice band only
+(`biomes.md`, "The ice shader") — and no `WorldEnvironment`, no MSAA and no `z_index` anywhere
+in the project. Draw order is scene-tree order plus `CanvasLayer.layer`, and that is
+deliberate.
 
 Art direction: layered minimalist winter, in the Alto's-Adventure tradition — large open
 landscape, smooth silhouettes, soft gradients, heavy negative space. The palette is a
@@ -80,7 +81,7 @@ Two rules follow, both already applied in `sky_backdrop.gd` and worth keeping:
 
 - **Hide a layer at zero, do not draw it transparent.** A fully transparent full-screen
   `TextureRect` still rasterises every pixel it covers. Same reasoning as
-  `terrain_generator.paint_ice_band()`'s `visible = opacity > 0`.
+  `terrain_generator.paint_snow_cap()`'s `visible = snow_cap_strength > 0`.
 - **Size a rect to its content, not to the screen.** `SkyGlow` is anchored to its own box.
   It is deliberately *not* clamped to the viewport: fragments outside are scissored before
   shading, so a bloom hanging off an edge only costs the visible part — while clamping would
@@ -185,14 +186,20 @@ be more than that; it only needs to not be flat.
 `build_ice_band()` (called from `build_chunk_fill`, once per ground run) builds a two-row quad
 strip hugging the surface and assigns it
 `assets/textures/terrain/ice_depth_gradient.png`, with
-`texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED`.
+`texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED` and the project's one shader
+(`shaders/ice.gdshader`, `biomes.md`). **The band's own `texture` must stay set** even though
+the shader could take both tiles as uniforms: `Polygon2D` normalises `uv` by its own texture's
+size, and the band writes UVs in texture pixels, so a null texture there would feed raw pixel
+values through as UVs.
 
 **The tile is not a picture of ice — its vertical axis is depth below the ride surface.**
 Snow band at the top, glossy pale sheen under it, deepening body, thin cracks at plausible
 depths. The band maps V to exactly that: 0 along its top row, `ICE_BAND_DEPTH` along its
 bottom one. So gloss, cracks, snow clumps and the fill's whole vertical
 colour structure are *painted in* and land correctly on every hill in every biome — four
-features from one image, no shader, no per-slope maths. Full rationale in `biomes.md`.
+features from one image, and no per-slope maths. Full rationale in `biomes.md`. The shader on
+the band does not touch any of this: it dissolves between two tiles and carries `contrast` and
+`gloss_strength`, and at its default uniforms it is a measured pixel-exact no-op.
 
 Because the tile carries the light-to-dark ramp itself (1.0 → ~0.52),
 `FILL_GRADIENT_TOP_TINT`/`BOTTOM_TINT` and the palettes' `ice_surface`/`ice_depth` must vary
@@ -320,7 +327,9 @@ through `Polygon2D.color`; it won't do anything.
 
 That multiply is also **why the biome pass needed no shader** — it is exactly the operation
 an ice-tinting shader would perform, so the per-biome tint simply rides `vertex_colors`
-(`biomes.md`, "Why there is no shader"). The project still has zero `.gdshader` files.
+(`biomes.md`, "Why colour is still not a shader's job"). That is still true: the one
+`.gdshader` the project now has does not touch tint, hue drift or the depth ramp, all of which
+remain vertex colours.
 
 `LIGHT_CHUNK_COLOR`/`DARK_CHUNK_COLOR` were **removed on 2026-08-08**. They had been kept as
 a canary for any future path where `color` became load-bearing; that path never arrived, and

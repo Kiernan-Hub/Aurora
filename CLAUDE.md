@@ -18,7 +18,7 @@ This file is the map. Everything else is one level down, read on demand.
 | `docs/development/physics.md` | Changing player movement, collision, stall watchdogs, or the camera |
 | `docs/development/input.md` | Any input change — desktop *or* touch |
 | `docs/development/visuals.md` | Touching the background, scenery, palette or draw order |
-| `docs/development/biomes.md` | Any colour that changes over a run — palettes, the director, a transition |
+| `docs/development/biomes.md` | Any colour that changes over a run — palettes, the director, a transition, `shaders/ice.gdshader` |
 | `docs/development/ice_panels.md` | Making a new ice tile — panel requirements, prompts, the `--check` validator |
 | `docs/development/debugging.md` | Running a gate, or reviving an archived probe |
 | `docs/development/dead_code.md` | Something looks reachable but isn't |
@@ -173,7 +173,9 @@ background parallax were removed entirely, not left disabled — don't resurrect
    harness `_init()`)
 8. **Visual polish — sky pass and ice variation done** (2026-08-10), gameplay art still
    placeholder rects. **Eight `BiomePalette`s cycle every 75 000 world-px**, crossfading on
-   five staggered channels. No shader — `Polygon2D` already renders `texture * vertex_color`.
+   five staggered channels. Colour still needs no shader — `Polygon2D` already renders
+   `texture * vertex_color`. **Exactly one `.gdshader` exists** (`shaders/ice.gdshader`, ice
+   band only): a two-tile noise dissolve, hue-independent `contrast`, and a parked `gloss`.
    **Sky**: five-stop gradient baked with a horizontal wash, a directional glow on the
    ridgeline, a sun/moon disc on two biomes (the moon is a crescent), and a starfield. The
    parallax layers were lowered so a sky exists at all — it was 2.4% of the frame.
