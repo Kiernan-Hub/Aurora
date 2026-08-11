@@ -427,6 +427,7 @@ recolours all of them.
 | `ice_faceted_depth.png` | `four.png` | `glacier_teal` |
 | `ice_cracked_depth.png` | `five.png` | `mauve_haze` |
 | `ice_granular_depth.png` | `eleven.png` | `twilight_blue` |
+| `ice_sastrugi_depth.png` | `twelve.png` | `sunset_rose` |
 | `ice_rime_depth.png` | `seven.png` | `arctic_dawn` |
 | `ice_shattered_depth.png` | `eight.png` | `violet_dusk` |
 
@@ -435,6 +436,13 @@ recolours all of them.
 > streaks stayed coherent for 35px along x, so on a slope they fanned downward and read as
 > flowing hair. Reported from a playtest, not caught by a gate. `six.png` is kept for the
 > Phase 4 flat lake, where nothing shears it. See `ice_panels.md`.
+>
+> **`ice_sastrugi_depth` (2026-08-11) is the regenerated version of that panel, and it is
+> deliberately on probation.** It halves the streak length -- 18px x-coherence against the
+> pulled tile's 35px -- but everything else in the cycle sits at 3-5px, so it is still ~3.6x
+> more directional than anything else shipping. It went in to find out where "visible" actually
+> starts, since 35px is the only calibration point that exists. If `sunset_rose` reads as flow
+> lines on a slope, pull it the same way and the answer is between 5 and 18px.
 
 **The three were placed to spread the pattern, not per-biome taste.** Before them,
 `sunset_rose` through `arctic_dawn` was four consecutive biomes on the default tile, so the
@@ -450,6 +458,7 @@ median column:
 | Tile | Worst | Ratio to median |
 |---|---|---|
 | `ice_granular_depth` | 7.00/255 | 2.59x |
+| `ice_sastrugi_depth` | 2.81/255 | 2.14x |
 | `ice_rime_depth` | 4.80/255 | 1.99x — the cleanest in the project |
 | `ice_depth_gradient` | 3.33/255 | 3.00x |
 | `ice_faceted_depth` | 3.06/255 | 3.21x |

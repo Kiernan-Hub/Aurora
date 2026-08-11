@@ -99,6 +99,7 @@ tiles built for this pass:
 | `ice_cracked_depth` | 5px | 4px | 1.25x |
 | `ice_rime_depth` | 4px | 3px | 1.33x |
 | `ice_granular_depth` | 3px | 2px | 1.50x |
+| `ice_sastrugi_depth` | 18px | 4px | 4.50x — on probation, see `biomes.md` |
 
 The pulled tile is an outlier on ABSOLUTE x-coherence -- 35px against 3-10px for everything
 else -- not merely on the ratio. Note the ratio alone is not sufficient: the default smooth tile
