@@ -68,6 +68,42 @@ WHY A VARIANT'S DEPTH RAMP IS MATCHED TO THE DEFAULT TILE'S
     ramp. What survives is the variant's high-frequency detail -- its cracks and
     facets -- which is the whole reason it exists; what goes is the disagreement
     about overall depth brightness, which was never a per-biome creative choice.
+
+WHY THE HORIZONTAL PROFILE IS FLATTENED TOO (2026-08-10)
+    The wrap being seamless is necessary but not sufficient. A panel can wrap
+    perfectly and still carry broad left-to-right brightness ramps INSIDE itself,
+    and those repeat every ICE_TILE_WORLD_WIDTH (1200 world px) just as faithfully
+    as the cracks do. The tile lands on screen at roughly 1:1, so such a ramp
+    survives at full strength as a soft vertical band.
+
+    That is what the reported "vertical line / colour banding in the ice" turned out
+    to be -- reported as long-standing, and it predates both the ice shader and the
+    hue drift, which is consistent. Measured in-scene, per tile, worst coherent
+    vertical edge against that tile's own median column step, alongside the tile's
+    own worst horizontal band (horizontal_band_span, before this step existed):
+
+        ice_cracked_depth   +2.6/255  (7.8x median)   band 33.3/255
+        ice_faceted_depth   +1.7/255  (3.1x median)   band 18.0/255
+        ice_depth_gradient  +0.8/255  (2-3x median)   band  9.5/255
+
+    The rank order is the whole argument: same code, same scene, only the tile
+    differs, and the edge scales with how much low-frequency horizontal structure
+    the tile carries. ~2/255 sounds negligible and is not -- it runs perfectly
+    straight down hundreds of rows, and the eye finds a coherent straight edge far
+    below the threshold at which it would notice scattered noise of the same size.
+
+    So the horizontal axis gets the treatment the vertical one already gets, but as a
+    2D low-frequency field rather than one scalar per column. Per-column was tried
+    first and only got cracked from 28.3 to 11.6: a column average lets a bright band
+    at one depth cancel a dark one at another, so it under-corrects exactly the tiles
+    that need it most. The field is smooth at FLATTEN_SIGMA across and
+    FLATTEN_DEPTH_SIGMA down, so it cannot represent a crack and therefore cannot
+    erase one; and because each row is divided by its own mean, the depth ramp
+    match_depth_ramp() just set survives untouched.
+
+    NOTE the interaction with the shader's `contrast` uniform: contrast pushes the
+    tile's own light/dark structure away from a fixed pivot, so it multiplies this
+    span directly. Flattening here is what makes that uniform safe to turn on.
 """
 
 import sys
@@ -107,6 +143,22 @@ RAMP_MATCH_STRENGTH = 1.0
 # row-to-row noise in it would stamp horizontal banding across the tile. Only the
 # low-frequency ramp is meant to move.
 RAMP_SMOOTH_SIGMA = 8.0
+
+# Horizontal sigma, in columns, below which structure is treated as DETAIL and left
+# alone. 64 is ~75 world px once the tile is stretched over ICE_TILE_WORLD_WIDTH --
+# comfortably narrower than the broad washes that read as a band, comfortably wider
+# than a crack. Lowering it starts eating the texture the tile exists to provide.
+FLATTEN_SIGMA = 64.0
+# Vertical sigma for the same field. Larger than RAMP_SMOOTH_SIGMA (8) because this
+# one must not chase the depth ramp's own fast changes near the ride line -- it is
+# only here so the horizontal correction can differ between shallow and deep ice,
+# which it must: the banding is not the same at every depth.
+FLATTEN_DEPTH_SIGMA = 48.0
+# 1.0 removes the low-frequency horizontal ramp entirely. There is no artistic reason
+# to keep any of it: unlike the depth ramp, which is the tile's whole meaning, a
+# left-to-right brightness trend carries no information -- it is an accident of how
+# the source panel was generated, and it repeats forever.
+FLATTEN_STRENGTH = 1.0
 
 # Half the width, in the rolled image, over which the (now central) original seam
 # is feathered. Narrow: the seam is in the middle of the tile and does not repeat,
@@ -209,6 +261,71 @@ def make_horizontally_seamless(values):
     return rolled
 
 
+def smooth_circularly(profile, sigma):
+    """Gaussian-blur a 1-D profile that WRAPS. Distinct from smooth_vertically(),
+    which edge-extends: depth must not wrap, the horizontal axis must."""
+    radius = max(1, int(round(sigma * 3.0)))
+    offsets = np.arange(-radius, radius + 1, dtype=np.float64)
+    kernel = np.exp(-0.5 * np.square(offsets / sigma))
+    kernel /= kernel.sum()
+    padded = np.concatenate([profile[-radius:], profile, profile[:radius]])
+    return np.convolve(padded, kernel, mode="valid")
+
+
+def low_frequency_field(values):
+    """The tile blurred until only broad structure survives: circular across, since
+    the tile wraps, edge-extended down, since depth does not."""
+    across = np.empty_like(values)
+    for row in range(values.shape[0]):
+        across[row] = smooth_circularly(values[row], FLATTEN_SIGMA)
+    field = np.empty_like(across)
+    for column in range(across.shape[1]):
+        field[:, column] = smooth_vertically(across[:, column], FLATTEN_DEPTH_SIGMA)
+    return field
+
+
+def horizontal_band_span(values, field=None):
+    """Worst peak-to-peak horizontal brightness swing at ANY depth, in 0-255 units.
+    This is the number that predicts a visible vertical band.
+
+    Measured per depth rather than over a column average, because the two are not the
+    same and only the first one matches what is on screen: averaging down the whole
+    tile lets a bright band at one depth cancel a dark one at another and report a
+    flat tile that visibly is not. Reading the column average was what made the first
+    cut of this look like it had fixed more than it had.
+    """
+    if field is None:
+        field = low_frequency_field(values)
+    return float((field.max(axis=1) - field.min(axis=1)).max() * 255.0)
+
+
+def flatten_horizontal_banding(values):
+    """Divide out the tile's broad left-to-right brightness structure, at every
+    depth. See the module docstring for why -- in short, it repeats every 1200 world
+    px and reads as a soft vertical band, which is the long-standing "vertical line
+    in the ice".
+
+    Multiplicative, mirroring match_depth_ramp()'s reasoning: the tile multiplies a
+    biome tint, so scaling preserves internal contrast ratios. The correction is the
+    ratio of a row's mean to a LOW-FREQUENCY field, so it is smooth by construction
+    at both FLATTEN_SIGMA across and FLATTEN_DEPTH_SIGMA down -- it physically cannot
+    represent, and so cannot erase, a crack or a facet.
+
+    EACH ROW'S MEAN IS PRESERVED EXACTLY, because the numerator is that row's own
+    mean. So this cannot disturb the depth ramp that match_depth_ramp() just set, and
+    the two steps never have to be tuned against each other.
+
+    Runs AFTER make_horizontally_seamless(), which is what makes the circular smooth
+    legitimate -- the image is exactly periodic by then, so the correction is itself
+    periodic and cannot reintroduce a step at the wrap. (Ordering it before would
+    mean smoothing across a real discontinuity and smearing it both ways.)
+    """
+    field = low_frequency_field(values)
+    correction = field.mean(axis=1, keepdims=True) / np.maximum(field, 1e-6)
+    correction = 1.0 + ((correction - 1.0) * FLATTEN_STRENGTH)
+    return np.clip(values * correction, OUTPUT_FLOOR, OUTPUT_CEILING)
+
+
 def inspect_panel(path):
     """Report whether a SOURCE panel is usable, before building anything.
 
@@ -300,6 +417,10 @@ def main():
     # seam-neutral (one scalar per row hits both edges equally), but ordering it
     # this way means only one step can ever be responsible for a visible repeat.
     values = make_horizontally_seamless(values)
+    # Last of all, and only legitimate here: see flatten_column_profile().
+    profile_before = horizontal_band_span(values)
+    values = flatten_horizontal_banding(values)
+    profile_after = horizontal_band_span(values)
 
     output = Image.fromarray(np.clip(values * 255.0, 0, 255).astype(np.uint8), mode="L")
     output.save(output_path, optimize=True)
@@ -311,6 +432,8 @@ def main():
         reference = np.asarray(Image.open(DEFAULT_OUTPUT_PATH).convert("L"), dtype=np.float64) / 255.0
         print("reference   ", format_ramp(reference), "  <- must track the line above")
     print("seam error  ", round(seam_error, 5), "(0 = exact wrap)")
+    print("h banding  ", "%.2f/255 -> %.2f/255 (worst at any depth)"
+          % (profile_before, profile_after))
 
 
 if __name__ == "__main__":
