@@ -175,7 +175,10 @@ background parallax were removed entirely, not left disabled — don't resurrect
    no music track yet. Behind a locally-computed `is_headless` (`Services` isn't ready in
    harness `_init()`)
 8. **Visual polish — sky pass and ice variation done** (2026-08-10), gameplay art still
-   placeholder rects. **Eight `BiomePalette`s cycle every 75 000 world-px**, crossfading on
+   placeholder rects. **Eight `BiomePalette`s cycle every 75 000 world-px**, plus a ninth,
+   `first_light`, held OUTSIDE the cycle and substituted for absolute index 0 so it opens a
+   session once and never recurs (the biome phase carries across runs but resets on relaunch,
+   and is monotonic — that is what makes "once" true). Crossfading on
    five staggered channels. Colour still needs no shader — `Polygon2D` already renders
    `texture * vertex_color`. **Exactly one `.gdshader` exists** (`shaders/ice.gdshader`, ice
    band only): a two-tile noise dissolve, a per-biome `ice_contrast`, and a parked `gloss`.

@@ -42,6 +42,21 @@ const PALETTE_TWILIGHT_BLUE: BiomePalette = preload("res://resources/biomes/twil
 const PALETTE_STARLIT_NIGHT: BiomePalette = preload("res://resources/biomes/starlit_night.tres")
 const PALETTE_ARCTIC_DAWN: BiomePalette = preload("res://resources/biomes/arctic_dawn.tres")
 
+# THE OPENING BIOME, AND IT IS NOT IN THE CYCLE. Substituted for cycle index 0 -- the
+# ABSOLUTE index, never the wrapped one -- so it plays once at the top of a session and is
+# then gone until the app is relaunched. When the cycle comes back around to that slot
+# (index 8, 16, ...) it resolves to BIOME_CYCLE[0], the saturated arctic_dawn, so nothing
+# is lost by opening somewhere quieter.
+#
+# WHY: index 0 is the entire first impression, and the first ten seconds of a session should
+# not be the most exciting thing on offer. This is pale and nearly colourless -- no glow, no
+# disc, no stars -- and its tile is the faintest in the project on purpose.
+#
+# WHAT MAKES "ONCE" TRUE is get_persisted_phase() being monotonic; see its note. Nothing
+# here tracks whether the intro has been spent, because with a phase that only ever grows,
+# absolute index 0 is unreachable a second time by construction.
+const PALETTE_FIRST_LIGHT: BiomePalette = preload("res://resources/biomes/first_light.tres")
+
 # A day arc, and it wraps: arctic_dawn leads back into pale_morning, so a long run reads as
 # time passing rather than as a shuffle. Adjacent entries are deliberately near neighbours
 # in colour -- the crossfade only has to cover one step, never day-to-night in one go.
@@ -218,17 +233,27 @@ func apply_palette_for_world_x(world_x: float) -> void:
 # run's colour scheme. Takes the player's world_x rather than reading it, so the caller
 # owns the "when".
 #
-# THE fposmod IS LOAD-BEARING, not tidiness. Without it this is an accumulator that grows
-# by a whole run's distance on every death, and a long sitting of short runs compounds it
-# without limit -- far enough out, float precision starts quantising the cycle position,
-# and the symptom is biome transitions stuttering or sticking after an hour of play. That
-# is the freeze bug's failure mode wearing a different hat (docs/research/freeze_bug.md),
-# and it is why main.gd rebases the world every ~26s. Folding it into one cycle costs
-# nothing: the schedule is periodic, so phase and phase + N cycles are the same frame.
+# MONOTONIC ON PURPOSE, and this is what makes the opening biome a one-shot. An earlier
+# version folded this into one cycle with fposmod, which is the obvious thing to do with a
+# periodic schedule -- but it also meant a long enough run wrapped the phase back toward 0,
+# so absolute index 0 recurred and the intro played again mid-session. Letting the phase
+# only ever grow makes "index 0 happens exactly once per session" true by construction,
+# with no spent-flag to keep in sync. It also matches how the schedule already reads
+# world_x, which grows without bound within a run for the same reason.
+#
+# The precision worry the fposmod was answering does not apply at this scale: a GDScript
+# float is a double, and even a ten-hour sitting at MAX_SPEED is ~2.7e7 px, nowhere near
+# where a 53-bit mantissa starts quantising. What made an accumulator dangerous in the
+# earlier design was that it was written to DISK and compounded across relaunches; this one
+# dies with the process (see session_biome_phase).
+#
+# maxf because a negative phase is not a state any run can reach, and feeding one back in
+# would put the next run at a negative index -- which posmods to a real palette rather than
+# failing, i.e. it would be silently wrong.
 #
 # X is safe to use raw here -- world_rebaser.gd shifts Y only (main.gd:258).
 func get_persisted_phase(world_x: float) -> float:
-	return fposmod(world_x + biome_phase_offset, BIOME_DISTANCE * float(BIOME_CYCLE.size()))
+	return maxf(world_x + biome_phase_offset, 0.0)
 
 
 func resolve_palette_consumer(consumer_path: NodePath) -> Node:
@@ -244,7 +269,15 @@ func resolve_palette_consumer(consumer_path: NodePath) -> Node:
 
 # posmod so the cycle wraps in both directions; a run that somehow addresses negative world
 # x still lands on a real palette rather than an out-of-range index.
+#
+# The index 0 case is checked BEFORE the posmod, and that is the whole mechanism behind the
+# one-shot opening biome -- see PALETTE_FIRST_LIGHT. Index 8 posmods to 0 and gets
+# BIOME_CYCLE[0] as it always did; only the literal first pass gets the intro. Blending is
+# unaffected: the caller asks for index and index + 1, so first_light crossfades into
+# pale_morning through exactly the same five channels as any other pair.
 func get_cycle_palette(cycle_index: int) -> BiomePalette:
+	if cycle_index == 0:
+		return PALETTE_FIRST_LIGHT
 	return BIOME_CYCLE[posmod(cycle_index, BIOME_CYCLE.size())]
 
 

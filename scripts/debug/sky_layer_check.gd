@@ -194,11 +194,11 @@ func _process(_delta: float) -> bool:
 				biome_index += 1
 		return false
 
-	if biome_index >= BiomeDirector.BIOME_CYCLE.size():
+	if biome_index >= get_measured_palettes().size():
 		report()
 		return true
 
-	var palette: BiomePalette = BiomeDirector.BIOME_CYCLE[biome_index]
+	var palette: BiomePalette = get_measured_palettes()[biome_index]
 	while peaks.size() <= biome_index:
 		var row: PackedInt32Array = PackedInt32Array()
 		row.resize(LAYERS.size())
@@ -281,6 +281,17 @@ func measure_peak(without_layer: Image, with_layer: Image) -> int:
 	return peak
 
 
+# The opening biome first, then the cycle. first_light is NOT in BIOME_CYCLE (see
+# BiomeDirector.PALETTE_FIRST_LIGHT), and it is the single palette every session is
+# guaranteed to show -- so leaving it out would mean the one biome nobody can miss is the
+# one biome nothing measures. It is also the likeliest to fail: it is deliberately pale and
+# low-saturation, and the hue drift only ever darkens, so there is less to remove.
+func get_measured_palettes() -> Array[BiomePalette]:
+	var measured: Array[BiomePalette] = [BiomeDirector.PALETTE_FIRST_LIGHT]
+	measured.append_array(BiomeDirector.BIOME_CYCLE)
+	return measured
+
+
 func report() -> void:
 	var failures: Array[String] = []
 	print("")
@@ -292,7 +303,7 @@ func report() -> void:
 	print(header)
 	print("-".repeat(header.length()))
 	for cycle_index: int in range(peaks.size()):
-		var palette: BiomePalette = BiomeDirector.BIOME_CYCLE[cycle_index]
+		var palette: BiomePalette = get_measured_palettes()[cycle_index]
 		var row_text: String = "%-18s" % palette.resource_path.get_file().get_basename()
 		for column: int in range(LAYERS.size()):
 			var peak: int = peaks[cycle_index][column]

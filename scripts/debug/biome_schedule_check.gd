@@ -131,18 +131,37 @@ func _init() -> void:
 	quit(1)
 
 
+# BIOME_CYCLE plus the opening biome, which is deliberately NOT in the cycle (see
+# BiomeDirector.PALETTE_FIRST_LIGHT). Every per-palette check below has to walk this rather
+# than the cycle, or the one palette a player is guaranteed to see is the one palette
+# nothing validates.
+func get_all_palettes() -> Array[BiomePalette]:
+	var all_palettes: Array[BiomePalette] = [BiomeDirector.PALETTE_FIRST_LIGHT]
+	all_palettes.append_array(BiomeDirector.BIOME_CYCLE)
+	return all_palettes
+
+
 func check_palettes() -> void:
 	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
 	if cycle.is_empty():
 		failures.append("BIOME_CYCLE is empty")
 		return
+	if BiomeDirector.PALETTE_FIRST_LIGHT == null:
+		failures.append("PALETTE_FIRST_LIGHT failed to load -- the opening biome resolves to null and index 0 draws nothing")
+		return
+	# The intro replaces index 0 on the first pass and BIOME_CYCLE[0] takes that slot on
+	# every later lap, so the two are adjacent to the same neighbour and a shared tile would
+	# read as the pattern never changing across the opening transition.
+	if BiomeDirector.PALETTE_FIRST_LIGHT.ice_texture == cycle[0].ice_texture:
+		failures.append("first_light and BIOME_CYCLE[0] share an ice_texture -- the opening biome is meant to be visibly quieter than the one that later occupies its slot")
 
-	for cycle_index: int in range(cycle.size()):
-		var palette: BiomePalette = cycle[cycle_index]
+	var palettes: Array[BiomePalette] = get_all_palettes()
+	for palette_index: int in range(palettes.size()):
+		var palette: BiomePalette = palettes[palette_index]
 		if palette == null:
-			failures.append("BIOME_CYCLE[%d] failed to load" % cycle_index)
+			failures.append("palette %d failed to load" % palette_index)
 			continue
-		var label: String = "palette[%d]" % cycle_index
+		var label: String = "first_light" if palette_index == 0 else "palette[%d]" % (palette_index - 1)
 
 		for field_name: String in [
 			"sky_top", "sky_mid", "sky_horizon", "glow_color", "celestial_color",
@@ -416,22 +435,37 @@ func check_phase_offset() -> void:
 			failures.append("a phase offset of one BIOME_DISTANCE changed transition progress at world_x=%.1f -- the shift is not a whole biome"
 				% world_x)
 
-	# Claim 3. Also covers the offset itself being carried: the second case starts from a
-	# non-zero stored phase, which is the state every run after the first is in.
+	# Claim 3, and it is the one that keeps the opening biome a one-shot. The phase must NEVER
+	# fold back toward 0: if it did, absolute index 0 would come around again and the intro
+	# would replay mid-session. Checked as strict monotonicity in world_x, plus the specific
+	# case that broke the earlier fposmod version -- a run longer than a full cycle.
 	for stored_phase: float in [0.0, cycle_length * 0.6]:
 		director.biome_phase_offset = stored_phase
+		var previous_phase: float = -1.0
 		for world_x: float in [0.0, 1234.5, cycle_length, cycle_length * 7.3]:
 			var phase: float = director.get_persisted_phase(world_x)
-			if not is_finite(phase) or phase < 0.0 or phase >= cycle_length:
-				failures.append("get_persisted_phase(%.1f) with offset %.1f returned %.3f, outside [0, %.1f) -- the banked phase is unbounded"
-					% [world_x, stored_phase, phase, cycle_length])
-			# A whole cycle further along must be indistinguishable, since the schedule is
-			# periodic. This is the property that makes folding lossless.
-			var wrapped: float = director.get_persisted_phase(world_x + cycle_length)
-			if absf(wrapped - phase) > EPSILON:
-				failures.append("get_persisted_phase disagrees a full cycle apart (%.3f vs %.3f) at world_x=%.1f"
-					% [wrapped, phase, world_x])
+			if not is_finite(phase) or phase < 0.0:
+				failures.append("get_persisted_phase(%.1f) with offset %.1f returned %.3f -- a phase must be finite and non-negative"
+					% [world_x, stored_phase, phase, ])
+			if phase < previous_phase:
+				failures.append("get_persisted_phase went BACKWARDS (%.1f -> %.1f) by world_x=%.1f with offset %.1f -- the opening biome would replay once the phase wrapped past index 0"
+					% [previous_phase, phase, world_x, stored_phase])
+			previous_phase = phase
 	director.free()
+
+	# Claim 4: the intro occupies absolute index 0 and nothing else, so every later lap
+	# through that slot resolves to the real BIOME_CYCLE[0]. This is the whole feature in
+	# two assertions.
+	var live_director: BiomeDirector = BiomeDirector.new()
+	if live_director.get_cycle_palette(0) != BiomeDirector.PALETTE_FIRST_LIGHT:
+		failures.append("cycle index 0 is not first_light -- the opening biome never plays")
+	var cycle_size: int = BiomeDirector.BIOME_CYCLE.size()
+	for lap: int in [1, 2, 5]:
+		var wrapped_index: int = lap * cycle_size
+		if live_director.get_cycle_palette(wrapped_index) != BiomeDirector.BIOME_CYCLE[0]:
+			failures.append("cycle index %d does not resolve to BIOME_CYCLE[0] -- the intro is recurring instead of being a one-shot"
+				% wrapped_index)
+	live_director.free()
 
 
 func check_channel_curves() -> void:
@@ -537,6 +571,13 @@ func check_no_adjacent_discs() -> void:
 			failures.append("%s and %s are adjacent and BOTH have a disc -- celestial_is_moon snaps at the midpoint of the transition, so the sun/moon texture would swap while both are visible. Either drop one disc or give SkyCelestial the two-node dissolve treatment the ice band has"
 				% [here.resource_path.get_file().get_basename(), next.resource_path.get_file().get_basename()])
 
+	# The intro is not in the cycle, so the loop above never sees the ONE transition every
+	# session actually opens with: first_light -> BIOME_CYCLE[1].
+	var intro: BiomePalette = BiomeDirector.PALETTE_FIRST_LIGHT
+	if intro.celestial_strength > 0.0 and cycle[1].celestial_strength > 0.0:
+		failures.append("first_light and %s are adjacent and BOTH have a disc -- see above; this is the opening transition of every session"
+			% cycle[1].resource_path.get_file().get_basename())
+
 
 # A disc-less biome still has a celestial_position, and it is not decoration: the disc fades in
 # and out AT it, because position interpolates on the same channel as strength. If a neighbour
@@ -554,6 +595,13 @@ func check_disc_positions_are_stationary() -> void:
 				failures.append("%s has a disc at %s but its neighbour %s puts celestial_position at %s -- the disc will slide across the sky as it fades. A disc-less biome must copy its disc-having neighbour's celestial_position"
 					% [here.resource_path.get_file().get_basename(), here.celestial_position,
 						neighbour.resource_path.get_file().get_basename(), neighbour.celestial_position])
+
+	# Same blind spot as check_no_adjacent_discs: if BIOME_CYCLE[1] ever gains a disc, the
+	# intro is its left-hand neighbour and has to agree about where that disc sits.
+	var intro: BiomePalette = BiomeDirector.PALETTE_FIRST_LIGHT
+	if cycle[1].celestial_strength > 0.0 and intro.celestial_position.distance_to(cycle[1].celestial_position) > MAX_DISC_DRIFT:
+		failures.append("%s has a disc at %s but first_light, which precedes it on the opening transition, puts celestial_position at %s"
+			% [cycle[1].resource_path.get_file().get_basename(), cycle[1].celestial_position, intro.celestial_position])
 
 
 # The glow's and disc's position/size/strength are the NON-COLOUR fields riding CHANNEL_SKY,

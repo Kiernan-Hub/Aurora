@@ -100,6 +100,7 @@ tiles built for this pass:
 | `ice_rime_depth` | 4px | 3px | 1.33x |
 | `ice_granular_depth` | 3px | 2px | 1.50x |
 | `ice_crazed_depth` | 3px | 2px | 1.50x |
+| `ice_veined_depth` | 3px | 2px | 1.50x — near-blank by design, see below |
 | `ice_sastrugi_depth` | 18px | 4px | 4.50x — on probation, see `biomes.md` |
 
 The pulled tile is an outlier on ABSOLUTE x-coherence -- 35px against 3-10px for everything
@@ -142,6 +143,16 @@ anyway on a deliberate call: its character is completely different — a 3px cra
 the default's smooth 4px mottling — and variance under-rewards detail that is thin and
 high-frequency, which is exactly what reads as ice. Use the bar to catch a *collapse*, not as a
 hard threshold.
+
+**`ice_veined_depth` (`fifteen.png`) breaks the bar outright and is fine, because it is the
+one place near-blank is the goal.** `--check` REJECTS it — within-row 0.0138 raw, 0.0068 built,
+about a third of the default. It is on `first_light`, the one-shot opening biome, whose entire
+job is to be unexciting for ten seconds. Note the distinction from `thirteen.png`: that panel
+had real content the pipeline flattened away (banding 17.63 → 4.10), whereas this one is
+genuinely faint to start with (banding 2.86 → 0.76, so almost nothing was removed). Geometrically
+it is clean — 3px x-coherence, seam 0.00301, exact ramp match. **A `--check` rejection is
+advisory for a tile that is meant to be barely there; it is not advisory for anything in
+`BIOME_CYCLE`.**
 
 Prompts below; all of them should end with:
 

@@ -426,6 +426,7 @@ share a tile:
 | Tile | Source panel | Used by |
 |---|---|---|
 | `ice_depth_gradient.png` | `three.png` | the default — `starlit_night` only |
+| `ice_veined_depth.png` | `fifteen.png` | `first_light` (the one-shot opener) |
 | `ice_crazed_depth.png` | `fourteen.png` | `arctic_dawn` |
 | `ice_rime_depth.png` | `seven.png` | `pale_morning` |
 | `ice_faceted_depth.png` | `four.png` | `glacier_teal` |
@@ -434,10 +435,35 @@ share a tile:
 | `ice_shattered_depth.png` | `eight.png` | `violet_dusk` |
 | `ice_granular_depth.png` | `eleven.png` | `twilight_blue` |
 
-> **`ice_crazed_depth` sits on `arctic_dawn` because that is `BIOME_CYCLE[0]`** — the first
-> thing anyone sees on a fresh launch, and now permanently so, since the biome phase resets
-> on launch (`biome_director.gd`, `session_biome_phase`). `ice_rime_depth` moved off it to
-> `pale_morning` rather than being retired.
+> **`ice_rime_depth` moved off `arctic_dawn` to `pale_morning`** rather than being retired,
+> when `ice_crazed_depth` took that slot.
+
+### The opening biome is not in the cycle (2026-08-12)
+
+`first_light` is a **ninth** palette, held in `BiomeDirector.PALETTE_FIRST_LIGHT` and
+deliberately absent from `BIOME_CYCLE`. `get_cycle_palette()` substitutes it for **absolute**
+index 0 — checked before the `posmod` — so it plays once at the top of a session and never
+returns until the app is relaunched. Index 8, 16, … resolve to `BIOME_CYCLE[0]`
+(`arctic_dawn`) exactly as before, so nothing is lost by opening somewhere quieter.
+
+It is pale, low-saturation and claims **no** optional sky layer: no glow, no disc, no stars,
+no horizontal tint. Its tile is the faintest in the project (within-row 0.0068, against the
+default's 0.0195) on purpose — the first ten seconds of a session should not be the most
+exciting thing on offer.
+
+> **What makes "once" true is that the session phase is MONOTONIC.** `get_persisted_phase()`
+> used to `fposmod` into one cycle, which is the natural thing to do with a periodic
+> schedule — and it meant a run longer than a full cycle wrapped the phase back toward 0, so
+> absolute index 0 recurred and the intro replayed mid-session. Letting the phase only grow
+> makes the one-shot true by construction, with no spent-flag to keep in sync. Gate-enforced
+> both ways: the phase may never decrease, and index `N * 8` must resolve to `BIOME_CYCLE[0]`.
+
+> **A palette outside `BIOME_CYCLE` is invisible to every check that walks the cycle**, which
+> was every check in both gates. `biome_schedule_check.get_all_palettes()` and
+> `sky_layer_check.get_measured_palettes()` exist to close that — without them the one biome
+> every player is guaranteed to see would be the one biome nothing validates. `sky_layer_check`
+> caught its `SkyTint` at 11/255 on the first authoring pass, which is how it ended up opting
+> out of that layer entirely.
 
 > **`ice_windswept_depth` was built, shipped and pulled the same day.** It measured as the
 > cleanest tile in the project on every metric that existed, and was still wrong: its long
