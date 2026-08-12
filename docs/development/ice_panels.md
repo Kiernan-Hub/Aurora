@@ -99,6 +99,7 @@ tiles built for this pass:
 | `ice_cracked_depth` | 5px | 4px | 1.25x |
 | `ice_rime_depth` | 4px | 3px | 1.33x |
 | `ice_granular_depth` | 3px | 2px | 1.50x |
+| `ice_crazed_depth` | 3px | 2px | 1.50x |
 | `ice_sastrugi_depth` | 18px | 4px | 4.50x — on probation, see `biomes.md` |
 
 The pulled tile is an outlier on ABSOLUTE x-coherence -- 35px against 3-10px for everything
@@ -111,12 +112,45 @@ So: **short, broken, irregular features that differ from their neighbours along 
 continuous strata. Judge a candidate panel by squinting at it rotated 20°; if it suddenly looks
 like flow lines, it will do that on every hill in the game.
 
+### Detail must be SMALL and SHARP, not soft tonal masses (2026-08-12)
+
+A third distinct failure mode, alongside "no depth ramp" and "runs along x" above. **`--check`
+passing does not predict how much contrast survives the build**, and this one cost a whole
+panel round-trip.
+
+`thirteen.png` was soft and cloudy. Everything measurable about it looked good: `--check`
+passed, raw within-row 0.0254, the strongest depth ramp of any panel to date (0.948 → 0.323),
+and a coherence ratio of 1.12 — the *least* directional panel in the project, so no shear risk
+at all. **Built, it came out at within-row 0.0106, roughly half the default tile's 0.0195 and
+the lowest of the eight.** `flatten_horizontal_banding()` divides out a 2D low-frequency field,
+and this panel's content *was* low-frequency: its banding went 17.63 → 4.10/255. It was
+rejected without shipping.
+
+`fourteen.png` — a fine crazed crack web, regenerated against the wording below — came back at
+within-row 0.0158 with 3px x-coherence and raw banding of only 6.90, so almost nothing was
+removed (→ 1.48/255, the cleanest build in the repo). That shipped as `ice_crazed_depth`.
+
+**The rule: contrast must live in small sharp features, not large soft tonal masses.** Hairline
+cracks, small angular plate edges, tight crinkle — each a few px wide and under ~30px long.
+Broad smooth blotches are normalised away by design, so a hazy panel arrives on screen nearly
+blank no matter how good it looks as an image.
+
+**Measure the BUILT tile, not the panel**, and compare its within-row contrast against
+`ice_depth_gradient`'s. Anything far below the default is not a new family, it is a fainter
+default. `ice_crazed_depth` sits slightly under that bar (0.0158 vs 0.0195) and was shipped
+anyway on a deliberate call: its character is completely different — a 3px crazed web against
+the default's smooth 4px mottling — and variance under-rewards detail that is thin and
+high-frequency, which is exactly what reads as ice. Use the bar to catch a *collapse*, not as a
+hard threshold.
+
 Prompts below; all of them should end with:
 
 > Greyscale only. Top of the image is bright packed snow, growing gradually darker toward the
-> bottom. Detail is broken up and irregular, varying left-to-right, with no single feature
-> running unbroken across the width of the image. No text, no border, no vignette, no colour.
-> Seamless tiling not required. 1024×1024.
+> bottom. Detail is **fine, crisp and small-scale** — each feature only a few pixels wide and
+> no more than about 30 pixels long, **sharp rather than soft or hazy**; broad smooth blotches
+> will be removed by the build. Detail is broken up and irregular, varying left-to-right, with
+> no single feature running unbroken across the width of the image. No text, no border, no
+> vignette, no colour. Seamless tiling not required. 1024×1024.
 
 1. **Air bubbles / frozen froth** — "Clusters of small pale circular bubbles suspended at
    varying depths in clear ice, denser and smaller near the top, sparser and larger lower

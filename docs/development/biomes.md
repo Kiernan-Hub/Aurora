@@ -419,17 +419,25 @@ recolours all of them.
 ## Per-biome ice textures (2026-08-08)
 
 `two.png` contained **three** pattern families, not eight; three more were added on
-2026-08-11 from separately generated panels, hitting the plan's target of ~6:
+2026-08-11 from separately generated panels, hitting the plan's target of ~6, and a seventh
+on 2026-08-12. **Only `starlit_night` still uses the default**, and no two adjacent biomes
+share a tile:
 
 | Tile | Source panel | Used by |
 |---|---|---|
-| `ice_depth_gradient.png` | `three.png` | the default — three of the eight biomes |
+| `ice_depth_gradient.png` | `three.png` | the default — `starlit_night` only |
+| `ice_crazed_depth.png` | `fourteen.png` | `arctic_dawn` |
+| `ice_rime_depth.png` | `seven.png` | `pale_morning` |
 | `ice_faceted_depth.png` | `four.png` | `glacier_teal` |
 | `ice_cracked_depth.png` | `five.png` | `mauve_haze` |
-| `ice_granular_depth.png` | `eleven.png` | `twilight_blue` |
 | `ice_sastrugi_depth.png` | `twelve.png` | `sunset_rose` |
-| `ice_rime_depth.png` | `seven.png` | `arctic_dawn` |
 | `ice_shattered_depth.png` | `eight.png` | `violet_dusk` |
+| `ice_granular_depth.png` | `eleven.png` | `twilight_blue` |
+
+> **`ice_crazed_depth` sits on `arctic_dawn` because that is `BIOME_CYCLE[0]`** — the first
+> thing anyone sees on a fresh launch, and now permanently so, since the biome phase resets
+> on launch (`biome_director.gd`, `session_biome_phase`). `ice_rime_depth` moved off it to
+> `pale_morning` rather than being retired.
 
 > **`ice_windswept_depth` was built, shipped and pulled the same day.** It measured as the
 > cleanest tile in the project on every metric that existed, and was still wrong: its long
