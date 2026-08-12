@@ -1,6 +1,6 @@
 # Handoff — terrain & sky visual pass
 
-Updated 2026-08-11. Delete this file once Phase 2c/4 are done and it has stopped being true.
+Updated 2026-08-12. Delete this file once Phase 4 is done and it has stopped being true.
 
 Plan file: `/Users/kjh/.claude/plans/this-is-how-i-peppy-lark.md` (has the full context,
 the approved scope, and the working agreement).
@@ -22,13 +22,13 @@ the approved scope, and the working agreement).
 
 ## State
 
-`HEAD` is `163a05f`. **Everything from the shader work and the seam/colour work is
-committed.** Only two things are dirty, and neither is a loose end in the code:
+`HEAD` is `60fd381`, **pushed** to `origin/terrain/disable-mega-drop-camera-shake`. Everything
+described below is committed. Only the two TEMP-knob files are dirty, and neither is a loose
+end in the code:
 
 ```
  M scripts/systems/biome_director.gd        <-- TEMP KNOB, DO NOT COMMIT
  M scripts/systems/obstacle_spawner.gd      <-- TEMP KNOB, DO NOT COMMIT
-?? scripts/debug/ice_seam_probe.gd (+ .uid) <-- undecided, see "Next up"
 ```
 
 **The three TEMP knobs** are live so the cycle can be eyeballed quickly. `BIOME_DISTANCE`
@@ -42,10 +42,11 @@ committed.** Only two things are dirty, and neither is a loose end in the code:
 > a shipped value and **chose to leave it at 75000** — so if it comes up again, it is a
 > decision, not a regression. Warn before stashing if they are mid-playtest.
 
-**All gates pass**, run with the knobs stashed — so `shipping_values_check` passed *without*
-`--allow-temp`, which is the only way to prove no knob rode along into a commit.
-
----
+**Gates run against this state:** `biome_schedule_check` PASS (`ice_variants=6`),
+`sky_layer_check` PASS (42 layers, all 8 biomes), `terrain_invariant_check` PASS on 8 seeds,
+`shipping_values_check --allow-temp` WARN on exactly the three knobs above and nothing else.
+The physics gates were not re-run and did not need to be — no commit in this pass touches
+geometry, collision or the velocity model.
 
 ## What has shipped
 
@@ -75,6 +76,19 @@ both in the tile pipeline, both now fixed in `build_ice_texture.py`:
    identified it. `remove_seam_gradient()` zeroes the one bad column gradient and adds a linear
    ramp back so the tile still wraps. Residual now ±0.018/255.
 
+**`bb0aed6`..`60fd381` — the shader's `contrast` wired up, and Phase 2c's tiles (2026-08-11).**
+`BiomePalette.ice_contrast` blends on `CHANNEL_ICE` and drives the shader uniform that had been
+sitting at its identity since Phase 3 — contrast is the whole reason the shader exists. Peak
+contribution is ≈ `78 × |1 − contrast|`, so `sky_layer_check`'s `IceContrast` floor (10/255, its
+own — the sky overlays' 24 is unreachable here) is really a floor on the authoring; it caught
+two biomes at 5 and 9/255 on the first pass. Then four new tile families from user-generated
+panels: `rime` (`arctic_dawn`), `shattered` (`violet_dusk`), `granular` (`twilight_blue`),
+`sastrugi` (`sunset_rose`). `ice_seam_probe.gd` was kept and documented as a maintained
+diagnostic — **`CLAUDE.md` now says eleven maintained files, not ten**.
+
+> **One tile was shipped and pulled the same day** — see the shear finding under "Things that
+> will bite you". That is the single most important thing to read before touching a tile.
+
 **`8672b0e`, `a01f798` — the ice reading green.** The drift's warm half removed *only* blue,
 and subtracting blue from pale blue ice lands on yellow-green, not amber. `WARM_GREEN_FALLOFF
 = 0.5` in `terrain_generator.gd` now takes a little green with it. Peak green excess on the
@@ -84,30 +98,52 @@ four affected palettes went +14 → +1.7..+2.8/255. Confirmed good by playtest.
 
 ## Next up
 
-**1. Wire the shader's `contrast` to a palette field — the immediate next step.**
-`biome_palette.gd` is still untouched, so `contrast`/`gloss_strength` sit at identity defaults
-and no biome uses them. Contrast is the whole reason the shader exists — the one thing vertex
-colours cannot do. Add `ice_contrast` to `BiomePalette`, blend it on `CHANNEL_ICE`, push it in
-`apply_ice_palette`, author per biome, measure.
+**1. Playtest `sunset_rose`, and pull `ice_sastrugi_depth` if it reads as flow lines.** This is
+the only thing in the tree shipped deliberately unresolved. See "the shear finding" below: its
+horizontal coherence is 18px, against 35px for a tile that was reported and pulled and 3–5px
+for the six that are fine. It went in to bound where "visible" starts. Either outcome is
+useful — if it looks wrong, pull it the same way and the threshold is between 5 and 18px.
 
-> Do this **after** the tile fixes, which is now the case. `contrast` pushes the tile's own
-> light/dark structure away from a 0.62 pivot, so it multiplies any residual banding directly.
-> Turning it on before the tiles were flattened would have made the line worse.
+**2. Fold the coherence check into `build_ice_texture.py --check`.** ~15 lines, and it closes
+the hole that let the pulled tile through: `--check` and every tile metric measure TILING
+artifacts and are blind to direction. Recommended but not started. The measurement is written
+out in `ice_panels.md` and is a dozen lines of numpy.
 
-**2. Decide what happens to `scripts/debug/ice_seam_probe.gd`** (254 lines, untracked). It
-earned its keep — it A/Bs tile bytes inside one frozen frame, hides sprites, and can scroll the
-world to tell content from rendering artifacts. Options: keep as a maintained probe (then it
-belongs in `CLAUDE.md`'s list and the count goes 10 → 11), fold the useful parts into
-`--check`, or delete. **Not a gate** — it prints, it does not fail.
-
-**3. Phase 2c — more ice tile families. Blocked on art only.**
-`build_ice_texture.py --check panel.png` validates a source panel; `ice_panels.md` has the
-requirements plus five ready-to-paste prompts. The user generates panels; you build and gate.
+**3. Phase 2c is essentially done — seven families, target was ~6.** Only `pale_morning` and
+`starlit_night` still use the default tile, and no two adjacent biomes share it. The one family
+still missing is the **near-mirror gloss**, and the user has said that is **its own large
+phase**, not a panel drop — do not fold it into 2c. `six.png` is kept in the repo root, unbuilt,
+reserved for the flat lake where its long streaks cannot shear.
 
 **4. Phase 4 — the rare flat "glass lake" biome.** Design only; see the plan file. The
 coupling is clean: the biome schedule and the terrain are both pure functions of `world_x`, so
 they can agree on a lake window with no messaging. Risks: must not overlap a chasm window, and
 it runs the full physics gate set.
+
+**5. Random biome order — designed, approved in principle, not built.** The user wants: always
+open on a bland bright starter biome, then a *random* order after it, re-rolled every run, with
+green/faceted biomes weighted down. Keep it a pure function of `(session_seed, index)`, the way
+`get_terrain_height` is pure — no state, no messaging, and Phase 4's lake still works. **The two
+real complications are both in the sun/moon**, because ordering stops being authored: the
+`celestial_is_moon` snap needs the picker to reject two disc biomes landing adjacent, and the
+"disc-less biome copies its neighbour's `celestial_position`" rule has to be replaced by holding
+the disc-having end's position in `blend_into()`. `biome_schedule_check` would then have to
+validate the generator across many seeds instead of one fixed array. **Verify first whether
+restart re-seeds** — if it reuses the session seed, the order repeats until relaunch.
+
+### Smaller, genuinely optional
+
+- **`CLAUDE.md` still says all on-screen art is placeholder `ColorRect`/`Polygon2D`.** A real
+  character sprite is in the game as of 2026-08-11 (seen in a playtest screenshot). The user was
+  asked whether to update that line and did not answer — ask before editing, the character may
+  still be in flux.
+- **Spawn embedding, cosmetic.** `FREEZE_REPRO` on seed 1277895522 at frame 1 is **not a
+  freeze** and is not logged in `freeze_bug.md` on purpose. The player spawns at the hardcoded
+  `(64,136)`, which assumes flat ground; on a seed whose first segment is a hill the capsule
+  starts ~17px inside the terrain, frame 2 depenetrates it, and that one frame's horizontal
+  motion is eaten (`dx=0.0027` vs `1.67`). Recovers completely by frame 3. Fixing it means
+  seeding spawn y from `get_terrain_height`, which touches player spawn and runs the physics
+  gates. Traced in full; do not re-derive.
 
 ### Known and deliberately left
 
@@ -201,6 +237,21 @@ untouched (`terrain_invariant_check` passes on 8 seeds) but that check is outsta
 - **The ice tile is a MULTIPLIER, and it repeats every 1200 world px.** Anything with
   structure at that period becomes a straight vertical line on screen, forever. Both fixed
   causes were this. Check `h banding` and the seam residual after any tile rebuild.
+- **THE SHEAR FINDING (2026-08-11), and the most expensive lesson of this pass.**
+  `build_ice_band()` pins the tile's `V=0` row to the terrain surface, so the texture shears to
+  follow the slope. A pattern with no dominant direction shears invisibly; one made of long
+  horizontal streaks fans downward on a hill and reads as flowing hair. `ice_windswept_depth`
+  did exactly that — **and it measured as the CLEANEST tile in the project** (vertical edge
+  2.17/255 at 1.88x the median column) while being wrong. Every tile metric measures TILING
+  artifacts and says nothing about direction. The statistic that separates them is **horizontal
+  coherence length** — how far a feature stays correlated (>0.5) along each axis with the depth
+  ramp removed. Pulled tile: 35px x vs 6px y. Everything that looks right: 3–5px. Table and
+  method in `ice_panels.md`. **Do not "fix" this by mapping V to world space** — it would
+  detach the snow band from the ride line, break the band-to-fill seam, and demand a vertically
+  tileable tile, which a depth RAMP cannot be.
+- **The prompt boilerplate used to cause this.** Detail must VARY along x (`match_depth_ramp()`
+  normalises away anything constant across a row) but must not RUN along x. Those sound
+  identical and are opposites; the old wording asked for detail that "spreads left-to-right".
 - **The hue drift only ever darkens**, never brightens — the renderer is LDR and several
   palettes sit at 1.0 on a channel. That is load-bearing; do not "fix" it by scaling up.
 - **No two adjacent biomes may both have a sun/moon disc.** `celestial_is_moon` is a bool, so
