@@ -397,12 +397,12 @@ func _on_player_died() -> void:
 	var is_new_best: bool = false
 	var best_score: int = 0
 	var wallet: int = 0
+	# Session state, not save state, and so deliberately outside the services block below:
+	# where this run ended is where the next one picks the day arc up, but only until the
+	# process exits. See BiomeDirector.session_biome_phase for why it is not persisted.
+	if biome_director != null:
+		BiomeDirector.session_biome_phase = biome_director.get_persisted_phase(player.global_position.x)
 	if services != null:
-		# Written BEFORE record_run, which is the call that flushes to disk -- so this
-		# still costs exactly one write per death, the property record_run's header
-		# claims. Where the run ended is where the next one picks the day arc up.
-		if biome_director != null:
-			services.save_store.biome_phase = biome_director.get_persisted_phase(player.global_position.x)
 		is_new_best = services.save_store.record_run(coin_count, main.elapsed_time)
 		best_score = services.save_store.best_score
 		wallet = services.save_store.coin_wallet

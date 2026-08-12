@@ -381,25 +381,28 @@ func check_schedule_purity(schedule_steps: int) -> void:
 			% [seen.size(), BiomeDirector.BIOME_CYCLE.size()])
 
 
-# The saved biome phase (SaveStore.biome_phase) is added to world_x before the cycle maths,
-# so a run resumes where the last one died. Three claims, none of which the sweep above can
-# see because it drives the pure function directly:
+# The session biome phase (BiomeDirector.session_biome_phase) is added to world_x before the
+# cycle maths, so a run resumes where the last one in this sitting died. Three claims, none
+# of which the sweep above can see because it drives the pure function directly:
 #
-#   1. The default offset is 0. This is what keeps every OTHER check in this file, and every
-#      headless gate, independent of whatever is in the developer's save.dat.
+#   1. Both the static and the instance copy default to 0. That is what keeps every OTHER
+#      check in this file independent of the phase, and what makes a fresh launch open on
+#      BIOME_CYCLE[0] -- the deliberate first impression.
 #   2. The offset shifts the schedule by exactly itself -- one BIOME_DISTANCE of phase means
 #      exactly one biome further along, not "roughly".
 #   3. get_persisted_phase() folds into one cycle. Without the fposmod it is an accumulator
-#      that grows by a run's distance every death and is written back to disk, so it
-#      compounds across relaunches until float precision starts quantising the cycle
-#      position -- an unreproducible bug living in one player's save file.
+#      that grows by a run's distance on every death, and a long sitting of short runs
+#      compounds it until float precision starts quantising the cycle position.
 func check_phase_offset() -> void:
 	var director: BiomeDirector = BiomeDirector.new()
 	var biome_distance: float = BiomeDirector.BIOME_DISTANCE
 	var cycle_length: float = biome_distance * float(BiomeDirector.BIOME_CYCLE.size())
 
+	if absf(BiomeDirector.session_biome_phase) > EPSILON:
+		failures.append("BiomeDirector.session_biome_phase starts at %.3f, not 0 -- a fresh launch would not open on BIOME_CYCLE[0]"
+			% BiomeDirector.session_biome_phase)
 	if absf(director.biome_phase_offset) > EPSILON:
-		failures.append("BiomeDirector.biome_phase_offset defaults to %.3f, not 0 -- every gate in this file would then depend on a saved value"
+		failures.append("BiomeDirector.biome_phase_offset defaults to %.3f, not 0 -- every gate in this file would then depend on it"
 			% director.biome_phase_offset)
 
 	# Claim 2, at a few positions including one inside a transition window.
@@ -420,7 +423,7 @@ func check_phase_offset() -> void:
 		for world_x: float in [0.0, 1234.5, cycle_length, cycle_length * 7.3]:
 			var phase: float = director.get_persisted_phase(world_x)
 			if not is_finite(phase) or phase < 0.0 or phase >= cycle_length:
-				failures.append("get_persisted_phase(%.1f) with offset %.1f returned %.3f, outside [0, %.1f) -- the value that lands on disk is unbounded"
+				failures.append("get_persisted_phase(%.1f) with offset %.1f returned %.3f, outside [0, %.1f) -- the banked phase is unbounded"
 					% [world_x, stored_phase, phase, cycle_length])
 			# A whole cycle further along must be indistinguishable, since the schedule is
 			# periodic. This is the property that makes folding lossless.

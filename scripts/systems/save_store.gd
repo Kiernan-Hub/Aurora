@@ -18,7 +18,7 @@ class_name SaveStore
 # silently losing a new best score is worse than a log line.
 
 const SAVE_PATH: String = "user://save.dat"
-const CURRENT_VERSION: int = 3
+const CURRENT_VERSION: int = 2
 
 const DEFAULT_MUSIC_VOLUME: float = 0.8
 const DEFAULT_SFX_VOLUME: float = 1.0
@@ -38,20 +38,6 @@ var sfx_volume: float = DEFAULT_SFX_VOLUME
 # both directions. This file must NOT reference UpgradeStore -- see its header.
 var coin_wallet: int = 0
 var upgrade_levels: Dictionary[String, int] = {}
-
-# How far into the biome cycle the last run got, in world px (v3). BiomeDirector adds this
-# to world_x before the cycle maths, so a run resumes the colour scheme the previous one
-# died in rather than restarting the day arc every time. One full cycle is ~13.7 minutes,
-# which nobody plays in a sitting; chaining sessions is what makes the whole arc reachable.
-#
-# WHY THIS FILE DOES NOT BOUND IT. Keeping the value inside one cycle needs
-# BIOME_DISTANCE * BIOME_CYCLE.size(), and this class must not reference BiomeDirector for
-# the same reason it must not reference UpgradeStore (see the header): the save format
-# cannot depend on a gameplay system's constants, or changing one silently invalidates
-# saves. BiomeDirector.get_persisted_phase() fposmods before handing the value over, so
-# what lands on disk is already bounded. Load only defends against a hand-edited or
-# corrupt file -- see the sanitising note below.
-var biome_phase: float = 0.0
 
 
 # Not named load(): that would shadow GDScript's global load() inside this class.
@@ -95,20 +81,6 @@ func load_from_disk() -> void:
 		for upgrade_id: Variant in stored_levels.keys():
 			upgrade_levels[String(upgrade_id)] = maxi(int(stored_levels[upgrade_id]), 0)
 
-	# v2 -> v3: same additive idiom again. A v2 file has no phase, and 0.0 means "start at
-	# the beginning of the cycle", which is exactly how the game behaved before v3.
-	#
-	# SANITISED HARDER THAN THE OTHERS BECAUSE OF WHERE IT ENDS UP. This value feeds the
-	# palette blend, so a NaN from a hand-edited or truncated file would propagate into
-	# every colour on screen -- a black or blank frame with no error and nothing to grep
-	# for. is_finite() is the guard the int fields do not need, since int() of garbage is
-	# already 0. Negative is rejected too: the cycle walks backwards from a negative x
-	# quite happily, but a negative PHASE is not a state any run can save, so it is
-	# corruption rather than an unusual save.
-	if version >= 3:
-		var stored_phase: float = float(data.get("biome_phase", 0.0))
-		biome_phase = stored_phase if is_finite(stored_phase) and stored_phase >= 0.0 else 0.0
-
 
 func save_to_disk() -> void:
 	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -122,7 +94,6 @@ func save_to_disk() -> void:
 		"best_time": best_time,
 		"coin_wallet": coin_wallet,
 		"upgrades": upgrade_levels,
-		"biome_phase": biome_phase,
 		"settings": {
 			"music_volume": music_volume,
 			"sfx_volume": sfx_volume,
@@ -159,7 +130,4 @@ func reset_progress() -> void:
 	best_time = 0.0
 	coin_wallet = 0
 	upgrade_levels.clear()
-	# Progress, not a device preference: a fresh save should open on the first biome the
-	# way a first-ever launch does, not halfway through the day arc.
-	biome_phase = 0.0
 	save_to_disk()

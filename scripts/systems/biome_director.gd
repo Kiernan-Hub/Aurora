@@ -106,17 +106,27 @@ var channel_weights: PackedFloat32Array = PackedFloat32Array()
 var applied_biome_index: int = -1
 var applied_progress: float = -1.0
 
-# Where the previous run left off, in world px, added to world_x before the cycle maths.
-# One full cycle is ~13.7 minutes at shipping values, so a single sitting never sees the
-# whole day arc; carrying the phase across runs turns that into a series of short sessions
-# that walk it in order. The alternative considered and rejected was shuffling the cycle --
-# measured, ice brightness tracks sky brightness across the arc (ice_surface 0.863 -> 0.625
-# alongside sky_top 0.773 -> 0.244), so a shuffle puts a moon over daylight-bright ice.
+# Where the previous run in THIS SESSION left off, in world px. GameManager banks it on
+# death; the next run adds it to world_x before the cycle maths and so resumes the colour
+# scheme it died in. One full cycle is ~13.7 minutes at shipping values, which nobody plays
+# in a sitting, so without this most of the eight palettes are unreachable in practice.
 #
-# ADDED AT THE CALL SITES, NOT INSIDE apply_palette_for_world_x. That function is pure in
-# world_x and biome_schedule_check drives it directly to assert the whole schedule without
-# running a game; folding a saved value into it would make the gate's answer depend on
-# whatever is in the developer's save.dat.
+# The alternative considered and rejected was shuffling the cycle: measured, ice brightness
+# tracks sky brightness across the arc (ice_surface 0.863 -> 0.625 alongside sky_top 0.773
+# -> 0.244), so a shuffle -- or splitting the sky schedule from the ground schedule -- puts
+# a moon over daylight-bright ice.
+#
+# STATIC, AND THEREFORE DELIBERATELY NOT SAVED. It survives the reload_current_scene() a
+# restart does, exactly like GameManager.pending_quick_restart, and dies with the process.
+# So runs chain within a sitting, but every fresh launch opens on BIOME_CYCLE[0] again --
+# which is the point: that slot was chosen as the whole first impression (see the cycle's
+# note above), and persisting to disk would eventually open the game straight into the
+# night biome for a returning player. It also means no save format change, so a phase can
+# never be a thing that arrives corrupt from disk.
+static var session_biome_phase: float = 0.0
+
+# This instance's copy, read once in _ready(). Held separately from the static so that
+# apply_palette_for_world_x stays pure in world_x -- see get_persisted_phase().
 var biome_phase_offset: float = 0.0
 
 
@@ -129,13 +139,13 @@ func _ready() -> void:
 
 	channel_weights.resize(BiomePalette.CHANNEL_COUNT)
 
-	# AFTER the is_headless return above, deliberately. GameManager.apply_upgrades() carries
-	# this same guard for the same reason: a gate that reads the developer's save.dat is
-	# measuring their progress, not the build (CLAUDE.md -- it cost 8 failures once). A
-	# headless run keeps the offset at 0 and applies nothing anyway.
-	var services: GameServices = GameServices.resolve(self)
-	if services != null:
-		biome_phase_offset = services.save_store.biome_phase
+	# AFTER the is_headless return above, deliberately. A gate that restarts the scene more
+	# than once would otherwise accumulate phase across its own iterations and measure a
+	# different biome each time -- the same class of mistake as reading the developer's
+	# save.dat, which GameManager.apply_upgrades() guards against for its jump level
+	# (CLAUDE.md -- it cost 8 failures once). Headless keeps the offset at 0 and applies
+	# nothing anyway.
+	biome_phase_offset = session_biome_phase
 
 	player = get_node_or_null(player_path) as CharacterBody2D
 	if player == null:
@@ -204,15 +214,15 @@ func apply_palette_for_world_x(world_x: float) -> void:
 	push_palette(blended, from_palette.ice_texture, to_palette.ice_texture, channel_weights[BiomePalette.CHANNEL_ICE])
 
 
-# What GameManager banks on death, so the next run resumes this run's colour scheme.
-# Takes the player's world_x rather than reading it, so the caller owns the "when".
+# What GameManager banks into session_biome_phase on death, so the next run resumes this
+# run's colour scheme. Takes the player's world_x rather than reading it, so the caller
+# owns the "when".
 #
 # THE fposmod IS LOAD-BEARING, not tidiness. Without it this is an accumulator that grows
-# by a whole run's distance every death and is written back to disk, so it survives
-# relaunches and compounds indefinitely -- a few hundred sessions in, it is large enough
-# that float precision starts quantising the cycle position, and the symptom would be
-# biome transitions stuttering or sticking on a save file nobody can reproduce from.
-# That is the freeze bug's failure mode wearing a different hat (docs/research/freeze_bug.md),
+# by a whole run's distance on every death, and a long sitting of short runs compounds it
+# without limit -- far enough out, float precision starts quantising the cycle position,
+# and the symptom is biome transitions stuttering or sticking after an hour of play. That
+# is the freeze bug's failure mode wearing a different hat (docs/research/freeze_bug.md),
 # and it is why main.gd rebases the world every ~26s. Folding it into one cycle costs
 # nothing: the schedule is periodic, so phase and phase + N cycles are the same frame.
 #
