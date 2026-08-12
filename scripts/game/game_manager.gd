@@ -15,6 +15,7 @@ class_name GameManager
 @export var glide_coin_spawner_path: NodePath = NodePath("../TerrainGenerator/GlideCoinSpawner")
 @export var coin_label_path: NodePath = NodePath("../CanvasLayer/CoinLabel")
 @export var powerup_manager_path: NodePath = NodePath("../PowerupManager")
+@export var biome_director_path: NodePath = NodePath("../BiomeDirector")
 @export var sfx_player_path: NodePath = NodePath("../SfxPlayer")
 @export var pause_screen_path: NodePath = NodePath("../CanvasLayer/PauseScreen")
 @export var pause_button_path: NodePath = NodePath("../CanvasLayer/PauseButton")
@@ -73,6 +74,10 @@ var coin_count: int = 0
 # path, not two.
 const TRICK_COIN_REWARD: int = 5
 var powerup_manager: PowerupManager
+# Read on death only, to bank how far into the biome cycle this run got. Optional and
+# null-guarded like the shop nodes: this is presentation state, and a run that cannot
+# find the director should still record its coins.
+var biome_director: BiomeDirector
 var sfx_player: SfxPlayer
 var shop_screen: Control
 var shop_wallet_label: Label
@@ -224,6 +229,11 @@ func _ready() -> void:
 	if powerup_manager == null:
 		push_error("GameManager requires a PowerupManager at %s." % powerup_manager_path)
 		return
+
+	# No push_error and no early return, unlike the nodes above: losing the biome phase
+	# costs a run its colour continuity and nothing else, which is not worth refusing to
+	# start a game over.
+	biome_director = get_node_or_null(biome_director_path) as BiomeDirector
 
 	# unbind(1) because the pickup SFX is the same for every kind -- this listener does not
 	# care which effect started, and one connection now covers every future powerup.
@@ -388,6 +398,11 @@ func _on_player_died() -> void:
 	var best_score: int = 0
 	var wallet: int = 0
 	if services != null:
+		# Written BEFORE record_run, which is the call that flushes to disk -- so this
+		# still costs exactly one write per death, the property record_run's header
+		# claims. Where the run ended is where the next one picks the day arc up.
+		if biome_director != null:
+			services.save_store.biome_phase = biome_director.get_persisted_phase(player.global_position.x)
 		is_new_best = services.save_store.record_run(coin_count, main.elapsed_time)
 		best_score = services.save_store.best_score
 		wallet = services.save_store.coin_wallet

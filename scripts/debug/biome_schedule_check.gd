@@ -111,6 +111,7 @@ func _init() -> void:
 		failures.append("no palette resolved an ice_texture (expected at least %d) -- every pattern variant is missing, so the whole cycle silently fell back to the smooth tile"
 			% MIN_ICE_VARIANTS)
 	check_schedule_purity(schedule_steps)
+	check_phase_offset()
 	check_channel_curves()
 	check_blending()
 
@@ -378,6 +379,56 @@ func check_schedule_purity(schedule_steps: int) -> void:
 	if seen.size() != BiomeDirector.BIOME_CYCLE.size():
 		failures.append("only %d of %d biomes reachable over the sweep"
 			% [seen.size(), BiomeDirector.BIOME_CYCLE.size()])
+
+
+# The saved biome phase (SaveStore.biome_phase) is added to world_x before the cycle maths,
+# so a run resumes where the last one died. Three claims, none of which the sweep above can
+# see because it drives the pure function directly:
+#
+#   1. The default offset is 0. This is what keeps every OTHER check in this file, and every
+#      headless gate, independent of whatever is in the developer's save.dat.
+#   2. The offset shifts the schedule by exactly itself -- one BIOME_DISTANCE of phase means
+#      exactly one biome further along, not "roughly".
+#   3. get_persisted_phase() folds into one cycle. Without the fposmod it is an accumulator
+#      that grows by a run's distance every death and is written back to disk, so it
+#      compounds across relaunches until float precision starts quantising the cycle
+#      position -- an unreproducible bug living in one player's save file.
+func check_phase_offset() -> void:
+	var director: BiomeDirector = BiomeDirector.new()
+	var biome_distance: float = BiomeDirector.BIOME_DISTANCE
+	var cycle_length: float = biome_distance * float(BiomeDirector.BIOME_CYCLE.size())
+
+	if absf(director.biome_phase_offset) > EPSILON:
+		failures.append("BiomeDirector.biome_phase_offset defaults to %.3f, not 0 -- every gate in this file would then depend on a saved value"
+			% director.biome_phase_offset)
+
+	# Claim 2, at a few positions including one inside a transition window.
+	for start_multiple: float in [0.0, 0.25, 0.97, 3.5]:
+		var world_x: float = biome_distance * start_multiple
+		var shifted_index: int = get_biome_index(world_x + biome_distance)
+		if shifted_index != get_biome_index(world_x) + 1:
+			failures.append("a phase offset of one BIOME_DISTANCE moved the schedule to index %d, not %d, at world_x=%.1f"
+				% [shifted_index, get_biome_index(world_x) + 1, world_x])
+		if absf(get_transition_progress(world_x + biome_distance) - get_transition_progress(world_x)) > EPSILON:
+			failures.append("a phase offset of one BIOME_DISTANCE changed transition progress at world_x=%.1f -- the shift is not a whole biome"
+				% world_x)
+
+	# Claim 3. Also covers the offset itself being carried: the second case starts from a
+	# non-zero stored phase, which is the state every run after the first is in.
+	for stored_phase: float in [0.0, cycle_length * 0.6]:
+		director.biome_phase_offset = stored_phase
+		for world_x: float in [0.0, 1234.5, cycle_length, cycle_length * 7.3]:
+			var phase: float = director.get_persisted_phase(world_x)
+			if not is_finite(phase) or phase < 0.0 or phase >= cycle_length:
+				failures.append("get_persisted_phase(%.1f) with offset %.1f returned %.3f, outside [0, %.1f) -- the value that lands on disk is unbounded"
+					% [world_x, stored_phase, phase, cycle_length])
+			# A whole cycle further along must be indistinguishable, since the schedule is
+			# periodic. This is the property that makes folding lossless.
+			var wrapped: float = director.get_persisted_phase(world_x + cycle_length)
+			if absf(wrapped - phase) > EPSILON:
+				failures.append("get_persisted_phase disagrees a full cycle apart (%.3f vs %.3f) at world_x=%.1f"
+					% [wrapped, phase, world_x])
+	director.free()
 
 
 func check_channel_curves() -> void:
