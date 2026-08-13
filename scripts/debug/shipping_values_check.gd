@@ -81,6 +81,11 @@ func check_flag_defaults() -> void:
 
 	expect_float("BiomeDirector.BIOME_DISTANCE", BiomeDirector.BIOME_DISTANCE, 75000.0)
 	expect_float("BiomeDirector.TRANSITION_DISTANCE", BiomeDirector.TRANSITION_DISTANCE, 12000.0)
+	# Left on, every run reopens on the intro biome and the day arc never advances across a
+	# sitting -- which is the whole feature, silently gone.
+	var director: BiomeDirector = BiomeDirector.new()
+	expect_bool("BiomeDirector.debug_pin_intro_biome", director.debug_pin_intro_biome, false)
+	director.free()
 
 
 # The freeze-bug check, generalised. Any of these appearing as a serialised property in the

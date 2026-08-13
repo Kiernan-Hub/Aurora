@@ -125,6 +125,14 @@ to touch `get_tree().paused` or a screen's visibility. Reasoning: `architecture.
 - **Scaling a hill scales length *and* amplitude together** (`BIG_HILL_SCALES`): peak slope is
   `atan(π·magnitude/length)`, and both hill types already sit at the 20.13° ceiling, so
   raising amplitude alone walks into that same wall-wedge failure.
+- **The opening biome renders at ABSOLUTE cycle index 0 only**, and the session phase advances
+  on every death and survives a restart — so it is the first ~3 min of a *cold launch*, and one
+  death puts it out of reach for the session. **Set `BiomeDirector.debug_pin_intro_biome` before
+  editing `first_light.tres`**, or you are eyeballing a different biome (this happened).
+- **Deep ice is hard-capped at `ice_depth × 0.38`** (`ICE_TILE_DEPTH_FLOOR`, matched to the tile
+  builder's `OUTPUT_FLOOR`), so even a pure white tint renders as a 0.38 grey and no palette
+  value escapes it. When ice "looks grey", **check saturation before brightness** — the fix is
+  usually widening `b − r`, not lifting the floor. `biomes.md`, `HANDOFF.md`.
 - **Every `Area2D` has terrain chunks entering it.** Player/chunks/obstacles are layer 1;
   coins/powerups layer 2; everything masks layer 1. `obstacle.gd`, `coin.gd`, `powerup.gd`
   each filter with `body.is_in_group("player")` — drop that and a chunk collects/kills.

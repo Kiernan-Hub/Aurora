@@ -140,6 +140,19 @@ var applied_progress: float = -1.0
 # never be a thing that arrives corrupt from disk.
 static var session_biome_phase: float = 0.0
 
+# Pins the phase at 0, so every run reopens on the intro biome instead of resuming.
+#
+# WHY THIS NEEDS TO EXIST. The intro is index 0 only, and the phase advances on every death
+# and survives a restart -- so at the shipping BIOME_DISTANCE it is the first ~3 minutes of a
+# cold launch, and at the 7500 playtest value only ~19 SECONDS, after which one death puts it
+# out of reach until the app is fully relaunched. Iterating on how it looks is therefore
+# almost impossible without this: three rounds of colour edits were made and eyeballed against
+# a different biome entirely before anyone noticed.
+#
+# Plain var, not @export, for the same reason as every other knob here -- an exported bool can
+# serialise into main.tscn and ship silently. shipping_values_check fails on it.
+var debug_pin_intro_biome: bool = false
+
 # This instance's copy, read once in _ready(). Held separately from the static so that
 # apply_palette_for_world_x stays pure in world_x -- see get_persisted_phase().
 var biome_phase_offset: float = 0.0
@@ -160,7 +173,7 @@ func _ready() -> void:
 	# save.dat, which GameManager.apply_upgrades() guards against for its jump level
 	# (CLAUDE.md -- it cost 8 failures once). Headless keeps the offset at 0 and applies
 	# nothing anyway.
-	biome_phase_offset = session_biome_phase
+	biome_phase_offset = 0.0 if debug_pin_intro_biome else session_biome_phase
 
 	player = get_node_or_null(player_path) as CharacterBody2D
 	if player == null:

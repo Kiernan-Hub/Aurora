@@ -5,11 +5,11 @@
 
 [resource]
 script = ExtResource("1")
-sky_top = Color(0.68, 0.73, 0.8, 1)
-sky_mid = Color(0.79, 0.83, 0.88, 1)
-sky_horizon = Color(0.91, 0.93, 0.95, 1)
-sky_upper = Color(0.735, 0.78, 0.84, 1)
-sky_lower = Color(0.85, 0.88, 0.915, 1)
+sky_top = Color(0.66, 0.74, 0.85, 1)
+sky_mid = Color(0.78, 0.84, 0.92, 1)
+sky_horizon = Color(0.9, 0.94, 0.98, 1)
+sky_upper = Color(0.72, 0.79, 0.885, 1)
+sky_lower = Color(0.84, 0.89, 0.95, 1)
 sky_tint_left = Color(1, 1, 1, 1)
 sky_tint_right = Color(1, 1, 1, 1)
 sky_mid_offset = 0.56
@@ -28,10 +28,10 @@ haze_far = Color(0.85, 0.88, 0.93, 0.4)
 haze_near = Color(0.8, 0.84, 0.9, 0.5)
 tree_tint = Color(0.78, 0.82, 0.88, 1)
 bird_tint = Color(0.7, 0.75, 0.82, 1)
-ice_surface = Color(0.88, 0.92, 0.97, 1)
-ice_depth = Color(0.62, 0.7, 0.82, 1)
-ice_hue_variance = 0.11
-ice_contrast = 1.16
+ice_surface = Color(0.68, 0.8, 0.97, 1)
+ice_depth = Color(0.5, 0.73, 1, 1)
+ice_hue_variance = 0.12
+ice_contrast = 1.15
 snow_cap_color = Color(1, 1, 1, 1)
 snow_cap_strength = 0.5
 ice_texture = ExtResource("2")

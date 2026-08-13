@@ -797,3 +797,39 @@ ground is level. The ice surface line in this game *is* `get_terrain_height`, so
 curves, and faking a level plane would draw a surface the player visibly does not ride on.
 Every mood in the grid composites fine over the real curve. The one cue that does not
 transfer is the dead-level mirror horizon in the bottom-left panel.
+
+### "It looks grey" is usually saturation, not brightness (2026-08-12)
+
+The most expensive detour of the `first_light` authoring pass, and worth reading before touching
+any ice colour.
+
+Deep ice renders as `ice_depth × ICE_TILE_DEPTH_FLOOR` (0.38, the tile's own darkest value,
+matched to `OUTPUT_FLOOR` in `build_ice_texture.py`; the untextured fill below the band folds it
+in by hand in `get_deep_fill_color`). **A colour channel caps at 1.0, so even a pure white
+`ice_depth` renders as a 0.38 grey.** More than half the screen is that flat fill.
+
+Reported as "it's just grey", that reads as a brightness problem. It was not. The measured value
+was `RGB(72, 82, 97)` — a blue/red ratio of 1.35, which *sounds* blue, but only **26%
+saturation**, and three channels that close together read as grey at any brightness.
+
+Three fixes were built or proposed chasing brightness, and all were wrong:
+
+- a per-biome `ice_depth_floor` palette field with a shader remap of `[0.38, 1] → [floor, 1]`.
+  Worked, but compressed the tile's range by 39% and visibly flattened the ice detail. Reverted.
+- lowering `ice_contrast`. **`ice_contrast` cannot affect deep ice at all** — the shader fades it
+  out with depth (`surface_weight` reaches 0 by `UV.y = 0.95`) precisely so the band's bottom row
+  keeps meeting the flat fill without a seam. It is a surface knob only.
+- raising `ICE_BAND_DEPTH` from 340 so less flat fill is on screen. Partial at best, and it
+  reverses a tuning decision made for the opposite reason.
+
+**The actual fix was two numbers in one `.tres`.** Pulling red down took `ice_depth` from
+`(0.74, 0.85, 1.00)` to `(0.50, 0.73, 1.00)`: same 0.38 cap, same brightness ceiling, saturation
+26% → 50%. For scale, `arctic_dawn` sits at 76% and was called too deep blue.
+
+**Compute saturation before proposing a mechanism.** `(max − min) / max` on the rendered pixel,
+not the tint.
+
+Related and easy to conflate: **the hue drift only ever darkens**, and its warm half removes blue
+plus half as much green (`WARM_GREEN_FALLOFF`). So a base whose red sits close to its blue lands
+on *neutral* at the warm end — measured at `(0.85, 0.86, 0.86)`, b/r 1.01, which is the definition
+of grey. Keep `b × (1 − ice_hue_variance)` comfortably above `r`.
