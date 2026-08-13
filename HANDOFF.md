@@ -346,11 +346,24 @@ with transparency (~79% fully clear, soft antialiased edges, no matte left). Sou
 `coin_source.png` / `rare_coin_source.png` in the repo root, alongside the ice panels; the
 colon in the old `Rare coin:diamond.png` filename was dropped because it is not portable.
 
-Built into `assets/sprites/coin.png` (32×32) and `rare_coin.png` (36×56) by trimming to the
+Built into `assets/sprites/coin.png` (40×40) and `rare_coin.png` (45×62) by trimming to the
 opaque bbox and Lanczos-downscaling **in premultiplied alpha** — do it any other way and
 transparent black bleeds into the edge as a dark fringe. Both scenes carry a `Sprite2D` named
-`Visual` at `scale 0.5`, so world size is **16×16** (unchanged from the rect) and **18×28** (the
-diamond keeps its own 0.64 aspect instead of the rect's 24×28). Collision radius left at 10.
+`Visual` at `scale 0.5`, so world size is **20×20** and **22.5×31**. Collision radius left at 10.
+
+**The first build of both was near-invisible in play, and brightness was not the problem.**
+The coin art is a hairline ring around an empty field: 30px of ring in a 629px source is
+**1.5 texels**, under one device pixel at world size, and the star in the middle was only 29%
+of the frame — total ink coverage **29%**, most of it at low alpha. The rebuild (script kept in
+the commit message for `<coin-shine>`) splits ring from star **on radius, never on colour** —
+they share one gold, but sit at disjoint radii — then grows the star ×1.60, dilates the ring by
+21 source px, fills the disc with a translucent gold body so the middle stops reading as
+background, and lays a soft outer halo for the shine. Coverage **29% → 79%**. The diamond got
+the same halo plus a ×1.45 saturation lift; per `biomes.md`'s standing rule that was chosen
+**over** a brightness lift, because it hangs over pale ice that is already bright.
+
+`COIN_SURFACE_CLEARANCE` (34) is centre-to-surface, so the coin's larger visual half-height
+(8 → 10) leaves 24px of air under it instead of 26. Nothing else reads the visual size.
 
 `Coin.set_visual_color()` now writes `modulate`, so **per-biome colour is a MULTIPLY over the
 sprite's own gold, not the absolute fill the rect took**. That is safe as authored — all nine
