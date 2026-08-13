@@ -341,17 +341,31 @@ error in a palette consumer does *not* fail these probes.
 > `git checkout project.godot` and re-verified. **Any new `class_name` needs this dance;
 > `git diff project.godot` afterwards is not optional.**
 
-**0. Two coin sprites are pending a transparent re-export.** `Coin.png` and
-`Rare coin:diamond.png` sit untracked in the repo root and are **fully opaque** — product shots
-with baked backgrounds (the coin's is a tinted blue field that no saturation key can remove;
-72% of the image survives the matte). The designs are good and the coin is the stronger of the
-two; the diamond is pale blue-white and is the one to watch for washing out against bright ice.
-When transparent versions land at `assets/sprites/coin.png` / `rare_coin.png`, the swap is
-`ColorRect` → `Sprite2D` inside `coin.tscn` / `rare_coin.tscn` plus the one line in
-`Coin.set_visual_color()` — **and per-biome colour becomes a `modulate` tint over the sprite's
-own gold rather than the absolute colour the palettes now author**, which the nine values in
-`resources/biomes/*.tres` would need re-judging against. Leave the collision radius at 10:
-`check_rare_coin_height()` fails the build if the pickup grows.
+**0. Coin sprites — DONE 2026-08-13, awaiting a play confirmation.** The user re-exported both
+with transparency (~79% fully clear, soft antialiased edges, no matte left). Sources are now
+`coin_source.png` / `rare_coin_source.png` in the repo root, alongside the ice panels; the
+colon in the old `Rare coin:diamond.png` filename was dropped because it is not portable.
+
+Built into `assets/sprites/coin.png` (32×32) and `rare_coin.png` (36×56) by trimming to the
+opaque bbox and Lanczos-downscaling **in premultiplied alpha** — do it any other way and
+transparent black bleeds into the edge as a dark fringe. Both scenes carry a `Sprite2D` named
+`Visual` at `scale 0.5`, so world size is **16×16** (unchanged from the rect) and **18×28** (the
+diamond keeps its own 0.64 aspect instead of the rect's 24×28). Collision radius left at 10.
+
+`Coin.set_visual_color()` now writes `modulate`, so **per-biome colour is a MULTIPLY over the
+sprite's own gold, not the absolute fill the rect took**. That is safe as authored — all nine
+`coin_color`s are warm gold at or below the sprite's own brightness, so the multiply only
+deepens — but it can never *brighten*, so a future dark biome cannot lift the coin the way the
+rect allowed. The palettes remain the source of truth for `check_gameplay_contrast()`.
+
+**The rare coin is not tinted at all**: `RareCoinSpawner` never calls `set_visual_color`, so the
+diamond stays at `modulate` WHITE. If it washes out against bright ice (`pale_morning`,
+`first_light`), the lever is the sprite, not a palette field.
+
+Open, minor: the sprite is authored at 2× for a **ground** coin. `GlideCoinSpawner` scales air
+coins by `AIR_COIN_SCALE` 1.9, which lands them at ~1.05× authored — under-sampled on a high-DPI
+screen. A 64px source would fix air coins and alias the far commoner ground coin (no mipmaps),
+so it was left alone deliberately.
 
 **1. Playtest the three new rare variants.** The only thing in the tree shipped without a play
 confirmation. Two of the three are colour judgments nobody but the project owner can make: is the

@@ -14,16 +14,23 @@ func _ready() -> void:
 
 
 # The ONE place that knows how a coin is drawn. Both spawners push a biome's coin_color
-# through here rather than reaching for the ColorRect themselves, so swapping the
-# placeholder rect for a sprite (build order §8) is a change to this function alone --
-# see visuals.md's art-swap traps, where the loose get_node("ColorRect") was one of four.
+# through here rather than reaching for the visual themselves -- see visuals.md's art-swap
+# traps, where the loose get_node("ColorRect") was one of four.
+#
+# The visual is now a Sprite2D, so the biome colour is a MULTIPLY over the sprite's own
+# gold, not the absolute fill the ColorRect took. All nine palettes author a warm gold at
+# or below the sprite's own, so the multiply only deepens it; it can never brighten, which
+# is why the palettes stay the readable-contrast source of truth for biome_schedule_check.
+#
+# The rare coin uses this scene's script but no spawner pushes a colour into it, so the
+# diamond keeps modulate WHITE and renders as authored.
 #
 # Safe to call the frame the scene is instantiated, before add_child(): an instanced
 # scene's children exist immediately, they just haven't entered the tree.
 func set_visual_color(color: Color) -> void:
-	var visual: ColorRect = get_node_or_null("ColorRect") as ColorRect
+	var visual: CanvasItem = get_node_or_null("Visual") as CanvasItem
 	if visual != null:
-		visual.color = color
+		visual.modulate = color
 
 
 func _on_body_entered(body: Node2D) -> void:
