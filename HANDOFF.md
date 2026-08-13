@@ -23,9 +23,11 @@ biome persistence, the opening biome).
 
 ## State
 
-`HEAD` is on `terrain/disable-mega-drop-camera-shake`. Everything below is committed, and as of
-2026-08-13 the working tree is **completely clean** — no temp knobs are currently set, so a
-playtest right now shows shipping timings (a biome lasts ~2.3 min through the early ramp).
+`HEAD` is `eca9711` on `terrain/disable-mega-drop-camera-shake`. Everything below is committed,
+and as of 2026-08-13 the working tree is **clean except for two untracked PNGs in the repo
+root** (`Coin.png`, `Rare coin:diamond.png` — deliberately not committed, see "Next up" item 0).
+No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts ~2.3 min
+through the early ramp).
 
 **Four TEMP knobs**, all uncommitted when set, and all in `biome_director.gd` except one:
 
@@ -266,37 +268,78 @@ error in a palette consumer does *not* fail these probes.
 
 ## Next up
 
-> **RESUME HERE (2026-08-13, end of session).** A full audit ran this session; the plan is
-> `/Users/kjh/.claude/plans/look-thorugh-my-files-wobbly-church.md`. Step 0 (shield desync) is
-> **done and committed**. The agreed order from here is:
+> **RESUME HERE — 2026-08-13, end of session.** Branch `terrain/disable-mega-drop-camera-shake`,
+> `HEAD` = `eca9711`, working tree clean apart from **two untracked PNGs in the repo root that
+> are deliberately not committed** (see item 0 below). Nothing is half-finished: every item
+> below is either done-and-committed or not started.
 >
-> | Step | What | Decided |
+> The session's plan is `/Users/kjh/.claude/plans/look-thorugh-my-files-wobbly-church.md`.
+> Its agreed order, and where it actually got to:
+>
+> | Step | What | State |
 > |---|---|---|
-> | 1 | Pin the base viewport: `window/size/viewport_width=1152` / `_height=648` in `project.godot`, `aspect` stays `"expand"`, `Camera2D.zoom` stays `0.8333` | Option A, user-chosen — **DONE, `ec1ef8b`** |
-> | 2 | Gameplay-object coherence — wire `coin_color`/`obstacle_color` | **DONE 2026-08-13.** All nine palettes author both; `push_palette()` feeds `CoinSpawner`/`GlideCoinSpawner`/`ObstacleSpawner`; `check_gameplay_contrast()` added to the biome gate. Not yet played — see biomes.md, "Gameplay contrast" |
-> | **3. NEXT** | Glide vertical drift on the parallax layers (user-requested) | design settled, see plan |
-> | 4 | Art / sprites | gated on step 1 |
+> | 0 | Shield desync fix | **DONE `df895eb`** |
+> | 1 | Pin the base viewport to 1152×648, `aspect` stays `expand`, zoom stays 0.8333 | **DONE `ec1ef8b`** |
+> | 2 | Gameplay-object coherence — wire `coin_color`/`obstacle_color` | **DONE `2e30ce5`**, not yet played |
+> | — | Rare coin (unplanned, user-requested mid-session) | **DONE `eca9711`**, not yet played |
+> | **3. NEXT** | Glide vertical drift on the parallax layers | not started, design settled in the plan file |
+> | 4 | Art / sprites | blocked on item 0 |
 >
-> **Step 1 is two lines and changes nothing observable.** Visible world = base ÷ zoom =
-> 1382×778 world px, which is exactly what the engine's undeclared 1152×648 default already
-> produces. No world constant moves, no gate needs re-running. Its whole point is unlocking the
-> sprite rule: **author source art at ≈2× its intended world size** (1 world px = 1.39 device px
-> on a 1080p phone, 1.85 on 1440p). The existing player sprite already matches — 150×180 source
-> for a 51×61 world footprint. Full numbers, the `expand` semantics, and the rejected options are
-> in the plan file. `git diff project.godot` after, as always.
+> **What step 2 actually shipped** (`biomes.md` → "Gameplay contrast" is the full writeup): all
+> nine palettes now author `coin_color`/`obstacle_color`; `BiomeDirector.push_palette()` pushes
+> them to `CoinSpawner`, `GlideCoinSpawner` and `ObstacleSpawner`, which stamp on spawn and
+> repaint live children. **Absolute colours, never a `modulate` tint** — a multiply can only
+> darken and the dark biomes need the coin brighter, and these are the two objects a player must
+> *read* at 750 px/s. `check_gameplay_contrast()` in `biome_schedule_check.gd` holds an RGB
+> distance floor of 0.5 against `ice_surface`/`ice_depth`/`sky_horizon` (**not** a luminance
+> floor — the shipped gold is luma 0.79 against `pale_morning` ice at 0.85, so luminance fails a
+> colour that has always been readable).
 >
-> **The sprite advice from the other session was half right.** Adding sprites later is *not*
-> hard — the player sprite proved that on 08-11. The one genuinely order-dependent thing was the
-> viewport, which step 1 closes. Four couplings will make an art swap silently *wrong* rather
-> than hard, and are listed in the plan: `OBSTACLE_HALF_HEIGHT` duplicating `obstacle.tscn`'s
-> shape, `glide_coin_spawner.gd:198`'s `get_node_or_null("ColorRect")`, `AIR_COIN_SCALE` scaling
-> the collision shape with the visual, and the hand-derived surface clearances.
+> **What the rare coin shipped** (`physics.md` → "Jump reach, and the rare coin"): a new
+> `RareCoinSpawner` under `TerrainGenerator`, one 25-value pickup every 50–70s (first at ~45–65s)
+> hung at **174px**, inside the 24px gap between jump level 3's grab ceiling (161.7) and level
+> 4's (186.0). Only over ≤6° ground with ground across the full ±700px jump arc; a rejected slot
+> retries in 3s. Not magnet-pulled, deliberately. `terrain_invariant_check.check_rare_coin_
+> height()` asserts the whole derivation and reads the collision radius out of `rare_coin.tscn`.
 >
-> **Also found, not scheduled** (details + line numbers in the plan): `SfxPlayer` has no
-> `process_mode` so death/menu SFX play into an already-paused tree; `save_store.gd` writes
+> **Two open questions the user has not answered**, both raised at the end of the session:
+>
+> 1. **`check_upgrade_curve()` and `check_obstacle_clearance()` do not exist.** `CLAUDE.md` and
+>    `upgrade_store.gd:57` both name them as gates that fail the build if `JUMP_MULTIPLIERS`
+>    exceeds ×1.0224 or drops below 0.60. Neither function is anywhere in `scripts/debug/`. The
+>    real check, `CHASM_LEAD_IN_TOO_SHORT` (`terrain_invariant_check.gd:292`), passes the
+>    *powerup* multiplier (√2) with the upgrade multiplier left implicitly at 1.0 — so raising
+>    the curve today fails nothing. **Offered fix, awaiting a go:** fold
+>    `UpgradeStore.get_max_jump_multiplier()` into that one call. One line, zero effect at
+>    today's values, makes the documented claim true. Do NOT quietly widen the scope past that.
+> 2. Whether to do anything about the diamond's contrast (item 0).
+>
+> **Do not re-derive these — they are settled:** the viewport is base-size × zoom as ONE
+> decision (only the ratio is field of view); art is authored at **≈2× world size**; adding
+> sprites late is not hard, only the viewport was order-dependent. Four couplings make an art
+> swap silently *wrong*: `OBSTACLE_HALF_HEIGHT` duplicating `obstacle.tscn`'s shape,
+> `AIR_COIN_SCALE` scaling the collision shape with the visual, the hand-derived surface
+> clearances, and the `get_node_or_null("ColorRect")` name lookup — **that last one is now fixed**,
+> it lives in `Coin.set_visual_color()` / `Obstacle.set_visual_color()` and no spawner reaches
+> for the rect by name any more.
+>
+> **Also found this session, not scheduled** (line numbers in the plan file): `SfxPlayer` has no
+> `process_mode`, so death/menu SFX play into an already-paused tree; `save_store.gd` writes
 > non-atomically and a kill mid-write silently wipes the wallet; `ensure_segment_cache_for_world_x`
 > loops forever on ±INF; six silent `push_error(); return` paths in `GameManager._ready()` can
 > leave a live game under an undismissable `StartScreen`.
+>
+> **Gate state at `eca9711`** — all green, run this session: terrain check 8/8 seeds (incl. the
+> new rare-coin assertion, tested failing in both directions), `shipping_values_check` 13 knobs
+> clean, `biome_schedule_check`, `floor_flicker` 0/0 with worst snap 1.76px. **Nothing has been
+> seen in play**: the biome coin/obstacle colours and the rare coin are both unplayed, and no
+> gate can judge either.
+>
+> **One process note.** Adding `class_name RareCoinSpawner` required
+> `Godot --headless --editor --quit --path .` before any gate would compile — and that stripped
+> 40 lines from `project.godot`, exactly as `CLAUDE.md` warns. It was restored with
+> `git checkout project.godot` and re-verified. **Any new `class_name` needs this dance;
+> `git diff project.godot` afterwards is not optional.**
 
 **0. Two coin sprites are pending a transparent re-export.** `Coin.png` and
 `Rare coin:diamond.png` sit untracked in the repo root and are **fully opaque** — product shots
