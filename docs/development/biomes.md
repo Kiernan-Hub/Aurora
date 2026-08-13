@@ -402,8 +402,10 @@ schedule without simulating a single frame of game.
 It also means a faster player sees *more of the world*, not the same amount of it faster.
 
 `BIOME_DISTANCE` is 75 000 px: ~100 s at `MAX_SPEED`, ~2.3 min through the early ramp.
-`TRANSITION_DISTANCE` is 12 000 px (~16 s at cap) and must stay well under it or biomes never
-settle.
+`TRANSITION_DISTANCE` is 24 000 px (~32 s at cap) and must stay well under `BIOME_DISTANCE` or
+biomes never settle. Raised from the original 12 000 px on 2026-08-13 — user watched it in
+play and preferred the slower crossfade; not thoroughly tested beyond that one look, so revisit
+if it ever reads as sluggish.
 
 ## Repainting live chunks
 

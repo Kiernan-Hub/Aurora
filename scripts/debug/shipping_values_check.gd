@@ -80,7 +80,7 @@ func check_flag_defaults() -> void:
 	game_manager.free()
 
 	expect_float("BiomeDirector.BIOME_DISTANCE", BiomeDirector.BIOME_DISTANCE, 75000.0)
-	expect_float("BiomeDirector.TRANSITION_DISTANCE", BiomeDirector.TRANSITION_DISTANCE, 12000.0)
+	expect_float("BiomeDirector.TRANSITION_DISTANCE", BiomeDirector.TRANSITION_DISTANCE, 24000.0)
 	# Left on, every run reopens on the intro biome and the day arc never advances across a
 	# sitting -- which is the whole feature, silently gone.
 	var director: BiomeDirector = BiomeDirector.new()
