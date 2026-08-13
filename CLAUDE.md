@@ -205,10 +205,12 @@ background parallax were removed entirely, not left disabled — don't resurrect
 Debug instrumentation derives from `OS.is_debug_build()` — on under the editor and every
 probe, off in a release export, so it can't ship by forgetting a flag (`physics.md`).
 
-**Still unset: the base viewport size.** No `window/size/viewport_width`/`height`, so
-`aspect="expand"` lets visible world width vary with device aspect ratio — a difficulty
-difference between phones on an auto-runner, not a cosmetic one. Needs a deliberate
-decision — `docs/review/2026-08-03-architecture-audit.md` §B4.
+**Base viewport pinned 1152×648** (2026-08-13), `aspect="expand"`, `Camera2D.zoom` 0.8333 →
+1382×778 world px visible. **Base size and zoom are one decision — only their ratio is field
+of view**, which on an auto-runner is reaction time; never move one alone. `expand` makes the
+base a *minimum*, so a 20:9 phone gets +25% forward view (still open: an aspect-compensated
+zoom would equalise it, and needs `camera_shake_probe` + a playtest). **Author raster art at
+≈2× its world size** — full tables and the four art-swap traps in `visuals.md`.
 
 ---
 

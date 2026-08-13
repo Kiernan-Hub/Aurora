@@ -226,6 +226,20 @@ Desktop testing cannot surface any of this.
 
 ### B4. `project.godot` has no viewport size and no orientation — [verified], mobile-only
 
+> **RESOLVED.** Orientation was pinned to landscape earlier; the base viewport was pinned to
+> **1152×648** on 2026-08-13, with `aspect` deliberately left `"expand"`. Reasoning, the
+> per-device table and the raster-art authoring rule it unlocks are in
+> `docs/development/visuals.md`, "Base viewport size". `export_presets.cfg` is **still
+> gitignored** — that half of this item is open.
+>
+> **One claim below is wrong and worth correcting**, since this file is the running debt list.
+> "A 20:9 phone sees meaningfully further ahead than a 4:3 tablet" is only half right. Under
+> `expand`, `scale = min(window.x/base.x, window.y/base.y)` and the viewport is `window/scale`,
+> so **the base is a minimum in both axes** — the tablet sees the *same* width and extra
+> height (1152×864), not less width. The spread is one-sided: baseline everywhere, +25%
+> forward view on tall phones. Real, bounded, and in the forgiving direction. Equalising it
+> means an aspect-compensated `Camera2D.zoom`, which is still open.
+
 ```
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"

@@ -91,6 +91,71 @@ Note the pre-existing quirk that terrain draws **over** the player: `TerrainGene
 comes after `Player` in `main.tscn`. Not introduced by the visual pass and not changed by
 it.
 
+## Base viewport size (2026-08-13)
+
+`project.godot` pins `window/size/viewport_width = 1152` / `_height = 648`, with
+`stretch/mode = "canvas_items"` and `stretch/aspect = "expand"`. `Camera2D.zoom` is `0.8333`.
+
+This was **unset until 2026-08-13** — the engine's own 1152×648 default applied, so the number
+every art decision depended on was written down nowhere. Pinning it changed nothing observable
+and needed no gate re-run.
+
+**Base size and camera zoom are one decision; only their ratio is gameplay.** Visible world =
+base ÷ zoom = **1382 × 778 world px**. Changing either alone changes the field of view, which on
+an auto-runner is how much warning the player gets. Terrain constants are unaffected either way —
+`GROUND_Y`, `ICE_BAND_DEPTH`, `FILL_GRADIENT_DEPTH` and `CHASM_LEAD_IN_LENGTH` are all world px.
+
+### What `expand` actually does
+
+`scale = min(window.x / base.x, window.y / base.y)`, then the viewport is sized to
+`window ÷ scale`. The base is therefore a **minimum in both axes** — a device never sees *less*
+than the base, only more in one direction:
+
+| Device | Window | Viewport | Visible world | Forward view @ 750 px/s |
+|---|---|---|---|---|
+| 16:9 desktop | 1920×1080 | 1152×648 | 1382×778 | ~0.92 s |
+| 19.5:9 iPhone | 2556×1179 | 1404×648 | 1685×778 | ~1.12 s |
+| 20:9 Android | 2400×1080 | 1440×648 | 1728×778 | ~1.15 s |
+| 4:3 iPad | 2048×1536 | 1152×864 | 1382×1037 | ~0.92 s, extra height |
+
+So tall phones get **+25% forward visibility** and tablets get extra sky/ground rather than extra
+warning distance. Bounded, and in the forgiving direction. Equalising it properly means an
+**aspect-compensated `Camera2D.zoom`** — still open, deliberately not done here, and it needs
+`camera_shake_probe` re-run plus a playtest because it changes what players see.
+
+**Fixing the height is what the rest of this file rests on.** Every `base_y_fraction` in
+`main.tscn` and every sky anchor is a fraction of viewport height, so the vertical composition —
+the whole point of the sky pass — is now identical on every device.
+
+### Authoring raster art
+
+`canvas_items` scales the **canvas transform**, not a low-res framebuffer, so `Polygon2D`, text
+and every generated shape render at full device resolution regardless of the base. Only raster
+sprites care. One world px maps to `zoom × (window.y / 648)` device px:
+
+| Device | Device px per world px |
+|---|---|
+| 1080p phone | 1.39 |
+| 1440p phone | 1.85 |
+
+> **Author source art at ≈2× its intended world size.**
+
+The shipped player sprite already sets the reference: `skate_0.png` is 150×180 for a 51×61 world
+footprint (`AnimatedSprite2D` at `scale 0.34`), i.e. ~2.9× — generous, and harmless.
+
+| Object | World size | Author at |
+|---|---|---|
+| Coin (`coin.tscn` `ColorRect` 16×16) | 16×16 | 32–48 px |
+| Obstacle (`obstacle.tscn` 32×32) | 32×32 | 64–96 px |
+| Ground tree (`ground_tree_spawner.build_tree`) | ~40×70 | 80–140 px |
+
+**Four couplings will make an art swap silently wrong rather than hard**, and none of them
+errors — fix each alongside its sprite: `obstacle_spawner.gd`'s `OBSTACLE_HALF_HEIGHT`
+duplicates `obstacle.tscn`'s shape; `glide_coin_spawner.gd` tints the bonus coin by looking up a
+child *named* `"ColorRect"`; `AIR_COIN_SCALE` scales the whole `Area2D`, so visual scale **is**
+pickup range; and the surface clearances in `coin_spawner.gd` (34) and `powerup_spawner.gd` (40)
+were derived by hand from the placeholder rect sizes.
+
 ## How depth is produced
 
 Three independent cues, no shaders involved:
@@ -286,13 +351,13 @@ they exist for, never as clutter over obstacles during ordinary play.
 * **Every full-screen `Control` sets `mouse_filter = MOUSE_FILTER_IGNORE`.** `Control`
   defaults to `MOUSE_FILTER_STOP`, and the sky and haze bands cover the whole screen —
   left at the default they are input eaters sitting under the pause button.
-* **The viewport size is unset** (`project.godot` pins no `window/size/viewport_*`, and
-  `stretch/aspect="expand"`), so window dimensions are genuinely unknown at author time.
-  The sky uses full-rect *anchors*; the ridge layers and the snow emitter read
-  `get_viewport_rect().size` in `_ready()` and re-read it on `size_changed`. Nothing here
-  hardcodes a pixel height. That unset base size remains a real open decision
-  (`docs/review/2026-08-03-architecture-audit.md` §B4) — this system survives either
-  answer.
+* **Still read the viewport, never hardcode it.** The base size is pinned as of 2026-08-13
+  (see "Base viewport size" above, and `docs/review/2026-08-03-architecture-audit.md` §B4,
+  now closed), but `aspect="expand"` means the *actual* viewport is still wider or taller
+  than that base on most devices — the base is a floor, not a size. The sky uses full-rect
+  *anchors*; the ridge layers and the snow emitter read `get_viewport_rect().size` in
+  `_ready()` and re-read it on `size_changed`. Nothing here hardcodes a pixel height, and
+  nothing should start.
 
 ## Palette
 

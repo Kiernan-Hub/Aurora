@@ -30,7 +30,33 @@ Services="*res://scripts/autoload/services.gd"
 
 [display]
 
+; PINNED, and this is an art-authoring reference as much as a window size. It was unset,
+; so the engine's own 1152x648 default applied -- meaning sprite pixel density had no
+; declared reference point and every art decision was being made against a number written
+; down nowhere. Pinning the value the project was already running at changes nothing
+; observable: visible world = base / Camera2D.zoom = 1152/0.8333 x 648/0.8333 = 1382x778
+; world px, exactly as before. No world constant moves (GROUND_Y, ICE_BAND_DEPTH,
+; FILL_GRADIENT_DEPTH, CHASM_LEAD_IN_LENGTH are all world px), and every base_y_fraction
+; in main.tscn keeps its meaning.
+;
+; BASE SIZE AND CAMERA ZOOM ARE ONE DECISION -- only their RATIO is gameplay. Changing
+; either alone changes the field of view, i.e. how much warning the player gets on an
+; auto-runner. Never touch one without the other.
+;
+; Listed in these two keys' own right order, matching what the editor writes, so a stray
+; editor run produces no diff here. See docs/development/visuals.md, "Base viewport size".
+window/size/viewport_width=1152
+window/size/viewport_height=648
 window/stretch/mode="canvas_items"
+; NOT "keep". With expand, scale = min(window.x/base.x, window.y/base.y) and the viewport
+; becomes window/scale -- so the base is a MINIMUM in both axes and a device never sees
+; less, only more in one direction. A 20:9 phone gets 1440x648 (+25% forward visibility);
+; a 4:3 tablet gets 1152x864 (extra sky and ground, not extra warning distance). "keep"
+; would equalise that at the cost of letterbox bars on every modern phone, which is the
+; wrong trade for a game whose whole appeal is the landscape. Equalising it properly means
+; an aspect-compensated Camera2D.zoom -- a real open option, but it changes what players
+; see and needs camera_shake_probe re-run plus a playtest, so it is deliberately not
+; bundled with this.
 window/stretch/aspect="expand"
 ; Side-scroller: portrait is never correct. Was unset, which left it to the Android
 ; manifest default.
