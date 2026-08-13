@@ -424,6 +424,47 @@ propagates to every segment and pine under it, including ones not spawned yet), 
 haze band in a layer shares **one** `GradientTexture2D`, so recolouring that single gradient
 recolours all of them.
 
+## Gameplay contrast — coins and obstacles (Phase 2, 2026-08-13)
+
+`coin_color` and `obstacle_color` were authored into `BiomePalette` on 2026-08-08 and read by
+nothing for five days. They are now live: `push_palette()` hands them to `CoinSpawner`,
+`GlideCoinSpawner` and `ObstacleSpawner`, each of which stamps the colour on spawn and
+repaints what is already on screen — the same "new objects are born correct, live ones get
+walked" split as `repaint_chunk()` above, for the same reason (a transition outlives a coin).
+
+**Absolute colours, not a `modulate` tint.** Trees and birds ride `modulate` on a parent and
+that is right for them — a biome's effect on scenery genuinely *is* multiplicative. It is
+wrong here for two reasons. Mechanically, a multiply can only darken, and the dark biomes need
+the coin *brighter* than the shipped gold. Design-wise, a coin and an obstacle are the two
+objects the player has to **read**, not just see, and a tint is by definition the biome pulling
+them toward its own scheme. A biome may **shift** them; it may not recolour them.
+
+**The single place each object's colour is applied** is `Coin.set_visual_color()` /
+`Obstacle.set_visual_color()`. No spawner reaches for the `ColorRect` by name any more (the
+glide spawner used to, and it was one of the four art-swap traps in `visuals.md`) — so the
+eventual sprite swap is a change inside those two functions.
+
+**The glide bonus coin is derived, not fixed.** It was a hardcoded "brighter than the base
+gold". Once the base gold itself brightens under `starlit_night`, a fixed colour stops reading
+as the bonus, so it is now `biome_coin_color.lerp(WHITE, BONUS_COIN_LIGHTEN)`. On a repaint the
+bonus coin is told apart by `value`, the only coin the game gives a value other than 1.
+
+**`biome_schedule_check` enforces this from the data side** — `check_gameplay_contrast()`. The
+first attempt was a luminance floor, which is wrong: the shipped gold is luma 0.79 against
+`pale_morning`'s ice at 0.85, so a colour that has always been readable fails, because what
+carries that read is *hue*. The check is therefore an RGB distance (≥ 0.5) against
+`ice_surface`, `ice_depth`, `sky_horizon` and any variant ice colours, plus two shape rules:
+the coin stays warm (`r − b ≥ 0.4`, `g > b`) and red dominates the obstacle (`≥ 0.35` over
+both other channels). Smallest real margin today is `sunset_rose`'s coin at 0.60.
+
+**What `sunset_rose` teaches:** against a *warm* sky, the readable coin is a **deeper amber**,
+not a brighter yellow. Brightening a warm object against a warm bright sky lowers contrast.
+That biome's coin is `(0.85, 0.62, 0.05)` and its obstacle a crimson `(0.85, 0.08, 0.22)`,
+both darker than the shipped values — every other biome shifts the other way.
+
+Gates see none of this: `BiomeDirector` returns early under `--headless`, so `has_biome_color`
+stays false and both objects keep the colours `coin.tscn` / `obstacle.tscn` ship with.
+
 ## Per-biome ice textures (2026-08-08)
 
 `two.png` contained **three** pattern families, not eight; three more were added on
@@ -866,9 +907,7 @@ they measured and, more usefully, **how to build one that is actually sound**:
 palettes and read by nothing**. That is deliberate: the palettes are complete data from day
 one, and each renderer arrives in its own phase so it can be judged and reverted alone.
 
-- **Phase 2** — gameplay contrast. `coin_color`/`obstacle_color` exist and are unused. The
-  coin and obstacle colours were tuned against a bright sky (`visuals.md`, "Why daylight"),
-  so the dark biomes need their own values before they are truly shippable.
+- **Phase 2** — gameplay contrast. **Done 2026-08-13, see "Gameplay contrast" below.**
 - **Phase 3** — mist/fog layer.
 - **Phase 4** — reflection. The only one with real risk: it is the one layer that is not
   automatically rebase-safe, and must parent under a rebased node or use `motion_scale = 0`.

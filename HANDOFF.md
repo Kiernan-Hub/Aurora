@@ -272,9 +272,9 @@ error in a palette consumer does *not* fail these probes.
 >
 > | Step | What | Decided |
 > |---|---|---|
-> | **1. NEXT** | Pin the base viewport: `window/size/viewport_width=1152` / `_height=648` in `project.godot`, `aspect` stays `"expand"`, `Camera2D.zoom` stays `0.8333` | Option A, user-chosen |
-> | 2 | Gameplay-object coherence — wire `coin_color`/`obstacle_color` | user's own instinct, and `visuals.md` has listed it as open Phase 2 since 08-08 |
-> | 3 | Glide vertical drift on the parallax layers (user-requested) | design settled, see plan |
+> | 1 | Pin the base viewport: `window/size/viewport_width=1152` / `_height=648` in `project.godot`, `aspect` stays `"expand"`, `Camera2D.zoom` stays `0.8333` | Option A, user-chosen — **DONE, `ec1ef8b`** |
+> | 2 | Gameplay-object coherence — wire `coin_color`/`obstacle_color` | **DONE 2026-08-13.** All nine palettes author both; `push_palette()` feeds `CoinSpawner`/`GlideCoinSpawner`/`ObstacleSpawner`; `check_gameplay_contrast()` added to the biome gate. Not yet played — see biomes.md, "Gameplay contrast" |
+> | **3. NEXT** | Glide vertical drift on the parallax layers (user-requested) | design settled, see plan |
 > | 4 | Art / sprites | gated on step 1 |
 >
 > **Step 1 is two lines and changes nothing observable.** Visible world = base ÷ zoom =

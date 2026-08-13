@@ -45,6 +45,20 @@ var active_coin_groups: Dictionary[int, Node2D] = {}
 var has_initialized_coin_groups: bool = false
 var magnet_active: bool = false
 
+# The current biome's coin colour, pushed by BiomeDirector.push_palette(). Absolute, not a
+# multiplicative tint like tree_tint: a coin has to stay unmistakably a coin in every biome,
+# so the palettes author the final colour rather than a factor over one.
+#
+# WHY NOT modulate ON THIS NODE, which is how trees and birds do it: modulate multiplies,
+# and multiplying the shipped gold can only ever darken it -- the dark biomes need it
+# BRIGHTER. Stamping the colour also costs nothing per frame, where a tint would still need
+# this same plumbing to reach glide coins with their own bonus colour.
+#
+# has_biome_color stays false until a palette arrives, so coins keep coin.tscn's authored
+# colour under --headless (BiomeDirector returns early there) and in every gate.
+var has_biome_color: bool = false
+var biome_coin_color: Color = Color.WHITE
+
 
 func _ready() -> void:
 	terrain_generator = get_node_or_null(terrain_generator_path) as TerrainGenerator
@@ -129,7 +143,28 @@ func spawn_coin_group(chunk_index: int) -> void:
 		var coin: Coin = COIN_SCENE.instantiate() as Coin
 		coin.position = Vector2(local_x, local_y)
 		coin.collected.connect(_on_coin_collected)
+		if has_biome_color:
+			coin.set_visual_color(biome_coin_color)
 		group.add_child(coin)
+
+
+# Repaints the coins already on screen as well as every one spawned from here on, the same
+# way terrain_generator.apply_ice_palette() repaints live chunks -- a transition that only
+# reached NEW coins would walk a visible colour boundary down the slope.
+#
+# Called every frame of a crossfade, so the early-out is what keeps the steady state free.
+func apply_biome_color(color: Color) -> void:
+	if has_biome_color and biome_coin_color.is_equal_approx(color):
+		return
+	has_biome_color = true
+	biome_coin_color = color
+	for group: Node2D in active_coin_groups.values():
+		if not is_instance_valid(group):
+			continue
+		for child: Node in group.get_children():
+			var coin: Coin = child as Coin
+			if coin != null:
+				coin.set_visual_color(color)
 
 
 func remove_coin_group(chunk_index: int) -> void:

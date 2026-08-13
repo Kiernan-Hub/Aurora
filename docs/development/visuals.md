@@ -416,11 +416,14 @@ palette's `ice_surface` is what now controls how bright that band reads, and
 
 ### Why daylight
 
-> **Partly superseded 2026-08-08.** The run no longer stays in daylight — it cycles through
-> eight moods including two genuinely dark ones (`biomes.md`). The *reasoning* below is
-> still exactly right, and is now the open task it implies: the coin and obstacle colours
-> were tuned against a bright backdrop and have **not** yet been re-judged. That is Phase 2,
-> and `coin_color`/`obstacle_color` already exist in every palette, read by nothing.
+> **Partly superseded 2026-08-08, and CLOSED 2026-08-13.** The run no longer stays in
+> daylight — it cycles through eight moods including two genuinely dark ones (`biomes.md`).
+> The *reasoning* below is still exactly right, and it is what Phase 2 acted on: every
+> palette now authors `coin_color`/`obstacle_color`, and `BiomeDirector.push_palette()`
+> pushes them to `CoinSpawner`, `GlideCoinSpawner` and `ObstacleSpawner`. The constants
+> quoted below are now just the *starting* values, still what `coin.tscn`/`obstacle.tscn`
+> ship and what a gate sees (the director is inert under `--headless`). See
+> `biomes.md`'s "Gameplay contrast".
 
 The reference image is a night scene (sky ≈ `#40526F` → `#303F63`, sampled). Daylight was
 chosen over matching it literally, for a gameplay reason as much as an aesthetic one: the

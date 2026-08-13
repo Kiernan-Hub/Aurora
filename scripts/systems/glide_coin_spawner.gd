@@ -77,8 +77,15 @@ const BONUS_COIN_VALUE: int = 15
 const BONUS_COIN_LEAD_DISTANCE: float = 200.0
 const BONUS_SURFACE_CLEARANCE: float = 130.0
 # Brighter/richer than the base coin's 0.98,0.82,0.15 -- the one visual cue (besides size)
-# that this coin is the end-of-glide bonus, not a field coin.
+# that this coin is the end-of-glide bonus, not a field coin. Only used before a biome has
+# been pushed (--headless, and every gate); once one has, the bonus is DERIVED from that
+# biome's coin colour by BONUS_COIN_LIGHTEN so the "brighter than a field coin" relationship
+# survives a biome that already brightens the field coin -- a fixed colour here would read as
+# an ordinary coin under starlit_night.
 const BONUS_COIN_COLOR: Color = Color(1.0, 0.87, 0.22, 1.0)
+# Toward white. 0.15 reproduces the authored colour above almost exactly from the shipped
+# gold, so this changes nothing in the daylight biomes it was tuned against.
+const BONUS_COIN_LIGHTEN: float = 0.15
 # A field coin the player flew past without collecting has no despawn trigger of its own
 # (unlike CoinSpawner's chunk-indexed groups) -- this is what frees it instead.
 const DESPAWN_BEHIND_DISTANCE: float = 700.0
@@ -90,6 +97,11 @@ var was_glide_active: bool = false
 var spawn_timer: float = 0.0
 var pending_spawn_times: Array[float] = []
 var active_coins: Array[Coin] = []
+
+# The current biome's coin colour, pushed by BiomeDirector.push_palette(). Same contract and
+# same reasoning as CoinSpawner's pair -- see the comment there.
+var has_biome_color: bool = false
+var biome_coin_color: Color = Color.WHITE
 
 
 func _ready() -> void:
@@ -193,9 +205,11 @@ func spawn_bonus_coin(world_x: float) -> void:
 	if not terrain_generator.has_ground_at_world_x(world_x):
 		world_x = terrain_generator.get_next_ground_world_x(world_x)
 	var local_y: float = terrain_generator.get_terrain_height(world_x) - BONUS_SURFACE_CLEARANCE
-	spawn_coin(world_x, local_y, BONUS_COIN_VALUE, AIR_COIN_SCALE, BONUS_COIN_COLOR)
+	spawn_coin(world_x, local_y, BONUS_COIN_VALUE, AIR_COIN_SCALE, get_bonus_coin_color())
 
 
+# null means "whatever this coin's colour should be right now", which is the biome's once one
+# has been pushed and coin.tscn's authored gold before that. A Color overrides it outright.
 func spawn_coin(world_x: float, local_y: float, coin_value: int, coin_scale: float, tint: Variant) -> void:
 	var coin: Coin = COIN_SCENE.instantiate() as Coin
 	coin.value = coin_value
@@ -204,11 +218,33 @@ func spawn_coin(world_x: float, local_y: float, coin_value: int, coin_scale: flo
 	if coin_scale != 1.0:
 		coin.scale = Vector2(coin_scale, coin_scale)
 	if tint is Color:
-		var visual: ColorRect = coin.get_node_or_null("ColorRect") as ColorRect
-		if visual != null:
-			visual.color = tint
+		coin.set_visual_color(tint)
+	elif has_biome_color:
+		coin.set_visual_color(biome_coin_color)
 	add_child(coin)
 	active_coins.append(coin)
+
+
+func get_bonus_coin_color() -> Color:
+	if not has_biome_color:
+		return BONUS_COIN_COLOR
+	return biome_coin_color.lerp(Color.WHITE, BONUS_COIN_LIGHTEN)
+
+
+# Repaints the field coins already hanging in the air along with every one spawned from here
+# on. The bonus coin is told apart by its value rather than by a flag: it is the only coin
+# either spawner ever gives a value other than 1, and repainting it as a field coin would
+# throw away the cue that it is the bonus.
+func apply_biome_color(color: Color) -> void:
+	if has_biome_color and biome_coin_color.is_equal_approx(color):
+		return
+	has_biome_color = true
+	biome_coin_color = color
+	var bonus_color: Color = get_bonus_coin_color()
+	for coin: Coin in active_coins:
+		if not is_instance_valid(coin):
+			continue
+		coin.set_visual_color(bonus_color if coin.value == BONUS_COIN_VALUE else color)
 
 
 func despawn_trailing_coins() -> void:

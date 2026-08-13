@@ -117,6 +117,9 @@ const PROGRESS_EPSILON: float = 0.002
 @export var snow_path: NodePath = NodePath("../SnowDrift/SnowParticles")
 @export var ground_trees_path: NodePath = NodePath("../TerrainGenerator/GroundTreeSpawner")
 @export var bird_flock_path: NodePath = NodePath("../BirdFlock/Flock")
+@export var coin_spawner_path: NodePath = NodePath("../TerrainGenerator/CoinSpawner")
+@export var glide_coin_spawner_path: NodePath = NodePath("../TerrainGenerator/GlideCoinSpawner")
+@export var obstacle_spawner_path: NodePath = NodePath("../TerrainGenerator/ObstacleSpawner")
 
 var is_headless: bool = false
 var player: CharacterBody2D
@@ -126,6 +129,9 @@ var terrain_generator: TerrainGenerator
 var snow: Node
 var ground_trees: Node2D
 var bird_flock: Node2D
+var coin_spawner: CoinSpawner
+var glide_coin_spawner: GlideCoinSpawner
+var obstacle_spawner: ObstacleSpawner
 
 # Written into every frame of a transition instead of allocating a new Resource.
 var blended: BiomePalette = BiomePalette.new()
@@ -224,6 +230,9 @@ func _ready() -> void:
 	terrain_generator = get_node_or_null(terrain_generator_path) as TerrainGenerator
 	ground_trees = get_node_or_null(ground_trees_path) as Node2D
 	bird_flock = get_node_or_null(bird_flock_path) as Node2D
+	coin_spawner = get_node_or_null(coin_spawner_path) as CoinSpawner
+	glide_coin_spawner = get_node_or_null(glide_coin_spawner_path) as GlideCoinSpawner
+	obstacle_spawner = get_node_or_null(obstacle_spawner_path) as ObstacleSpawner
 
 	var parallax: Node = get_node_or_null(parallax_path)
 	if parallax != null:
@@ -459,3 +468,15 @@ func push_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_tex
 		bird_flock.modulate.r = palette.bird_tint.r
 		bird_flock.modulate.g = palette.bird_tint.g
 		bird_flock.modulate.b = palette.bird_tint.b
+	# Coins and obstacles cannot go through modulate the way trees and birds do: they are
+	# spawned individually into three different parents, and -- more importantly -- a biome
+	# is allowed to SHIFT them and never to tint them into its own scheme, so what travels
+	# here is an absolute colour. Each spawner stamps it on spawn and repaints what is
+	# already on screen; all three early-out when the colour has not moved, which is what
+	# keeps the steady state (progress pinned at 0) free.
+	if coin_spawner != null:
+		coin_spawner.apply_biome_color(palette.coin_color)
+	if glide_coin_spawner != null:
+		glide_coin_spawner.apply_biome_color(palette.coin_color)
+	if obstacle_spawner != null:
+		obstacle_spawner.apply_biome_color(palette.obstacle_color)

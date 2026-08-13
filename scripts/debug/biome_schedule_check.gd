@@ -63,6 +63,35 @@ const MAX_ICE_DEPTH_DARKENING: float = 0.55
 # Far and near scenery must differ by at least this much luminance or the parallax layers
 # collapse into one flat mass and the depth cue is gone.
 const MIN_SCENERY_SEPARATION: float = 0.08
+
+# --- Gameplay contrast (coin_color / obstacle_color) ---------------------------------------
+#
+# These two are the only colours in a palette a player must READ, not just see, and at
+# MAX_SPEED an obstacle is on screen for well under a second. A biome is therefore allowed to
+# shift them and never to harmonise them: the failure this section exists to catch is a coin
+# or an obstacle authored to sit nicely inside its biome's scheme, which is the same thing as
+# authoring it to hide.
+#
+# MEASURED AS RGB DISTANCE, NOT LUMINANCE SEPARATION, which was the obvious first choice and
+# is wrong here: the shipped gold (0.98,0.82,0.15) is luma 0.79 against pale_morning ice at
+# 0.85 -- a coin that has always been perfectly readable would fail a luminance floor on the
+# brightest biome in the game. What actually carries the read is hue, so the check has to be
+# able to see hue. Straight euclidean distance over RGB is crude but it is the crudeness that
+# makes it hard to game.
+const MIN_GAMEPLAY_CONTRAST: float = 0.5
+# The backgrounds each is realistically seen against: the ride surface and the deep band
+# under it, plus the sky at the horizon, which is what a glide coin and a jumped obstacle are
+# silhouetted against. sky_top is deliberately absent -- nothing gameplay-carrying is ever up
+# there. Variant ice colours are folded in by the check itself when a biome has them.
+const GAMEPLAY_CONTRAST_BACKGROUNDS: Array[String] = ["ice_surface", "ice_depth", "sky_horizon"]
+# A coin stays warm and an obstacle stays danger-coloured in EVERY biome, however far the
+# biome shifts them. Both bounds are loose on purpose -- they are here to catch a coin drifting
+# green under glacier_teal or an obstacle drifting violet under violet_dusk, not to pick the
+# colour. The coin's is red-over-blue rather than a floor on red, because sunset_rose's coin is
+# a deep amber -- against a warm sky the readable move is DARKER, not brighter -- and a floor on
+# red would rule that out while still passing a green coin.
+const MIN_COIN_RED_OVER_BLUE: float = 0.4
+const MIN_OBSTACLE_RED_DOMINANCE: float = 0.35
 # Float slop on smoothstep endpoints and colour lerps.
 const EPSILON: float = 0.0005
 # Every variant is built by scripts/tools/build_ice_texture.py at its OUTPUT_SIZE.
@@ -181,6 +210,7 @@ func check_palettes() -> void:
 		check_celestial_authoring(label, palette)
 		check_celestial_layout(label, palette)
 		check_star_authoring(label, palette)
+		check_gameplay_contrast(label, palette)
 
 		var surface_luminance: float = get_luminance(palette.ice_surface)
 		if surface_luminance < MIN_ICE_SURFACE_LUMINANCE:
@@ -311,6 +341,49 @@ func check_star_authoring(label: String, palette: BiomePalette) -> void:
 	if palette.star_density > 0.0 and palette.star_density < MIN_MEANINGFUL_STAR_DENSITY:
 		failures.append("%s.star_density %.4f is nonzero but invisible -- use exactly 0 to disable the starfield, which also skips the draw"
 			% [label, palette.star_density])
+
+
+# The coin and the obstacle have to stay readable in every biome, against everything they are
+# realistically seen against. See MIN_GAMEPLAY_CONTRAST for why this is measured as an RGB
+# distance and not as a luminance separation.
+#
+# Only the AUTHORED endpoints are checked, not the blend between them. That is sound because
+# the check is a distance from a background that is itself interpolating on the same
+# transition: both endpoints clearing the floor against their own backgrounds does not
+# strictly prove every frame between them does, but a mid-transition frame is at most a few
+# seconds long and no palette pair in the project comes close to the floor.
+func check_gameplay_contrast(label: String, palette: BiomePalette) -> void:
+	var backgrounds: Array[String] = GAMEPLAY_CONTRAST_BACKGROUNDS.duplicate()
+	# A rare variant repaints the ice under a coin that is unchanged, so it is a background
+	# these two are seen against exactly like the base ice is.
+	if palette.variant_chance > 0.0:
+		for variant_field: String in ["variant_ice_surface", "variant_ice_depth"]:
+			if (palette.get(variant_field) as Color).a > 0.0:
+				backgrounds.append(variant_field)
+
+	for gameplay_field: String in ["coin_color", "obstacle_color"]:
+		var gameplay_color: Color = palette.get(gameplay_field) as Color
+		for background_field: String in backgrounds:
+			var background_color: Color = palette.get(background_field) as Color
+			var contrast: float = get_color_distance(gameplay_color, background_color)
+			if contrast < MIN_GAMEPLAY_CONTRAST:
+				failures.append("%s.%s is only %.3f from %s (< %.3f) -- it harmonises with the biome instead of reading against it, and this is one of the two colours a player has to read at 750 px/s"
+					% [label, gameplay_field, contrast, background_field, MIN_GAMEPLAY_CONTRAST])
+
+	var coin: Color = palette.coin_color
+	if coin.r - coin.b < MIN_COIN_RED_OVER_BLUE or coin.g <= coin.b:
+		failures.append("%s.coin_color (%.2f, %.2f, %.2f) has stopped reading as warm gold -- a biome may shift the coin, never recolour it"
+			% [label, coin.r, coin.g, coin.b])
+
+	var obstacle: Color = palette.obstacle_color
+	if obstacle.r - maxf(obstacle.g, obstacle.b) < MIN_OBSTACLE_RED_DOMINANCE:
+		failures.append("%s.obstacle_color (%.2f, %.2f, %.2f) has stopped reading as the danger colour -- red must dominate in every biome"
+			% [label, obstacle.r, obstacle.g, obstacle.b])
+
+
+# Euclidean over RGB. Alpha is ignored: every colour these compare is opaque.
+func get_color_distance(first: Color, second: Color) -> float:
+	return Vector3(first.r - second.r, first.g - second.g, first.b - second.b).length()
 
 
 # Safe against authored and blended palettes alike: the centre is a convex combination of the

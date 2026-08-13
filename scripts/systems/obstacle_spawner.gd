@@ -90,6 +90,14 @@ var next_cluster_time: float = FIRST_CLUSTER_TIME
 var next_cluster_index: int = 0
 var active_obstacles: Array[Node2D] = []
 
+# The current biome's obstacle colour, pushed by BiomeDirector.push_palette(). Same contract
+# as CoinSpawner's pair -- see the comment there -- with one extra reason it is absolute and
+# not a modulate: this is the one object in the game a player must read as DANGER inside a
+# fraction of a second at 750 px/s, so a biome is allowed to shift it and never to tint it
+# toward its own scheme. biome_schedule_check enforces that from the data side.
+var has_biome_color: bool = false
+var biome_obstacle_color: Color = Color.WHITE
+
 
 func _ready() -> void:
 	terrain_generator = get_node_or_null(terrain_generator_path) as TerrainGenerator
@@ -176,10 +184,27 @@ func spawn_cluster() -> void:
 
 func spawn_obstacle(world_x: float) -> void:
 	var world_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - OBSTACLE_HALF_HEIGHT
-	var obstacle: Area2D = OBSTACLE_SCENE.instantiate() as Area2D
+	var obstacle: Obstacle = OBSTACLE_SCENE.instantiate() as Obstacle
 	obstacle.position = Vector2(world_x, world_y)
+	if has_biome_color:
+		obstacle.set_visual_color(biome_obstacle_color)
 	add_child(obstacle)
 	active_obstacles.append(obstacle)
+
+
+# Repaints the obstacles already on screen along with every one spawned from here on, so a
+# crossfade never leaves two generations of obstacle on screen in different reds.
+func apply_biome_color(color: Color) -> void:
+	if has_biome_color and biome_obstacle_color.is_equal_approx(color):
+		return
+	has_biome_color = true
+	biome_obstacle_color = color
+	for node: Node2D in active_obstacles:
+		if not is_instance_valid(node):
+			continue
+		var obstacle: Obstacle = node as Obstacle
+		if obstacle != null:
+			obstacle.set_visual_color(color)
 
 
 # Pure function of (session_seed, cluster_index) -> [0, 1), used to draw the next

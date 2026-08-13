@@ -190,7 +190,10 @@ background parallax were removed entirely, not left disabled — don't resurrect
    each launch enters the fixed day arc at a random point** (`session_cycle_rotation`, static
    like the phase; 7 legal entry points). A shuffle was built and reverted — the palettes are
    authored as a day passing and adjacency is load-bearing. Crossfading on
-   five staggered channels. Colour still needs no shader — `Polygon2D` already renders
+   five staggered channels. **Coins and obstacles recolour per biome too** (2026-08-13) — an
+   ABSOLUTE `coin_color`/`obstacle_color`, never a tint: a biome may shift the two objects the
+   player must *read*, never recolour them, and `biome_schedule_check` holds a contrast floor.
+   Colour still needs no shader — `Polygon2D` already renders
    `texture * vertex_color`. **Exactly one `.gdshader` exists** (`shaders/ice.gdshader`, ice
    band only): a two-tile noise dissolve, a per-biome `ice_contrast`, and a parked `gloss`.
    **Sky**: five-stop gradient baked with a horizontal wash, a directional glow on the

@@ -38,3 +38,5 @@ snow_density_scale = 0.8
 mist_strength = 0.2
 reflection_strength = 0.45
 star_density = 1.0
+coin_color = Color(1, 0.9, 0.38, 1)
+obstacle_color = Color(1, 0.3, 0.26, 1)
