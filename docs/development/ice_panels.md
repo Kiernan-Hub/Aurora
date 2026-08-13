@@ -101,7 +101,8 @@ tiles built for this pass:
 | `ice_granular_depth` | 3px | 2px | 1.50x |
 | `ice_crazed_depth` | 3px | 2px | 1.50x |
 | `ice_veined_depth` | 3px | 2px | 1.50x — near-blank by design, see below |
-| `ice_sastrugi_depth` | 18px | 4px | 4.50x — on probation, see `biomes.md` |
+| `ice_sastrugi_depth` | 18px | 4px | 4.50x — **PULLED 2026-08-13**, see below |
+| `ice_bubbled_depth` | 3px | 3px | 1.00x — the replacement on `sunset_rose` |
 
 The pulled tile is an outlier on ABSOLUTE x-coherence -- 35px against 3-10px for everything
 else -- not merely on the ratio. Note the ratio alone is not sufficient: the default smooth tile
@@ -112,6 +113,20 @@ along x.
 So: **short, broken, irregular features that differ from their neighbours along x** — not
 continuous strata. Judge a candidate panel by squinting at it rotated 20°; if it suddenly looks
 like flow lines, it will do that on every hill in the game.
+
+**`ice_sastrugi_depth` was pulled on 2026-08-13, and the sastrugi prompt is now struck
+entirely.** It was itself the *rewritten* version of the prompt that produced the first flow-line
+failure, and it still landed at 18px x-coherence and still read as combed strata following the
+hill silhouette in a rendered frame. Two rewrites of one prompt is enough: the family is
+directional by definition, so wanting streaks means wanting the failure. `sunset_rose` now
+carries `ice_bubbled_depth` (`sixteen.png`, the air-bubble prompt) at 0.0282 within-row and 3px
+x-coherence.
+
+**Do not blend two finished tiles to get "a bit of each".** Measured at sastrugi weights
+0.15/0.25/0.40, x-coherence never rose above 4px while within-row contrast fell 0.0282 → 0.0223.
+The higher-contrast field dominates the correlation, so the statistic goes quiet while the
+streaks are still perceptually there on a slope — you pay real contrast for a hazard the metric
+can no longer warn you about. Mixing two characters means one panel with both drawn in.
 
 ### Detail must be SMALL and SHARP, not soft tonal masses (2026-08-12)
 
