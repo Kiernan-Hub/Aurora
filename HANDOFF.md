@@ -1,6 +1,6 @@
 # Handoff — terrain & sky visual pass
 
-Updated 2026-08-12. Delete this file once Phase 4 is done and it has stopped being true.
+Updated 2026-08-13. Delete this file once Phase 4 is done and it has stopped being true.
 
 Plan files: `/Users/kjh/.claude/plans/this-is-how-i-peppy-lark.md` (the original 4-phase pass)
 and `/Users/kjh/.claude/plans/wahts-the-nezt-step-melodic-shore.md` (the 2026-08-12 session:
@@ -23,8 +23,11 @@ biome persistence, the opening biome).
 
 ## State
 
-`HEAD` is on `terrain/disable-mega-drop-camera-shake`. Everything below is committed.
-**Four TEMP knobs**, all uncommitted and all in `biome_director.gd` except one:
+`HEAD` is on `terrain/disable-mega-drop-camera-shake`. Everything below is committed, and as of
+2026-08-13 the working tree is **completely clean** — no temp knobs are currently set, so a
+playtest right now shows shipping timings (a biome lasts ~2.3 min through the early ramp).
+
+**Four TEMP knobs**, all uncommitted when set, and all in `biome_director.gd` except one:
 
 ```
  M scripts/systems/biome_director.gd   <-- BIOME_DISTANCE, TRANSITION_DISTANCE, debug_pin_intro_biome
@@ -34,7 +37,7 @@ biome persistence, the opening biome).
 | Knob | Playtest value | Shipping value |
 |---|---|---|
 | `BiomeDirector.BIOME_DISTANCE` | 7500 | **75000** |
-| `BiomeDirector.TRANSITION_DISTANCE` | 2000 | **12000** |
+| `BiomeDirector.TRANSITION_DISTANCE` | 2000 | **24000** |
 | `BiomeDirector.debug_pin_intro_biome` | true | **false** |
 | `ObstacleSpawner.debug_spawning_disabled` | true | **false** |
 
@@ -51,8 +54,10 @@ biome persistence, the opening biome).
 > is arithmetic.
 
 **Gates against this state** (all at shipping values): `biome_schedule_check` PASS
-(`ice_variants=8`), `sky_layer_check` PASS (**biomes=9**, 45 layers), `terrain_invariant_check`
-PASS on 8 seeds, `shipping_values_check` PASS (13 knobs). `project.godot` clean. The physics
+(`ice_variants=8`, `transition=24000`), `shipping_values_check` PASS (13 knobs) against a clean
+tree. `sky_layer_check` PASS (**biomes=9**, 45 layers) and `terrain_invariant_check` PASS on 8
+seeds were last run 2026-08-12 and are unaffected by the variant work, which touches no sky field
+and no geometry. `project.godot` clean. The physics
 gates were not re-run and did not need to be — nothing in this pass touches geometry, collision
 or the velocity model.
 
@@ -93,7 +98,46 @@ returns until relaunch; index 8, 16, … resolve to `BIOME_CYCLE[0]` as always. 
 optional sky layer at all, and its tile `ice_veined_depth` (`fifteen.png`) is the faintest in the
 project on purpose.
 
-**`<this commit>` — `first_light` tuned to a light blue, and `debug_pin_intro_biome`.**
+**`283cf77` — `first_light` tuned to a light blue, and `debug_pin_intro_biome`.**
+
+## What shipped 2026-08-13
+
+**`b9dc8f7` — `ice_sastrugi_depth` pulled off `sunset_rose`.** Its 18px x-coherence, flagged as
+"on probation" when it shipped, was confirmed in a rendered frame: the surface reads as combed
+strata following the hill silhouette. **The sastrugi prompt is now struck entirely** — the pulled
+tile was already the *rewrite* of the prompt that produced the first flow-line failure, so the
+family is directional by definition. Replaced by `ice_bubbled_depth` (`art_source/sixteen.png`,
+the air-bubble prompt): within-row 0.0282 against the default's 0.0154, 3px x-coherence, a 1.00x
+ratio — the least directional tile in the project.
+
+> **Blending two finished tiles to get "a bit of each" was measured and does not work.** At
+> sastrugi weights 0.15/0.25/0.40 the x-coherence never rose above 4px while within-row contrast
+> fell 0.0282 → 0.0223: the higher-contrast field dominates the correlation, so the statistic goes
+> quiet while the streaks are still there on a slope. Mixing characters means ONE panel with both
+> drawn in. Written up in `ice_panels.md`.
+
+**`9bfffc3` — rare per-visit variants on three biomes.** `sunset_rose` rolls 50/50 between the
+bubbled and sastrugi tiles; `glacier_teal` and `violet_dusk` became **paler as their common case**
+with the previously-authored saturated colours kept as a 20% rare version. User-requested, and the
+returning sastrugi is deliberate — they were told it brings the flow lines back half the time.
+
+Built as **overrides on the base palette, not duplicate `.tres` files** (`variant_chance` plus four
+`variant_ice_*` fields; alpha 0 / negative means "not overridden"). A duplicate would share ~35
+fields that must stay identical forever. **Ice-only on purpose**: a variant that moved the sky
+would make `sky_layer_check`'s expected values depend on a roll it cannot see.
+
+> **The roll is keyed on `cycle_index` and must stay that way.** `get_cycle_palette` is contracted
+> pure in `cycle_index`, and the transition asks for index and index + 1 every frame — a live coin
+> flip hands one index two palettes and the ice pops mid-crossfade. Verified pure over 40 indices;
+> observed rates 0.495 / 0.190 / 0.189 over 8000.
+>
+> **Identity comparisons must use `get_cycle_base_palette`, not `get_cycle_palette`.** A variant is
+> a `duplicate()`, so it can never `==` anything in `BIOME_CYCLE`. This broke the arc-order and
+> one-shot-intro claims in `biome_schedule_check` the moment variants landed, and the failure
+> message printed an empty biome name.
+
+**`d8b938a` — `TRANSITION_DISTANCE` 12000 → 24000**, the user's preference from play. The constant
+went in with `9bfffc3` and the gate + doc halves followed here.
 
 ---
 
@@ -214,36 +258,37 @@ error in a palette consumer does *not* fail these probes.
 
 ## Next up
 
-**1. Playtest `first_light`'s colours.** The only thing in the tree shipped without a play
-confirmation. Current authoring: `ice_surface (0.68, 0.80, 0.97)`, `ice_depth (0.50, 0.73, 1.0)`,
-`ice_hue_variance 0.12`, `ice_contrast 1.15`. Deep ice lands at `RGB(48, 71, 97)`, 50% saturation,
-halfway between where it was (26%, read as grey) and `arctic_dawn` (76%, called too deep blue).
+**1. Playtest the three new rare variants.** The only thing in the tree shipped without a play
+confirmation. Two of the three are colour judgments nobody but the project owner can make: is the
+paler `glacier_teal` still recognisably green, and is the paler `violet_dusk` still purple rather
+than blue-grey? The rare (20%) side of each is the previously-shipped colour, so it needs no
+review. `sunset_rose`'s 50/50 is a tile roll, not a colour.
 
-**2. Playtest `sunset_rose` and pull `ice_sastrugi_depth` if it reads as flow lines.** Still open
-from 2026-08-11. Its horizontal coherence is 18px, against 35px for a tile that was pulled and
-3–5px for the ones that are fine. It went in to bound where "visible" starts.
+> `first_light`'s colours were confirmed fine on 2026-08-13 — that item is closed.
 
-**3. Fold the coherence check into `build_ice_texture.py --check`.** ~15 lines of numpy, written
+**2. Fold the coherence check into `build_ice_texture.py --check`.** ~15 lines of numpy, written
 out in `ice_panels.md`. Closes the hole that let the pulled tile through. **Also fold in the
 built-tile within-row contrast check** — the third failure mode has no automation either.
 
-**4. Phase 4 — the rare flat "glass lake" biome.** Design only. The coupling is clean: the biome
+**3. Phase 4 — the rare flat "glass lake" biome.** Design only. The coupling is clean: the biome
 schedule and the terrain are both pure in `world_x`, so they can agree on a lake window with no
 messaging. Risks: must not overlap a chasm window, and it runs the full physics gate set.
 `six.png` is kept in the repo root, unbuilt, reserved for it — long streaks cannot shear on flat
 ice. `ice.gdshader`'s `gloss_strength` is parked at 0 for the same biome.
 
-**5. Rarity — `glacier_teal` only.** The user wants the green biome rarer AND `four.png`'s tile
+**4. Rarity — `glacier_teal` only.** The user wants the green biome rarer AND `four.png`'s tile
 rarer. **These are the same request**: `glacier_teal` is both. Two options costed in the plan
 file — a per-biome distance share (cleanest, but rewrites the schedule's core arithmetic) or a
 longer `BIOME_CYCLE` with duplicates (nearly free). **Decide only after playing chained sessions**,
 since persistence may have already fixed the over-stay.
 
+> **Half of this may already be solved.** `9bfffc3` made the deep saturated green a 20% variant,
+> so the colour the request was actually about is now four times rarer without touching the
+> schedule. What is left is whether the *biome* still comes round too often — which is the part
+> that needs chained sessions to judge. Re-read the request before building the expensive option.
+
 ### Smaller, genuinely optional
 
-- **`thirteen.png` is untracked in the repo root** (plus its `.import`). It was measured, rejected
-  and never shipped. Delete it, or keep it the way `six.png` is kept. The user was asked and has
-  not answered.
 - **`CLAUDE.md` still says all on-screen art is placeholder `ColorRect`/`Polygon2D`.** A real
   character sprite has been in the game since 2026-08-11. Ask before editing — the character may
   still be in flux.

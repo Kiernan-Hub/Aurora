@@ -439,7 +439,8 @@ share a tile:
 | `ice_rime_depth.png` | `seven.png` | `pale_morning` |
 | `ice_faceted_depth.png` | `four.png` | `glacier_teal` |
 | `ice_cracked_depth.png` | `five.png` | `mauve_haze` |
-| `ice_sastrugi_depth.png` | `twelve.png` | `sunset_rose` |
+| `ice_bubbled_depth.png` | `sixteen.png` | `sunset_rose` (50% of visits) |
+| `ice_sastrugi_depth.png` | `twelve.png` | `sunset_rose`'s 50% rare variant |
 | `ice_shattered_depth.png` | `eight.png` | `violet_dusk` |
 | `ice_granular_depth.png` | `eleven.png` | `twilight_blue` |
 
@@ -513,12 +514,18 @@ violet_dusk → twilight_blue → starlit_night → arctic_dawn → …` and the
 > flowing hair. Reported from a playtest, not caught by a gate. `six.png` is kept for the
 > Phase 4 flat lake, where nothing shears it. See `ice_panels.md`.
 >
-> **`ice_sastrugi_depth` (2026-08-11) is the regenerated version of that panel, and it is
-> deliberately on probation.** It halves the streak length -- 18px x-coherence against the
-> pulled tile's 35px -- but everything else in the cycle sits at 3-5px, so it is still ~3.6x
-> more directional than anything else shipping. It went in to find out where "visible" actually
-> starts, since 35px is the only calibration point that exists. If `sunset_rose` reads as flow
-> lines on a slope, pull it the same way and the answer is between 5 and 18px.
+> **`ice_sastrugi_depth` (2026-08-11) was the regenerated version of that panel, and it FAILED
+> the same way on 2026-08-13.** It halved the streak length -- 18px x-coherence against the
+> pulled tile's 35px -- and went in on probation to find out where "visible" actually starts,
+> since 35px was the only calibration point that existed. **The answer is that 18px is already
+> visible**: in a rendered frame the surface read as combed strata following the hill
+> silhouette. So the threshold sits somewhere between 5 and 18px, and the sastrugi prompt is
+> struck -- two rewrites of one prompt is enough, the family is directional by definition.
+>
+> It is still IN the game, but only because the user asked for it back as a **50% rare variant
+> on `sunset_rose`** (`9bfffc3`), knowing it brings the flow lines with it. That is a taste
+> decision, not a retraction of the measurement. The common 50% is `ice_bubbled_depth`
+> (`sixteen.png`), at 3px x-coherence and a 1.00x ratio.
 
 **The three were placed to spread the pattern, not per-biome taste.** Before them,
 `sunset_rose` through `arctic_dawn` was four consecutive biomes on the default tile, so the
@@ -638,6 +645,45 @@ weight 0 with the base already swapped to that tile. **Both ends were measured a
 
 Under `--headless` the weight is always 0 and every uniform stays at its default, so every gate
 draws exactly the pixels it always did.
+
+## Rare per-visit variants (2026-08-13)
+
+Three palettes carry an alternate look, rolled once each time the cycle reaches them:
+`sunset_rose` 50/50 between two ice tiles, `glacier_teal` and `violet_dusk` 20% for a deeper,
+more saturated version of their ice (the paler side is the base, i.e. the common case).
+
+**They are overrides on the base palette, not duplicate `.tres` files.** `BiomePalette` grew a
+`variant_chance` plus `variant_ice_surface` / `variant_ice_depth` / `variant_ice_contrast` /
+`variant_ice_texture`; alpha 0 on a colour, or a negative contrast, means "not overridden".
+`make_variant()` returns a `duplicate()` with those applied, so **every consumer keeps receiving
+an ordinary `BiomePalette`** — `blend_into`, the sky pass, the chunk repaint and the ice
+dissolve are all unchanged and none of them knows variants exist. A duplicate palette file would
+have meant ~35 fields kept in sync by hand forever, which is a silent-divergence bug waiting to
+happen rather than a maintenance chore.
+
+**Ice-only, deliberately.** A variant that also moved the sky would make `sky_layer_check`'s
+expected values depend on a roll it cannot observe, so a passing build would fail at random. The
+ice is what carries the biome's colour identity in play anyway.
+
+### The two rules that make it safe
+
+**The roll is keyed on `cycle_index`, never live.** `get_cycle_palette()` is contracted pure in
+`cycle_index` — `apply_palette_for_world_x` asks for index *and* index + 1 every frame of a
+transition, chunks repaint long after they spawned, and the dissolve holds both endpoint tiles at
+once. A coin flip at call time would hand one index two different palettes and the ice would pop
+mid-crossfade. A `session_variant_salt` (static, randomised once, exactly like
+`session_cycle_rotation`) makes the sequence differ per launch while staying fixed within one —
+static so that dying and restarting cannot be used to reroll a rare variant.
+
+**Identity comparisons must use `get_cycle_base_palette()`.** A variant is a `duplicate()`, so it
+can never `==` anything in `BIOME_CYCLE`. `get_cycle_palette` answers "what gets drawn";
+`get_cycle_base_palette` answers "where in the day arc are we", and anything reasoning about
+order or identity wants the latter. `biome_schedule_check`'s arc-order and one-shot-intro claims
+both broke the moment variants landed — the failure even printed an empty biome name, because a
+duplicate has no `resource_path`.
+
+Resolved variants are cached by the base palette's instance id, so at most one duplicate exists
+per palette and nothing allocates inside the transition loop.
 
 ## The ice shader (2026-08-10)
 
