@@ -893,8 +893,14 @@ func get_glide_velocity_y(delta: float) -> float:
 	return clampf(new_velocity_y, GLIDE_MAX_RISE_SPEED, GLIDE_MAX_FALL_SPEED)
 
 
+# is_shield_from_glide_landing is cleared here, not just in absorb_hit(): a shield granted
+# from ANY other source replaces the glide-landing one, and leaving the flag set would let
+# update_glide_landing_shield()'s timer expire the replacement. See that function's comment
+# for the failure this prevents. update_glide_landing_shield() sets the flag back to true
+# immediately after its own call, which is the one case where it should stay set.
 func gain_shield() -> void:
 	has_shield = true
+	is_shield_from_glide_landing = false
 	animated_sprite.modulate = PLAYER_SHIELD_COLOR
 
 
@@ -918,15 +924,23 @@ func absorb_hit() -> bool:
 # glide touches down, and expires it on its own timer -- it does NOT go through
 # PowerupManager, so a real shield powerup is untouched by it.
 #
-# THE `not has_shield` GUARD IS WHAT MAKES THAT LAST CLAIM TRUE, and without it the claim was
-# simply false (fixed 2026-08-10). A shield powerup is UNTIMED -- it sits in
-# PowerupManager.active_effects at INF until an obstacle spends it -- so "already holding one
-# when a glide ends" is an ordinary situation, not a corner case. Taking the branch anyway set
-# is_shield_from_glide_landing on a shield this function did not grant, and the expiry below
-# then cleared has_shield after 1s while PowerupManager still had EFFECT_SHIELD active and
-# nothing emitted shield_consumed: the two disagreed, the tint was gone, and the next obstacle
-# killed a player who had paid for a shield. Skipping the grant entirely is right rather than
-# refreshing the timer -- an untimed shield outlasts any 1s window, so there is nothing to add.
+# THAT CLAIM NEEDS BOTH ORDERINGS GUARDED, and each was a separate bug. A shield powerup is
+# UNTIMED -- it sits in PowerupManager.active_effects at INF until an obstacle spends it -- so
+# player and manager only stay in sync if every path that clears has_shield either emits
+# shield_consumed or is provably looking at a shield this function granted.
+#
+#   * GLIDE LANDS SECOND (fixed 2026-08-10): the `not has_shield` guard below. Without it,
+#     landing while already holding a powerup shield set is_shield_from_glide_landing on a
+#     shield this function did not grant. Skipping the grant entirely is right rather than
+#     refreshing the timer -- an untimed shield outlasts any 1s window, so there is nothing to
+#     add.
+#   * GLIDE LANDS FIRST (fixed 2026-08-13): the clear in gain_shield(). Collecting a shield
+#     powerup inside the 1s glide-landing window left the flag set, so the expiry below then
+#     cleared has_shield on the POWERUP shield.
+#
+# Either way the old failure was identical: the expiry cleared has_shield while PowerupManager
+# still had EFFECT_SHIELD at INF and nothing emitted shield_consumed, so the two disagreed, the
+# tint was gone, and the next obstacle killed a player who had paid for a shield.
 func update_glide_landing_shield(delta: float) -> void:
 	if is_glide_active:
 		is_glide_landing_shield_pending = true

@@ -139,6 +139,14 @@ would make `sky_layer_check`'s expected values depend on a roll it cannot see.
 **`d8b938a` — `TRANSITION_DISTANCE` 12000 → 24000**, the user's preference from play. The constant
 went in with `9bfffc3` and the gate + doc halves followed here.
 
+**Shield desync fixed (the second ordering).** `gain_shield()` now clears
+`is_shield_from_glide_landing`. The 2026-08-10 fix guarded *glide lands while holding a powerup
+shield*; the mirror — *collect a shield powerup inside the 1s glide-landing window* — was still
+live, and the 1s timer then expired the powerup shield with no `shield_consumed`, leaving
+`PowerupManager` holding `EFFECT_SHIELD` at INF while the player had none. Found by audit, not by
+play. **No gate covers this** — every gate disables powerup spawning — so it is verified by hand
+only (glide, land, grab a shield within 1s, wait 2s, hit an obstacle, survive).
+
 ---
 
 ## Things that will bite you
@@ -257,6 +265,38 @@ error in a palette consumer does *not* fail these probes.
 ---
 
 ## Next up
+
+> **RESUME HERE (2026-08-13, end of session).** A full audit ran this session; the plan is
+> `/Users/kjh/.claude/plans/look-thorugh-my-files-wobbly-church.md`. Step 0 (shield desync) is
+> **done and committed**. The agreed order from here is:
+>
+> | Step | What | Decided |
+> |---|---|---|
+> | **1. NEXT** | Pin the base viewport: `window/size/viewport_width=1152` / `_height=648` in `project.godot`, `aspect` stays `"expand"`, `Camera2D.zoom` stays `0.8333` | Option A, user-chosen |
+> | 2 | Gameplay-object coherence — wire `coin_color`/`obstacle_color` | user's own instinct, and `visuals.md` has listed it as open Phase 2 since 08-08 |
+> | 3 | Glide vertical drift on the parallax layers (user-requested) | design settled, see plan |
+> | 4 | Art / sprites | gated on step 1 |
+>
+> **Step 1 is two lines and changes nothing observable.** Visible world = base ÷ zoom =
+> 1382×778 world px, which is exactly what the engine's undeclared 1152×648 default already
+> produces. No world constant moves, no gate needs re-running. Its whole point is unlocking the
+> sprite rule: **author source art at ≈2× its intended world size** (1 world px = 1.39 device px
+> on a 1080p phone, 1.85 on 1440p). The existing player sprite already matches — 150×180 source
+> for a 51×61 world footprint. Full numbers, the `expand` semantics, and the rejected options are
+> in the plan file. `git diff project.godot` after, as always.
+>
+> **The sprite advice from the other session was half right.** Adding sprites later is *not*
+> hard — the player sprite proved that on 08-11. The one genuinely order-dependent thing was the
+> viewport, which step 1 closes. Four couplings will make an art swap silently *wrong* rather
+> than hard, and are listed in the plan: `OBSTACLE_HALF_HEIGHT` duplicating `obstacle.tscn`'s
+> shape, `glide_coin_spawner.gd:198`'s `get_node_or_null("ColorRect")`, `AIR_COIN_SCALE` scaling
+> the collision shape with the visual, and the hand-derived surface clearances.
+>
+> **Also found, not scheduled** (details + line numbers in the plan): `SfxPlayer` has no
+> `process_mode` so death/menu SFX play into an already-paused tree; `save_store.gd` writes
+> non-atomically and a kill mid-write silently wipes the wallet; `ensure_segment_cache_for_world_x`
+> loops forever on ±INF; six silent `push_error(); return` paths in `GameManager._ready()` can
+> leave a live game under an undismissable `StartScreen`.
 
 **1. Playtest the three new rare variants.** The only thing in the tree shipped without a play
 confirmation. Two of the three are colour judgments nobody but the project owner can make: is the
