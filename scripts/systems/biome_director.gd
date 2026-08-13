@@ -82,8 +82,11 @@ const BIOME_CYCLE: Array[BiomePalette] = [
 # faster player sees more of the world, not the same amount of it faster.
 const BIOME_DISTANCE: float = 75000.0
 # How much of the END of each biome's distance is spent crossfading into the next. Must
-# stay well under BIOME_DISTANCE or biomes never fully settle. 12000px is ~16s at cap.
-const TRANSITION_DISTANCE: float = 12000.0
+# stay well under BIOME_DISTANCE or biomes never fully settle. 24000px is ~32s at cap.
+# Raised from 12000 on 2026-08-13 -- user watched it in play and preferred the slower
+# crossfade over the original. This is the intended value going forward, not a temp
+# debug tweak, but it's only had that one look; revisit if it ever reads as sluggish.
+const TRANSITION_DISTANCE: float = 24000.0
 
 # How far apart two neighbouring palettes' celestial_position may sit when either of them
 # owns a disc. The disc fades in and out AT that position, and position interpolates on the
@@ -322,9 +325,59 @@ func resolve_palette_consumer(consumer_path: NodePath) -> Node:
 # STILL PURE IN cycle_index within a process, which is what apply_palette_for_world_x's
 # contract rests on -- the rotation is drawn once and then never changes.
 func get_cycle_palette(cycle_index: int) -> BiomePalette:
+	return resolve_variant(get_cycle_base_palette(cycle_index), cycle_index)
+
+
+# WHICH BIOME index lands on, before any rare-variant roll -- so it answers "where in the day
+# arc is this", where get_cycle_palette answers "what gets drawn". A variant is a duplicate
+# resource and therefore fails an identity comparison against BIOME_CYCLE, so anything
+# reasoning about ORDER or IDENTITY must come through here. biome_schedule_check's arc-order
+# and one-shot-intro claims do exactly that, and failed against get_cycle_palette when
+# variants landed.
+func get_cycle_base_palette(cycle_index: int) -> BiomePalette:
 	if cycle_index == 0:
 		return PALETTE_FIRST_LIGHT
 	return BIOME_CYCLE[posmod(cycle_index + get_session_cycle_rotation(), BIOME_CYCLE.size())]
+
+
+# --- Rare variants --------------------------------------------------------------------
+# Three palettes carry an alternate look rolled per visit (see BiomePalette's variant group).
+#
+# KEYED ON cycle_index, NOT ROLLED LIVE. get_cycle_palette is contracted to be pure in
+# cycle_index, and everything above rests on that: the caller asks for index and index + 1
+# every frame of a transition, chunks repaint from it long after they spawned, and the ice
+# dissolve holds both endpoint tiles at once. A coin flip at call time would hand the same
+# index two different palettes and the ice would pop mid-crossfade.
+#
+# The salt makes the sequence differ between launches while staying fixed within one, exactly
+# like session_cycle_rotation -- and for the same reason it is static: a death rebuilds the
+# node, and re-rolling there would let a player reroll the rare variant by dying.
+static var session_variant_salt: int = -1
+# Resolved variants, keyed by the base palette's instance id. At most one entry per palette
+# that has a variant, built on first use. Duplicating per call instead would allocate a
+# Resource inside the transition loop, which is the one thing blend_into exists to avoid.
+static var variant_cache: Dictionary = {}
+
+
+static func get_session_variant_salt() -> int:
+	if session_variant_salt < 0:
+		var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+		rng.randomize()
+		session_variant_salt = rng.randi() & 0x7FFFFFFF
+	return session_variant_salt
+
+
+static func resolve_variant(base: BiomePalette, cycle_index: int) -> BiomePalette:
+	if base.variant_chance <= 0.0:
+		return base
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = hash(Vector2i(cycle_index, get_session_variant_salt()))
+	if rng.randf() >= base.variant_chance:
+		return base
+	var key: int = base.get_instance_id()
+	if not variant_cache.has(key):
+		variant_cache[key] = base.make_variant()
+	return variant_cache[key]
 
 
 # Lazy rather than built in _ready() so that every caller goes through one path: the gates and

@@ -41,6 +41,9 @@ const CHANNEL_ATMOSPHERE: int = 3
 const CHANNEL_GAMEPLAY: int = 4
 const CHANNEL_COUNT: int = 5
 
+# Sentinel for the variant overrides below: alpha 0 = "this field is not overridden".
+const UNSET_COLOR: Color = Color(0.0, 0.0, 0.0, 0.0)
+
 @export_group("Sky")
 @export var sky_top: Color = Color(0.60, 0.72, 0.86)
 @export var sky_mid: Color = Color(0.74, 0.83, 0.91)
@@ -219,6 +222,36 @@ const CHANNEL_COUNT: int = 5
 @export_range(0.0, 1.0) var reflection_strength: float = 0.0
 @export_range(0.0, 1.0) var star_density: float = 0.0
 
+@export_group("Rare variant")
+# An alternate look for this ONE biome, rolled each time the cycle reaches it (2026-08-13).
+#
+# OVERRIDES, NOT A SECOND PALETTE FILE. A duplicate .tres would be the obvious way to do
+# this and is the wrong one: the two copies share ~35 fields that must stay identical
+# forever, so editing the sky in one and forgetting the other silently turns the rare
+# variant into a different biome. Here there is exactly one source of truth, and the
+# variant can only differ in the fields listed below.
+#
+# Deliberately ICE-ONLY. A variant that also moved the sky would make sky_layer_check's
+# expected values non-deterministic -- it diffs rendered frames against palette data, and a
+# roll it cannot see would read as a regression. Restricting the blast radius to the ice
+# keeps every existing gate meaningful, and the ice is what carries the biome's colour
+# identity in play anyway.
+#
+# variant_chance is the probability of the RARE side, so the base fields above are always
+# the common case. 0 means this biome has no variant, which is six of the nine.
+@export_range(0.0, 1.0) var variant_chance: float = 0.0
+# Colour overrides. UNSET_COLOR (alpha 0) means "keep the base value", which is why a real
+# override must carry alpha 1 -- every colour in this file is opaque, so alpha 0 cannot
+# collide with a value anyone would author.
+@export var variant_ice_surface: Color = UNSET_COLOR
+@export var variant_ice_depth: Color = UNSET_COLOR
+# Negative means "keep the base value"; the export range on the real field starts at 0.5.
+@export_range(-1.0, 1.5) var variant_ice_contrast: float = -1.0
+# A different PATTERN for the variant. Subject to the same depth-ramp requirement as
+# ice_texture -- during a dissolve the variant tile is on screen next to a neighbouring
+# biome's, exactly as the base tile would be.
+@export var variant_ice_texture: Texture2D = null
+
 @export_group("Gameplay contrast")
 # Phase 2. Coin and obstacle colours were tuned against a bright sky (visuals.md, "Why
 # daylight"), so the dark biomes need their own values or they stop being readable.
@@ -295,6 +328,30 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	var gameplay: float = weights[CHANNEL_GAMEPLAY]
 	out.coin_color = from.coin_color.lerp(to.coin_color, gameplay)
 	out.obstacle_color = from.obstacle_color.lerp(to.obstacle_color, gameplay)
+
+
+# A copy of this palette with the rare-variant overrides applied, or null if it has none.
+#
+# Returns a REAL BiomePalette, which is the whole point: blend_into, the sky pass, the chunk
+# repaint and the ice dissolve all keep receiving an ordinary palette and none of them needs
+# to know variants exist. Called once per (palette, variant) pair and cached by the director
+# -- never per frame, unlike blend_into.
+func make_variant() -> BiomePalette:
+	if variant_chance <= 0.0:
+		return null
+	var variant: BiomePalette = duplicate() as BiomePalette
+	if variant_ice_surface.a > 0.0:
+		variant.ice_surface = variant_ice_surface
+	if variant_ice_depth.a > 0.0:
+		variant.ice_depth = variant_ice_depth
+	if variant_ice_contrast >= 0.0:
+		variant.ice_contrast = variant_ice_contrast
+	if variant_ice_texture != null:
+		variant.ice_texture = variant_ice_texture
+	# The copy is already the variant, so it must not roll again -- otherwise anything that
+	# re-resolved it would apply the overrides on top of themselves.
+	variant.variant_chance = 0.0
+	return variant
 
 
 # The silhouette/haze colour for a layer at `depth_t` (0 = furthest, 1 = nearest).

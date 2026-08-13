@@ -1,7 +1,8 @@
-[gd_resource type="Resource" script_class="BiomePalette" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="BiomePalette" load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/systems/biome_palette.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://lhbgxsxjrhvx" path="res://assets/textures/terrain/ice_bubbled_depth.png" id="2"]
+[ext_resource type="Texture2D" uid="uid://djgj0bxuf7mv3" path="res://assets/textures/terrain/ice_sastrugi_depth.png" id="3"]
 
 [resource]
 script = ExtResource("1")
@@ -35,6 +36,8 @@ ice_contrast = 0.86
 snow_cap_color = Color(1, 0.96, 0.93, 1)
 snow_cap_strength = 0.36
 ice_texture = ExtResource("2")
+variant_chance = 0.5
+variant_ice_texture = ExtResource("3")
 snow_tint = Color(1, 0.96, 0.94, 0.4)
 snow_density_scale = 0.9
 mist_strength = 0.45

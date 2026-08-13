@@ -211,6 +211,17 @@ func check_palettes() -> void:
 			else:
 				check_ice_ramp_matches_default(label, palette.ice_texture)
 
+		# A rare variant's tile goes on screen next to a neighbouring biome's exactly as the
+		# base tile does, so it is subject to the same size and depth-ramp rules. Checked
+		# separately because it never appears in palette.ice_texture -- the roll happens in the
+		# director, and this loop only ever sees the authored base.
+		if palette.variant_ice_texture != null:
+			if palette.variant_ice_texture.get_size() != Vector2(EXPECTED_ICE_TILE_SIZE, EXPECTED_ICE_TILE_SIZE):
+				failures.append("%s.variant_ice_texture is %s, expected %dx%d -- a differently sized tile changes how fast the pattern repeats relative to the others"
+					% [label, palette.variant_ice_texture.get_size(), EXPECTED_ICE_TILE_SIZE, EXPECTED_ICE_TILE_SIZE])
+			else:
+				check_ice_ramp_matches_default(label + " variant", palette.variant_ice_texture)
+
 
 # The directional glow is placed by ANCHOR, in screen fractions -- sky_backdrop.position_glow().
 # Anchors outside [0,1] are legal to Godot and will happily lay out a rect that is entirely
@@ -463,7 +474,7 @@ func check_phase_offset() -> void:
 	# through that slot resolves to the real BIOME_CYCLE[0]. This is the whole feature in
 	# two assertions.
 	var live_director: BiomeDirector = BiomeDirector.new()
-	if live_director.get_cycle_palette(0) != BiomeDirector.PALETTE_FIRST_LIGHT:
+	if live_director.get_cycle_base_palette(0) != BiomeDirector.PALETTE_FIRST_LIGHT:
 		failures.append("cycle index 0 is not first_light -- the opening biome never plays")
 	# Which palette occupies the intro's slot on later laps depends on this session's rotation,
 	# so the assertion is against that rather than against BIOME_CYCLE[0].
@@ -471,7 +482,7 @@ func check_phase_offset() -> void:
 	var slot_zero: BiomePalette = BiomeDirector.BIOME_CYCLE[posmod(BiomeDirector.get_session_cycle_rotation(), cycle_size)]
 	for lap: int in [1, 2, 5]:
 		var wrapped_index: int = lap * cycle_size
-		if live_director.get_cycle_palette(wrapped_index) != slot_zero:
+		if live_director.get_cycle_base_palette(wrapped_index) != slot_zero:
 			failures.append("cycle index %d does not resolve to this session's slot 0 (%s) -- the intro is recurring instead of being a one-shot"
 				% [wrapped_index, slot_zero.resource_path.get_file().get_basename()])
 	live_director.free()
@@ -640,14 +651,15 @@ func check_opening_seam() -> void:
 # THE PROPERTY THE ROTATION EXISTS TO PRESERVE: after the intro, the arc is walked IN ORDER.
 # A shuffle was built and reverted on 2026-08-12 for breaking exactly this -- the palettes are
 # authored as a day passing, so day -> night -> day inside one session reads as broken rather
-# than as variety. Checked through get_cycle_palette, i.e. against what the game will draw,
+# than as variety. Checked through get_cycle_base_palette: a rare variant is a duplicate
+# resource, so identity comparisons must run against the pre-roll palette.
 # across a lap and a half so the wrap is included.
 func check_arc_order_is_preserved() -> void:
 	var director: BiomeDirector = BiomeDirector.new()
 	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
 	for cycle_index: int in range(1, cycle.size() + cycle.size() / 2):
-		var here: BiomePalette = director.get_cycle_palette(cycle_index)
-		var next: BiomePalette = director.get_cycle_palette(cycle_index + 1)
+		var here: BiomePalette = director.get_cycle_base_palette(cycle_index)
+		var next: BiomePalette = director.get_cycle_base_palette(cycle_index + 1)
 		var expected: BiomePalette = cycle[posmod(cycle.find(here) + 1, cycle.size())]
 		if next != expected:
 			failures.append("index %d is %s and index %d is %s, but the arc's next step is %s -- the session is not walking BIOME_CYCLE in order"
