@@ -18,7 +18,8 @@ too.
 ## The spawners live under TerrainGenerator on purpose
 
 `CoinSpawner`, `ObstacleSpawner`, `PowerupSpawner`, `GroundTreeSpawner` (decorative,
-`docs/development/visuals.md`) and `GlideCoinSpawner` are children of `TerrainGenerator`.
+`docs/development/visuals.md`), `GlideCoinSpawner` and `RareCoinSpawner` are children of
+`TerrainGenerator`.
 Two separate reasons, both load-bearing:
 
 **World rebasing.** `main.gd` shifts `TerrainGenerator.position.y` directly, so every
@@ -31,8 +32,8 @@ off the terrain after the first rebase (~26s in).
 time the seed is still **0**. Anything seed-derived must therefore be initialised on the
 first `_physics_process`, never in `_ready()`.
 
-`CoinSpawner` (`has_initialized_coin_groups`) and `PowerupSpawner`
-(`has_initialized_schedule`) both do this. `ObstacleSpawner` sidesteps it — its first
+`CoinSpawner` (`has_initialized_coin_groups`), `PowerupSpawner` and `RareCoinSpawner`
+(`has_initialized_schedule` in both) all do this. `ObstacleSpawner` sidesteps it — its first
 cluster time is a plain constant, and every later draw happens during
 `_physics_process`. `GlideCoinSpawner` sidesteps it differently: it never reads
 `session_seed` at all — a glide is powerup-timed and player-steered, not a function of

@@ -298,6 +298,18 @@ error in a palette consumer does *not* fail these probes.
 > loops forever on ±INF; six silent `push_error(); return` paths in `GameManager._ready()` can
 > leave a live game under an undismissable `StartScreen`.
 
+**0. Two coin sprites are pending a transparent re-export.** `Coin.png` and
+`Rare coin:diamond.png` sit untracked in the repo root and are **fully opaque** — product shots
+with baked backgrounds (the coin's is a tinted blue field that no saturation key can remove;
+72% of the image survives the matte). The designs are good and the coin is the stronger of the
+two; the diamond is pale blue-white and is the one to watch for washing out against bright ice.
+When transparent versions land at `assets/sprites/coin.png` / `rare_coin.png`, the swap is
+`ColorRect` → `Sprite2D` inside `coin.tscn` / `rare_coin.tscn` plus the one line in
+`Coin.set_visual_color()` — **and per-biome colour becomes a `modulate` tint over the sprite's
+own gold rather than the absolute colour the palettes now author**, which the nine values in
+`resources/biomes/*.tres` would need re-judging against. Leave the collision radius at 10:
+`check_rare_coin_height()` fails the build if the pickup grows.
+
 **1. Playtest the three new rare variants.** The only thing in the tree shipped without a play
 confirmation. Two of the three are colour judgments nobody but the project owner can make: is the
 paler `glacier_teal` still recognisably green, and is the paler `violet_dusk` still purple rather

@@ -83,7 +83,8 @@ Main (Node2D, scripts/main.gd)
 │   ├── ObstacleSpawner   timed clusters; a hit calls Player.absorb_hit()
 │   ├── PowerupSpawner    timed pickups, one weighted table (see Build order §5)
 │   ├── GroundTreeSpawner decorative, global grid keyed on session_seed
-│   └── GlideCoinSpawner  air coins, only while Player.is_glide_active
+│   ├── GlideCoinSpawner  air coins, only while Player.is_glide_active
+│   └── RareCoinSpawner   one 25-value coin ~every 60s, at MAX-JUMP-ONLY height (§3)
 ├── BiomeDirector     the ONLY reader of a BiomePalette; returns early under --headless
 ├── Camera2D          position (0,136), zoom 0.833
 ├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP }
@@ -171,7 +172,10 @@ background parallax were removed entirely, not left disabled — don't resurrect
 2. Speed scaling — **working**. Two-phase ramp: 100→500 px/s over 10s, then 500→750 over
    the next 110s, capping at `MAX_SPEED` (750) at t=120s
 3. Coins + score — **working**. `SaveStore` (v2) persists a versioned best score, plus a
-   **coin wallet** every run banks into on death and per-upgrade levels
+   **coin wallet** every run banks into on death and per-upgrade levels. A **rare coin**
+   (25, ~every 60s) hangs at `RARE_COIN_CLEARANCE` 174px — inside the 24px gap between the
+   top two jump levels' reach, so only a max upgrade (or any level holding the ×√2 jump
+   powerup) gets it. Derivation and the four files it couples: `physics.md`
 4. Obstacles + death — **working**. Singles from t=20s, then every 12–30s. A boosting
    player breaks through instead of dying (see §5)
 5. **Powerups — working, six kinds** (2026-08-06): speed boost, jump boost, coin magnet,

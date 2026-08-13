@@ -16,6 +16,7 @@
 [ext_resource type="Script" path="res://scripts/systems/bird_flock.gd" id="15_birds"]
 [ext_resource type="Script" path="res://scripts/systems/glide_coin_spawner.gd" id="16_glide_coins"]
 [ext_resource type="Script" path="res://scripts/systems/biome_director.gd" id="17_biome"]
+[ext_resource type="Script" path="res://scripts/systems/rare_coin_spawner.gd" id="18_rare_coins"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -123,6 +124,9 @@ script = ExtResource("14_ground_trees")
 
 [node name="GlideCoinSpawner" type="Node2D" parent="TerrainGenerator"]
 script = ExtResource("16_glide_coins")
+
+[node name="RareCoinSpawner" type="Node2D" parent="TerrainGenerator"]
+script = ExtResource("18_rare_coins")
 
 [node name="BiomeDirector" type="Node" parent="."]
 script = ExtResource("17_biome")

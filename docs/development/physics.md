@@ -112,6 +112,32 @@ airtime including the brief upward hop a bump imparts.
   directly to `MAX_SPEED` right after spawn. A formula keyed on `elapsed_time` would
   silently overwrite that pin on the next frame.
 
+## Jump reach, and the rare coin (2026-08-13)
+
+Apex is `v² / 2g` with `v = JUMP_VELOCITY(640) × upgrade multiplier`, so it goes as the
+**square** of the multiplier — `128 × m²`. The upgrade tree is a much bigger change in reach
+than the multipliers suggest at a glance:
+
+| Jump level | 0 | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|---|
+| Multiplier | 0.60 | 0.70 | 0.80 | 0.90 | 1.00 |
+| Apex (px) | 46.1 | 62.7 | 81.9 | 103.7 | 128.0 |
+| Grab ceiling (px above surface) | 104.1 | 120.7 | 139.9 | 161.7 | 186.0 |
+
+Grab ceiling is `48 + apex + pickup radius(10)`. The 48 is the capsule's centre-to-top
+distance *doubled*: the capsule centre starts one half-height (24) above the surface, and it
+is the top of the capsule that reaches a pickup.
+
+`RareCoinSpawner.RARE_COIN_CLEARANCE = 174` is placed inside the ~24px gap between the top
+two ceilings — 12.3px above level 3, 12px below level 4 — which is what makes it a
+max-upgrade-only reward. **The jump powerup (×√2 velocity, so ×2 apex) is the one documented
+exception**: any level holding one reaches it, which is intended.
+
+That number is coupled to `JUMP_VELOCITY`, `GRAVITY`, the last two `JUMP_MULTIPLIERS` and
+`rare_coin.tscn`'s collision radius, in four different files, and **both ways of getting it
+wrong are silent in play** — so `terrain_invariant_check.check_rare_coin_height()` asserts
+the whole table above, reading the radius out of the scene rather than restating it.
+
 ## Fall death (chasms)
 
 `update_fall_death()` runs after `move_and_slide()` + snap and **before** both watchdogs, so

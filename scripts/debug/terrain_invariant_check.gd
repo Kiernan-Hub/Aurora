@@ -87,6 +87,15 @@ const CHASM_MIN_HAZARD_MARGIN: float = 24.0
 # clearing it is comfortable rather than a photo finish at the slowest legal arrival speed.
 const CHASM_DROP_CROSSING_MARGIN: float = 96.0
 
+# Player capsule half-height, from player.tscn's CapsuleShape2D -- the same 24 the manual
+# spawn-position invariant in CLAUDE.md is derived from.
+const PLAYER_CAPSULE_HALF_HEIGHT: float = 24.0
+# How much clear air the rare coin must keep on BOTH sides of its reachability window. The
+# window itself is only ~24px wide (the gap between the top two jump levels' ceilings), so
+# this is deliberately small; it exists to stop the clearance being tuned to the exact edge,
+# where a rounding difference decides whether the game's rarest pickup exists.
+const RARE_COIN_REACH_MARGIN: float = 6.0
+
 
 func _init() -> void:
 	var explicit_seed: int = get_int_argument("--seed", -1)
@@ -112,6 +121,16 @@ func _init() -> void:
 		" status=", "PASS" if variant_violations.is_empty() else "FAIL")
 	for violation: String in variant_violations:
 		print("    ", violation)
+
+	# Seed-independent for the same reason, and cheap. Grouped with the table check rather
+	# than given its own gate because it is the same kind of claim: a constant in one file
+	# implying something about a constant in another.
+	var rare_coin_violations: Array[String] = check_rare_coin_height()
+	print("TERRAIN_INVARIANT_RARE_COIN clearance=%.1f" % RareCoinSpawner.RARE_COIN_CLEARANCE,
+		" status=", "PASS" if rare_coin_violations.is_empty() else "FAIL")
+	for violation: String in rare_coin_violations:
+		print("    ", violation)
+	variant_violations.append_array(rare_coin_violations)
 
 	var failed_seed_count: int = 0
 	for session_seed: int in session_seeds:
@@ -330,6 +349,57 @@ func check_chasm_variant_table() -> Array[String]:
 # The lowest segment index at which a void of this width passes CHASM_MAX_REACH_FRACTION.
 # Reported alongside a CHASM_VARIANT_NOT_CLEARABLE failure so the fix is a number to paste
 # rather than an afternoon of solving the ramp by hand.
+# The rare coin's whole design is "only a fully upgraded jump reaches it", and that claim is
+# an arithmetic relationship between constants in FOUR files: RareCoinSpawner's clearance,
+# Player's JUMP_VELOCITY/GRAVITY, UpgradeStore's last two JUMP_MULTIPLIERS, and the collision
+# radius inside rare_coin.tscn. Nothing about it is visible from any one of them, and both
+# ways of getting it wrong are silent in play -- a coin the second-best jump can reach looks
+# exactly like one it cannot, and an unreachable coin looks like a bug in the spawner.
+#
+# The radius is read out of the SCENE, not restated here, because "someone made the pickup
+# bigger" is the single most likely way this breaks -- a larger circle raises the ceiling.
+func check_rare_coin_height() -> Array[String]:
+	var violations: Array[String] = []
+	var multipliers: Array[float] = UpgradeStore.JUMP_MULTIPLIERS
+	if multipliers.size() < 2:
+		violations.append("UpgradeStore.JUMP_MULTIPLIERS has fewer than two levels -- the rare coin's 'top level only' rule has nothing to mean")
+		return violations
+
+	var scene_root: Node = RareCoinSpawner.RARE_COIN_SCENE.instantiate()
+	var collision_shape: CollisionShape2D = scene_root.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	var circle: CircleShape2D = collision_shape.shape as CircleShape2D if collision_shape != null else null
+	if circle == null:
+		violations.append("rare_coin.tscn has no CollisionShape2D holding a CircleShape2D -- the reach derivation cannot be checked")
+		scene_root.free()
+		return violations
+	var coin_radius: float = circle.radius
+	scene_root.free()
+
+	# Capsule half-height doubled: the player's capsule centre starts one half-height above the
+	# surface and it is the TOP of the capsule that reaches the coin.
+	var capsule_reach: float = PLAYER_CAPSULE_HALF_HEIGHT * 2.0
+	var clearance: float = RareCoinSpawner.RARE_COIN_CLEARANCE
+
+	var top_multiplier: float = multipliers[multipliers.size() - 1]
+	var second_multiplier: float = multipliers[multipliers.size() - 2]
+	var top_ceiling: float = capsule_reach + get_jump_apex(top_multiplier) + coin_radius
+	var second_ceiling: float = capsule_reach + get_jump_apex(second_multiplier) + coin_radius
+
+	if clearance > top_ceiling - RARE_COIN_REACH_MARGIN:
+		violations.append("rare coin at %.1f is out of reach of a MAX jump (ceiling %.1f, margin %.1f) -- the reward is unobtainable and reads as a bug"
+			% [clearance, top_ceiling, RARE_COIN_REACH_MARGIN])
+	if clearance < second_ceiling + RARE_COIN_REACH_MARGIN:
+		violations.append("rare coin at %.1f is within reach of jump level %d (ceiling %.1f, margin %.1f) -- it stops being a max-upgrade reward"
+			% [clearance, multipliers.size() - 2, second_ceiling, RARE_COIN_REACH_MARGIN])
+	return violations
+
+
+# Apex of a jump at the given upgrade multiplier: v^2 / 2g, with v scaled by the multiplier.
+func get_jump_apex(jump_velocity_multiplier: float) -> float:
+	var jump_speed: float = absf(Player.JUMP_VELOCITY) * jump_velocity_multiplier
+	return (jump_speed * jump_speed) / (2.0 * Player.GRAVITY)
+
+
 func get_required_min_segment_index(void_length: float) -> int:
 	var required_reach: float = void_length / CHASM_MAX_REACH_FRACTION
 	var airtime: float = get_jump_airtime(TerrainGenerator.CHASM_EXIT_DROP, 1.0)

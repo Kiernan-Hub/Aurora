@@ -13,6 +13,7 @@ class_name GameManager
 @export var death_home_button_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/DeathHomeButton")
 @export var coin_spawner_path: NodePath = NodePath("../TerrainGenerator/CoinSpawner")
 @export var glide_coin_spawner_path: NodePath = NodePath("../TerrainGenerator/GlideCoinSpawner")
+@export var rare_coin_spawner_path: NodePath = NodePath("../TerrainGenerator/RareCoinSpawner")
 @export var coin_label_path: NodePath = NodePath("../CanvasLayer/CoinLabel")
 @export var powerup_manager_path: NodePath = NodePath("../PowerupManager")
 @export var biome_director_path: NodePath = NodePath("../BiomeDirector")
@@ -67,6 +68,7 @@ var music_slider: HSlider
 var sfx_slider: HSlider
 var coin_spawner: CoinSpawner
 var glide_coin_spawner: GlideCoinSpawner
+var rare_coin_spawner: RareCoinSpawner
 var coin_label: Label
 var coin_count: int = 0
 # Per completed 360 landed. Routed through _on_coin_collected so a trick reward gets
@@ -222,6 +224,13 @@ func _ready() -> void:
 	glide_coin_spawner = get_node_or_null(glide_coin_spawner_path) as GlideCoinSpawner
 	if glide_coin_spawner != null:
 		glide_coin_spawner.coin_collected.connect(_on_coin_collected)
+
+	# Optional for the same reason as the glide spawner above. Its coins are worth 25 each
+	# and go through the identical path -- including the coin doubler, which is intended:
+	# a max-jump grab under a doubler is the biggest single pickup in the game.
+	rare_coin_spawner = get_node_or_null(rare_coin_spawner_path) as RareCoinSpawner
+	if rare_coin_spawner != null:
+		rare_coin_spawner.coin_collected.connect(_on_coin_collected)
 
 	update_coin_label()
 
