@@ -186,7 +186,10 @@ background parallax were removed entirely, not left disabled — don't resurrect
    placeholder rects. **Eight `BiomePalette`s cycle every 75 000 world-px**, plus a ninth,
    `first_light`, held OUTSIDE the cycle and substituted for absolute index 0 so it opens a
    session once and never recurs (the biome phase carries across runs but resets on relaunch,
-   and is monotonic — that is what makes "once" true). Crossfading on
+   and is monotonic — that is what makes "once" true). **The eight are ROTATED, not reordered:
+   each launch enters the fixed day arc at a random point** (`session_cycle_rotation`, static
+   like the phase; 7 legal entry points). A shuffle was built and reverted — the palettes are
+   authored as a day passing and adjacency is load-bearing. Crossfading on
    five staggered channels. Colour still needs no shader — `Polygon2D` already renders
    `texture * vertex_color`. **Exactly one `.gdshader` exists** (`shaders/ice.gdshader`, ice
    band only): a two-tile noise dissolve, a per-biome `ice_contrast`, and a parked `gloss`.

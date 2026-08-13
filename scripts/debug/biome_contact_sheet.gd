@@ -87,10 +87,14 @@ func _process(_delta: float) -> bool:
 
 
 func capture_current() -> void:
-	var palette: BiomePalette = BiomeDirector.BIOME_CYCLE[biome_index]
+	# Through the director, not BIOME_CYCLE[biome_index]: the arc is rotated by a random amount
+	# each session (BiomeDirector.session_cycle_rotation), so indexing the authored array would
+	# label every capture with the wrong biome.
+	var palette: BiomePalette = director.get_cycle_palette(biome_index)
 	var image: Image = root.get_texture().get_image()
 	image.save_png("%s_%d.png" % [output_prefix, biome_index])
 	# Printed so the sheet can be checked against the data instead of by eye: the top
 	# sky pixel must match this palette's sky_top, or the capture is off by a frame again.
-	print("biome=%d  sky_top_expected=%s  sky_top_rendered=%s" % [
-		biome_index, palette.sky_top, image.get_pixel(4, 2)])
+	print("biome=%d %s  sky_top_expected=%s  sky_top_rendered=%s" % [
+		biome_index, palette.resource_path.get_file().get_basename(), palette.sky_top,
+		image.get_pixel(4, 2)])

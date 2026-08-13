@@ -45,8 +45,8 @@ const PALETTE_ARCTIC_DAWN: BiomePalette = preload("res://resources/biomes/arctic
 # THE OPENING BIOME, AND IT IS NOT IN THE CYCLE. Substituted for cycle index 0 -- the
 # ABSOLUTE index, never the wrapped one -- so it plays once at the top of a session and is
 # then gone until the app is relaunched. When the cycle comes back around to that slot
-# (index 8, 16, ...) it resolves to BIOME_CYCLE[0], the saturated arctic_dawn, so nothing
-# is lost by opening somewhere quieter.
+# (index 8, 16, ...) it resolves to whatever this session's rotation puts there -- a real,
+# saturated palette either way -- so nothing is lost by opening somewhere quieter.
 #
 # WHY: index 0 is the entire first impression, and the first ten seconds of a session should
 # not be the most exciting thing on offer. This is pale and nearly colourless -- no glow, no
@@ -57,13 +57,15 @@ const PALETTE_ARCTIC_DAWN: BiomePalette = preload("res://resources/biomes/arctic
 # absolute index 0 is unreachable a second time by construction.
 const PALETTE_FIRST_LIGHT: BiomePalette = preload("res://resources/biomes/first_light.tres")
 
-# A day arc, and it wraps: arctic_dawn leads back into pale_morning, so a long run reads as
-# time passing rather than as a shuffle. Adjacent entries are deliberately near neighbours
-# in colour -- the crossfade only has to cover one step, never day-to-night in one go.
-# STARTS ON A SATURATED BLUE, not on the palest entry. Every run begins at world_x 64, so
-# whatever sits at index 0 is the whole first impression -- and opening on pale_morning made
-# the ice read as grey concrete for the first ~2 minutes. Order is still a day arc, just
-# rotated to begin at dawn rather than mid-morning.
+# A day arc, and it wraps: starlit_night leads back into arctic_dawn, so a long run reads as
+# time passing rather than as a shuffle. Adjacent entries are deliberately near neighbours in
+# colour -- the crossfade only has to cover one step, never day-to-night in one go.
+#
+# THE SEQUENCE IS FIXED; ONLY THE ENTRY POINT MOVES. Each session rotates it by a random
+# amount (session_cycle_rotation), so a launch might open on sunset_rose and run
+# sunset_rose -> violet_dusk -> twilight_blue -> starlit_night -> arctic_dawn -> ..., but it
+# always runs the arc in order. This array's indices are also the stable index space every
+# gate and probe addresses palettes by.
 const BIOME_CYCLE: Array[BiomePalette] = [
 	PALETTE_ARCTIC_DAWN,
 	PALETTE_PALE_MORNING,
@@ -82,6 +84,13 @@ const BIOME_DISTANCE: float = 75000.0
 # How much of the END of each biome's distance is spent crossfading into the next. Must
 # stay well under BIOME_DISTANCE or biomes never fully settle. 12000px is ~16s at cap.
 const TRANSITION_DISTANCE: float = 12000.0
+
+# How far apart two neighbouring palettes' celestial_position may sit when either of them
+# owns a disc. The disc fades in and out AT that position, and position interpolates on the
+# same channel as strength -- so a neighbour that disagrees makes the disc slide across the
+# sky while fading (it shipped once and read as "the moon went bottom-right to top-left").
+# Mirrored by biome_schedule_check.gd, which asserts it against every rotation the game can draw.
+const MAX_DISC_DRIFT: float = 0.02
 
 # [start, end] for each channel, as fractions of the transition window. Sky leads, the air
 # follows it, the ice trails because ground colour is mostly reflected skylight. Indexed by
@@ -126,10 +135,9 @@ var applied_progress: float = -1.0
 # scheme it died in. One full cycle is ~13.7 minutes at shipping values, which nobody plays
 # in a sitting, so without this most of the eight palettes are unreachable in practice.
 #
-# The alternative considered and rejected was shuffling the cycle: measured, ice brightness
-# tracks sky brightness across the arc (ice_surface 0.863 -> 0.625 alongside sky_top 0.773
-# -> 0.244), so a shuffle -- or splitting the sky schedule from the ground schedule -- puts
-# a moon over daylight-bright ice.
+# Orthogonal to session_cycle_rotation below: the phase says HOW FAR ALONG the session is, the
+# rotation says WHERE IN THE ARC it started. Both are static and both die with the process, so
+# a run picks up exactly where the last one left off.
 #
 # STATIC, AND THEREFORE DELIBERATELY NOT SAVED. It survives the reload_current_scene() a
 # restart does, exactly like GameManager.pending_quick_restart, and dies with the process.
@@ -139,6 +147,28 @@ var applied_progress: float = -1.0
 # night biome for a returning player. It also means no save format change, so a phase can
 # never be a thing that arrives corrupt from disk.
 static var session_biome_phase: float = 0.0
+
+# WHERE THIS SESSION ENTERS THE DAY ARC. Drawn once per process, lazily, on the first palette
+# lookup: a rotation of BIOME_CYCLE, not a reordering of it. -1 means "not drawn yet".
+#
+# WHAT IT DOES. The intro still owns absolute index 0. Index 1 -- the first real biome, and
+# every biome after it -- is BIOME_CYCLE[cycle_index + rotation], so a launch might open
+# first_light -> sunset_rose -> violet_dusk -> twilight_blue -> ... and the next one
+# first_light -> mauve_haze -> sunset_rose -> ... Different every launch, and still the arc.
+#
+# WHY A ROTATION AND NOT A SHUFFLE. The eight are authored as a day passing, and every colour
+# in them assumes it: ice brightness tracks sky brightness along the arc (ice_surface 0.863 ->
+# 0.625 alongside sky_top 0.773 -> 0.244), and each crossfade only has to cover one step
+# between near neighbours. A shuffle (built and reverted, 2026-08-12) puts night ice under a
+# morning sky and asks one transition to cover day-to-night. A rotation changes the entry point
+# and nothing else, so EVERY adjacency the palettes were authored against still holds -- which
+# is also why the disc rules need no filtering here: the ring is untouched.
+#
+# WHY IT IS STATIC. session_biome_phase carries across a death and a reload_current_scene(), so
+# the rotation has to as well -- redrawing per run would move the palette out from under a
+# phase that says "you were three biomes in", and dying would visibly change the sky. Static
+# also means it dies with the process: a new launch is a new entry point, which is the feature.
+static var session_cycle_rotation: int = -1
 
 # Pins the phase at 0, so every run reopens on the intro biome instead of resuming.
 #
@@ -284,14 +314,68 @@ func resolve_palette_consumer(consumer_path: NodePath) -> Node:
 # x still lands on a real palette rather than an out-of-range index.
 #
 # The index 0 case is checked BEFORE the posmod, and that is the whole mechanism behind the
-# one-shot opening biome -- see PALETTE_FIRST_LIGHT. Index 8 posmods to 0 and gets
-# BIOME_CYCLE[0] as it always did; only the literal first pass gets the intro. Blending is
-# unaffected: the caller asks for index and index + 1, so first_light crossfades into
-# pale_morning through exactly the same five channels as any other pair.
+# one-shot opening biome -- see PALETTE_FIRST_LIGHT. Index 8 posmods to slot 0 and gets that
+# slot's palette; only the literal first pass gets the intro. Blending is unaffected: the
+# caller asks for index and index + 1, so first_light crossfades into whatever the session put
+# in slot 1 through exactly the same five channels as any other pair.
+#
+# STILL PURE IN cycle_index within a process, which is what apply_palette_for_world_x's
+# contract rests on -- the rotation is drawn once and then never changes.
 func get_cycle_palette(cycle_index: int) -> BiomePalette:
 	if cycle_index == 0:
 		return PALETTE_FIRST_LIGHT
-	return BIOME_CYCLE[posmod(cycle_index, BIOME_CYCLE.size())]
+	return BIOME_CYCLE[posmod(cycle_index + get_session_cycle_rotation(), BIOME_CYCLE.size())]
+
+
+# Lazy rather than built in _ready() so that every caller goes through one path: the gates and
+# probes construct a bare BiomeDirector and call get_cycle_palette() without a scene tree, and
+# a headless _ready() returns before it could build anything.
+static func get_session_cycle_rotation() -> int:
+	if session_cycle_rotation < 0:
+		var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+		rng.randomize()
+		session_cycle_rotation = pick_cycle_rotation(rng)
+	return session_cycle_rotation
+
+
+# Uniform over the rotations whose OPENING TRANSITION is safe, which is the only adjacency a
+# rotation can get wrong. Every other pair is a pair the arc was authored with; the one the arc
+# does not contain is first_light -> whatever lands at index 1, and that is exactly the seam
+# every session plays. With the disc positions as authored this rules out one of the eight
+# (starlit_night's moon sits at 0.30 while first_light parks celestial_position at 0.46, so the
+# moon would slide across the sky as it faded in), leaving seven entry points.
+#
+# Enumerated rather than sampled-and-retried: there are only eight candidates, so the legal set
+# is cheaper to build than a rejection loop is to reason about.
+static func pick_cycle_rotation(rng: RandomNumberGenerator) -> int:
+	var allowed: PackedInt32Array = get_allowed_rotations()
+	if allowed.is_empty():
+		# Unreachable unless first_light gains a disc AND every palette disagrees with it about
+		# position. 0 is the authored arc, which opens on pale_morning as it always did.
+		push_error("BiomeDirector: no rotation opens safely from first_light; falling back to the authored arc.")
+		return 0
+	return allowed[rng.randi_range(0, allowed.size() - 1)]
+
+
+# Shared with biome_schedule_check, which asserts the seam holds for every rotation the game
+# can draw -- the gate must not restate this list or the two drift apart.
+static func get_allowed_rotations() -> PackedInt32Array:
+	var allowed: PackedInt32Array = PackedInt32Array()
+	for rotation: int in range(BIOME_CYCLE.size()):
+		var opening: BiomePalette = BIOME_CYCLE[posmod(1 + rotation, BIOME_CYCLE.size())]
+		if pair_is_disc_safe(PALETTE_FIRST_LIGHT, opening):
+			allowed.append(rotation)
+	return allowed
+
+
+static func pair_is_disc_safe(from_palette: BiomePalette, to_palette: BiomePalette) -> bool:
+	var from_has_disc: bool = from_palette.celestial_strength > 0.0
+	var to_has_disc: bool = to_palette.celestial_strength > 0.0
+	if from_has_disc and to_has_disc:
+		return false
+	if not from_has_disc and not to_has_disc:
+		return true
+	return from_palette.celestial_position.distance_to(to_palette.celestial_position) <= MAX_DISC_DRIFT
 
 
 # smoothstep rather than a raw ramp so each channel eases in AND out. A linear colour lerp

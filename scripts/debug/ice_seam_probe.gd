@@ -164,8 +164,11 @@ func hide_everything_but_terrain() -> void:
 			node.visible = false
 
 
+# Named, not just numbered: the arc is rotated by a random amount each session
+# (BiomeDirector.session_cycle_rotation), so "settled_3" alone no longer identifies a tile.
 func label_for(index: int) -> String:
-	return "settled_%d" % index
+	var palette: BiomePalette = director.get_cycle_palette(index)
+	return "settled_%d_%s" % [index, palette.resource_path.get_file().get_basename()]
 
 
 func finish_probe() -> void:

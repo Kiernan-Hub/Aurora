@@ -275,8 +275,14 @@ top-left as night fell. `check_disc_positions_are_stationary()`.
 cannot be interpolated — `sky_backdrop` swaps the texture outright instead of dissolving
 between two stacked nodes the way the ice pattern must. That is only invisible because
 strength is 0 at one end of any transition that changes it. `check_no_adjacent_discs()`.
-This is what cost `arctic_dawn` its sun: it sits next to `starlit_night` in the wrap, and a
-sun→moon swap mid-fade with both visible would pop.
+This is what cost `arctic_dawn` its sun: it sat next to `starlit_night` in the authored wrap,
+and a sun→moon swap mid-fade with both visible would pop.
+
+> **Both rules stay properties of `BIOME_CYCLE`, and that is why the session rotates the arc
+> rather than reordering it** (see below). Rotation preserves adjacency, so walking the
+> authored array still tests every pair the game can show. The single exception is the opening
+> seam — `first_light →` index 1, which the rotation does change — and
+> `BiomeDirector.get_allowed_rotations()` plus `check_opening_seam()` cover exactly that.
 
 **Sun and moon must not look the same.** They differ only in tint otherwise, and in play both
 read as "a pale dot" — which is exactly what happened. The moon is a **crescent**: the same
@@ -443,8 +449,8 @@ share a tile:
 `first_light` is a **ninth** palette, held in `BiomeDirector.PALETTE_FIRST_LIGHT` and
 deliberately absent from `BIOME_CYCLE`. `get_cycle_palette()` substitutes it for **absolute**
 index 0 — checked before the `posmod` — so it plays once at the top of a session and never
-returns until the app is relaunched. Index 8, 16, … resolve to `BIOME_CYCLE[0]`
-(`arctic_dawn`) exactly as before, so nothing is lost by opening somewhere quieter.
+returns until the app is relaunched. Index 8, 16, … resolve to whatever the session's shuffle
+put in slot 0, so nothing is lost by opening somewhere quieter.
 
 It is pale, low-saturation and claims **no** optional sky layer: no glow, no disc, no stars,
 no horizontal tint. Its tile is the faintest in the project (within-row 0.0068, against the
@@ -456,7 +462,41 @@ exciting thing on offer.
 > schedule — and it meant a run longer than a full cycle wrapped the phase back toward 0, so
 > absolute index 0 recurred and the intro replayed mid-session. Letting the phase only grow
 > makes the one-shot true by construction, with no spent-flag to keep in sync. Gate-enforced
-> both ways: the phase may never decrease, and index `N * 8` must resolve to `BIOME_CYCLE[0]`.
+> both ways: the phase may never decrease, and index `N * 8` must resolve to the session's
+> slot-0 palette.
+
+### Each launch enters the arc at a random point (2026-08-12)
+
+`BIOME_CYCLE` is a **fixed sequence**; what varies per session is where it is entered.
+`BiomeDirector.session_cycle_rotation` is drawn once per process, and `get_cycle_palette()`
+returns `BIOME_CYCLE[cycle_index + rotation]`. So one launch runs `first_light → sunset_rose →
+violet_dusk → twilight_blue → starlit_night → arctic_dawn → …` and the next
+`first_light → glacier_teal → mauve_haze → …` — different every time, always in arc order.
+
+* **A rotation, NOT a shuffle.** A shuffle was built and reverted the same day. The eight are
+  authored as a day passing and every colour in them assumes it: ice brightness tracks sky
+  brightness along the arc (`ice_surface` 0.863 → 0.625 alongside `sky_top` 0.773 → 0.244), and
+  each crossfade only has to cover one step between near neighbours. Reordering them puts night
+  ice under a morning sky and asks one transition to cover day-to-night. A rotation preserves
+  every adjacency the palettes were authored against — which is also why the two disc rules
+  above need no filtering: the ring is untouched.
+* **Static, like `session_biome_phase`, and for the same reason.** The phase carries across a
+  death and a `reload_current_scene()`, so the rotation has to as well — redrawing per run
+  would move the palette out from under a phase that says "you were three biomes in", and
+  dying would visibly change the sky. It dies with the process, so a new launch is a new entry
+  point. That is the feature: the opening biome is the one fixed thing about a session.
+* **Seven entry points, not eight.** The one pair a rotation can get wrong is the seam the arc
+  does not contain — `first_light →` whatever lands at index 1. `get_allowed_rotations()`
+  enumerates the rotations whose opening pair is disc-safe; `starlit_night` is excluded as an
+  opener because its moon sits at (0.30, 0.09) while `first_light` parks `celestial_position`
+  at (0.46, 0.08), so the moon would slide across the sky as it faded in. Enumerated rather
+  than sampled-and-retried: eight candidates is cheaper to build than a rejection loop is to
+  reason about. `check_opening_seam()` asserts that list is honest and that it holds more than
+  one entry — a set that collapsed to one would pass everything else while giving every launch
+  the same sequence.
+* **`check_arc_order_is_preserved()`** is the gate for the property the rotation exists to
+  keep: walked through `get_cycle_palette` across a lap and a half, each index's successor must
+  be the arc's next step.
 
 > **A palette outside `BIOME_CYCLE` is invisible to every check that walks the cycle**, which
 > was every check in both gates. `biome_schedule_check.get_all_palettes()` and

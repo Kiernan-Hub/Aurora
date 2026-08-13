@@ -149,11 +149,15 @@ func check_palettes() -> void:
 	if BiomeDirector.PALETTE_FIRST_LIGHT == null:
 		failures.append("PALETTE_FIRST_LIGHT failed to load -- the opening biome resolves to null and index 0 draws nothing")
 		return
-	# The intro replaces index 0 on the first pass and BIOME_CYCLE[0] takes that slot on
-	# every later lap, so the two are adjacent to the same neighbour and a shared tile would
-	# read as the pattern never changing across the opening transition.
-	if BiomeDirector.PALETTE_FIRST_LIGHT.ice_texture == cycle[0].ice_texture:
-		failures.append("first_light and BIOME_CYCLE[0] share an ice_texture -- the opening biome is meant to be visibly quieter than the one that later occupies its slot")
+	# The intro replaces index 0 on the first pass, and the palette that follows it -- slot 1 of
+	# a shuffled order -- can now be ANY of the eight. So the intro's tile has to differ from
+	# all of them, not just from the one that used to sit there: a shared tile reads as the
+	# pattern never changing across the opening transition, which is the one transition every
+	# session plays.
+	for palette_index: int in range(cycle.size()):
+		if BiomeDirector.PALETTE_FIRST_LIGHT.ice_texture == cycle[palette_index].ice_texture:
+			failures.append("first_light shares an ice_texture with %s, which the shuffle can put directly after it -- the opening biome is meant to be visibly quieter than whatever follows it"
+				% cycle[palette_index].resource_path.get_file().get_basename())
 
 	var palettes: Array[BiomePalette] = get_all_palettes()
 	for palette_index: int in range(palettes.size()):
@@ -270,8 +274,10 @@ const MIN_MEANINGFUL_CELESTIAL_STRENGTH: float = 0.02
 const MIN_MEANINGFUL_STAR_DENSITY: float = 0.05
 # How far a disc may sit from where its neighbour parks celestial_position, in screen
 # fractions, before the fade-in reads as travel rather than as an appearance. Small: the point
-# is that they should be identical, and this is only slack for authoring noise.
-const MAX_DISC_DRIFT: float = 0.02
+# is that they should be identical, and this is only slack for authoring noise. Taken from the
+# director rather than restated, because the shuffle enforces the same number when it builds a
+# session's order and the two drifting apart would make this gate pass what the game rejects.
+const MAX_DISC_DRIFT: float = BiomeDirector.MAX_DISC_DRIFT
 
 
 # Authoring rules only -- see check_glow_authoring for why these must never run against a
@@ -459,12 +465,15 @@ func check_phase_offset() -> void:
 	var live_director: BiomeDirector = BiomeDirector.new()
 	if live_director.get_cycle_palette(0) != BiomeDirector.PALETTE_FIRST_LIGHT:
 		failures.append("cycle index 0 is not first_light -- the opening biome never plays")
+	# Which palette occupies the intro's slot on later laps depends on this session's rotation,
+	# so the assertion is against that rather than against BIOME_CYCLE[0].
 	var cycle_size: int = BiomeDirector.BIOME_CYCLE.size()
+	var slot_zero: BiomePalette = BiomeDirector.BIOME_CYCLE[posmod(BiomeDirector.get_session_cycle_rotation(), cycle_size)]
 	for lap: int in [1, 2, 5]:
 		var wrapped_index: int = lap * cycle_size
-		if live_director.get_cycle_palette(wrapped_index) != BiomeDirector.BIOME_CYCLE[0]:
-			failures.append("cycle index %d does not resolve to BIOME_CYCLE[0] -- the intro is recurring instead of being a one-shot"
-				% wrapped_index)
+		if live_director.get_cycle_palette(wrapped_index) != slot_zero:
+			failures.append("cycle index %d does not resolve to this session's slot 0 (%s) -- the intro is recurring instead of being a one-shot"
+				% [wrapped_index, slot_zero.resource_path.get_file().get_basename()])
 	live_director.free()
 
 
@@ -553,6 +562,8 @@ func check_blending() -> void:
 	check_blend_carries_fields()
 	check_no_adjacent_discs()
 	check_disc_positions_are_stationary()
+	check_opening_seam()
+	check_arc_order_is_preserved()
 	check_ice_pattern_crossfade()
 
 
@@ -562,6 +573,11 @@ func check_blending() -> void:
 # celestial_strength is 0 at one end of every transition -- i.e. no two ADJACENT biomes both
 # have a disc. Author a second disc next to an existing one and the swap becomes a visible pop
 # in the middle of the fade, with nothing else in this file noticing.
+#
+# WALKING BIOME_CYCLE IS STILL THE RIGHT TEST. A session rotates the arc rather than reordering
+# it (BiomeDirector.session_cycle_rotation), so every pair the game can ever show is a pair of
+# neighbours in this array -- rotation preserves adjacency. The one pair rotation DOES change is
+# the opening seam, first_light -> whatever lands at index 1, which check_opening_seam covers.
 func check_no_adjacent_discs() -> void:
 	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
 	for cycle_index: int in range(cycle.size()):
@@ -570,13 +586,6 @@ func check_no_adjacent_discs() -> void:
 		if here.celestial_strength > 0.0 and next.celestial_strength > 0.0:
 			failures.append("%s and %s are adjacent and BOTH have a disc -- celestial_is_moon snaps at the midpoint of the transition, so the sun/moon texture would swap while both are visible. Either drop one disc or give SkyCelestial the two-node dissolve treatment the ice band has"
 				% [here.resource_path.get_file().get_basename(), next.resource_path.get_file().get_basename()])
-
-	# The intro is not in the cycle, so the loop above never sees the ONE transition every
-	# session actually opens with: first_light -> BIOME_CYCLE[1].
-	var intro: BiomePalette = BiomeDirector.PALETTE_FIRST_LIGHT
-	if intro.celestial_strength > 0.0 and cycle[1].celestial_strength > 0.0:
-		failures.append("first_light and %s are adjacent and BOTH have a disc -- see above; this is the opening transition of every session"
-			% cycle[1].resource_path.get_file().get_basename())
 
 
 # A disc-less biome still has a celestial_position, and it is not decoration: the disc fades in
@@ -596,12 +605,57 @@ func check_disc_positions_are_stationary() -> void:
 					% [here.resource_path.get_file().get_basename(), here.celestial_position,
 						neighbour.resource_path.get_file().get_basename(), neighbour.celestial_position])
 
-	# Same blind spot as check_no_adjacent_discs: if BIOME_CYCLE[1] ever gains a disc, the
-	# intro is its left-hand neighbour and has to agree about where that disc sits.
+
+# THE ONE PAIR THAT IS NOT IN BIOME_CYCLE, and the only thing the per-session rotation can get
+# wrong. Absolute index 0 is first_light, index 1 is BIOME_CYCLE[1 + rotation] -- so the biome
+# the intro fades into is a different one every launch, and BOTH disc rules have to hold for
+# every rotation the game is allowed to draw. BiomeDirector.get_allowed_rotations() is the list
+# it draws from; this asserts the list is honest rather than restating it, so the two cannot
+# drift apart.
+#
+# Also asserts the list is not a single entry: a rotation set that collapsed to one would pass
+# every other check here while giving the player the same sequence every launch, which is the
+# bug the rotation exists to fix.
+func check_opening_seam() -> void:
+	var allowed: PackedInt32Array = BiomeDirector.get_allowed_rotations()
+	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
 	var intro: BiomePalette = BiomeDirector.PALETTE_FIRST_LIGHT
-	if cycle[1].celestial_strength > 0.0 and intro.celestial_position.distance_to(cycle[1].celestial_position) > MAX_DISC_DRIFT:
-		failures.append("%s has a disc at %s but first_light, which precedes it on the opening transition, puts celestial_position at %s"
-			% [cycle[1].resource_path.get_file().get_basename(), cycle[1].celestial_position, intro.celestial_position])
+
+	if allowed.size() < 2:
+		failures.append("only %d rotation(s) open safely from first_light -- every launch would enter the arc at the same place, which is the whole point of the rotation"
+			% allowed.size())
+
+	for rotation: int in allowed:
+		var opening: BiomePalette = cycle[posmod(1 + rotation, cycle.size())]
+		var opening_name: String = opening.resource_path.get_file().get_basename()
+		if intro.celestial_strength > 0.0 and opening.celestial_strength > 0.0:
+			failures.append("rotation %d opens first_light -> %s and both have a disc -- see check_no_adjacent_discs; this is the transition every session plays"
+				% [rotation, opening_name])
+		elif (intro.celestial_strength > 0.0 or opening.celestial_strength > 0.0) \
+			and intro.celestial_position.distance_to(opening.celestial_position) > MAX_DISC_DRIFT:
+			failures.append("rotation %d opens first_light (celestial_position %s) -> %s (%s), and one of them owns the disc -- it would slide across the sky as it fades in, on the transition every session plays"
+				% [rotation, intro.celestial_position, opening_name, opening.celestial_position])
+
+
+# THE PROPERTY THE ROTATION EXISTS TO PRESERVE: after the intro, the arc is walked IN ORDER.
+# A shuffle was built and reverted on 2026-08-12 for breaking exactly this -- the palettes are
+# authored as a day passing, so day -> night -> day inside one session reads as broken rather
+# than as variety. Checked through get_cycle_palette, i.e. against what the game will draw,
+# across a lap and a half so the wrap is included.
+func check_arc_order_is_preserved() -> void:
+	var director: BiomeDirector = BiomeDirector.new()
+	var cycle: Array[BiomePalette] = BiomeDirector.BIOME_CYCLE
+	for cycle_index: int in range(1, cycle.size() + cycle.size() / 2):
+		var here: BiomePalette = director.get_cycle_palette(cycle_index)
+		var next: BiomePalette = director.get_cycle_palette(cycle_index + 1)
+		var expected: BiomePalette = cycle[posmod(cycle.find(here) + 1, cycle.size())]
+		if next != expected:
+			failures.append("index %d is %s and index %d is %s, but the arc's next step is %s -- the session is not walking BIOME_CYCLE in order"
+				% [cycle_index, here.resource_path.get_file().get_basename(), cycle_index + 1,
+					next.resource_path.get_file().get_basename(),
+					expected.resource_path.get_file().get_basename()])
+			break
+	director.free()
 
 
 # The glow's and disc's position/size/strength are the NON-COLOUR fields riding CHANNEL_SKY,
