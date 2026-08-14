@@ -128,33 +128,26 @@ rather than adding a second write.
 
 ## The coin combo (2026-08-13)
 
-`GameManager` counts consecutive coins and multiplies every collection by **+0.5x per 25,
-capping at 3x on the 100th** — stepped, not continuous, because a creeping 1.37x is unreadable
-in motion and impossible to play toward.
+`GameManager` multiplies every coin by a tier read off the **run total**: **×2 from 50 coins,
+×3 from 150**. Nothing takes it away — a missed coin costs you that coin and nothing else.
 
 Three decisions worth keeping:
 
-- **Only a MISS breaks it**, and only `CoinSpawner` reports one (`coin_missed`, emitted once
-  per coin at `COIN_MISS_MARGIN` behind the player, flagged on the coin so it can't repeat).
-  The rare coin needs a max upgrade and a glide coin only exists mid-powerup, so breaking a
-  streak on either punishes the player for something they could not do. An obstacle hit doesn't
-  break it either — one break condition is what makes the counter readable at 750 px/s.
-- **A coin above the player's reach doesn't break it either.** The miss carries the coin's
-  `surface_clearance`, and `get_grab_ceiling()` (capsule + apex + pickup radius, off the
-  **durable upgrade** multiplier — never the ×√2 powerup timer) decides whether it was
-  collectable. This is load-bearing, not politeness: an air line hangs at the max jump's reach,
-  so a starting player passes several a minute that no input could take, and without this their
-  streak could never leave zero. Both shape sizes are read out of the scenes, never restated —
-  a hand-copied capsule height is one of `visuals.md`'s four art-swap couplings.
+- **The tiers read the coin count ON SCREEN**, the same multiplied number the player is
+  watching, not a hidden raw tally. That makes the next tier something they can see coming, at
+  the cost of tiers arriving slightly sooner than raw pickups imply (the ×2 is already
+  multiplying the number that decides when ×3 lands). Legibility wins at 750 px/s.
 - **It multiplies the coin, not a separate score.** Score and wallet are the same integer
   (`record_run` banks `coin_count` *and* sets `best_score` from it), so a good run banks more
-  toward upgrades as well as scoring higher. That is a project-owner decision, made knowing it
-  inflates the wallet against `JUMP_UPGRADE_COSTS`.
-- **It stacks with the doubler powerup**, for a 6x ceiling that is rare by construction.
+  toward upgrades as well as scoring higher. Project-owner decision, made knowing it inflates
+  the wallet against `JUMP_UPGRADE_COSTS`.
+- **It stacks with the doubler powerup**, for a ×6 ceiling that is rare by construction.
 
-None of this was worth building before coins hung in the air: every ground coin sat under the
-58px standing grab ceiling, so a streak could never break and the counter would have ticked up
-on its own. See `physics.md` → "Coin air lines" for the clearances.
+**A consecutive-coin version was built first and replaced** (2026-08-14). It reset to ×1 on any
+missed coin, which needed `CoinSpawner.coin_missed`, a per-coin `surface_clearance`, and a live
+grab-ceiling computed from the upgrade multiplier so a coin the player could not physically
+reach was exempt. All of that is deleted — the run-total rule has nothing to be unfair about,
+so none of it earns its keep. Air lines still matter, but only for how many coins you get.
 
 ## The one autoload
 

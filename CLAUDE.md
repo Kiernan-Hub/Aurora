@@ -177,10 +177,9 @@ background parallax were removed entirely, not left disabled — don't resurrect
    top two jump levels' reach, so only a max upgrade (or any level holding the ×√2 jump
    powerup) gets it. Derivation and the four files it couples: `physics.md`. A coin slot rolls
    10% into a **3-coin air line** (132px, ends 10px lower, clear of every jump ceiling) —
-   before it, every ground coin was collectible with zero input. That is what an **in-run
-   combo** (+0.5× per 25 coins to a 3× cap) is built on; a missed coin **above the player's
-   current grab ceiling never breaks the streak**, or a starting player could never hold
-   one: `architecture.md`
+   before it, every ground coin was collectible with zero input. An **in-run combo** multiplies
+   every coin by a tier read off the run total — **×2 from 50, ×3 from 150**, nothing takes it
+   away. A streak version that a missed coin reset was built and replaced: `architecture.md`
 4. Obstacles + death — **working**. Singles from t=20s, then every 12–30s. A boosting
    player breaks through instead of dying (see §5)
 5. **Powerups — working, six kinds** (2026-08-06): speed boost, jump boost, coin magnet,

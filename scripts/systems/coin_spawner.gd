@@ -12,11 +12,6 @@ class_name CoinSpawner
 @export var player_path: NodePath = NodePath("../../Player")
 
 signal coin_collected(value: int)
-# One coin went past the player uncollected. Drives the run's combo streak (GameManager), and
-# is deliberately emitted by THIS spawner only: a rare coin needs a max upgrade to reach and a
-# glide coin only exists mid-powerup, so breaking a streak on either would punish the player
-# for something they could not do.
-signal coin_missed(surface_clearance: float)
 
 const COIN_SCENE: PackedScene = preload("res://scenes/pickups/coin.tscn")
 # Fixed candidate x positions within a chunk, as a fraction of chunk_width. Each
@@ -96,12 +91,6 @@ const LINE_HASH_MIX_MULTIPLIER: int = 2654435761
 const MAGNET_RADIUS: float = 220.0
 const MAGNET_PULL_SPEED: float = 900.0
 
-# How far behind the player a coin has to be before it counts as missed. Comfortably past the
-# 10px pickup radius plus the player's own half-width, so a coin still being collected this
-# frame never reports as a miss first; well inside MAGNET_RADIUS is fine, because a magnet
-# pulls a coin forward and it is collected long before it reaches this line.
-const COIN_MISS_MARGIN: float = 72.0
-
 var terrain_generator: TerrainGenerator
 var player: CharacterBody2D
 var next_chunk_index: int = 0
@@ -110,8 +99,8 @@ var has_initialized_coin_groups: bool = false
 # Where the player stood when the run's first coin groups were built. The spawner fills
 # chunk_count_behind chunks BEHIND the player at startup so the terrain is already there when
 # the camera looks back, and those chunks were hanging coins the player begins the run behind
-# -- visible over their shoulder, uncollectable, and reported as misses the moment the run
-# starts. Anything at or behind this line is skipped; it only ever affects those first chunks,
+# -- visible over their shoulder and uncollectable. Anything at or behind this line is
+# skipped; it only ever affects those first chunks,
 # because after that the player is always moving right into fresh ground.
 var run_start_world_x: float = -INF
 var magnet_active: bool = false
@@ -176,8 +165,6 @@ func _physics_process(delta: float) -> void:
 	if magnet_active:
 		apply_magnet_pull(delta)
 
-	report_missed_coins()
-
 
 func initialize_coin_groups() -> void:
 	run_start_world_x = player.global_position.x
@@ -229,7 +216,6 @@ func spawn_coin(group: Node2D, group_origin_x: float, world_x: float, clearance:
 
 	var coin: Coin = COIN_SCENE.instantiate() as Coin
 	coin.position = Vector2(world_x - group_origin_x, terrain_generator.get_terrain_height(world_x) - clearance)
-	coin.surface_clearance = clearance
 	coin.collected.connect(_on_coin_collected)
 	if has_biome_color:
 		coin.set_visual_color(biome_coin_color)
@@ -322,26 +308,6 @@ func apply_magnet_pull(delta: float) -> void:
 			if coin.global_position.distance_to(player.global_position) > MAGNET_RADIUS:
 				continue
 			coin.global_position = coin.global_position.move_toward(player.global_position, MAGNET_PULL_SPEED * delta)
-
-
-# Emits coin_missed once for every coin the player has left behind. Walks the same live coins
-# the magnet does, and for the same reason reads global_position fresh every frame rather than
-# caching anything: a world rebase moves the whole TerrainGenerator subtree and any stored
-# world-x would go stale by exactly one rebase quantum.
-#
-# The margin, not "behind the player at all", is what makes this safe to run before collection
-# has been processed for the frame -- see COIN_MISS_MARGIN.
-func report_missed_coins() -> void:
-	var miss_line_x: float = player.global_position.x - COIN_MISS_MARGIN
-	for group: Node2D in active_coin_groups.values():
-		for child: Node in group.get_children():
-			var coin: Coin = child as Coin
-			if coin == null or coin.has_been_collected or coin.has_been_missed:
-				continue
-			if coin.global_position.x >= miss_line_x:
-				continue
-			coin.has_been_missed = true
-			coin_missed.emit(coin.surface_clearance)
 
 
 func _on_coin_collected(value: int) -> void:

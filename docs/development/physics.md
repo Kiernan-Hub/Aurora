@@ -130,7 +130,13 @@ is the top of the capsule that reaches a pickup.
 
 `RareCoinSpawner.RARE_COIN_CLEARANCE = 174` is placed inside the ~24px gap between the top
 two ceilings — 12.3px above level 3, 12px below level 4 — which is what makes it a
-max-upgrade-only reward. **The jump powerup (×√2 velocity, so ×2 apex) is the one documented
+max-upgrade-only reward. **That derivation assumes a jump taken from flat ground**, so the
+spawner requires the coin's own segment *and* the 320px of run-up behind it to be `SEGMENT_
+SELECTION_FLAT` — not merely to read as level at one sample, since a hill crest does that while
+the whole take-off run is a slope. Behind the coin only: flats are 640px and never adjacent, so
+demanding 320px of flat on *both* sides is unsatisfiable (measured: 0 accepted slots on two of
+three seeds). About 6% of slots survive the rule, so `REJECTED_SLOT_RETRY_DELAY` dropped 3s → 1s
+to hold the cadence; measured 2 diamonds in 150s, i.e. one per ~75s. **The jump powerup (×√2 velocity, so ×2 apex) is the one documented
 exception**: any level holding one reaches it, which is intended.
 
 That number is coupled to `JUMP_VELOCITY`, `GRAVITY`, the last two `JUMP_MULTIPLIERS` and
@@ -142,8 +148,9 @@ the whole table above, reading the radius out of the scene rather than restating
 
 The same table read from the bottom. With no jump at all the ceiling is **58px** (`48 +
 radius 10`), and `COIN_SURFACE_CLEARANCE` is 34 — so before coins hung in the air, **every
-ground coin in the game was collected with zero input**. That is why an in-run combo counter
-was pointless: no coin could be missed.
+ground coin in the game was collected with zero input**, which is why the first version of the
+in-run combo — a streak a missed coin reset — had nothing to measure. The combo is now a
+run-total multiplier (`architecture.md`) and the lines simply decide how many coins you get.
 
 An included coin slot rolls `COIN_LINE_CHANCE` (**0.1**) into a three-coin **near-flat line**
 in the air instead of one ground coin:
@@ -172,12 +179,6 @@ was cut for looking too arc-y.
 
 Jitter is downward-only for the same reason: a coin nudged *up* sits above the trajectory a
 jump actually traces and becomes uncollectable, where one nudged down is only ever easier.
-
-**A coin above the player's current grab ceiling does not break the combo streak**
-(`GameManager.get_grab_ceiling()`, computed from the durable upgrade multiplier only — never
-the ×√2 jump powerup, which is a timer that may have run out two seconds before the coin went
-past). Without that, a starting player passes several unreachable lines a minute and their
-streak could never leave zero.
 
 Two things about the line are terrain-dependent, not constants:
 

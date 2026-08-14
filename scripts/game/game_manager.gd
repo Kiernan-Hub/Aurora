@@ -77,26 +77,24 @@ var coin_count: int = 0
 const TRICK_COIN_REWARD: int = 5
 
 # --- Combo -----------------------------------------------------------------------------
-# Consecutive coins collected without letting one go past. Only CoinSpawner reports a miss
-# (see its coin_missed signal for why the rare and glide coins do not), and only a miss breaks
-# the streak -- not an obstacle hit, not a shield, not landing badly. One break condition is
-# what makes the counter readable at 750 px/s.
+# A run-total multiplier, not a streak: cross 50 coins and every coin from then on is worth
+# double, cross 150 and it is triple. Nothing takes it away -- a missed coin costs you that
+# coin and nothing else.
 #
-# The ramp is deliberately slow: +0.5x per 25 coins, capping at 3x on the 100th. A two-minute
-# run passes ~168 coins, and ~18% of coin slots are now three-coin arcs that need a real jump,
-# so 100 in a row is a strong run rather than the default state. A flawless two-minute run pays
-# about 2.3x its raw coins; a scrappy one barely leaves 1x.
+# The thresholds read the COIN COUNT ON SCREEN, the same multiplied number the player is
+# watching, not a hidden raw tally. That makes the next tier something they can see coming, at
+# the cost of the tiers arriving slightly sooner than the raw pickups would suggest (the x2 is
+# already multiplying the number that decides when x3 lands). Legibility is worth more than
+# that arithmetic purity on a screen moving at 750 px/s.
 #
-# It multiplies the COIN, not a separate score, which is a deliberate call by the project owner:
-# score and wallet are the same integer here (SaveStore.record_run banks coin_count and sets
-# best_score from it), so a good run banks more toward upgrades as well as scoring more.
-const COMBO_STEP_STREAK: int = 25
-const COMBO_STEP_MULTIPLIER: float = 0.5
-const COMBO_MAX_MULTIPLIER: float = 3.0
-var combo_streak: int = 0
-# Capsule reach plus pickup radius, measured off the scenes once in _ready(). The jump apex is
-# the only part of the grab ceiling that changes during a run.
-var grab_reach_base: float = 58.0
+# An earlier version made this a CONSECUTIVE-coin streak that a missed coin reset, with the
+# reach machinery to decide which misses were the player's fault. The project owner replaced it
+# with these run totals, so a coin going past now costs only itself.
+const COMBO_TIERS: Array[Dictionary] = [
+	{"coins": 150, "multiplier": 3.0},
+	{"coins": 50, "multiplier": 2.0},
+]
+
 var powerup_manager: PowerupManager
 # Read on death only, to bank how far into the biome cycle this run got. Optional and
 # null-guarded like the shop nodes: this is presentation state, and a run that cannot
@@ -239,8 +237,6 @@ func _ready() -> void:
 		return
 
 	coin_spawner.coin_collected.connect(_on_coin_collected)
-	coin_spawner.coin_missed.connect(_on_coin_missed)
-	grab_reach_base = measure_grab_reach_base()
 
 	# Optional, not required-and-return like coin_spawner/coin_label above: a missing
 	# GlideCoinSpawner should never take down the whole coin/score system, it just means
@@ -502,75 +498,26 @@ func _on_quick_restart_pressed() -> void:
 	get_tree().reload_current_scene()
 
 
-# The one place a coin turns into score. Every source routes through here -- ground coins,
-# glide coins, the rare coin and a landed trick -- so the doubler powerup and the combo apply
-# to all of them from one line each, rather than four sites that drift apart.
+# The one place a coin turns into score. Every source routes through here -- ground coins, air
+# lines, the rare coin and a landed trick -- so the doubler powerup and the combo apply to all
+# of them from one line each, rather than four sites that drift apart.
 #
-# The two multipliers STACK: a doubler held at a full combo pays 6x. That is the deliberate
-# ceiling of the whole system and it is rare on purpose -- the doubler is a timed powerup and
-# the combo takes 100 clean coins.
+# The two multipliers STACK: a doubler held at the top combo tier pays 6x. That is the
+# deliberate ceiling of the whole system, and it is rare because the doubler is a timed powerup.
 func _on_coin_collected(value: int) -> void:
-	combo_streak += 1
 	var multiplier: float = powerup_manager.coin_multiplier if powerup_manager != null else 1.0
 	coin_count += int(value * multiplier * get_combo_multiplier())
 	update_coin_label()
 	sfx_player.play_coin()
 
 
-# A coin the player could not possibly have reached does not break the streak. Without this
-# the combo would be unplayable at low upgrade levels: an arc peak is hung at the MAX jump's
-# reach on purpose, so a starting player passes several per minute that no input could collect,
-# and their streak could never leave zero.
-#
-# The ceiling is computed from the durable UPGRADE multiplier only, never the ×√2 jump powerup:
-# a coin is judged against what the player can always do, not against a timer that may have run
-# out two seconds before the coin went past.
-func _on_coin_missed(surface_clearance: float) -> void:
-	if combo_streak == 0:
-		return
-	if surface_clearance > get_grab_ceiling():
-		return
-	combo_streak = 0
-	update_coin_label()
-
-
-# Highest clearance the player can collect from flat ground: the capsule's centre-to-top
-# distance doubled (the centre starts one half-height up and it is the top that reaches),
-# plus the jump apex, plus the pickup's radius. Same formula as physics.md's grab-ceiling
-# table and terrain_invariant_check's, read live so an upgrade bought mid-session applies.
-#
-# Both shape sizes come out of the SCENES via measure_grab_reach_base(), never restated here:
-# a hand-copied capsule height is one of the four couplings that make an art swap silently
-# wrong (visuals.md), and this one would fail as a combo that breaks on the wrong coins.
-func get_grab_ceiling() -> float:
-	var jump_speed: float = absf(Player.JUMP_VELOCITY) * player.upgrade_jump_multiplier
-	var apex: float = (jump_speed * jump_speed) / (2.0 * Player.GRAVITY)
-	return grab_reach_base + apex
-
-
-func measure_grab_reach_base() -> float:
-	var capsule_half_height: float = 24.0
-	var shape_node: CollisionShape2D = player.get_node_or_null("CollisionShape2D") as CollisionShape2D
-	var capsule: CapsuleShape2D = shape_node.shape as CapsuleShape2D if shape_node != null else null
-	if capsule != null:
-		capsule_half_height = capsule.height * 0.5
-
-	var coin_radius: float = 10.0
-	var coin_root: Node = CoinSpawner.COIN_SCENE.instantiate()
-	var coin_shape: CollisionShape2D = coin_root.get_node_or_null("CollisionShape2D") as CollisionShape2D
-	var circle: CircleShape2D = coin_shape.shape as CircleShape2D if coin_shape != null else null
-	if circle != null:
-		coin_radius = circle.radius
-	coin_root.free()
-
-	return (capsule_half_height * 2.0) + coin_radius
-
-
-# Stepped rather than continuous so the number on screen is a thing the player can aim at --
-# a smoothly creeping 1.37x is unreadable in motion and impossible to play toward.
+# Highest tier the run has reached. Ordered high-to-low so the first match wins and adding a
+# tier means adding a row, not editing a comparison chain.
 func get_combo_multiplier() -> float:
-	var steps: int = combo_streak / COMBO_STEP_STREAK
-	return minf(1.0 + (float(steps) * COMBO_STEP_MULTIPLIER), COMBO_MAX_MULTIPLIER)
+	for tier: Dictionary in COMBO_TIERS:
+		if coin_count >= int(tier["coins"]):
+			return float(tier["multiplier"])
+	return 1.0
 
 
 func update_coin_label() -> void:
