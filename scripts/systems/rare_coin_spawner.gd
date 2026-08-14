@@ -70,10 +70,15 @@ const RARE_COIN_CLEARANCE: float = 174.0
 const FIRST_RARE_COIN_TIME: float = 45.0
 const RARE_COIN_INTERVAL_MIN: float = 50.0
 const RARE_COIN_INTERVAL_MAX: float = 70.0
-# A slot can be rejected (slope, or a void inside the jump's reach). Retrying shortly rather
-# than advancing the schedule is the difference between "roughly once a minute" and "once a
-# minute unless the terrain says no", which over a long run is a visibly different game.
-const REJECTED_SLOT_RETRY_DELAY: float = 3.0
+# A slot can be rejected (slope, a non-flat take-off run, or a void inside the jump's reach).
+# Retrying shortly rather than advancing the schedule is the difference between "roughly once a
+# minute" and "once a minute unless the terrain says no", which over a long run is a visibly
+# different game.
+#
+# 1.0s, down from 3.0, because the flat-take-off rule cut the share of acceptable slots to
+# about 6% (measured over four seeds, 1446 samples each). At 3s a rejected slot cost ~48s of
+# expected extra wait, which quietly halved how often the diamond appeared; at 1s it is ~16s.
+const REJECTED_SLOT_RETRY_DELAY: float = 1.0
 
 # Mirrors the other spawners' forward lookahead so the coin enters from off-screen.
 const SPAWN_LOOKAHEAD_WORLD_X: float = 800.0
@@ -82,6 +87,18 @@ const DESPAWN_BEHIND_WORLD_X: float = 1500.0
 # relative to the coin, which is exactly the derivation above coming apart -- and the same
 # reason ObstacleSpawner has this rule, at the same 6 degrees.
 const MAX_SLOPE_ANGLE: float = deg_to_rad(6.0)
+# ...and the slope test alone is not enough, because it only samples the coin's own x. A hill
+# crest reads as near-flat there while the whole take-off run is a slope, and the player then
+# jumps from ground nothing like the flat the 174px clearance was derived on -- so the coin is
+# unreachable on exactly the terrain where it looks reachable. The coin's segment, and the
+# ground the player takes off from, must therefore BE flat segments.
+#
+# BEHIND the coin only. A max jump is 0.8s of airtime, 600px at MAX_SPEED, so take-off is
+# ~300px before the coin -- and where the player LANDS has no bearing on whether they can reach
+# it. Requiring flat on both sides is not merely stricter, it is unsatisfiable: flat segments
+# are 640px and get_segment_selection() forbids two in a row, so no point has 320px of flat on
+# both sides. Measured, it accepted 0 slots on two of three seeds.
+const FLAT_TAKEOFF_SPAN: float = 320.0
 # A max jump is 0.8s of airtime -- 600px at MAX_SPEED -- so the player who goes for this coin
 # commits to a landing that far ahead. Ground must exist across the whole arc or the reward is
 # a trap. Same shape and same margin as OBSTACLE_VOID_CLEARANCE_AHEAD.
@@ -149,6 +166,8 @@ func _physics_process(_delta: float) -> void:
 func try_spawn_rare_coin(world_x: float) -> bool:
 	if absf(terrain_generator.get_slope_angle_at_x(world_x)) > MAX_SLOPE_ANGLE:
 		return false
+	if not is_flat_over_span(world_x - FLAT_TAKEOFF_SPAN, world_x):
+		return false
 	if not terrain_generator.has_ground_over_world_x_span(world_x - VOID_CLEARANCE, world_x + VOID_CLEARANCE):
 		return false
 
@@ -158,6 +177,26 @@ func try_spawn_rare_coin(world_x: float) -> bool:
 	coin.collected.connect(_on_coin_collected)
 	add_child(coin)
 	active_coins.append(coin)
+	return true
+
+
+# True only if every segment between the take-off point and the coin is a FLAT segment -- not
+# merely flat-looking at one sample. Walks segment indices rather than sampling heights,
+# because that is the actual question: a hill segment is disqualified even where its crest is
+# momentarily level.
+#
+# ensure_segment_cache_for_world_x() before EVERY find_segment_index_at_x(), including the one
+# for the far end: without it the binary search silently clamps to the cached range and returns
+# a wrong segment (CLAUDE.md).
+func is_flat_over_span(from_world_x: float, to_world_x: float) -> bool:
+	terrain_generator.ensure_segment_cache_for_world_x(from_world_x)
+	var first_segment_index: int = terrain_generator.find_segment_index_at_x(from_world_x)
+	terrain_generator.ensure_segment_cache_for_world_x(to_world_x)
+	var last_segment_index: int = terrain_generator.find_segment_index_at_x(to_world_x)
+
+	for segment_index: int in range(first_segment_index, last_segment_index + 1):
+		if terrain_generator.get_segment_selection(segment_index) != TerrainGenerator.SEGMENT_SELECTION_FLAT:
+			return false
 	return true
 
 
