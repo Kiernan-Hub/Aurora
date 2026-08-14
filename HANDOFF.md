@@ -23,7 +23,7 @@ biome persistence, the opening biome).
 
 ## State
 
-The last code change is **"Make air lines 3x rarer and hang them lower"** on
+The last code change is **"Make glacier_teal's common case a little greener"** on
 `terrain/disable-mega-drop-camera-shake` (the tip may carry docs-only fixups above it), and the
 working tree is **clean**. No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts
 ~2.3 min through the early ramp).
@@ -286,16 +286,18 @@ error in a palette consumer does *not* fail these probes.
 >
 > 1. **Do the air lines read?** They are now rare (1 slot in 10 of the 30% that spawn at all)
 >    and sit at 132px, which levels 3-4 clear comfortably and level 2 mostly cannot.
-> 2. **Does the combo counter mean anything?** It shows next to the coin count only above ×1.
->    A no-input run peaks at streak 17; a clean run should walk to ×3 in about a minute.
+> 2. **Do the combo tiers land at the right totals?** ×2 at 50 coins, ×3 at 150, shown next to
+>    the coin count only above ×1. Measured payouts were ~72 coins at 60s and ~168 at 120s
+>    before the density cut, so ×3 should land late in a good run, not routinely.
 > 3. **Do upgrades feel too slow now?** Density fell 0.40 → ~0.34 coins per slot deliberately,
 >    and `JUMP_UPGRADE_COSTS` was never re-tuned. **The lever is the costs, not the density** —
 >    the owner asked for fewer coins on purpose.
-> 4. **Chasm jumps and the combo.** A mandatory jump flies over ground coins near the near lip
->    and those break the streak. Suppressing coin slots near a lip is possible and was NOT
->    built, because the player chooses when to take off. Judge it before building anything.
-> 5. **The three rare biome variants** (`9bfffc3`): is the paler `glacier_teal` still
->    recognisably green, and is the paler `violet_dusk` still purple rather than blue-grey?
+> 4. **The diamond.** It now spawns only where the coin's segment and the 320px of run-up
+>    behind it are flat segments, so the max-jump-only derivation is true on the ground the
+>    player actually takes off from. Measured one per ~75s against a 50–70s schedule.
+> 5. **The biome variants.** `glacier_teal`'s common case was pushed greener on 2026-08-14
+>    (green up, red down, blue untouched — saturation 19% → 27%); is `violet_dusk` still purple
+>    rather than blue-grey?
 >
 > ### Then, in order
 >
@@ -338,17 +340,17 @@ error in a palette consumer does *not* fail these probes.
 >   single ground coin — which fires on ~40% of line rolls, so **no closed form over the
 >   constants gives the density**. `terrain_invariant_check` measures it per seed instead.
 >
-> **The coin combo** (`architecture.md` → "The coin combo"). **+0.5× per 25 consecutive coins,
-> capping at ×3 on the 100th**, stepped rather than continuous.
+> **The coin combo** (`architecture.md` → "The coin combo"). A **run-total** multiplier: **×2
+> from 50 coins, ×3 from 150**, and nothing takes it away.
 >
-> - Broken **only** by a missed ground coin (`CoinSpawner.coin_missed`, once per coin at 72px
->   behind the player) — not the rare coin, not a glide coin, not an obstacle hit.
-> - **A coin above the player's current grab ceiling never breaks it.** Without that the combo
->   is unplayable early: a starting player passes unreachable line coins constantly. The ceiling
->   comes off the durable upgrade multiplier, never the ×√2 jump powerup.
-> - **It multiplies the coin, so it inflates the wallet** — the owner's call, made knowing it.
->   A flawless two-minute run pays roughly **2.3×** raw. It stacks with the doubler powerup for
->   a ×6 ceiling that is rare by construction.
+> - The tiers read the coin count **on screen**, so the next tier is visible coming. Tiers
+>   therefore arrive slightly sooner than raw pickups imply — the ×2 already multiplies the
+>   number that decides when ×3 lands. Deliberate.
+> - **A consecutive-coin version was built first and replaced** (2026-08-14). It reset on any
+>   missed coin, which needed `coin_missed`, a per-coin `surface_clearance`, and a live grab
+>   ceiling so unreachable coins were exempt. **All deleted** — do not rebuild it without asking.
+> - **It multiplies the coin, so it inflates the wallet** — the owner's call. It stacks with the
+>   doubler for a ×6 ceiling that is rare by construction.
 >
 > **Coins no longer spawn behind the player at the start** (`d6040e7`). The startup fill builds
 > `chunk_count_behind` chunks behind the player, and they were hanging coins from x=−981 to −42
@@ -358,7 +360,7 @@ error in a palette consumer does *not* fail these probes.
 > **Both coins spin 30% faster** than the values before this session (ground coin 3.575 rad/s,
 > diamond 8.9375, the 2.5× ratio between the two scenes held).
 >
-> **Gate state at `867ef03`, all green:** `terrain_invariant_check` 8/8 seeds — rare coin 174.0,
+> **Gate state at `58d6a5b`, all green:** `terrain_invariant_check` 8/8 seeds — rare coin 174.0,
 > `COIN_LINE` clearance=132 end_drop=10 jitter=8, density 0.3163–0.3521 per slot;
 > `shipping_values_check` 13 knobs clean; `freeze_replay_runner` no_freeze. `project.godot`
 > clean. The physics gates were not re-run and did not need to be: coins are Area2D layer 2 and
