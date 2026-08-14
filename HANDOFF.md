@@ -267,35 +267,35 @@ error in a palette consumer does *not* fail these probes.
 
 ## Next up
 
-> ## ▶ RESUME HERE — say "resume" and the next step is **COIN ARCS**, spec'd in full below.
+> ## ▶ RESUME HERE — the next step is **IN-RUN COIN COMBO**, unblocked as of the arcs below.
 >
 > **2026-08-13, end of the coin session.** Branch `terrain/disable-mega-drop-camera-shake`,
-> Last code change: **"Spin both coins a quarter faster, and repoint the handoff"**; working
+> Last code change: **"Give a coin slot a jumpable three-coin arc"**; working
 > tree **clean**. Nothing is half-finished: every item below is either done-and-committed or not
-> started. **Nothing from the last two sessions has been seen
-> in play** and no gate can judge any of it — the biome coin/obstacle colours, the rare coin, the
-> coin sprites, the spin and the collect pop are all unplayed.
+> started. **Nothing from the last three sessions has been seen
+> in play** and no gate can judge most of it — the biome coin/obstacle colours, the rare coin, the
+> coin sprites, the spin, the collect pop and now the arcs are all unplayed.
 >
-> ### The next step, in one place
+> ### Coin arcs — SHIPPED, unplayed
 >
-> **Coin arcs.** Ground coins currently sit at `COIN_SURFACE_CLEARANCE` **34px**, and the
-> no-jump grab ceiling is **58px** — so *every ground coin in the game is collected with zero
-> input*. That is the finding that reordered everything else: an in-run combo built today would
-> tick up on its own, because no coin can be missed.
+> Full derivation in `physics.md` → "Coin arcs". An included slot rolls `COIN_ARC_CHANCE` 0.3
+> into a three-coin arc — peak **92px**, shoulders **84px** at ±60px — instead of one 34px
+> ground coin. 92 clears the **58px** no-jump ceiling (which is why every coin in the game used
+> to be free) and sits 12px under **level 0's** 104px ceiling.
 >
-> Agreed shape, approved in principle, **not started**:
+> Two things came out different from the spec above, both deliberate:
 >
-> - Each included slot rolls into either today's single ground coin **or a 3-coin arc peaking
->   at 92px clearance**. 92 is above the 58px free line so it needs a real jump, and 12px under
->   the **104px level-0 ceiling** so it stays fair at the weakest upgrade.
-> - **Hold the economy exactly**: 30% of slots becoming 3-coin arcs is 1.6× density, so drop
->   `COIN_SLOT_INCLUDE_CHANCE` **0.40 → 0.25** for an effective 0.40. Identical payout, so the
->   1130-coin upgrade curve stays tuned. Do not skip this — the curve is costed against density.
-> - Assert 92 in `terrain_invariant_check` the way `check_rare_coin_height()` already asserts
->   174; the reach formula is `capsule_reach(48) + jump_apex(m) + coin_radius(10)`.
-> - Per-coin `has_ground_at_world_x()` already exists in `spawn_coin_group()` and covers an arc
->   crossing a void. Coins are Area2D layer 2 and never touch terrain collision, so **no physics
->   gate is involved** — terrain check + `shipping_values_check` is the right gate set.
+> - An arc measures each coin against the ground under *that* coin, so it tilts with the slope.
+>   Over `COIN_ARC_MAX_GROUND_DROP` (24px across the 120px span) the slot **falls back to a
+>   single coin** rather than hanging a shoulder out of reach.
+> - That fires on ~40% of arc rolls, so `0.25 × 1.6 = 0.40` is *not* true on real terrain.
+>   `COIN_SLOT_INCLUDE_CHANCE` went to **0.30**, and the gate **measures** density per seed
+>   (0.3708–0.4220 over the 8-seed sweep, mean 0.400) instead of asserting a closed form.
+>
+> `terrain_invariant_check` PASS 8/8 with `TERRAIN_INVARIANT_COIN_ARC` and a per-seed
+> `TERRAIN_INVARIANT_COIN_DENSITY` line; `shipping_values_check` PASS; `freeze_replay_runner`
+> 6000 frames clean, which is only there to prove the live spawner throws no error — coins are
+> Area2D layer 2 and never touch terrain collision, so no physics gate is actually involved.
 >
 > ### Grab ceilings — measured, use these, do not re-derive
 >
@@ -312,8 +312,8 @@ error in a palette consumer does *not* fail these probes.
 >
 > | Step | What | State |
 > |---|---|---|
-> | **1. NEXT** | Coin arcs (above) | not started |
-> | 2 | In-run coin combo | **blocked on step 1** — nothing to measure until coins can be missed |
+> | 1 | Coin arcs (above) | **done, unplayed** |
+> | **2. NEXT** | In-run coin combo | unblocked — a coin can be missed now |
 > | 3 | More upgrade tracks (magnet radius, powerup duration, coin value) | not started, **free on the save side** |
 > | 4 | Diamonds as a second currency | **deliberately held** — see below |
 > | 5 | Glide vertical drift on the parallax layers | not started, design in `look-thorugh-my-files-wobbly-church.md` |

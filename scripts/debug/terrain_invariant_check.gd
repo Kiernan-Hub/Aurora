@@ -95,6 +95,18 @@ const PLAYER_CAPSULE_HALF_HEIGHT: float = 24.0
 # this is deliberately small; it exists to stop the clearance being tuned to the exact edge,
 # where a rounding difference decides whether the game's rarest pickup exists.
 const RARE_COIN_REACH_MARGIN: float = 6.0
+# The standing grab ceiling: capsule reach plus the coin's radius, no jump at all. An arc coin
+# must clear this by a real margin or the arc costs no input, which is the entire reason arcs
+# exist. 8px is roughly a frame of the player's vertical travel at the top of a jump.
+const COIN_ARC_FREE_GRAB_MARGIN: float = 8.0
+# And the matching floor under jump level 0's ceiling, so the weakest upgrade can still take
+# the arc rather than watching it go by.
+const COIN_ARC_WEAKEST_JUMP_MARGIN: float = 8.0
+# Coins per candidate slot, the number the upgrade costs are sized against. The tolerance is
+# wide because the measurement is genuinely seed-dependent -- how much of the sampled range is
+# flat enough for an arc varies -- and observed 0.39 to 0.44 across seeds.
+const COIN_DENSITY_TARGET: float = 0.40
+const COIN_DENSITY_TOLERANCE: float = 0.06
 
 
 func _init() -> void:
@@ -131,6 +143,13 @@ func _init() -> void:
 	for violation: String in rare_coin_violations:
 		print("    ", violation)
 	variant_violations.append_array(rare_coin_violations)
+
+	var coin_arc_violations: Array[String] = check_coin_arc_height()
+	print("TERRAIN_INVARIANT_COIN_ARC peak=%.1f shoulder=%.1f" % [CoinSpawner.COIN_ARC_PEAK_CLEARANCE, CoinSpawner.COIN_ARC_SHOULDER_CLEARANCE],
+		" status=", "PASS" if coin_arc_violations.is_empty() else "FAIL")
+	for violation: String in coin_arc_violations:
+		print("    ", violation)
+	variant_violations.append_array(coin_arc_violations)
 
 	var failed_seed_count: int = 0
 	for session_seed: int in session_seeds:
@@ -178,12 +197,21 @@ func check_session_seed(session_seed: int, start_world_x: float, end_world_x: fl
 	var max_slope_angle: float = player.floor_max_angle
 	var report: Dictionary = sample_height_field(terrain_generator, start_world_x, end_world_x, sample_step, max_slope_angle)
 	var chasm_report: Dictionary = check_chasms(terrain_generator, start_world_x, end_world_x)
+	var coin_spawner: CoinSpawner = main.get_node("TerrainGenerator/CoinSpawner") as CoinSpawner
+	var coin_report: Dictionary = measure_coin_density(terrain_generator, coin_spawner, start_world_x, end_world_x)
 	print_seed_report(session_seed, report, max_slope_angle)
 	print_chasm_report(session_seed, chasm_report)
+	var coin_violations: Array[String] = coin_report["violations"]
+	print("TERRAIN_INVARIANT_COIN_DENSITY seed=", session_seed,
+		" coins_per_slot=%.4f" % float(coin_report["coins_per_slot"]),
+		" arcs=", coin_report["arc_count"], " slots=", coin_report["slot_count"],
+		" status=", "PASS" if coin_violations.is_empty() else "FAIL")
+	for violation: String in coin_violations:
+		print("    ", violation)
 
 	main.queue_free()
 	await process_frame
-	return int(report["violation_count"]) == 0 and int(chasm_report["violation_count"]) == 0
+	return int(report["violation_count"]) == 0 and int(chasm_report["violation_count"]) == 0 and coin_violations.is_empty()
 
 
 func sample_height_field(terrain_generator: TerrainGenerator, start_world_x: float, end_world_x: float, sample_step: float, max_slope_angle: float) -> Dictionary:
@@ -392,6 +420,88 @@ func check_rare_coin_height() -> Array[String]:
 		violations.append("rare coin at %.1f is within reach of jump level %d (ceiling %.1f, margin %.1f) -- it stops being a max-upgrade reward"
 			% [clearance, multipliers.size() - 2, second_ceiling, RARE_COIN_REACH_MARGIN])
 	return violations
+
+
+# Coin arcs, the same derivation from the other end. The rare coin has to be OUT of reach of
+# every jump but the best; an arc coin has to be out of reach of NO jump -- above the standing
+# grab ceiling, so it costs an input, and under the ceiling of jump level 0, so the player who
+# has bought nothing can still take it. Both edges are silent in play: an arc that is free
+# looks identical to one that is not, and an unreachable peak looks like a spawner bug.
+#
+# The density product is asserted here too because it is the same edit: arcs are what forced
+# COIN_SLOT_INCLUDE_CHANCE down, and JUMP_UPGRADE_COSTS is costed against the result.
+func check_coin_arc_height() -> Array[String]:
+	var violations: Array[String] = []
+
+	var scene_root: Node = CoinSpawner.COIN_SCENE.instantiate()
+	var collision_shape: CollisionShape2D = scene_root.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	var circle: CircleShape2D = collision_shape.shape as CircleShape2D if collision_shape != null else null
+	if circle == null:
+		violations.append("coin.tscn has no CollisionShape2D holding a CircleShape2D -- the reach derivation cannot be checked")
+		scene_root.free()
+		return violations
+	var coin_radius: float = circle.radius
+	scene_root.free()
+
+	var capsule_reach: float = PLAYER_CAPSULE_HALF_HEIGHT * 2.0
+	var standing_ceiling: float = capsule_reach + coin_radius
+	var weakest_ceiling: float = capsule_reach + get_jump_apex(UpgradeStore.JUMP_MULTIPLIERS[0]) + coin_radius
+
+	# The shoulders are the lowest coins in the arc and the peak is the highest, so checking
+	# both ends covers every coin between them.
+	var lowest: float = minf(CoinSpawner.COIN_ARC_PEAK_CLEARANCE, CoinSpawner.COIN_ARC_SHOULDER_CLEARANCE)
+	var highest: float = maxf(CoinSpawner.COIN_ARC_PEAK_CLEARANCE, CoinSpawner.COIN_ARC_SHOULDER_CLEARANCE)
+
+	if lowest < standing_ceiling + COIN_ARC_FREE_GRAB_MARGIN:
+		violations.append("arc coin at %.1f is inside the standing grab ceiling %.1f (margin %.1f) -- the arc costs no input, which is the only reason it exists"
+			% [lowest, standing_ceiling, COIN_ARC_FREE_GRAB_MARGIN])
+	if highest > weakest_ceiling - COIN_ARC_WEAKEST_JUMP_MARGIN:
+		violations.append("arc coin at %.1f is out of reach of jump level 0 (ceiling %.1f, margin %.1f) -- the starting player watches it go by and reads it as a bug"
+			% [highest, weakest_ceiling, COIN_ARC_WEAKEST_JUMP_MARGIN])
+
+	return violations
+
+
+# Coins per slot, MEASURED by asking the spawner what it would build over the sampled range,
+# rather than multiplying the constants out. The two differ: an arc roll over ground too steep
+# to hang an arc on falls back to a single coin, so the real density is a property of the
+# terrain as well as of CoinSpawner, and no closed form over the constants is true.
+#
+# This is the number UpgradeStore.JUMP_UPGRADE_COSTS is sized against. It was 0.40 before arcs
+# existed, and the include chance was re-tuned to land back on it.
+func measure_coin_density(terrain_generator: TerrainGenerator, spawner: CoinSpawner, start_world_x: float, end_world_x: float) -> Dictionary:
+	var chunk_width: float = terrain_generator.chunk_width
+	var first_chunk: int = int(floor(start_world_x / chunk_width))
+	var last_chunk: int = int(floor(end_world_x / chunk_width))
+	var slot_count: int = 0
+	var coin_count: int = 0
+	var arc_count: int = 0
+
+	for chunk_index: int in range(first_chunk, last_chunk + 1):
+		var chunk_start_x: float = float(chunk_index) * chunk_width
+		for slot_index: int in range(CoinSpawner.COIN_SLOT_FRACTIONS.size()):
+			slot_count += 1
+			if spawner.get_slot_hash(chunk_index, slot_index) > CoinSpawner.COIN_SLOT_INCLUDE_CHANCE:
+				continue
+			var world_x: float = chunk_start_x + (CoinSpawner.COIN_SLOT_FRACTIONS[slot_index] * chunk_width)
+			if spawner.get_arc_hash(chunk_index, slot_index) < CoinSpawner.COIN_ARC_CHANCE and spawner.can_fit_arc_at_world_x(world_x):
+				arc_count += 1
+				coin_count += CoinSpawner.COIN_ARC_COIN_COUNT
+				continue
+			if terrain_generator.has_ground_at_world_x(world_x):
+				coin_count += 1
+
+	var coins_per_slot: float = float(coin_count) / maxf(float(slot_count), 1.0)
+	var violations: Array[String] = []
+	if absf(coins_per_slot - COIN_DENSITY_TARGET) > COIN_DENSITY_TOLERANCE:
+		violations.append("coin density %.4f per slot is outside %.2f +/- %.2f -- UpgradeStore.JUMP_UPGRADE_COSTS is costed against that number, so the whole meta-progression re-times"
+			% [coins_per_slot, COIN_DENSITY_TARGET, COIN_DENSITY_TOLERANCE])
+	return {
+		"coins_per_slot": coins_per_slot,
+		"arc_count": arc_count,
+		"slot_count": slot_count,
+		"violations": violations,
+	}
 
 
 # Apex of a jump at the given upgrade multiplier: v^2 / 2g, with v scaled by the multiplier.

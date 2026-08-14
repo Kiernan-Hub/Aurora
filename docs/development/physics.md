@@ -138,6 +138,31 @@ That number is coupled to `JUMP_VELOCITY`, `GRAVITY`, the last two `JUMP_MULTIPL
 wrong are silent in play** — so `terrain_invariant_check.check_rare_coin_height()` asserts
 the whole table above, reading the radius out of the scene rather than restating it.
 
+### Coin arcs (2026-08-13)
+
+The same table read from the bottom. With no jump at all the ceiling is **58px** (`48 +
+radius 10`), and `COIN_SURFACE_CLEARANCE` is 34 — so before arcs, **every ground coin in the
+game was collected with zero input**. That is why an in-run combo counter was pointless: no
+coin could be missed.
+
+An included coin slot now rolls `COIN_ARC_CHANCE` (0.3) into a three-coin arc instead of one
+ground coin: peak **92**, shoulders **84** at ±60px. 92 clears the 58 free line by a wide
+margin and sits 12px under **level 0's** 104 ceiling — the weakest jump, because a coin the
+starting player cannot reach reads as a bug. The shoulders are on the jump parabola through
+that peak, not on an arbitrary lower line: `½·g·(60/v)²` is 11.5px of drop at 500 px/s and
+5.1px at 750, so one 8px offset covers the whole speed range.
+
+Two things about the arc are terrain-dependent, not constants:
+
+- Clearance is measured per coin against the ground under **that** coin, so an arc tilts with
+  the slope while a jump does not. Over `COIN_ARC_MAX_GROUND_DROP` (24px across the 120px
+  span, ~11°) the slot **falls back to a single ground coin**.
+- That fallback fires on roughly 40% of arc rolls, so the density is not the product of the
+  constants. `COIN_SLOT_INCLUDE_CHANCE` was cut 0.40 → **0.30** to land the measured density
+  back on the pre-arc **0.40 coins per slot** that `JUMP_UPGRADE_COSTS` is costed against.
+  `terrain_invariant_check` **measures** it per seed (0.37–0.42 observed over 8) rather than
+  asserting a closed form, and `check_coin_arc_height()` holds both clearance ceilings.
+
 ## Fall death (chasms)
 
 `update_fall_death()` runs after `move_and_slide()` + snap and **before** both watchdogs, so

@@ -59,8 +59,10 @@ const JUMP_MULTIPLIERS: Array[float] = [0.60, 0.70, 0.80, 0.90, 1.00]
 
 # Cost of the purchase that moves level i -> i+1, so this is always one shorter than
 # JUMP_MULTIPLIERS. Sized against a coin density of roughly 0.00234 coins/px (3 slots per
-# 512px chunk at a 0.4 include chance): about 26 coins for a 25s run, 56 for 45s, 122 for
-# 90s. Total 1130 across the curve is ~15 runs to max.
+# 512px chunk at an EFFECTIVE 0.4 coins per slot): about 26 coins for a 25s run, 56 for 45s,
+# 122 for 90s. Total 1130 across the curve is ~15 runs to max. Arcs kept that 0.4 exactly --
+# CoinSpawner's include chance dropped to 0.25 as arcs multiplied the payout by 1.6 -- so this
+# curve is still tuned. terrain_invariant_check.check_coin_arc_height() holds the product.
 const JUMP_UPGRADE_COSTS: Array[int] = [60, 150, 320, 600]
 
 const NO_COST: int = -1
