@@ -23,7 +23,7 @@ biome persistence, the opening biome).
 
 ## State
 
-The last code change is **"Pay a combo multiplier for coins collected without missing one"** on
+The last code change is **"Stop spawning coins behind the player's starting position"** on
 `terrain/disable-mega-drop-camera-shake` (the tip may carry docs-only fixups above it), and the
 working tree is **clean**. No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts
 ~2.3 min through the early ramp).
@@ -281,9 +281,18 @@ error in a palette consumer does *not* fail these probes.
 > run pays roughly **2.3×** its raw coins; measured, a **no-input** run over 100s collects 46
 > and misses 20, peaking at streak 17 — so the ramp costs real play, which was the ask.
 >
+> A coin **above the player's current grab ceiling never breaks the streak** — without that the
+> retuned arc would make the combo unplayable early, since a starting player passes unreachable
+> peaks constantly. The ceiling comes off the durable upgrade multiplier, not the jump powerup.
+>
 > **Open, for play to judge:** a mandatory chasm jump flies over any ground coins near the near
 > lip, and those break the streak. Suppressing coin slots near a lip is possible and was NOT
 > built — the player picks when to take off, so it may not read as unfair at all.
+>
+> **Also fixed here:** the startup fill was hanging coins in the `chunk_count_behind` chunks
+> *behind* the player (measured x=-981 to -42 against a camera that sees back to -626) —
+> visible over the shoulder, uncollectable, and reported as misses on frame one.
+> `CoinSpawner.run_start_world_x` now suppresses them.
 >
 > **2026-08-13, end of the coin session.** Branch `terrain/disable-mega-drop-camera-shake`,
 > Last code change: **"Pay a combo multiplier for coins collected without missing one"**; working
@@ -295,9 +304,11 @@ error in a palette consumer does *not* fail these probes.
 > ### Coin arcs — SHIPPED, unplayed
 >
 > Full derivation in `physics.md` → "Coin arcs". An included slot rolls `COIN_ARC_CHANCE` 0.3
-> into a three-coin arc — peak **92px**, shoulders **84px** at ±60px — instead of one 34px
-> ground coin. 92 clears the **58px** no-jump ceiling (which is why every coin in the game used
-> to be free) and sits 12px under **level 0's** 104px ceiling.
+> into a three-coin arc instead of one 34px ground coin. **Retuned to the MAX jump** after the
+> first version played too low: peak **174px** (the same max-only window the rare coin sits in),
+> shoulders **130px** at ±60px. The shoulders are 44px under the peak because a capsule whose
+> top is at the peak spans 48px down plus the coin's radius — so one max jump apexing on the
+> middle coin **sweeps** all three. Levels 0–1 get nothing, 2–3 get the shoulders only.
 >
 > Two things came out different from the spec above, both deliberate:
 >
