@@ -170,6 +170,19 @@ const GLIDE_LANDING_SHIELD_DURATION: float = 1.0
 # ramp-state concerns.
 var is_boosting: bool = false
 var boost_speed: float = 0.0
+# Set piece input lock, driven externally by FrozenLakeDirector while the player crosses
+# the frozen lake. The player keeps auto-running; every input they could give is ignored.
+#
+# A SEPARATE BOOL RATHER THAN REUSING is_boosting, which already means "jump suppressed"
+# and would have been the obvious reuse. It is not, because is_boosting does a second
+# thing: it forces the grounded, gravity-free velocity model (see the branch marked
+# LOAD-BEARING FOR CHASMS below). Borrowing it for the lake would hand the lake that
+# gravity override too, so a player who entered airborne would sail flat across the lake
+# instead of landing on it.
+#
+# Deliberately does NOT touch get_tree().paused: the game is still PLAYING during the
+# lake, and GameManager.set_state() is the project's only owner of paused-ness.
+var is_jump_suppressed: bool = false
 # Powerup jump boost: multiplies JUMP_VELOCITY's magnitude. Independent of
 # is_boosting/boost_speed -- the two powerups can be active at once and don't
 # interact (a boosted jump would be a contradiction of "no airtime" anyway, but
@@ -268,7 +281,13 @@ func _ready() -> void:
 # never produced a just_pressed edge inside _physics_process, so the poll below
 # can't see it. Setting the buffer directly reuses the exact same coyote/buffer
 # gate a keyboard jump uses -- only the delivery differs.
+#
+# Gated on is_jump_suppressed as well as the poll below, and BOTH are load-bearing:
+# gating only the "ui_accept" poll would leave touch jumps fully working on Android,
+# which is the platform this ships to.
 func buffer_jump() -> void:
+	if is_jump_suppressed:
+		return
 	jump_buffer_timer = JUMP_BUFFER_DURATION
 
 
@@ -282,7 +301,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		coyote_timer = maxf(coyote_timer - delta, 0.0)
 
-	if Input.is_action_just_pressed("ui_accept"):
+	if Input.is_action_just_pressed("ui_accept") and not is_jump_suppressed:
 		jump_buffer_timer = JUMP_BUFFER_DURATION
 	else:
 		jump_buffer_timer = maxf(jump_buffer_timer - delta, 0.0)
@@ -295,7 +314,12 @@ func _physics_process(delta: float) -> void:
 	# this branch would re-fire a full ordinary jump on top of the glide launch, discarding
 	# it. is_jump_ascending is already true from the glide launch at that point, so this
 	# also can't retrigger a genuine mid-jump the same way.
-	if not is_boosting and not is_jump_ascending and coyote_timer > 0.0 and jump_buffer_timer > 0.0:
+	#
+	# is_jump_suppressed is checked here as well as at both input sites, and it is not
+	# redundant: a jump buffered in the frames just BEFORE the lake's seam would otherwise
+	# still fire once the player is on it, since JUMP_BUFFER_DURATION outlives the crossing
+	# of a segment boundary.
+	if not is_jump_suppressed and not is_boosting and not is_jump_ascending and coyote_timer > 0.0 and jump_buffer_timer > 0.0:
 		velocity.y = JUMP_VELOCITY * upgrade_jump_multiplier * jump_boost_multiplier
 		coyote_timer = 0.0
 		jump_buffer_timer = 0.0
@@ -875,7 +899,14 @@ func end_glide() -> void:
 	is_glide_active = false
 
 
+# Reads false outright while input is suppressed, which has two consequences and both are
+# wanted: no airborne trick spin can be started on the lake (update_visual_rotation's spin
+# branch is this function's other caller), and a glide that happens to still be running when
+# the lake begins loses its thrust and simply falls, putting the player back on the ice.
+# Landing on flat, void-free, obstacle-free ground is safe by construction.
 func is_glide_input_held() -> bool:
+	if is_jump_suppressed:
+		return false
 	if Input.is_action_pressed(&"ui_accept"):
 		return true
 	return main_node != null and main_node.is_touch_held()
