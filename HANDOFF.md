@@ -23,9 +23,9 @@ biome persistence, the opening biome).
 
 ## State
 
-`HEAD` is **"Spin both coins a quarter faster, and repoint the handoff"** on
-`terrain/disable-mega-drop-camera-shake`, and the working tree is
-**clean**. No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts
+The last code change is **"Spin both coins a quarter faster, and repoint the handoff"** on
+`terrain/disable-mega-drop-camera-shake` (the tip may carry docs-only fixups above it), and the
+working tree is **clean**. No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts
 ~2.3 min through the early ramp).
 
 **Four TEMP knobs**, all uncommitted when set, and all in `biome_director.gd` except one:
@@ -270,8 +270,8 @@ error in a palette consumer does *not* fail these probes.
 > ## ▶ RESUME HERE — say "resume" and the next step is **COIN ARCS**, spec'd in full below.
 >
 > **2026-08-13, end of the coin session.** Branch `terrain/disable-mega-drop-camera-shake`,
-> `HEAD` = **"Spin both coins a quarter faster, and repoint the handoff"**, working tree
-> **clean**. Nothing is half-finished: every item below is either done-and-committed or not
+> Last code change: **"Spin both coins a quarter faster, and repoint the handoff"**; working
+> tree **clean**. Nothing is half-finished: every item below is either done-and-committed or not
 > started. **Nothing from the last two sessions has been seen
 > in play** and no gate can judge any of it — the biome coin/obstacle colours, the rare coin, the
 > coin sprites, the spin and the collect pop are all unplayed.
