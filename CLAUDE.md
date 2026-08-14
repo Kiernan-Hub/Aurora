@@ -175,7 +175,10 @@ background parallax were removed entirely, not left disabled — don't resurrect
    **coin wallet** every run banks into on death and per-upgrade levels. A **rare coin**
    (25, ~every 60s) hangs at `RARE_COIN_CLEARANCE` 174px — inside the 24px gap between the
    top two jump levels' reach, so only a max upgrade (or any level holding the ×√2 jump
-   powerup) gets it. Derivation and the four files it couples: `physics.md`
+   powerup) gets it. Derivation and the four files it couples: `physics.md`. A coin slot rolls
+   30% into a **3-coin arc** (peak 92px) that needs a real jump — before it, every ground coin
+   was collectible with zero input. That is what an **in-run combo** (+0.5× per 25 coins to a
+   3× cap, broken only by a missed ground coin) is built on: `architecture.md`
 4. Obstacles + death — **working**. Singles from t=20s, then every 12–30s. A boosting
    player breaks through instead of dying (see §5)
 5. **Powerups — working, six kinds** (2026-08-06): speed boost, jump boost, coin magnet,

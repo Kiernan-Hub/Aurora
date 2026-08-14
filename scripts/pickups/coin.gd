@@ -23,6 +23,10 @@ const POP_DURATION: float = 0.16
 const POP_SCALE: float = 1.35
 
 var has_been_collected: bool = false
+# Set by CoinSpawner the frame this coin passes behind the player uncollected, so the combo
+# break fires exactly once per coin. Lives here rather than in a spawner-side set because the
+# spawner already frees coins on its own schedule and a keyed set would outlive them.
+var has_been_missed: bool = false
 
 var visual: CanvasItem
 var visual_base_scale: Vector2 = Vector2.ONE

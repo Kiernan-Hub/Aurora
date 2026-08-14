@@ -23,7 +23,7 @@ biome persistence, the opening biome).
 
 ## State
 
-The last code change is **"Spin both coins a quarter faster, and repoint the handoff"** on
+The last code change is **"Pay a combo multiplier for coins collected without missing one"** on
 `terrain/disable-mega-drop-camera-shake` (the tip may carry docs-only fixups above it), and the
 working tree is **clean**. No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts
 ~2.3 min through the early ramp).
@@ -267,10 +267,26 @@ error in a palette consumer does *not* fail these probes.
 
 ## Next up
 
-> ## ▶ RESUME HERE — the next step is **IN-RUN COIN COMBO**, unblocked as of the arcs below.
+> ## ▶ RESUME HERE — the next step is **MORE UPGRADE TRACKS** (step 3 below).
+>
+> ### Coin combo — SHIPPED, unplayed
+>
+> `architecture.md` → "The coin combo" is the writeup. **+0.5× per 25 consecutive coins,
+> capping at 3× on the 100th**, stepped rather than continuous. Broken **only** by a missed
+> ground coin (`CoinSpawner.coin_missed`, once per coin at 72px behind the player) — not by the
+> rare coin, not by a glide coin, not by an obstacle hit.
+>
+> **It multiplies the coin, so it inflates the wallet**, which the project owner chose knowing
+> the arcs step had just held density at 0.40 for `JUMP_UPGRADE_COSTS`. A flawless two-minute
+> run pays roughly **2.3×** its raw coins; measured, a **no-input** run over 100s collects 46
+> and misses 20, peaking at streak 17 — so the ramp costs real play, which was the ask.
+>
+> **Open, for play to judge:** a mandatory chasm jump flies over any ground coins near the near
+> lip, and those break the streak. Suppressing coin slots near a lip is possible and was NOT
+> built — the player picks when to take off, so it may not read as unfair at all.
 >
 > **2026-08-13, end of the coin session.** Branch `terrain/disable-mega-drop-camera-shake`,
-> Last code change: **"Give a coin slot a jumpable three-coin arc"**; working
+> Last code change: **"Pay a combo multiplier for coins collected without missing one"**; working
 > tree **clean**. Nothing is half-finished: every item below is either done-and-committed or not
 > started. **Nothing from the last three sessions has been seen
 > in play** and no gate can judge most of it — the biome coin/obstacle colours, the rare coin, the
@@ -301,7 +317,7 @@ error in a palette consumer does *not* fail these probes.
 >
 > | State | Clearance a coin must be at or under |
 > |---|---|
-> | **Standing, no jump** | **58px** ← why every coin today is free |
+> | **Standing, no jump** | **58px** ← why every coin was free before arcs |
 > | Jump level 0 (×0.60) | 104px |
 > | Level 1 (×0.70) | 121px |
 > | Level 2 (×0.80) | 140px |
@@ -313,8 +329,8 @@ error in a palette consumer does *not* fail these probes.
 > | Step | What | State |
 > |---|---|---|
 > | 1 | Coin arcs (above) | **done, unplayed** |
-> | **2. NEXT** | In-run coin combo | unblocked — a coin can be missed now |
-> | 3 | More upgrade tracks (magnet radius, powerup duration, coin value) | not started, **free on the save side** |
+> | 2 | In-run coin combo (above) | **done, unplayed** |
+> | **3. NEXT** | More upgrade tracks (magnet radius, powerup duration, coin value) | not started, **free on the save side** |
 > | 4 | Diamonds as a second currency | **deliberately held** — see below |
 > | 5 | Glide vertical drift on the parallax layers | not started, design in `look-thorugh-my-files-wobbly-church.md` |
 >

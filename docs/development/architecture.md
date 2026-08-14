@@ -119,6 +119,29 @@ run banks its coins, so there is always something to persist. It is still exactl
 disk write per death. Anything that needs to persist per-run state should go through it
 rather than adding a second write.
 
+## The coin combo (2026-08-13)
+
+`GameManager` counts consecutive coins and multiplies every collection by **+0.5x per 25,
+capping at 3x on the 100th** — stepped, not continuous, because a creeping 1.37x is unreadable
+in motion and impossible to play toward.
+
+Three decisions worth keeping:
+
+- **Only a MISS breaks it**, and only `CoinSpawner` reports one (`coin_missed`, emitted once
+  per coin at `COIN_MISS_MARGIN` behind the player, flagged on the coin so it can't repeat).
+  The rare coin needs a max upgrade and a glide coin only exists mid-powerup, so breaking a
+  streak on either punishes the player for something they could not do. An obstacle hit doesn't
+  break it either — one break condition is what makes the counter readable at 750 px/s.
+- **It multiplies the coin, not a separate score.** Score and wallet are the same integer
+  (`record_run` banks `coin_count` *and* sets `best_score` from it), so a good run banks more
+  toward upgrades as well as scoring higher. That is a project-owner decision, made knowing it
+  inflates the wallet against `JUMP_UPGRADE_COSTS`.
+- **It stacks with the doubler powerup**, for a 6x ceiling that is rare by construction.
+
+None of this was worth building before coin arcs existed: every ground coin sat under the 58px
+standing grab ceiling, so a streak could never break and the counter would have ticked up on
+its own. See `physics.md` → "Coin arcs".
+
 ## The one autoload
 
 There is **exactly one**: `Services` (`scripts/autoload/services.gd`, `class_name

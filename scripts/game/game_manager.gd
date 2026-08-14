@@ -75,6 +75,25 @@ var coin_count: int = 0
 # the same coin_multiplier (doubler powerup) and coin SFX as a real coin -- one score
 # path, not two.
 const TRICK_COIN_REWARD: int = 5
+
+# --- Combo -----------------------------------------------------------------------------
+# Consecutive coins collected without letting one go past. Only CoinSpawner reports a miss
+# (see its coin_missed signal for why the rare and glide coins do not), and only a miss breaks
+# the streak -- not an obstacle hit, not a shield, not landing badly. One break condition is
+# what makes the counter readable at 750 px/s.
+#
+# The ramp is deliberately slow: +0.5x per 25 coins, capping at 3x on the 100th. A two-minute
+# run passes ~168 coins, and ~18% of coin slots are now three-coin arcs that need a real jump,
+# so 100 in a row is a strong run rather than the default state. A flawless two-minute run pays
+# about 2.3x its raw coins; a scrappy one barely leaves 1x.
+#
+# It multiplies the COIN, not a separate score, which is a deliberate call by the project owner:
+# score and wallet are the same integer here (SaveStore.record_run banks coin_count and sets
+# best_score from it), so a good run banks more toward upgrades as well as scoring more.
+const COMBO_STEP_STREAK: int = 25
+const COMBO_STEP_MULTIPLIER: float = 0.5
+const COMBO_MAX_MULTIPLIER: float = 3.0
+var combo_streak: int = 0
 var powerup_manager: PowerupManager
 # Read on death only, to bank how far into the biome cycle this run got. Optional and
 # null-guarded like the shop nodes: this is presentation state, and a run that cannot
@@ -217,6 +236,7 @@ func _ready() -> void:
 		return
 
 	coin_spawner.coin_collected.connect(_on_coin_collected)
+	coin_spawner.coin_missed.connect(_on_coin_missed)
 
 	# Optional, not required-and-return like coin_spawner/coin_label above: a missing
 	# GlideCoinSpawner should never take down the whole coin/score system, it just means
@@ -478,15 +498,41 @@ func _on_quick_restart_pressed() -> void:
 	get_tree().reload_current_scene()
 
 
+# The one place a coin turns into score. Every source routes through here -- ground coins,
+# glide coins, the rare coin and a landed trick -- so the doubler powerup and the combo apply
+# to all of them from one line each, rather than four sites that drift apart.
+#
+# The two multipliers STACK: a doubler held at a full combo pays 6x. That is the deliberate
+# ceiling of the whole system and it is rare on purpose -- the doubler is a timed powerup and
+# the combo takes 100 clean coins.
 func _on_coin_collected(value: int) -> void:
+	combo_streak += 1
 	var multiplier: float = powerup_manager.coin_multiplier if powerup_manager != null else 1.0
-	coin_count += int(value * multiplier)
+	coin_count += int(value * multiplier * get_combo_multiplier())
 	update_coin_label()
 	sfx_player.play_coin()
 
 
+func _on_coin_missed() -> void:
+	if combo_streak == 0:
+		return
+	combo_streak = 0
+	update_coin_label()
+
+
+# Stepped rather than continuous so the number on screen is a thing the player can aim at --
+# a smoothly creeping 1.37x is unreadable in motion and impossible to play toward.
+func get_combo_multiplier() -> float:
+	var steps: int = combo_streak / COMBO_STEP_STREAK
+	return minf(1.0 + (float(steps) * COMBO_STEP_MULTIPLIER), COMBO_MAX_MULTIPLIER)
+
+
 func update_coin_label() -> void:
-	coin_label.text = "Coins: %d" % coin_count
+	var combo_multiplier: float = get_combo_multiplier()
+	if combo_multiplier <= 1.0:
+		coin_label.text = "Coins: %d" % coin_count
+		return
+	coin_label.text = "Coins: %d   x%.1f" % [coin_count, combo_multiplier]
 
 
 # The SINGLE choke point where a purchased stat reaches gameplay. Nothing else in the
