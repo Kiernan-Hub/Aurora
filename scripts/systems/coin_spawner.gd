@@ -23,11 +23,11 @@ const COIN_SCENE: PackedScene = preload("res://scenes/pickups/coin.tscn")
 # slot is independently included or not (see get_slot_hash) so coins don't
 # appear in every chunk at identical spacing.
 const COIN_SLOT_FRACTIONS: Array[float] = [0.2, 0.5, 0.8]
-# 0.30, not the 0.4 this shipped with, because an included slot now spawns a THREE-coin arc
-# COIN_ARC_CHANCE of the time. The flat-ground arithmetic is 0.30 * (0.7*1 + 0.3*3) = 0.48
-# coins per slot, but roughly 40% of arc rolls are refused for slope (see
-# COIN_ARC_MAX_GROUND_DROP) and fall back to a single coin, which lands the MEASURED density
-# at ~0.42 -- against 0.40 before arcs. Do not re-derive that 0.40 from these constants alone;
+# 0.30, not the 0.4 this shipped with, because an included slot now spawns a THREE-coin air
+# line COIN_LINE_CHANCE of the time. The flat-ground arithmetic is 0.30 * (0.7*1 + 0.3*3) =
+# 0.48 coins per slot, but roughly 40% of line rolls are refused for slope (see
+# COIN_LINE_MAX_GROUND_DROP) and fall back to a single coin, which lands the MEASURED density
+# at ~0.42 -- against 0.40 before air lines existed. Do not re-derive that 0.40 from these constants alone;
 # it is a property of the terrain too, which is why terrain_invariant_check measures it per
 # seed rather than asserting the product. JUMP_UPGRADE_COSTS is costed against it.
 const COIN_SLOT_INCLUDE_CHANCE: float = 0.30
@@ -37,38 +37,41 @@ const COIN_SLOT_INCLUDE_CHANCE: float = 0.30
 # a coin never renders inside the terrain fill.
 const COIN_SURFACE_CLEARANCE: float = 34.0
 
-# --- Arcs -----------------------------------------------------------------------------
-# The point of the arc is that a coin can be MISSED. At COIN_SURFACE_CLEARANCE 34 every
-# ground coin in the game sits under the 58px standing grab ceiling, so the entire currency
-# is collected with zero input -- which is also why an in-run combo counter was pointless
-# until this existed.
-const COIN_ARC_CHANCE: float = 0.3
-const COIN_ARC_COIN_COUNT: int = 3
-# The middle coin, and the whole arc is shaped around the MAX-upgrade jump: 174 sits in the
-# 24px gap between jump level 3's 161.7px grab ceiling and level 4's 186.0, so a fully upgraded
-# jump takes it with 12px of slack and nothing below level 4 reaches it at all. Same line, and
-# the same derivation, as RARE_COIN_CLEARANCE -- kept as its own constant rather than shared,
-# because two unrelated pickups agreeing on a number today is not a reason to couple them.
-const COIN_ARC_PEAK_CLEARANCE: float = 174.0
-# The shoulders are 44px under the peak, which is what makes the arc read as one jump rather
-# than three separate grabs: a capsule whose TOP is at the peak still spans 48px down plus the
-# coin's 10px radius, so a max jump apexing on the middle coin sweeps both shoulders on the way
-# through. (The trajectory itself only drops 5-11px over the 60px spacing -- 0.5 * GRAVITY *
-# (60/speed)^2 across the 500-750 px/s range -- so the sweep, not the parabola, is the binding
-# constraint here.)
+# --- Air lines --------------------------------------------------------------------------
+# The point of hanging coins in the air is that a coin can be MISSED. At
+# COIN_SURFACE_CLEARANCE 34 every ground coin in the game sits under the 58px standing grab
+# ceiling, so the entire currency is collected with zero input -- which is also why an in-run
+# combo counter was pointless until this existed.
 #
-# 130 is also under level 2's 139.9 ceiling, which is the intended gradient: levels 0 and 1 get
-# nothing from an arc, 2 and 3 can take the shoulders but never the peak, and only a max jump
-# clears all three.
-const COIN_ARC_SHOULDER_CLEARANCE: float = 130.0
-# Half the 153.6px gap between neighbouring slots (0.3 * chunk_width 512), so two arcs in
-# adjacent slots still leave a coin-sized gap instead of reading as one long chain.
-const COIN_ARC_SPACING_X: float = 60.0
-# An arc's clearances are measured per coin against the ground under THAT coin, so on a slope
-# the arc tilts with the terrain while a real jump does not. Over the 120px span, 24px is
-# about 11 degrees; steeper than that and the slot falls back to a single ground coin rather
-# than hanging a shoulder out of reach. Same reasoning as RareCoinSpawner's flatness test.
-const COIN_ARC_MAX_GROUND_DROP: float = 24.0
+# The shape is a near-flat LINE, not an arc. An earlier version hung the ends 44px below the
+# middle, matching what a jumping capsule sweeps through; it read as too arc-y and was cut.
+const COIN_LINE_CHANCE: float = 0.3
+const COIN_LINE_COIN_COUNT: int = 3
+# The middle coin, and the line is placed for the MAX-upgrade jump: 174 sits in the 24px gap
+# between jump level 3's 161.7px grab ceiling and level 4's 186.0, so a fully upgraded jump
+# takes it with 12px of slack and nothing below level 4 reaches it. Same line, and the same
+# derivation, as RARE_COIN_CLEARANCE -- kept as its own constant rather than shared, because
+# two unrelated pickups agreeing on a number today is not a reason to couple them.
+const COIN_LINE_CLEARANCE: float = 174.0
+# The ends sit this much lower, and it is the ONLY reason the line is not perfectly flat: a
+# jump apexing on the middle coin has already fallen 5.1px by 60px away at 750 px/s and 11.5px
+# at 500 (0.5 * GRAVITY * (60/speed)^2), so a ruler-flat line at the max jump's reach drops its
+# end coins out of the pickup radius at the slower end of the speed ramp. 10 splits that range
+# and stays far inside the 10px radius at both ends. Anything much larger starts reading as an
+# arc again, which is what this replaced.
+const COIN_LINE_END_DROP: float = 10.0
+# Per-coin unevenness, so a line looks hand-placed rather than ruled. Deterministic in
+# (session_seed, chunk, slot, coin) like everything else the spawners produce, and strictly
+# DOWNWARD: a coin nudged up sits above the arc a jump actually traces and becomes
+# uncollectable, where one nudged down is only ever easier to catch.
+const COIN_LINE_JITTER: float = 8.0
+const COIN_LINE_SPACING_X: float = 60.0
+# A line measures each coin against the ground under THAT coin, so on a slope it tilts with the
+# terrain while a jump does not. Over the 120px span, 24px is about 11 degrees; steeper than
+# that and the slot falls back to a single ground coin rather than hanging a coin out of reach.
+# Same reasoning as RareCoinSpawner's flatness test.
+const COIN_LINE_MAX_GROUND_DROP: float = 24.0
+
 # Distinct from TerrainGenerator's own HASH_INDEX_MULTIPLIER/HASH_MIX_MULTIPLIER
 # salt so this hash sequence never collides with segment-selection hashing, even
 # though the two draw on the same session_seed and operate on different index
@@ -76,11 +79,11 @@ const COIN_ARC_MAX_GROUND_DROP: float = 24.0
 const HASH_MASK: int = 0x7fffffff
 const HASH_INDEX_MULTIPLIER: int = 2246822519
 const HASH_MIX_MULTIPLIER: int = 3266489917
-# A second, independent pair for the arc roll. Offsetting the slot index into the existing
+# A second, independent pair for the air-line rolls. Offsetting the slot index into the existing
 # sequence would NOT be independent -- its index domain is chunk_index * 3 + slot_index, so any
 # constant offset lands on a real slot in a later chunk and the two decisions correlate.
-const ARC_HASH_INDEX_MULTIPLIER: int = 668265263
-const ARC_HASH_MIX_MULTIPLIER: int = 2654435761
+const LINE_HASH_INDEX_MULTIPLIER: int = 668265263
+const LINE_HASH_MIX_MULTIPLIER: int = 2654435761
 
 # Coin magnet powerup (PowerupManager.EFFECT_COIN_MAGNET), driven externally via
 # set_magnet_active() the same way PowerupManager drives Player.start_boost/end_boost --
@@ -198,10 +201,11 @@ func spawn_coin_group(chunk_index: int) -> void:
 
 		var world_x: float = chunk_start_x + (COIN_SLOT_FRACTIONS[slot_index] * chunk_width)
 		var group_origin_x: float = chunk_start_x + (chunk_width * 0.5)
-		if get_arc_hash(chunk_index, slot_index) < COIN_ARC_CHANCE and can_fit_arc_at_world_x(world_x):
-			for arc_index: int in range(COIN_ARC_COIN_COUNT):
-				var offset_x: float = get_arc_offset_x(arc_index)
-				spawn_coin(group, group_origin_x, world_x + offset_x, get_arc_clearance(arc_index))
+		if get_line_hash(chunk_index, slot_index) < COIN_LINE_CHANCE and can_fit_line_at_world_x(world_x):
+			for coin_index: int in range(COIN_LINE_COIN_COUNT):
+				var offset_x: float = get_line_offset_x(coin_index)
+				var clearance: float = get_line_clearance(chunk_index, slot_index, coin_index)
+				spawn_coin(group, group_origin_x, world_x + offset_x, clearance)
 			continue
 
 		spawn_coin(group, group_origin_x, world_x, COIN_SURFACE_CLEARANCE)
@@ -210,7 +214,7 @@ func spawn_coin_group(chunk_index: int) -> void:
 # One coin at a world x, positioned relative to the chunk group's origin. Returns quietly if
 # there is no ground under it: a coin over a chasm is unreachable bait, because
 # get_terrain_height() returns the LIP height across a void and the coin would hang in mid-air.
-# Checked PER COIN rather than per slot so an arc that reaches over a lip loses only the coins
+# Checked PER COIN rather than per slot so a line that reaches over a lip loses only the coins
 # that are actually over the hole.
 func spawn_coin(group: Node2D, group_origin_x: float, world_x: float, clearance: float) -> void:
 	if world_x <= run_start_world_x:
@@ -227,29 +231,34 @@ func spawn_coin(group: Node2D, group_origin_x: float, world_x: float, clearance:
 	group.add_child(coin)
 
 
-func get_arc_offset_x(arc_index: int) -> float:
-	return (float(arc_index) - (float(COIN_ARC_COIN_COUNT - 1) * 0.5)) * COIN_ARC_SPACING_X
+func get_line_offset_x(coin_index: int) -> float:
+	return (float(coin_index) - (float(COIN_LINE_COIN_COUNT - 1) * 0.5)) * COIN_LINE_SPACING_X
 
 
-func get_arc_clearance(arc_index: int) -> float:
-	var is_peak: bool = arc_index == (COIN_ARC_COIN_COUNT - 1) / 2
-	return COIN_ARC_PEAK_CLEARANCE if is_peak else COIN_ARC_SHOULDER_CLEARANCE
+# Clearance of one coin in a line: the flat line, minus the end droop that keeps it inside a
+# single jump, minus a little deterministic unevenness. Both corrections only ever LOWER a
+# coin -- see COIN_LINE_JITTER.
+func get_line_clearance(chunk_index: int, slot_index: int, coin_index: int) -> float:
+	var is_middle: bool = coin_index == (COIN_LINE_COIN_COUNT - 1) / 2
+	var end_drop: float = 0.0 if is_middle else COIN_LINE_END_DROP
+	var jitter: float = get_line_coin_hash(chunk_index, slot_index, coin_index) * COIN_LINE_JITTER
+	return COIN_LINE_CLEARANCE - end_drop - jitter
 
 
-# The arc's shape only makes sense over ground that is near enough to flat -- see
-# COIN_ARC_MAX_GROUND_DROP. Pure in (session_seed, world_x), like everything else that reads
+# The line only makes sense over ground that is near enough to flat -- see
+# COIN_LINE_MAX_GROUND_DROP. Pure in (session_seed, world_x), like everything else that reads
 # the height field, so a slot's decision is identical every time the chunk is rebuilt.
-func can_fit_arc_at_world_x(world_x: float) -> bool:
+func can_fit_line_at_world_x(world_x: float) -> bool:
 	var lowest_height: float = INF
 	var highest_height: float = -INF
-	for arc_index: int in range(COIN_ARC_COIN_COUNT):
-		var sample_x: float = world_x + get_arc_offset_x(arc_index)
+	for coin_index: int in range(COIN_LINE_COIN_COUNT):
+		var sample_x: float = world_x + get_line_offset_x(coin_index)
 		if not terrain_generator.has_ground_at_world_x(sample_x):
 			return false
 		var height: float = terrain_generator.get_terrain_height(sample_x)
 		lowest_height = minf(lowest_height, height)
 		highest_height = maxf(highest_height, height)
-	return (highest_height - lowest_height) <= COIN_ARC_MAX_GROUND_DROP
+	return (highest_height - lowest_height) <= COIN_LINE_MAX_GROUND_DROP
 
 
 # Repaints the coins already on screen as well as every one spawned from here on, the same
@@ -346,12 +355,25 @@ func get_slot_hash(chunk_index: int, slot_index: int) -> float:
 	return float(mixed_value) / float(HASH_MASK)
 
 
-# "Does this included slot become an arc?" -- see ARC_HASH_INDEX_MULTIPLIER for why this is a
-# separate sequence rather than an offset into get_slot_hash's.
-func get_arc_hash(chunk_index: int, slot_index: int) -> float:
+# "Does this included slot become an air line?" -- see LINE_HASH_INDEX_MULTIPLIER for why this
+# is a separate sequence rather than an offset into get_slot_hash's.
+func get_line_hash(chunk_index: int, slot_index: int) -> float:
 	var session_seed: int = terrain_generator.get_session_seed()
-	var mixed_value: int = (session_seed ^ ((chunk_index * 3 + slot_index) * ARC_HASH_INDEX_MULTIPLIER)) & HASH_MASK
+	var mixed_value: int = (session_seed ^ ((chunk_index * 3 + slot_index) * LINE_HASH_INDEX_MULTIPLIER)) & HASH_MASK
 	mixed_value = (mixed_value ^ (mixed_value >> 16)) & HASH_MASK
-	mixed_value = (mixed_value * ARC_HASH_MIX_MULTIPLIER) & HASH_MASK
+	mixed_value = (mixed_value * LINE_HASH_MIX_MULTIPLIER) & HASH_MASK
 	mixed_value = (mixed_value ^ (mixed_value >> 13)) & HASH_MASK
+	return float(mixed_value) / float(HASH_MASK)
+
+
+# Per-COIN variation inside a line, on the same multiplier pair but a wider index domain so a
+# line's three coins draw three different values. Injective for the real ranges (slot < 3,
+# coin < COIN_LINE_COIN_COUNT), which is what keeps two different coins from sharing a nudge.
+func get_line_coin_hash(chunk_index: int, slot_index: int, coin_index: int) -> float:
+	var session_seed: int = terrain_generator.get_session_seed()
+	var index: int = ((chunk_index * 3 + slot_index) * COIN_LINE_COIN_COUNT) + coin_index
+	var mixed_value: int = (session_seed ^ (index * LINE_HASH_INDEX_MULTIPLIER)) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 14)) & HASH_MASK
+	mixed_value = (mixed_value * LINE_HASH_MIX_MULTIPLIER) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 17)) & HASH_MASK
 	return float(mixed_value) / float(HASH_MASK)

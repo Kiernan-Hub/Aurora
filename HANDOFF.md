@@ -23,7 +23,7 @@ biome persistence, the opening biome).
 
 ## State
 
-The last code change is **"Stop spawning coins behind the player's starting position"** on
+The last code change is **"Hang the three air coins in a near-flat line, not an arc"** on
 `terrain/disable-mega-drop-camera-shake` (the tip may carry docs-only fixups above it), and the
 working tree is **clean**. No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts
 ~2.3 min through the early ramp).
@@ -277,13 +277,13 @@ error in a palette consumer does *not* fail these probes.
 > rare coin, not by a glide coin, not by an obstacle hit.
 >
 > **It multiplies the coin, so it inflates the wallet**, which the project owner chose knowing
-> the arcs step had just held density at 0.40 for `JUMP_UPGRADE_COSTS`. A flawless two-minute
+> the air-line step had just held density at 0.40 for `JUMP_UPGRADE_COSTS`. A flawless two-minute
 > run pays roughly **2.3×** its raw coins; measured, a **no-input** run over 100s collects 46
 > and misses 20, peaking at streak 17 — so the ramp costs real play, which was the ask.
 >
 > A coin **above the player's current grab ceiling never breaks the streak** — without that the
-> retuned arc would make the combo unplayable early, since a starting player passes unreachable
-> peaks constantly. The ceiling comes off the durable upgrade multiplier, not the jump powerup.
+> line would make the combo unplayable early, since a starting player passes unreachable coins
+> constantly. The ceiling comes off the durable upgrade multiplier, not the jump powerup.
 >
 > **Open, for play to judge:** a mandatory chasm jump flies over any ground coins near the near
 > lip, and those break the streak. Suppressing coin slots near a lip is possible and was NOT
@@ -299,27 +299,35 @@ error in a palette consumer does *not* fail these probes.
 > tree **clean**. Nothing is half-finished: every item below is either done-and-committed or not
 > started. **Nothing from the last three sessions has been seen
 > in play** and no gate can judge most of it — the biome coin/obstacle colours, the rare coin, the
-> coin sprites, the spin, the collect pop and now the arcs are all unplayed.
+> coin sprites, the spin, the collect pop and now the air lines are all unplayed.
 >
-> ### Coin arcs — SHIPPED, unplayed
+> ### Coin air lines — SHIPPED, unplayed
 >
-> Full derivation in `physics.md` → "Coin arcs". An included slot rolls `COIN_ARC_CHANCE` 0.3
-> into a three-coin arc instead of one 34px ground coin. **Retuned to the MAX jump** after the
-> first version played too low: peak **174px** (the same max-only window the rare coin sits in),
-> shoulders **130px** at ±60px. The shoulders are 44px under the peak because a capsule whose
-> top is at the peak spans 48px down plus the coin's radius — so one max jump apexing on the
-> middle coin **sweeps** all three. Levels 0–1 get nothing, 2–3 get the shoulders only.
+> Full derivation in `physics.md` → "Coin air lines". An included slot rolls `COIN_LINE_CHANCE`
+> 0.3 into a three-coin **near-flat line** in the air instead of one 34px ground coin, placed at
+> the MAX-upgrade jump's height: middle **174px**, ends **10px lower**, plus 0–8px of
+> deterministic downward-only jitter per coin.
+>
+> **The 10px droop is not decoration.** A jump apexing on the middle coin has already fallen
+> 5.1px by 60px away at 750 px/s and **11.5px at 500**, so a ruler-flat line at that height
+> drops its end coins outside the 10px pickup radius at the slow end of the ramp. The jitter is
+> downward-only and smaller than the droop for the same reason — an end coin hung above the
+> middle sits above the curve a jump traces and can never be caught (gate-asserted).
+>
+> **The arc shape was built and CUT** (`a9fe841`, reverted here): ends 44px below the middle,
+> matching the full capsule sweep. The user did not like how arc-y it read. Do not restore it
+> without asking — the near-flat line is a deliberate look, not an approximation of the arc.
 >
 > Two things came out different from the spec above, both deliberate:
 >
-> - An arc measures each coin against the ground under *that* coin, so it tilts with the slope.
->   Over `COIN_ARC_MAX_GROUND_DROP` (24px across the 120px span) the slot **falls back to a
->   single coin** rather than hanging a shoulder out of reach.
-> - That fires on ~40% of arc rolls, so `0.25 × 1.6 = 0.40` is *not* true on real terrain.
+> - A line measures each coin against the ground under *that* coin, so it tilts with the slope.
+>   Over `COIN_LINE_MAX_GROUND_DROP` (24px across the 120px span) the slot **falls back to a
+>   single coin** rather than hanging a coin out of reach.
+> - That fires on ~40% of line rolls, so `0.25 × 1.6 = 0.40` is *not* true on real terrain.
 >   `COIN_SLOT_INCLUDE_CHANCE` went to **0.30**, and the gate **measures** density per seed
 >   (0.3708–0.4220 over the 8-seed sweep, mean 0.400) instead of asserting a closed form.
 >
-> `terrain_invariant_check` PASS 8/8 with `TERRAIN_INVARIANT_COIN_ARC` and a per-seed
+> `terrain_invariant_check` PASS 8/8 with `TERRAIN_INVARIANT_COIN_LINE` and a per-seed
 > `TERRAIN_INVARIANT_COIN_DENSITY` line; `shipping_values_check` PASS; `freeze_replay_runner`
 > 6000 frames clean, which is only there to prove the live spawner throws no error — coins are
 > Area2D layer 2 and never touch terrain collision, so no physics gate is actually involved.
@@ -339,7 +347,7 @@ error in a palette consumer does *not* fail these probes.
 >
 > | Step | What | State |
 > |---|---|---|
-> | 1 | Coin arcs (above) | **done, unplayed** |
+> | 1 | Coin air lines (above) | **done, unplayed** |
 > | 2 | In-run coin combo (above) | **done, unplayed** |
 > | **3. NEXT** | More upgrade tracks (magnet radius, powerup duration, coin value) | not started, **free on the save side** |
 > | 4 | Diamonds as a second currency | **deliberately held** — see below |

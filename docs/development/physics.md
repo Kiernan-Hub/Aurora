@@ -138,46 +138,49 @@ That number is coupled to `JUMP_VELOCITY`, `GRAVITY`, the last two `JUMP_MULTIPL
 wrong are silent in play** — so `terrain_invariant_check.check_rare_coin_height()` asserts
 the whole table above, reading the radius out of the scene rather than restating it.
 
-### Coin arcs (2026-08-13)
+### Coin air lines (2026-08-13)
 
 The same table read from the bottom. With no jump at all the ceiling is **58px** (`48 +
-radius 10`), and `COIN_SURFACE_CLEARANCE` is 34 — so before arcs, **every ground coin in the
-game was collected with zero input**. That is why an in-run combo counter was pointless: no
-coin could be missed.
+radius 10`), and `COIN_SURFACE_CLEARANCE` is 34 — so before coins hung in the air, **every
+ground coin in the game was collected with zero input**. That is why an in-run combo counter
+was pointless: no coin could be missed.
 
-An included coin slot now rolls `COIN_ARC_CHANCE` (0.3) into a three-coin arc instead of one
-ground coin. It is shaped around the **max-upgrade jump**, not the weakest one:
+An included coin slot now rolls `COIN_LINE_CHANCE` (0.3) into a three-coin **near-flat line**
+in the air instead of one ground coin, placed for the **max-upgrade jump**:
 
-| | Clearance | Who reaches it |
-|---|---|---|
-| Peak | **174** | level 4 only — same max-only window as the rare coin (above level 3's 161.7, under level 4's 186) |
-| Shoulders (±60px) | **130** | level 2 and up; swept by a max jump apexing on the peak |
+| | Clearance |
+|---|---|
+| Middle coin | **174** — the same max-only window as the rare coin (above level 3's 161.7, under level 4's 186) |
+| End coins (±60px) | 174 − **10** − jitter |
+| Per-coin jitter | 0 to **8px**, deterministic, **downward only** |
 
-The shoulders sit **44px under the peak** because that is what makes the arc read as *one
-jump* rather than three grabs: a capsule whose top is at the peak still spans 48px down, plus
-the coin's 10px radius, so a max jump apexing on the middle coin sweeps both shoulders on the
-way through. The trajectory's own drop over 60px is only 5–11px across the 500–750 px/s range
-(`½·g·(60/v)²`), so the **capsule sweep, not the parabola, is the binding constraint**.
+**The 10px droop is the only reason the line isn't perfectly flat, and it is not decoration.**
+A jump apexing on the middle coin has already fallen `½·g·(60/v)²` by the time it reaches an
+end coin — 5.1px at 750 px/s, **11.5px at 500** — so a ruler-flat line at the max jump's reach
+drops its end coins outside the 10px pickup radius at the slow end of the speed ramp. 10 splits
+that range. Push it much further and the shape reads as an arc again, which is what it
+replaced: **an earlier version hung the ends 44px low** (matching the full capsule sweep) and
+was cut for looking too arc-y.
 
-The gradient is the feature: levels 0–1 get nothing from an arc, 2–3 take the shoulders but
-never the peak, and only a max jump clears all three.
+Jitter is downward-only for the same reason: a coin nudged *up* sits above the trajectory a
+jump actually traces and becomes uncollectable, where one nudged down is only ever easier.
 
 **A coin above the player's current grab ceiling does not break the combo streak**
 (`GameManager.get_grab_ceiling()`, computed from the durable upgrade multiplier only — never
 the ×√2 jump powerup, which is a timer that may have run out two seconds before the coin went
-past). Without that, a starting player passes several unreachable arc peaks a minute and their
+past). Without that, a starting player passes several unreachable lines a minute and their
 streak could never leave zero.
 
-Two things about the arc are terrain-dependent, not constants:
+Two things about the line are terrain-dependent, not constants:
 
-- Clearance is measured per coin against the ground under **that** coin, so an arc tilts with
-  the slope while a jump does not. Over `COIN_ARC_MAX_GROUND_DROP` (24px across the 120px
+- Clearance is measured per coin against the ground under **that** coin, so a line tilts with
+  the slope while a jump does not. Over `COIN_LINE_MAX_GROUND_DROP` (24px across the 120px
   span, ~11°) the slot **falls back to a single ground coin**.
-- That fallback fires on roughly 40% of arc rolls, so the density is not the product of the
+- That fallback fires on roughly 40% of line rolls, so the density is not the product of the
   constants. `COIN_SLOT_INCLUDE_CHANCE` was cut 0.40 → **0.30** to land the measured density
-  back on the pre-arc **0.40 coins per slot** that `JUMP_UPGRADE_COSTS` is costed against.
+  back on the pre-line **0.40 coins per slot** that `JUMP_UPGRADE_COSTS` is costed against.
   `terrain_invariant_check` **measures** it per seed (0.37–0.42 observed over 8) rather than
-  asserting a closed form, and `check_coin_arc_height()` holds all four clearance edges.
+  asserting a closed form, and `check_coin_line_height()` holds all four clearance edges.
 
 ## Fall death (chasms)
 

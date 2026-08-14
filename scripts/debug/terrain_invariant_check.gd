@@ -95,17 +95,21 @@ const PLAYER_CAPSULE_HALF_HEIGHT: float = 24.0
 # this is deliberately small; it exists to stop the clearance being tuned to the exact edge,
 # where a rounding difference decides whether the game's rarest pickup exists.
 const RARE_COIN_REACH_MARGIN: float = 6.0
-# The standing grab ceiling: capsule reach plus the coin's radius, no jump at all. An arc coin
-# must clear this by a real margin or the arc costs no input, which is the entire reason arcs
-# exist. 8px is roughly a frame of the player's vertical travel at the top of a jump.
-const COIN_ARC_FREE_GRAB_MARGIN: float = 8.0
-# Clear air the peak must keep on both sides of its max-jump-only window, and the shoulders
-# above the sweep floor. Small for the same reason RARE_COIN_REACH_MARGIN is: the window is
-# only ~24px wide, so this exists to stop the clearance being tuned to the exact edge.
-const COIN_ARC_REACH_MARGIN: float = 6.0
+# The standing grab ceiling: capsule reach plus the coin's radius, no jump at all. A coin hung
+# in an air line must clear this by a real margin or the line costs no input, which is the
+# entire reason it exists. 8px is roughly a frame of vertical travel at the top of a jump.
+const COIN_LINE_FREE_GRAB_MARGIN: float = 8.0
+# Clear air the line must keep on both sides of its max-jump-only window. Small for the same
+# reason RARE_COIN_REACH_MARGIN is: the window is only ~24px wide, so this exists to stop the
+# clearance being tuned to the exact edge.
+const COIN_LINE_REACH_MARGIN: float = 6.0
+# Slowest speed a line's end coins have to be catchable at. A jump apexing on the middle coin
+# has fallen 0.5 * GRAVITY * (spacing/speed)^2 by the time it reaches an end, and the slower the
+# run, the further it has fallen -- so the slowest speed in the ramp is the binding case.
+const COIN_LINE_SLOWEST_SPEED: float = SpeedManager.PHASE1_TARGET_SPEED
 # Coins per candidate slot, the number the upgrade costs are sized against. The tolerance is
 # wide because the measurement is genuinely seed-dependent -- how much of the sampled range is
-# flat enough for an arc varies -- and observed 0.39 to 0.44 across seeds.
+# flat enough for a line varies -- and observed 0.37 to 0.42 across seeds.
 const COIN_DENSITY_TARGET: float = 0.40
 const COIN_DENSITY_TOLERANCE: float = 0.06
 
@@ -145,12 +149,12 @@ func _init() -> void:
 		print("    ", violation)
 	variant_violations.append_array(rare_coin_violations)
 
-	var coin_arc_violations: Array[String] = check_coin_arc_height()
-	print("TERRAIN_INVARIANT_COIN_ARC peak=%.1f shoulder=%.1f" % [CoinSpawner.COIN_ARC_PEAK_CLEARANCE, CoinSpawner.COIN_ARC_SHOULDER_CLEARANCE],
-		" status=", "PASS" if coin_arc_violations.is_empty() else "FAIL")
-	for violation: String in coin_arc_violations:
+	var coin_line_violations: Array[String] = check_coin_line_height()
+	print("TERRAIN_INVARIANT_COIN_LINE clearance=%.1f end_drop=%.1f jitter=%.1f" % [CoinSpawner.COIN_LINE_CLEARANCE, CoinSpawner.COIN_LINE_END_DROP, CoinSpawner.COIN_LINE_JITTER],
+		" status=", "PASS" if coin_line_violations.is_empty() else "FAIL")
+	for violation: String in coin_line_violations:
 		print("    ", violation)
-	variant_violations.append_array(coin_arc_violations)
+	variant_violations.append_array(coin_line_violations)
 
 	var failed_seed_count: int = 0
 	for session_seed: int in session_seeds:
@@ -205,7 +209,7 @@ func check_session_seed(session_seed: int, start_world_x: float, end_world_x: fl
 	var coin_violations: Array[String] = coin_report["violations"]
 	print("TERRAIN_INVARIANT_COIN_DENSITY seed=", session_seed,
 		" coins_per_slot=%.4f" % float(coin_report["coins_per_slot"]),
-		" arcs=", coin_report["arc_count"], " slots=", coin_report["slot_count"],
+		" lines=", coin_report["line_count"], " slots=", coin_report["slot_count"],
 		" status=", "PASS" if coin_violations.is_empty() else "FAIL")
 	for violation: String in coin_violations:
 		print("    ", violation)
@@ -423,19 +427,21 @@ func check_rare_coin_height() -> Array[String]:
 	return violations
 
 
-# Coin arcs. The arc is shaped around the MAX-upgrade jump: its peak sits in the same gap the
-# rare coin occupies (above jump level 3's ceiling, under level 4's), and the shoulders sit far
-# enough under that peak for one apexing jump to sweep all three -- while staying low enough
-# that levels 2 and 3 can still take the shoulders alone. That gradient is the feature, and
-# every edge of it is silent in play: an arc no jump can clear looks exactly like an arc that
-# is merely hard, and a peak the second-best jump reaches looks exactly like one it should not.
+# Coin air lines. A line is placed for the MAX-upgrade jump: its middle coin sits in the same
+# gap the rare coin occupies (above jump level 3's ceiling, under level 4's), and the end coins
+# hang a little lower so ONE jump takes all three -- a jump apexing on the middle coin has
+# already fallen by the time it reaches an end, and a ruler-flat line drops those end coins out
+# of the pickup radius at the slower end of the speed ramp.
 #
-# Three assertions, one per edge:
-#   1. the peak is out of reach below max     (or the max upgrade stops being what it buys)
-#   2. the peak is inside a max jump's reach   (or the arc is bait nobody can finish)
-#   3. the shoulders are inside the capsule sweep of a jump apexing on the peak, and still
-#      above the standing grab ceiling         (or the arc is three grabs, or it is free)
-func check_coin_arc_height() -> Array[String]:
+# Every edge here is silent in play: a line no jump can finish looks exactly like a line that is
+# merely hard, and a line the second-best jump reaches looks exactly like one it should not.
+#
+#   1. the line is out of reach below max      (or the max upgrade stops being what it buys)
+#   2. the line is inside a max jump's reach     (or it is bait nobody can finish)
+#   3. the end coins are inside the pickup radius of the trajectory AT THE SLOWEST SPEED
+#                                                (or the line is three grabs, not one jump)
+#   4. every coin, jitter included, clears the standing grab ceiling      (or it is free)
+func check_coin_line_height() -> Array[String]:
 	var violations: Array[String] = []
 
 	var scene_root: Node = CoinSpawner.COIN_SCENE.instantiate()
@@ -450,7 +456,7 @@ func check_coin_arc_height() -> Array[String]:
 
 	var multipliers: Array[float] = UpgradeStore.JUMP_MULTIPLIERS
 	if multipliers.size() < 2:
-		violations.append("UpgradeStore.JUMP_MULTIPLIERS has fewer than two levels -- the arc's 'max upgrade takes all three' rule has nothing to mean")
+		violations.append("UpgradeStore.JUMP_MULTIPLIERS has fewer than two levels -- the line's 'max upgrade takes all three' rule has nothing to mean")
 		return violations
 
 	var capsule_reach: float = PLAYER_CAPSULE_HALF_HEIGHT * 2.0
@@ -458,44 +464,54 @@ func check_coin_arc_height() -> Array[String]:
 	var top_ceiling: float = capsule_reach + get_jump_apex(multipliers[multipliers.size() - 1]) + coin_radius
 	var second_ceiling: float = capsule_reach + get_jump_apex(multipliers[multipliers.size() - 2]) + coin_radius
 
-	var peak: float = CoinSpawner.COIN_ARC_PEAK_CLEARANCE
-	var shoulder: float = CoinSpawner.COIN_ARC_SHOULDER_CLEARANCE
+	var clearance: float = CoinSpawner.COIN_LINE_CLEARANCE
+	if clearance > top_ceiling - COIN_LINE_REACH_MARGIN:
+		violations.append("air line at %.1f is out of reach of a MAX jump (ceiling %.1f, margin %.1f) -- nobody can finish it"
+			% [clearance, top_ceiling, COIN_LINE_REACH_MARGIN])
+	if clearance < second_ceiling + COIN_LINE_REACH_MARGIN:
+		violations.append("air line at %.1f is within reach of jump level %d (ceiling %.1f, margin %.1f) -- the max upgrade stops being what buys it"
+			% [clearance, multipliers.size() - 2, second_ceiling, COIN_LINE_REACH_MARGIN])
 
-	if peak > top_ceiling - COIN_ARC_REACH_MARGIN:
-		violations.append("arc peak at %.1f is out of reach of a MAX jump (ceiling %.1f, margin %.1f) -- nobody can finish the arc"
-			% [peak, top_ceiling, COIN_ARC_REACH_MARGIN])
-	if peak < second_ceiling + COIN_ARC_REACH_MARGIN:
-		violations.append("arc peak at %.1f is within reach of jump level %d (ceiling %.1f, margin %.1f) -- the max upgrade stops being what buys the whole arc"
-			% [peak, multipliers.size() - 2, second_ceiling, COIN_ARC_REACH_MARGIN])
+	# How far a jump apexing on the middle coin has fallen by the time it reaches an end coin,
+	# at the slowest speed a line can be met at. The end coin has to be within the pickup radius
+	# of that, or one jump stops taking the whole line.
+	var travel_time: float = CoinSpawner.COIN_LINE_SPACING_X / COIN_LINE_SLOWEST_SPEED
+	var trajectory_drop: float = 0.5 * Player.GRAVITY * travel_time * travel_time
+	var end_error: float = absf(trajectory_drop - CoinSpawner.COIN_LINE_END_DROP)
+	if end_error > coin_radius:
+		violations.append("a line's end coins sit %.1fpx off the trajectory at %.0f px/s (drop %.1f vs COIN_LINE_END_DROP %.1f, pickup radius %.1f) -- one jump can no longer take all three"
+			% [end_error, COIN_LINE_SLOWEST_SPEED, trajectory_drop, CoinSpawner.COIN_LINE_END_DROP, coin_radius])
 
-	# A capsule whose top is at the peak spans one full capsule height downward, and the coin
-	# is caught by its own radius on top of that. Below this line the arc is three separate
-	# grabs rather than one jump, which is the whole read of the shape.
-	var sweep_floor: float = peak - capsule_reach - coin_radius
-	if shoulder < sweep_floor + COIN_ARC_REACH_MARGIN:
-		violations.append("arc shoulder at %.1f is below the %.1f a jump apexing on the peak sweeps (margin %.1f) -- one jump can no longer take all three"
-			% [shoulder, sweep_floor, COIN_ARC_REACH_MARGIN])
-	if shoulder < standing_ceiling + COIN_ARC_FREE_GRAB_MARGIN:
-		violations.append("arc shoulder at %.1f is inside the standing grab ceiling %.1f (margin %.1f) -- the arc costs no input, which is the only reason it exists"
-			% [shoulder, standing_ceiling, COIN_ARC_FREE_GRAB_MARGIN])
+	# An end coin must never be able to out-rank the middle one: the jump traces a curve with
+	# its top at the middle coin, so an end coin ABOVE that sits above the trajectory entirely
+	# and cannot be caught. Holds as long as the droop is at least the jitter range.
+	if CoinSpawner.COIN_LINE_END_DROP < CoinSpawner.COIN_LINE_JITTER:
+		violations.append("COIN_LINE_JITTER %.1f exceeds COIN_LINE_END_DROP %.1f -- an end coin can be hung above the middle one, which puts it above the arc a jump traces"
+			% [CoinSpawner.COIN_LINE_JITTER, CoinSpawner.COIN_LINE_END_DROP])
+
+	# Jitter only ever lowers a coin, so the deepest possible coin is the one to check.
+	var lowest: float = clearance - CoinSpawner.COIN_LINE_END_DROP - CoinSpawner.COIN_LINE_JITTER
+	if lowest < standing_ceiling + COIN_LINE_FREE_GRAB_MARGIN:
+		violations.append("the lowest coin a line can produce, %.1f, is inside the standing grab ceiling %.1f (margin %.1f) -- it costs no input, which is the only reason the line exists"
+			% [lowest, standing_ceiling, COIN_LINE_FREE_GRAB_MARGIN])
 
 	return violations
 
 
 # Coins per slot, MEASURED by asking the spawner what it would build over the sampled range,
-# rather than multiplying the constants out. The two differ: an arc roll over ground too steep
-# to hang an arc on falls back to a single coin, so the real density is a property of the
+# rather than multiplying the constants out. The two differ: a line roll over ground too steep
+# to hang a line on falls back to a single coin, so the real density is a property of the
 # terrain as well as of CoinSpawner, and no closed form over the constants is true.
 #
-# This is the number UpgradeStore.JUMP_UPGRADE_COSTS is sized against. It was 0.40 before arcs
-# existed, and the include chance was re-tuned to land back on it.
+# This is the number UpgradeStore.JUMP_UPGRADE_COSTS is sized against. It was 0.40 before air
+# lines existed, and the include chance was re-tuned to land back on it.
 func measure_coin_density(terrain_generator: TerrainGenerator, spawner: CoinSpawner, start_world_x: float, end_world_x: float) -> Dictionary:
 	var chunk_width: float = terrain_generator.chunk_width
 	var first_chunk: int = int(floor(start_world_x / chunk_width))
 	var last_chunk: int = int(floor(end_world_x / chunk_width))
 	var slot_count: int = 0
 	var coin_count: int = 0
-	var arc_count: int = 0
+	var line_count: int = 0
 
 	for chunk_index: int in range(first_chunk, last_chunk + 1):
 		var chunk_start_x: float = float(chunk_index) * chunk_width
@@ -504,9 +520,9 @@ func measure_coin_density(terrain_generator: TerrainGenerator, spawner: CoinSpaw
 			if spawner.get_slot_hash(chunk_index, slot_index) > CoinSpawner.COIN_SLOT_INCLUDE_CHANCE:
 				continue
 			var world_x: float = chunk_start_x + (CoinSpawner.COIN_SLOT_FRACTIONS[slot_index] * chunk_width)
-			if spawner.get_arc_hash(chunk_index, slot_index) < CoinSpawner.COIN_ARC_CHANCE and spawner.can_fit_arc_at_world_x(world_x):
-				arc_count += 1
-				coin_count += CoinSpawner.COIN_ARC_COIN_COUNT
+			if spawner.get_line_hash(chunk_index, slot_index) < CoinSpawner.COIN_LINE_CHANCE and spawner.can_fit_line_at_world_x(world_x):
+				line_count += 1
+				coin_count += CoinSpawner.COIN_LINE_COIN_COUNT
 				continue
 			if terrain_generator.has_ground_at_world_x(world_x):
 				coin_count += 1
@@ -518,7 +534,7 @@ func measure_coin_density(terrain_generator: TerrainGenerator, spawner: CoinSpaw
 			% [coins_per_slot, COIN_DENSITY_TARGET, COIN_DENSITY_TOLERANCE])
 	return {
 		"coins_per_slot": coins_per_slot,
-		"arc_count": arc_count,
+		"line_count": line_count,
 		"slot_count": slot_count,
 		"violations": violations,
 	}

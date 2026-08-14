@@ -142,7 +142,7 @@ Three decisions worth keeping:
 - **A coin above the player's reach doesn't break it either.** The miss carries the coin's
   `surface_clearance`, and `get_grab_ceiling()` (capsule + apex + pickup radius, off the
   **durable upgrade** multiplier — never the ×√2 powerup timer) decides whether it was
-  collectable. This is load-bearing, not politeness: an arc peak hangs at the max jump's reach,
+  collectable. This is load-bearing, not politeness: an air line hangs at the max jump's reach,
   so a starting player passes several a minute that no input could take, and without this their
   streak could never leave zero. Both shape sizes are read out of the scenes, never restated —
   a hand-copied capsule height is one of `visuals.md`'s four art-swap couplings.
@@ -152,9 +152,9 @@ Three decisions worth keeping:
   inflates the wallet against `JUMP_UPGRADE_COSTS`.
 - **It stacks with the doubler powerup**, for a 6x ceiling that is rare by construction.
 
-None of this was worth building before coin arcs existed: every ground coin sat under the 58px
-standing grab ceiling, so a streak could never break and the counter would have ticked up on
-its own. See `physics.md` → "Coin arcs" for the arc's clearances and the reach gradient.
+None of this was worth building before coins hung in the air: every ground coin sat under the
+58px standing grab ceiling, so a streak could never break and the counter would have ticked up
+on its own. See `physics.md` → "Coin air lines" for the clearances.
 
 ## The one autoload
 
