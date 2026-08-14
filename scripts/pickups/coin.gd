@@ -10,7 +10,7 @@ signal collected(value: int)
 # this apart on purpose: the ordinary coin is calm because ~168 of them cross the screen in
 # a two-minute run and a fast one turns the ground into strobing, while the rare diamond
 # spins hard precisely BECAUSE it is rare -- it has ~0.92s on screen to be noticed.
-@export var spin_speed: float = 2.2
+@export var spin_speed: float = 2.75
 # How far the squash goes. 1.0 is no spin; 0.0 flips through zero width like a Mario coin,
 # which also means the pickup is invisible at every half-turn. That is the opposite of what
 # the sprite rebuild was for, so both scenes stay well clear of it -- the coin only hints at

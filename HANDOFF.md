@@ -23,11 +23,9 @@ biome persistence, the opening biome).
 
 ## State
 
-`HEAD` is `eca9711` on `terrain/disable-mega-drop-camera-shake`. Everything below is committed,
-and as of 2026-08-13 the working tree is **clean except for two untracked PNGs in the repo
-root** (`Coin.png`, `Rare coin:diamond.png` — deliberately not committed, see "Next up" item 0).
-No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts ~2.3 min
-through the early ramp).
+`HEAD` is `cf90507` on `terrain/disable-mega-drop-camera-shake` and the working tree is
+**clean**. No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts
+~2.3 min through the early ramp).
 
 **Four TEMP knobs**, all uncommitted when set, and all in `biome_director.gd` except one:
 
@@ -268,22 +266,83 @@ error in a palette consumer does *not* fail these probes.
 
 ## Next up
 
-> **RESUME HERE — 2026-08-13, end of session.** Branch `terrain/disable-mega-drop-camera-shake`,
-> `HEAD` = `eca9711`, working tree clean apart from **two untracked PNGs in the repo root that
-> are deliberately not committed** (see item 0 below). Nothing is half-finished: every item
-> below is either done-and-committed or not started.
+> ## ▶ RESUME HERE — say "resume" and the next step is **COIN ARCS**, spec'd in full below.
 >
-> The session's plan is `/Users/kjh/.claude/plans/look-thorugh-my-files-wobbly-church.md`.
-> Its agreed order, and where it actually got to:
+> **2026-08-13, end of the coin session.** Branch `terrain/disable-mega-drop-camera-shake`,
+> `HEAD` = `cf90507`, working tree **clean**. Nothing is half-finished: every item below is
+> either done-and-committed or not started. **Nothing from the last two sessions has been seen
+> in play** and no gate can judge any of it — the biome coin/obstacle colours, the rare coin, the
+> coin sprites, the spin and the collect pop are all unplayed.
+>
+> ### The next step, in one place
+>
+> **Coin arcs.** Ground coins currently sit at `COIN_SURFACE_CLEARANCE` **34px**, and the
+> no-jump grab ceiling is **58px** — so *every ground coin in the game is collected with zero
+> input*. That is the finding that reordered everything else: an in-run combo built today would
+> tick up on its own, because no coin can be missed.
+>
+> Agreed shape, approved in principle, **not started**:
+>
+> - Each included slot rolls into either today's single ground coin **or a 3-coin arc peaking
+>   at 92px clearance**. 92 is above the 58px free line so it needs a real jump, and 12px under
+>   the **104px level-0 ceiling** so it stays fair at the weakest upgrade.
+> - **Hold the economy exactly**: 30% of slots becoming 3-coin arcs is 1.6× density, so drop
+>   `COIN_SLOT_INCLUDE_CHANCE` **0.40 → 0.25** for an effective 0.40. Identical payout, so the
+>   1130-coin upgrade curve stays tuned. Do not skip this — the curve is costed against density.
+> - Assert 92 in `terrain_invariant_check` the way `check_rare_coin_height()` already asserts
+>   174; the reach formula is `capsule_reach(48) + jump_apex(m) + coin_radius(10)`.
+> - Per-coin `has_ground_at_world_x()` already exists in `spawn_coin_group()` and covers an arc
+>   crossing a void. Coins are Area2D layer 2 and never touch terrain collision, so **no physics
+>   gate is involved** — terrain check + `shipping_values_check` is the right gate set.
+>
+> ### Grab ceilings — measured, use these, do not re-derive
+>
+> | State | Clearance a coin must be at or under |
+> |---|---|
+> | **Standing, no jump** | **58px** ← why every coin today is free |
+> | Jump level 0 (×0.60) | 104px |
+> | Level 1 (×0.70) | 121px |
+> | Level 2 (×0.80) | 140px |
+> | Level 3 (×0.90) | 162px |
+> | Level 4 (×1.00) | 186px |
+>
+> ### Then, in this order
 >
 > | Step | What | State |
 > |---|---|---|
-> | 0 | Shield desync fix | **DONE `df895eb`** |
-> | 1 | Pin the base viewport to 1152×648, `aspect` stays `expand`, zoom stays 0.8333 | **DONE `ec1ef8b`** |
-> | 2 | Gameplay-object coherence — wire `coin_color`/`obstacle_color` | **DONE `2e30ce5`**, not yet played |
-> | — | Rare coin (unplanned, user-requested mid-session) | **DONE `eca9711`**, not yet played |
-> | **3. NEXT** | Glide vertical drift on the parallax layers | not started, design settled in the plan file |
-> | 4 | Art / sprites | blocked on item 0 |
+> | **1. NEXT** | Coin arcs (above) | not started |
+> | 2 | In-run coin combo | **blocked on step 1** — nothing to measure until coins can be missed |
+> | 3 | More upgrade tracks (magnet radius, powerup duration, coin value) | not started, **free on the save side** |
+> | 4 | Diamonds as a second currency | **deliberately held** — see below |
+> | 5 | Glide vertical drift on the parallax layers | not started, design in `look-thorugh-my-files-wobbly-church.md` |
+>
+> **Why the currency is worth fixing at all.** Measured payouts: **~31 coins for a 30s run, ~72
+> at 60s, ~168 at 120s** (+25 per diamond), against a total upgrade curve of **1130**. So the
+> entire meta-progression empties in **8–15 runs**, after which every coin on screen is worth
+> nothing forever. More sinks (step 3) is the cheap fix and needs **no save migration**:
+> `save_store.gd` keys `upgrade_levels` as an open dictionary precisely so "adding an upgrade
+> TYPE needs no version bump."
+>
+> **Why step 4 is held.** A second currency IS a new top-level concept, so it needs SaveStore
+> **v3** — the migration that was built and reverted once already (`5f1900e` / `6c757c2`). The
+> real blocker is that **there are no cosmetics or biome unlocks to sell yet**, so it would ship
+> a currency nobody can spend, which is the same dead-end being fixed. Revive is the one item
+> that could ship alone. The user has approved the *direction* (coins → upgrades, diamonds →
+> cosmetics / biome unlocks / revive); they have not approved building it now.
+>
+> **Settled, do not reopen: coins stay GOLD.** Every thematic alternative (crystals, shards,
+> aurora motes, ice runes) is blue, and blue-on-ice is exactly the legibility failure that
+> `check_gameplay_contrast()`'s RGB-distance floor exists to prevent. The coin is the only warm
+> thing on a cold screen and that is load-bearing, not decorative. If it needs to feel less
+> generic, **change the silhouette, never the hue**.
+>
+> **Settled, do not reopen: do not zoom the camera out.** Raised as a way to buy reaction time
+> for the diamond. `zoom` 0.8333 in an 1152×648 base is 0.833 **screen px per world px** — zoom
+> to 0.70 and you buy **+0.18s** for a **16% shrink of everything on screen**, undoing the sprite
+> legibility work. Spawn lookahead is already 800px against a 691px half-view, so the diamond is
+> visible for its whole on-screen life; 0.92s is simply what 750 px/s buys. If it proves too
+> tight the fix is a **telegraph** (a ground marker at the coin's x), which costs no field of
+> view. The user has said they will judge the 0.92s in play.
 >
 > **What step 2 actually shipped** (`biomes.md` → "Gameplay contrast" is the full writeup): all
 > nine palettes now author `coin_color`/`obstacle_color`; `BiomeDirector.push_palette()` pushes
@@ -329,11 +388,17 @@ error in a palette consumer does *not* fail these probes.
 > loops forever on ±INF; six silent `push_error(); return` paths in `GameManager._ready()` can
 > leave a live game under an undismissable `StartScreen`.
 >
-> **Gate state at `eca9711`** — all green, run this session: terrain check 8/8 seeds (incl. the
-> new rare-coin assertion, tested failing in both directions), `shipping_values_check` 13 knobs
-> clean, `biome_schedule_check`, `floor_flicker` 0/0 with worst snap 1.76px. **Nothing has been
-> seen in play**: the biome coin/obstacle colours and the rare coin are both unplayed, and no
-> gate can judge either.
+> **Gate state at `cf90507`** — all green: `terrain_invariant_check` 8/8 seeds (rare-coin
+> clearance 174.0), `shipping_values_check` 13 knobs clean, `biome_schedule_check`,
+> `floor_flicker` 6 seeds / 120 000 frames with worst uphill flip rate 0.0000, 0 recoveries,
+> 0 stuck, worst forced snap **1.8633px** (baseline at `eca9711` was 1.76px — same ballpark, and
+> coins never touch terrain collision so there is no mechanism for a sprite to move it).
+> `project.godot` clean.
+>
+> **`floor_flicker_probe` takes ~10 minutes when the Godot editor is open**, because the editor
+> and any running game instance compete for CPU with the headless run. It also prints one
+> `FLICKER_RESULT` per seed *before* the `FLICKER_SUMMARY` — wait on `FLICKER_SUMMARY`, not on
+> the first `RESULT`, or you will read a one-seed run as a finished one.
 >
 > **One process note.** Adding `class_name RareCoinSpawner` required
 > `Godot --headless --editor --quit --path .` before any gate would compile — and that stripped
@@ -379,6 +444,23 @@ Open, minor: the sprite is authored at 2× for a **ground** coin. `GlideCoinSpaw
 coins by `AIR_COIN_SCALE` 1.9, which lands them at ~1.05× authored — under-sampled on a high-DPI
 screen. A 64px source would fix air coins and alias the far commoner ground coin (no mipmaps),
 so it was left alone deliberately.
+
+**Spin and collect pop shipped with them.** Both are exported on `Coin` so the two scenes differ
+sharply on purpose: the ordinary coin is calm (`spin_speed` **2.75** rad/s, `spin_min_scale`
+**0.55**) because ~168 cross the screen in a two-minute run and a fast one strobes the ground;
+the diamond runs **6.875 / 0.22** because it is rare and has under a second on screen to be
+noticed. Both were tuned ×1.25 up from the first values (2.2 / 5.5) on the user's ear.
+
+Three things there are deliberate and will look like bugs if "fixed":
+
+- **Neither flips through zero width** the way a Mario coin does. That costs a frame of total
+  invisibility, which is the exact opposite of what the sprite rebuild was for.
+- **Spin phase is seeded from `position`**, not `randf()`. Without it a row of coins squashes in
+  lockstep and reads as one pulsing object rather than several spinning ones.
+- **`set_visual_color()` refuses to paint a collected coin.** `apply_biome_color()` runs on every
+  frame of a crossfade and would otherwise reset `modulate.a` to 1 partway through the collect
+  fade and undo it — visible only *during a biome transition*, so it would have read as an
+  intermittent glitch.
 
 **1. Playtest the three new rare variants.** The only thing in the tree shipped without a play
 confirmation. Two of the three are colour judgments nobody but the project owner can make: is the
