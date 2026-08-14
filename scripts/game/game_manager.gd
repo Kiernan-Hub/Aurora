@@ -143,6 +143,10 @@ static var pending_quick_restart: bool = false
 # what a probe wants anyway.
 var services: GameServices
 
+# How much of THIS run's Main.elapsed_time has already been folded into
+# SaveStore.total_playtime_seconds. See bank_playtime() for why it exists.
+var banked_run_seconds: float = 0.0
+
 
 func _ready() -> void:
 	# _notification below must still arrive while the tree is paused -- a focus-out that
@@ -339,7 +343,48 @@ func set_state(new_state: State) -> void:
 	# GameServices.set_music_volume.
 	if previous_state == State.PAUSED and new_state != State.PAUSED and services != null:
 		services.save_settings()
+	# Leaving PLAYING is the only moment this run's seconds stop accruing, so it is the
+	# only place they can be captured without polling. Covers pause, Home, quick restart
+	# and -- because the Android focus-out handler below routes through set_state -- the
+	# app being backgrounded, which is the case a death-only hook silently loses.
+	#
+	# Returns false on the death path, because _on_player_died() has already banked and
+	# let record_run's single existing write carry the total. So death still costs exactly
+	# one disk write, not two.
+	if previous_state == State.PLAYING and new_state != State.PLAYING:
+		if bank_playtime() and services != null:
+			services.save_store.save_to_disk()
 	state_changed.emit(new_state)
+
+
+# Folds the unbanked part of this run into the cumulative playtime total, in memory only --
+# the caller decides whether that warrants a disk write.
+#
+# Main.elapsed_time is monotonic within a run and accrues only while PLAYING (the tree is
+# paused in every other state), so the unbanked amount is just the difference since the
+# last call. Tracking it that way rather than adding deltas per frame means the two callers
+# can fire in either order, or twice, without double-counting -- which matters because the
+# death path banks and then immediately transitions out of PLAYING.
+#
+# Returns true when something was actually banked.
+func bank_playtime() -> bool:
+	if services == null or main == null:
+		return false
+	# Skipped in headless for the same reason apply_upgrades() is, and it is not an
+	# optimisation. The autoload NODE exists under --headless --script, so a probe would
+	# otherwise bank its own runtime into the developer's real save.dat -- a 60,000-frame
+	# freeze run is 1,000 seconds, which would hand out frozen lakes that no amount of
+	# playing earned and move the schedule out from under every later measurement.
+	# Reading DisplayServer directly, never services.is_headless, which is assigned in
+	# GameServices._ready() and can still be false here (CLAUDE.md records this twice).
+	if DisplayServer.get_name() == "headless":
+		return false
+	var unbanked_seconds: float = main.elapsed_time - banked_run_seconds
+	if unbanked_seconds <= 0.0:
+		return false
+	services.save_store.total_playtime_seconds += unbanked_seconds
+	banked_run_seconds = main.elapsed_time
+	return true
 
 
 # Android lifecycle. There was no _notification anywhere in the project before
@@ -432,6 +477,9 @@ func _on_player_died() -> void:
 	if biome_director != null:
 		BiomeDirector.session_biome_phase = biome_director.get_persisted_phase(player.global_position.x)
 	if services != null:
+		# BEFORE record_run, so this run's seconds ride record_run's single disk write
+		# rather than costing a second one from set_state(DEAD) a few lines below.
+		bank_playtime()
 		is_new_best = services.save_store.record_run(coin_count, main.elapsed_time)
 		best_score = services.save_store.best_score
 		wallet = services.save_store.coin_wallet

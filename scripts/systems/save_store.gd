@@ -22,7 +22,7 @@ const SAVE_PATH: String = "user://save.dat"
 # startup it is the debris of a write that failed after the payload landed but before the
 # rename, and SAVE_PATH is still the last good save.
 const TEMP_SAVE_PATH: String = "user://save.dat.tmp"
-const CURRENT_VERSION: int = 2
+const CURRENT_VERSION: int = 3
 
 const DEFAULT_MUSIC_VOLUME: float = 0.8
 const DEFAULT_SFX_VOLUME: float = 1.0
@@ -42,6 +42,25 @@ var sfx_volume: float = DEFAULT_SFX_VOLUME
 # both directions. This file must NOT reference UpgradeStore -- see its header.
 var coin_wallet: int = 0
 var upgrade_levels: Dictionary[String, int] = {}
+
+# Set pieces and achievements (v3).
+#
+# total_playtime_seconds is CUMULATIVE ACROSS EVERY RUN AND EVERY LAUNCH, and it is the
+# clock the frozen lake is scheduled against -- not run time, which resets, and not
+# wall-clock time, which would tick while the app is closed. GameManager owns the banking;
+# see its bank_playtime(). It only ever grows.
+#
+# achievements is an open dictionary keyed by achievement id, for exactly the reason
+# upgrade_levels above is: adding an achievement then needs no version bump. Only the
+# concept arriving needed one. An id written by a later build is preserved untouched here
+# and simply reads as unknown to this one.
+#
+# frozen_lake_count is how many lakes have been COMPLETED, so it doubles as the index of
+# the next 20-minute threshold. Kept separate from the achievement flag because the
+# achievement fires once and the lake recurs forever.
+var total_playtime_seconds: float = 0.0
+var frozen_lake_count: int = 0
+var achievements: Dictionary[String, bool] = {}
 
 
 # Not named load(): that would shadow GDScript's global load() inside this class.
@@ -85,6 +104,22 @@ func load_from_disk() -> void:
 		for upgrade_id: Variant in stored_levels.keys():
 			upgrade_levels[String(upgrade_id)] = maxi(int(stored_levels[upgrade_id]), 0)
 
+	# v2 -> v3: same idiom again. A v2 file has never played a set piece, so 0 seconds
+	# banked, 0 lakes seen and no achievements is the correct state for it -- an existing
+	# player's 20-minute clock simply starts now rather than being back-dated, which is
+	# the honest reading of "20 minutes of playtime" for a build that never measured it.
+	if version >= 3:
+		# maxf, and float() rather than int(): this is seconds, and a negative value could
+		# only come from a hand-edited or corrupt file, where it would push the next lake
+		# unreachably far away.
+		total_playtime_seconds = maxf(float(data.get("total_playtime_seconds", 0.0)), 0.0)
+		frozen_lake_count = maxi(int(data.get("frozen_lake_count", 0)), 0)
+		# Copied key by key for the same reason upgrade_levels above is -- JSON hands back
+		# an UNTYPED Dictionary, which cannot be assigned into a Dictionary[String, bool].
+		var stored_achievements: Dictionary = data.get("achievements", {}) as Dictionary
+		for achievement_id: Variant in stored_achievements.keys():
+			achievements[String(achievement_id)] = bool(stored_achievements[achievement_id])
+
 
 # WRITES VIA A TEMP FILE AND A RENAME, NEVER STRAIGHT OVER THE LIVE SAVE.
 #
@@ -113,6 +148,9 @@ func save_to_disk() -> void:
 		"best_time": best_time,
 		"coin_wallet": coin_wallet,
 		"upgrades": upgrade_levels,
+		"total_playtime_seconds": total_playtime_seconds,
+		"frozen_lake_count": frozen_lake_count,
+		"achievements": achievements,
 		"settings": {
 			"music_volume": music_volume,
 			"sfx_volume": sfx_volume,
@@ -157,4 +195,10 @@ func reset_progress() -> void:
 	best_time = 0.0
 	coin_wallet = 0
 	upgrade_levels.clear()
+	# Cleared too, so "reset progress" means a genuinely fresh save rather than one that
+	# hands the next lake out minutes later than a new install would. The consequence is
+	# deliberate: the 20-minute clock restarts and the achievement can be earned again.
+	total_playtime_seconds = 0.0
+	frozen_lake_count = 0
+	achievements.clear()
 	save_to_disk()
