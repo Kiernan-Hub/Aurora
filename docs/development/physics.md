@@ -145,14 +145,22 @@ radius 10`), and `COIN_SURFACE_CLEARANCE` is 34 — so before coins hung in the 
 ground coin in the game was collected with zero input**. That is why an in-run combo counter
 was pointless: no coin could be missed.
 
-An included coin slot now rolls `COIN_LINE_CHANCE` (0.3) into a three-coin **near-flat line**
-in the air instead of one ground coin, placed for the **max-upgrade jump**:
+An included coin slot rolls `COIN_LINE_CHANCE` (**0.1**) into a three-coin **near-flat line**
+in the air instead of one ground coin:
 
 | | Clearance |
 |---|---|
-| Middle coin | **174** — the same max-only window as the rare coin (above level 3's 161.7, under level 4's 186) |
-| End coins (±60px) | 174 − **10** − jitter |
+| Middle coin | **132** |
+| End coins (±60px) | 132 − **10** − jitter |
 | Per-coin jitter | 0 to **8px**, deterministic, **downward only** |
+
+**132 is chosen to sit away from every jump level's grab ceiling, not on one.** It was 174 (the
+rare coin's max-only window) and played too high; "about 20% lower" is 139.2, which lands
+**0.7px** under level 2's 139.9 ceiling — a coin that level can take only on a perfect frame and
+otherwise watches go past, indistinguishable from a broken spawner. 132 clears level 2's ceiling
+by 7.9px and level 1's by 11.3, so which levels take a line is learnable. `check_coin_line_
+height()` fails the build if the clearance comes within `COIN_LINE_REACH_MARGIN` of **any**
+level's ceiling.
 
 **The 10px droop is the only reason the line isn't perfectly flat, and it is not decoration.**
 A jump apexing on the middle coin has already fallen `½·g·(60/v)²` by the time it reaches an

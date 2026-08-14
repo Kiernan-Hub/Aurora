@@ -45,14 +45,19 @@ const COIN_SURFACE_CLEARANCE: float = 34.0
 #
 # The shape is a near-flat LINE, not an arc. An earlier version hung the ends 44px below the
 # middle, matching what a jumping capsule sweeps through; it read as too arc-y and was cut.
-const COIN_LINE_CHANCE: float = 0.3
+const COIN_LINE_CHANCE: float = 0.1
 const COIN_LINE_COIN_COUNT: int = 3
-# The middle coin, and the line is placed for the MAX-upgrade jump: 174 sits in the 24px gap
-# between jump level 3's 161.7px grab ceiling and level 4's 186.0, so a fully upgraded jump
-# takes it with 12px of slack and nothing below level 4 reaches it. Same line, and the same
-# derivation, as RARE_COIN_CLEARANCE -- kept as its own constant rather than shared, because
-# two unrelated pickups agreeing on a number today is not a reason to couple them.
-const COIN_LINE_CLEARANCE: float = 174.0
+# The middle coin. Was 174 -- the max-jump-only line the rare coin uses -- and played too high.
+# The ask was "about 20% closer to the ground", which is 139.2, and that lands 0.7px under jump
+# level 2's 139.9px grab ceiling: a coin that level can only take on a perfect frame and
+# otherwise watches go past, which is exactly the kind of edge that reads as a bug. 132 is the
+# nearest value that clears EVERY jump level's ceiling by more than a rounding error -- 7.9px
+# inside level 2's, 11.3px above level 1's -- so which levels can take a line is a fact a
+# player can learn rather than a coin flip. terrain_invariant_check asserts that spacing.
+#
+# The rare coin keeps the max-only line to itself now, which is the better split anyway: one
+# pickup in the game should be the max-upgrade-only one.
+const COIN_LINE_CLEARANCE: float = 132.0
 # The ends sit this much lower, and it is the ONLY reason the line is not perfectly flat: a
 # jump apexing on the middle coin has already fallen 5.1px by 60px away at 750 px/s and 11.5px
 # at 500 (0.5 * GRAVITY * (60/speed)^2), so a ruler-flat line at the max jump's reach drops its

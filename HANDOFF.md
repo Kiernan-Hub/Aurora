@@ -23,7 +23,7 @@ biome persistence, the opening biome).
 
 ## State
 
-The last code change is **"Hang the three air coins in a near-flat line, not an arc"** on
+The last code change is **"Make air lines 3x rarer and hang them lower"** on
 `terrain/disable-mega-drop-camera-shake` (the tip may carry docs-only fixups above it), and the
 working tree is **clean**. No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts
 ~2.3 min through the early ramp).
@@ -304,9 +304,18 @@ error in a palette consumer does *not* fail these probes.
 > ### Coin air lines — SHIPPED, unplayed
 >
 > Full derivation in `physics.md` → "Coin air lines". An included slot rolls `COIN_LINE_CHANCE`
-> 0.3 into a three-coin **near-flat line** in the air instead of one 34px ground coin, placed at
-> the MAX-upgrade jump's height: middle **174px**, ends **10px lower**, plus 0–8px of
-> deterministic downward-only jitter per coin.
+> **0.1** into a three-coin **near-flat line** in the air instead of one 34px ground coin:
+> middle **132px**, ends **10px lower**, plus 0–8px of deterministic downward-only jitter.
+>
+> **132 sits away from every jump level's grab ceiling on purpose.** The ask was "about 20%
+> lower" than the original 174, which is 139.2 — and that lands **0.7px** under level 2's
+> 139.9px ceiling, a coin that level can take only on a perfect frame. The gate now fails if the
+> clearance comes within 6px of ANY level's ceiling.
+>
+> **Coin density fell 0.40 → ~0.34 per slot and that is intended** — the owner asked for coins
+> to be less frequent. `JUMP_UPGRADE_COSTS` is still costed against 0.40, so upgrades take ~16%
+> longer in raw coins; the combo (up to ×3) more than covers that on a clean run. If upgrades
+> feel slow in play, the lever is the costs, not the density.
 >
 > **The 10px droop is not decoration.** A jump apexing on the middle coin has already fallen
 > 5.1px by 60px away at 750 px/s and **11.5px at 500**, so a ruler-flat line at that height

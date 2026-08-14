@@ -107,11 +107,16 @@ const COIN_LINE_REACH_MARGIN: float = 6.0
 # has fallen 0.5 * GRAVITY * (spacing/speed)^2 by the time it reaches an end, and the slower the
 # run, the further it has fallen -- so the slowest speed in the ramp is the binding case.
 const COIN_LINE_SLOWEST_SPEED: float = SpeedManager.PHASE1_TARGET_SPEED
-# Coins per candidate slot, the number the upgrade costs are sized against. The tolerance is
-# wide because the measurement is genuinely seed-dependent -- how much of the sampled range is
-# flat enough for a line varies -- and observed 0.37 to 0.42 across seeds.
-const COIN_DENSITY_TARGET: float = 0.40
-const COIN_DENSITY_TOLERANCE: float = 0.06
+# Coins per candidate slot. It was 0.40 while air lines rolled at 0.3; the project owner cut
+# them to 0.1 wanting coins less frequent overall, and this target followed the measurement
+# down rather than the include chance being raised to defend the old number -- fewer coins was
+# the ask. JUMP_UPGRADE_COSTS is still costed against 0.40, so upgrades take roughly 16% longer
+# in raw coins, which the combo multiplier (up to 3x) more than covers on a clean run.
+#
+# The tolerance is wide because the measurement is genuinely seed-dependent: how much of the
+# sampled range is flat enough for a line varies. Observed 0.3163 to 0.3521 across 8 seeds.
+const COIN_DENSITY_TARGET: float = 0.34
+const COIN_DENSITY_TOLERANCE: float = 0.05
 
 
 func _init() -> void:
@@ -427,20 +432,22 @@ func check_rare_coin_height() -> Array[String]:
 	return violations
 
 
-# Coin air lines. A line is placed for the MAX-upgrade jump: its middle coin sits in the same
-# gap the rare coin occupies (above jump level 3's ceiling, under level 4's), and the end coins
-# hang a little lower so ONE jump takes all three -- a jump apexing on the middle coin has
-# already fallen by the time it reaches an end, and a ruler-flat line drops those end coins out
-# of the pickup radius at the slower end of the speed ramp.
+# Coin air lines. Three coins hung in a near-flat line, high enough to cost a real jump. The
+# end coins hang a little lower than the middle so ONE jump takes all three -- a jump apexing on
+# the middle coin has already fallen by the time it reaches an end, and a ruler-flat line drops
+# those end coins out of the pickup radius at the slower end of the speed ramp.
 #
 # Every edge here is silent in play: a line no jump can finish looks exactly like a line that is
-# merely hard, and a line the second-best jump reaches looks exactly like one it should not.
+# merely hard, and a line hung a pixel above some upgrade level's ceiling looks exactly like one
+# hung a pixel below it -- until that player never quite gets it.
 #
-#   1. the line is out of reach below max      (or the max upgrade stops being what it buys)
-#   2. the line is inside a max jump's reach     (or it is bait nobody can finish)
+#   1. the line is inside a max jump's reach          (or it is bait nobody can finish)
+#   2. it is not within a rounding error of ANY jump level's ceiling
+#                                                     (or one level's players get a coin flip)
 #   3. the end coins are inside the pickup radius of the trajectory AT THE SLOWEST SPEED
-#                                                (or the line is three grabs, not one jump)
-#   4. every coin, jitter included, clears the standing grab ceiling      (or it is free)
+#                                                     (or the line is three grabs, not one jump)
+#   4. an end coin can never be hung above the middle one   (or it is above the curve entirely)
+#   5. every coin, jitter included, clears the standing grab ceiling      (or it is free)
 func check_coin_line_height() -> Array[String]:
 	var violations: Array[String] = []
 
@@ -462,15 +469,20 @@ func check_coin_line_height() -> Array[String]:
 	var capsule_reach: float = PLAYER_CAPSULE_HALF_HEIGHT * 2.0
 	var standing_ceiling: float = capsule_reach + coin_radius
 	var top_ceiling: float = capsule_reach + get_jump_apex(multipliers[multipliers.size() - 1]) + coin_radius
-	var second_ceiling: float = capsule_reach + get_jump_apex(multipliers[multipliers.size() - 2]) + coin_radius
 
 	var clearance: float = CoinSpawner.COIN_LINE_CLEARANCE
 	if clearance > top_ceiling - COIN_LINE_REACH_MARGIN:
 		violations.append("air line at %.1f is out of reach of a MAX jump (ceiling %.1f, margin %.1f) -- nobody can finish it"
 			% [clearance, top_ceiling, COIN_LINE_REACH_MARGIN])
-	if clearance < second_ceiling + COIN_LINE_REACH_MARGIN:
-		violations.append("air line at %.1f is within reach of jump level %d (ceiling %.1f, margin %.1f) -- the max upgrade stops being what buys it"
-			% [clearance, multipliers.size() - 2, second_ceiling, COIN_LINE_REACH_MARGIN])
+
+	# Which levels reach a line is a design choice and may move. Sitting ON one of those
+	# boundaries is never the choice: that level's players see a coin they can take only on a
+	# perfect frame, which is indistinguishable from a broken spawner.
+	for level: int in range(multipliers.size()):
+		var ceiling: float = capsule_reach + get_jump_apex(multipliers[level]) + coin_radius
+		if absf(clearance - ceiling) < COIN_LINE_REACH_MARGIN:
+			violations.append("air line at %.1f sits %.1fpx from jump level %d's grab ceiling %.1f (margin %.1f) -- that level gets a coin flip, not a rule"
+				% [clearance, absf(clearance - ceiling), level, ceiling, COIN_LINE_REACH_MARGIN])
 
 	# How far a jump apexing on the middle coin has fallen by the time it reaches an end coin,
 	# at the slowest speed a line can be met at. The end coin has to be within the pickup radius

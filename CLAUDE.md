@@ -176,7 +176,7 @@ background parallax were removed entirely, not left disabled — don't resurrect
    (25, ~every 60s) hangs at `RARE_COIN_CLEARANCE` 174px — inside the 24px gap between the
    top two jump levels' reach, so only a max upgrade (or any level holding the ×√2 jump
    powerup) gets it. Derivation and the four files it couples: `physics.md`. A coin slot rolls
-   30% into a **3-coin air line** at the MAX-upgrade jump's height (174px, ends 10px lower) —
+   10% into a **3-coin air line** (132px, ends 10px lower, clear of every jump ceiling) —
    before it, every ground coin was collectible with zero input. That is what an **in-run
    combo** (+0.5× per 25 coins to a 3× cap) is built on; a missed coin **above the player's
    current grab ceiling never breaks the streak**, or a starting player could never hold
