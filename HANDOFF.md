@@ -267,79 +267,102 @@ error in a palette consumer does *not* fail these probes.
 
 ## Next up
 
-> ## ▶ RESUME HERE — the next step is **MORE UPGRADE TRACKS** (step 3 below).
+> ## ▶ RESUME HERE
 >
-> ### Coin combo — SHIPPED, unplayed
+> **2026-08-13, end of the coin session.** Branch `terrain/disable-mega-drop-camera-shake`, last
+> code change **"Make air lines 3x rarer and hang them lower"** (`867ef03`), working tree
+> **clean**. Nothing is half-finished: every item here is either done-and-committed or not
+> started.
 >
-> `architecture.md` → "The coin combo" is the writeup. **+0.5× per 25 consecutive coins,
-> capping at 3× on the 100th**, stepped rather than continuous. Broken **only** by a missed
-> ground coin (`CoinSpawner.coin_missed`, once per coin at 72px behind the player) — not by the
-> rare coin, not by a glide coin, not by an obstacle hit.
+> ### The next step is a PLAYTEST, not code
 >
-> **It multiplies the coin, so it inflates the wallet**, which the project owner chose knowing
-> the air-line step had just held density at 0.40 for `JUMP_UPGRADE_COSTS`. A flawless two-minute
-> run pays roughly **2.3×** its raw coins; measured, a **no-input** run over 100s collects 46
-> and misses 20, peaking at streak 17 — so the ramp costs real play, which was the ask.
+> **Nothing from the last three sessions has been seen in play, and no gate can judge most of
+> it.** Unplayed: the biome coin/obstacle colours, the rare coin, both coin sprites, the spin
+> and collect pop, the three-coin air lines, the combo multiplier, and the three rare biome
+> variants. Do not stack more systems on top of that pile — the next build step should follow a
+> play session, because half the open questions below are answerable only by feel.
 >
-> A coin **above the player's current grab ceiling never breaks the streak** — without that the
-> line would make the combo unplayable early, since a starting player passes unreachable coins
-> constantly. The ceiling comes off the durable upgrade multiplier, not the jump powerup.
+> What to look for, in the order it will hit you:
 >
-> **Open, for play to judge:** a mandatory chasm jump flies over any ground coins near the near
-> lip, and those break the streak. Suppressing coin slots near a lip is possible and was NOT
-> built — the player picks when to take off, so it may not read as unfair at all.
+> 1. **Do the air lines read?** They are now rare (1 slot in 10 of the 30% that spawn at all)
+>    and sit at 132px, which levels 3-4 clear comfortably and level 2 mostly cannot.
+> 2. **Does the combo counter mean anything?** It shows next to the coin count only above ×1.
+>    A no-input run peaks at streak 17; a clean run should walk to ×3 in about a minute.
+> 3. **Do upgrades feel too slow now?** Density fell 0.40 → ~0.34 coins per slot deliberately,
+>    and `JUMP_UPGRADE_COSTS` was never re-tuned. **The lever is the costs, not the density** —
+>    the owner asked for fewer coins on purpose.
+> 4. **Chasm jumps and the combo.** A mandatory jump flies over ground coins near the near lip
+>    and those break the streak. Suppressing coin slots near a lip is possible and was NOT
+>    built, because the player chooses when to take off. Judge it before building anything.
+> 5. **The three rare biome variants** (`9bfffc3`): is the paler `glacier_teal` still
+>    recognisably green, and is the paler `violet_dusk` still purple rather than blue-grey?
 >
-> **Also fixed here:** the startup fill was hanging coins in the `chunk_count_behind` chunks
-> *behind* the player (measured x=-981 to -42 against a camera that sees back to -626) —
-> visible over the shoulder, uncollectable, and reported as misses on frame one.
-> `CoinSpawner.run_start_world_x` now suppresses them.
+> ### Then, in order
 >
-> **2026-08-13, end of the coin session.** Branch `terrain/disable-mega-drop-camera-shake`,
-> Last code change: **"Pay a combo multiplier for coins collected without missing one"**; working
-> tree **clean**. Nothing is half-finished: every item below is either done-and-committed or not
-> started. **Nothing from the last three sessions has been seen
-> in play** and no gate can judge most of it — the biome coin/obstacle colours, the rare coin, the
-> coin sprites, the spin, the collect pop and now the air lines are all unplayed.
+> | Step | What | State |
+> |---|---|---|
+> | **1. NEXT** | More upgrade tracks — magnet radius, powerup duration, coin value | not started, **free on the save side** (`upgrade_levels` is an open dict) |
+> | 2 | Fold the coherence + built-tile contrast checks into `build_ice_texture.py --check` | not started, ~15 lines of numpy, written out in `ice_panels.md` |
+> | 3 | Diamonds as a second currency | **deliberately held** — needs SaveStore v3 and there is nothing to spend it on yet |
+> | 4 | Phase 4 — the rare flat "glass lake" biome | design only; `six.png` is reserved for it, runs the full physics gate set |
+> | 5 | Rarity — `glacier_teal` only | **decide only after playing chained sessions**; the 20% variant may have already fixed it |
+> | 6 | Glide vertical drift on the parallax layers | not started, design in `look-thorugh-my-files-wobbly-church.md` |
 >
-> ### Coin air lines — SHIPPED, unplayed
+> Step 1 is the natural next build: the wallet now takes combo-multiplied coins, so there is
+> **more** currency chasing the same single upgrade track, and the whole meta-progression still
+> empties in 8–15 runs. It needs no save migration.
 >
-> Full derivation in `physics.md` → "Coin air lines". An included slot rolls `COIN_LINE_CHANCE`
-> **0.1** into a three-coin **near-flat line** in the air instead of one 34px ground coin:
-> middle **132px**, ends **10px lower**, plus 0–8px of deterministic downward-only jitter.
+> ### What shipped this session, and why each number is what it is
 >
-> **132 sits away from every jump level's grab ceiling on purpose.** The ask was "about 20%
-> lower" than the original 174, which is 139.2 — and that lands **0.7px** under level 2's
-> 139.9px ceiling, a coin that level can take only on a perfect frame. The gate now fails if the
-> clearance comes within 6px of ANY level's ceiling.
+> **Coin air lines** (`physics.md` → "Coin air lines"). An included slot rolls
+> `COIN_LINE_CHANCE` **0.1** into a three-coin **near-flat line** instead of one 34px ground
+> coin: middle **132px**, ends **10px lower**, plus 0–8px of deterministic downward-only jitter.
 >
-> **Coin density fell 0.40 → ~0.34 per slot and that is intended** — the owner asked for coins
-> to be less frequent. `JUMP_UPGRADE_COSTS` is still costed against 0.40, so upgrades take ~16%
-> longer in raw coins; the combo (up to ×3) more than covers that on a clean run. If upgrades
-> feel slow in play, the lever is the costs, not the density.
->
-> **The 10px droop is not decoration.** A jump apexing on the middle coin has already fallen
-> 5.1px by 60px away at 750 px/s and **11.5px at 500**, so a ruler-flat line at that height
-> drops its end coins outside the 10px pickup radius at the slow end of the ramp. The jitter is
-> downward-only and smaller than the droop for the same reason — an end coin hung above the
-> middle sits above the curve a jump traces and can never be caught (gate-asserted).
->
-> **The arc shape was built and CUT** (`a9fe841`, reverted here): ends 44px below the middle,
-> matching the full capsule sweep. The user did not like how arc-y it read. Do not restore it
-> without asking — the near-flat line is a deliberate look, not an approximation of the arc.
->
-> Two things came out different from the spec above, both deliberate:
->
+> - **The point is that a coin can be MISSED.** Every ground coin sits at 34px, under the 58px
+>   standing grab ceiling, so the entire currency was collected with zero input. That is why a
+>   combo counter was pointless before this.
+> - **132 sits away from every jump level's grab ceiling on purpose.** "About 20% lower" than
+>   the original 174 is 139.2, which lands **0.7px** under level 2's 139.9px ceiling — a coin
+>   that level takes only on a perfect frame. The gate fails if the clearance comes within 6px
+>   of ANY level's ceiling.
+> - **The 10px droop is not decoration.** A jump apexing on the middle coin has already fallen
+>   5.1px by 60px away at 750 px/s and **11.5px at 500**, so a ruler-flat line drops its end
+>   coins outside the 10px pickup radius at the slow end of the ramp. Jitter is downward-only
+>   and smaller than the droop, or an end coin ends up above the curve a jump traces
+>   (gate-asserted).
+> - **The ARC shape was built and CUT** (`a9fe841`): ends 44px below the middle, matching the
+>   full capsule sweep. The owner did not like how arc-y it read. **Do not restore it without
+>   asking** — the near-flat line is a deliberate look, not an approximation of the arc.
 > - A line measures each coin against the ground under *that* coin, so it tilts with the slope.
->   Over `COIN_LINE_MAX_GROUND_DROP` (24px across the 120px span) the slot **falls back to a
->   single coin** rather than hanging a coin out of reach.
-> - That fires on ~40% of line rolls, so `0.25 × 1.6 = 0.40` is *not* true on real terrain.
->   `COIN_SLOT_INCLUDE_CHANCE` went to **0.30**, and the gate **measures** density per seed
->   (0.3708–0.4220 over the 8-seed sweep, mean 0.400) instead of asserting a closed form.
+>   Past `COIN_LINE_MAX_GROUND_DROP` (24px across the 120px span) the slot falls back to a
+>   single ground coin — which fires on ~40% of line rolls, so **no closed form over the
+>   constants gives the density**. `terrain_invariant_check` measures it per seed instead.
 >
-> `terrain_invariant_check` PASS 8/8 with `TERRAIN_INVARIANT_COIN_LINE` and a per-seed
-> `TERRAIN_INVARIANT_COIN_DENSITY` line; `shipping_values_check` PASS; `freeze_replay_runner`
-> 6000 frames clean, which is only there to prove the live spawner throws no error — coins are
-> Area2D layer 2 and never touch terrain collision, so no physics gate is actually involved.
+> **The coin combo** (`architecture.md` → "The coin combo"). **+0.5× per 25 consecutive coins,
+> capping at ×3 on the 100th**, stepped rather than continuous.
+>
+> - Broken **only** by a missed ground coin (`CoinSpawner.coin_missed`, once per coin at 72px
+>   behind the player) — not the rare coin, not a glide coin, not an obstacle hit.
+> - **A coin above the player's current grab ceiling never breaks it.** Without that the combo
+>   is unplayable early: a starting player passes unreachable line coins constantly. The ceiling
+>   comes off the durable upgrade multiplier, never the ×√2 jump powerup.
+> - **It multiplies the coin, so it inflates the wallet** — the owner's call, made knowing it.
+>   A flawless two-minute run pays roughly **2.3×** raw. It stacks with the doubler powerup for
+>   a ×6 ceiling that is rare by construction.
+>
+> **Coins no longer spawn behind the player at the start** (`d6040e7`). The startup fill builds
+> `chunk_count_behind` chunks behind the player, and they were hanging coins from x=−981 to −42
+> against a camera that sees back to −626 — visible over the shoulder, uncollectable, and
+> reported as misses on frame one. `CoinSpawner.run_start_world_x` suppresses them.
+>
+> **Both coins spin 30% faster** than the values before this session (ground coin 3.575 rad/s,
+> diamond 8.9375, the 2.5× ratio between the two scenes held).
+>
+> **Gate state at `867ef03`, all green:** `terrain_invariant_check` 8/8 seeds — rare coin 174.0,
+> `COIN_LINE` clearance=132 end_drop=10 jitter=8, density 0.3163–0.3521 per slot;
+> `shipping_values_check` 13 knobs clean; `freeze_replay_runner` no_freeze. `project.godot`
+> clean. The physics gates were not re-run and did not need to be: coins are Area2D layer 2 and
+> never touch terrain collision, so there is no mechanism for one to move the player.
 >
 > ### Grab ceilings — measured, use these, do not re-derive
 >
@@ -352,24 +375,14 @@ error in a palette consumer does *not* fail these probes.
 > | Level 3 (×0.90) | 162px |
 > | Level 4 (×1.00) | 186px |
 >
-> ### Then, in this order
->
-> | Step | What | State |
-> |---|---|---|
-> | 1 | Coin air lines (above) | **done, unplayed** |
-> | 2 | In-run coin combo (above) | **done, unplayed** |
-> | **3. NEXT** | More upgrade tracks (magnet radius, powerup duration, coin value) | not started, **free on the save side** |
-> | 4 | Diamonds as a second currency | **deliberately held** — see below |
-> | 5 | Glide vertical drift on the parallax layers | not started, design in `look-thorugh-my-files-wobbly-church.md` |
->
 > **Why the currency is worth fixing at all.** Measured payouts: **~31 coins for a 30s run, ~72
 > at 60s, ~168 at 120s** (+25 per diamond), against a total upgrade curve of **1130**. So the
 > entire meta-progression empties in **8–15 runs**, after which every coin on screen is worth
-> nothing forever. More sinks (step 3) is the cheap fix and needs **no save migration**:
+> nothing forever. More sinks (step 1 above) is the cheap fix and needs **no save migration**:
 > `save_store.gd` keys `upgrade_levels` as an open dictionary precisely so "adding an upgrade
 > TYPE needs no version bump."
 >
-> **Why step 4 is held.** A second currency IS a new top-level concept, so it needs SaveStore
+> **Why the diamond currency is held.** A second currency IS a new top-level concept, so it needs SaveStore
 > **v3** — the migration that was built and reverted once already (`5f1900e` / `6c757c2`). The
 > real blocker is that **there are no cosmetics or biome unlocks to sell yet**, so it would ship
 > a currency nobody can spend, which is the same dead-end being fixed. Revive is the one item
@@ -390,7 +403,7 @@ error in a palette consumer does *not* fail these probes.
 > tight the fix is a **telegraph** (a ground marker at the coin's x), which costs no field of
 > view. The user has said they will judge the 0.92s in play.
 >
-> **What step 2 actually shipped** (`biomes.md` → "Gameplay contrast" is the full writeup): all
+> **What the biome coin/obstacle colours shipped** (`biomes.md` → "Gameplay contrast"): all
 > nine palettes now author `coin_color`/`obstacle_color`; `BiomeDirector.push_palette()` pushes
 > them to `CoinSpawner`, `GlideCoinSpawner` and `ObstacleSpawner`, which stamp on spawn and
 > repaint live children. **Absolute colours, never a `modulate` tint** — a multiply can only
@@ -417,7 +430,8 @@ error in a palette consumer does *not* fail these probes.
 >    the curve today fails nothing. **Offered fix, awaiting a go:** fold
 >    `UpgradeStore.get_max_jump_multiplier()` into that one call. One line, zero effect at
 >    today's values, makes the documented claim true. Do NOT quietly widen the scope past that.
-> 2. Whether to do anything about the diamond's contrast (item 0).
+> 2. Whether to do anything about the diamond's contrast — it is never tinted, so if it washes
+>    out against `pale_morning` or `first_light` ice the lever is the sprite, not a palette.
 >
 > **Do not re-derive these — they are settled:** the viewport is base-size × zoom as ONE
 > decision (only the ratio is field of view); art is authored at **≈2× world size**; adding
@@ -434,7 +448,8 @@ error in a palette consumer does *not* fail these probes.
 > loops forever on ±INF; six silent `push_error(); return` paths in `GameManager._ready()` can
 > leave a live game under an undismissable `StartScreen`.
 >
-> **Gate state at that commit** — all green: `terrain_invariant_check` 8/8 seeds (rare-coin
+> **Gate state EARLIER in the session** (kept for the floor-flicker baseline, which has not been
+> re-run since): `terrain_invariant_check` 8/8 seeds (rare-coin
 > clearance 174.0), `shipping_values_check` 13 knobs clean, `biome_schedule_check`,
 > `floor_flicker` 6 seeds / 120 000 frames with worst uphill flip rate 0.0000, 0 recoveries,
 > 0 stuck, worst forced snap **1.8633px** (baseline at `eca9711` was 1.76px — same ballpark, and
@@ -451,6 +466,10 @@ error in a palette consumer does *not* fail these probes.
 > 40 lines from `project.godot`, exactly as `CLAUDE.md` warns. It was restored with
 > `git checkout project.godot` and re-verified. **Any new `class_name` needs this dance;
 > `git diff project.godot` afterwards is not optional.**
+
+### Reference detail on things already shipped
+
+*(Background, not a running order — the order is the table above.)*
 
 **0. Coin sprites — DONE 2026-08-13, awaiting a play confirmation.** The user re-exported both
 with transparency (~79% fully clear, soft antialiased edges, no matte left). Sources are now
