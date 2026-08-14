@@ -23,10 +23,17 @@ biome persistence, the opening biome).
 
 ## State
 
-The last code change is **"Make glacier_teal's common case a little greener"** on
-`terrain/disable-mega-drop-camera-shake` (the tip may carry docs-only fixups above it), and the
-working tree is **clean**. No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts
-~2.3 min through the early ramp).
+The last code change is **"Make glacier_teal's common case a little greener"** (`58d6a5b`) on
+`terrain/disable-mega-drop-camera-shake` (the tip may carry docs-only fixups above it).
+
+> ## ⚠ THE WORKING TREE IS NOT CLEAN, ON PURPOSE
+>
+> `scripts/systems/biome_director.gd` is modified and **must not be committed**: the two biome
+> playtest knobs are set (`BIOME_DISTANCE` 7500, `TRANSITION_DISTANCE` 2000), so a full biome
+> cycle is **1.73 min** instead of 13.74. The project owner asked for that on 2026-08-14 to see
+> biomes turn over quickly. `git checkout scripts/systems/biome_director.gd` restores shipping
+> values; `shipping_values_check` fails until you do, and `-- --allow-temp` downgrades it to a
+> warning. **Every other file is committed.**
 
 **Four TEMP knobs**, all uncommitted when set, and all in `biome_director.gd` except one:
 
@@ -269,23 +276,30 @@ error in a palette consumer does *not* fail these probes.
 
 > ## ▶ RESUME HERE
 >
-> **2026-08-13, end of the coin session.** Branch `terrain/disable-mega-drop-camera-shake`, last
-> code change **"Make air lines 3x rarer and hang them lower"** (`867ef03`), working tree
-> **clean**. Nothing is half-finished: every item here is either done-and-committed or not
-> started.
+> **2026-08-14, end of the coin session.** Branch `terrain/disable-mega-drop-camera-shake`, last
+> code change `58d6a5b`. Nothing is half-finished: every item here is either done-and-committed
+> or not started. **The tree carries one deliberate uncommitted change** — see the ⚠ box at the
+> top of this file before running any gate.
 >
-> ### The next step is a PLAYTEST, not code
+> ### Play state — what the owner has actually confirmed
 >
-> **Nothing from the last three sessions has been seen in play, and no gate can judge most of
-> it.** Unplayed: the biome coin/obstacle colours, the rare coin, both coin sprites, the spin
-> and collect pop, the three-coin air lines, the combo multiplier, and the three rare biome
-> variants. Do not stack more systems on top of that pile — the next build step should follow a
-> play session, because half the open questions below are answerable only by feel.
+> Played and **approved** on 2026-08-14: the **air lines** ("air lines are good"), and the
+> **chasm-jump interaction** ("chasm jump is fine") — so the idea of suppressing coin slots near
+> a chasm lip is **dropped**, not deferred.
 >
-> What to look for, in the order it will hit you:
+> **Decided and deferred, do not act on it unprompted:** upgrades are slow now that density fell
+> 0.40 → ~0.34 per slot. The owner said **"upgrade slowness we change later"**. When it comes
+> up, the lever is `JUMP_UPGRADE_COSTS`, never the coin density — fewer coins was the ask.
 >
-> 1. **Do the air lines read?** They are now rare (1 slot in 10 of the 30% that spawn at all)
->    and sit at 132px, which levels 3-4 clear comfortably and level 2 mostly cannot.
+> Shipped **after** that session and therefore still unseen: the **run-total combo**, the
+> **flat-segment diamond rule**, and the **greener `glacier_teal`**. Also still unseen from
+> earlier: the biome coin/obstacle colours, both coin sprites, the spin and collect pop, and
+> `violet_dusk`'s paler variant.
+>
+> What to look for next time the game is running:
+>
+> 1. ~~Do the air lines read?~~ **Confirmed good 2026-08-14.** Rare (1 slot in 10 of the 30%
+>    that spawn at all), at 132px, which levels 3-4 clear and level 2 mostly cannot.
 > 2. **Do the combo tiers land at the right totals?** ×2 at 50 coins, ×3 at 150, shown next to
 >    the coin count only above ×1. Measured payouts were ~72 coins at 60s and ~168 at 120s
 >    before the density cut, so ×3 should land late in a good run, not routinely.
@@ -360,7 +374,8 @@ error in a palette consumer does *not* fail these probes.
 > **Both coins spin 30% faster** than the values before this session (ground coin 3.575 rad/s,
 > diamond 8.9375, the 2.5× ratio between the two scenes held).
 >
-> **Gate state at `58d6a5b`, all green:** `terrain_invariant_check` 8/8 seeds — rare coin 174.0,
+> **Gate state at `58d6a5b`, all green** (with the biome knobs reverted): `terrain_invariant_
+> check` 8/8 seeds — rare coin 174.0,
 > `COIN_LINE` clearance=132 end_drop=10 jitter=8, density 0.3163–0.3521 per slot;
 > `shipping_values_check` 13 knobs clean; `freeze_replay_runner` no_freeze. `project.godot`
 > clean. The physics gates were not re-run and did not need to be: coins are Area2D layer 2 and
