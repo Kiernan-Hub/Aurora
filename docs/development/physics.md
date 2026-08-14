@@ -146,11 +146,27 @@ game was collected with zero input**. That is why an in-run combo counter was po
 coin could be missed.
 
 An included coin slot now rolls `COIN_ARC_CHANCE` (0.3) into a three-coin arc instead of one
-ground coin: peak **92**, shoulders **84** at ±60px. 92 clears the 58 free line by a wide
-margin and sits 12px under **level 0's** 104 ceiling — the weakest jump, because a coin the
-starting player cannot reach reads as a bug. The shoulders are on the jump parabola through
-that peak, not on an arbitrary lower line: `½·g·(60/v)²` is 11.5px of drop at 500 px/s and
-5.1px at 750, so one 8px offset covers the whole speed range.
+ground coin. It is shaped around the **max-upgrade jump**, not the weakest one:
+
+| | Clearance | Who reaches it |
+|---|---|---|
+| Peak | **174** | level 4 only — same max-only window as the rare coin (above level 3's 161.7, under level 4's 186) |
+| Shoulders (±60px) | **130** | level 2 and up; swept by a max jump apexing on the peak |
+
+The shoulders sit **44px under the peak** because that is what makes the arc read as *one
+jump* rather than three grabs: a capsule whose top is at the peak still spans 48px down, plus
+the coin's 10px radius, so a max jump apexing on the middle coin sweeps both shoulders on the
+way through. The trajectory's own drop over 60px is only 5–11px across the 500–750 px/s range
+(`½·g·(60/v)²`), so the **capsule sweep, not the parabola, is the binding constraint**.
+
+The gradient is the feature: levels 0–1 get nothing from an arc, 2–3 take the shoulders but
+never the peak, and only a max jump clears all three.
+
+**A coin above the player's current grab ceiling does not break the combo streak**
+(`GameManager.get_grab_ceiling()`, computed from the durable upgrade multiplier only — never
+the ×√2 jump powerup, which is a timer that may have run out two seconds before the coin went
+past). Without that, a starting player passes several unreachable arc peaks a minute and their
+streak could never leave zero.
 
 Two things about the arc are terrain-dependent, not constants:
 
@@ -161,7 +177,7 @@ Two things about the arc are terrain-dependent, not constants:
   constants. `COIN_SLOT_INCLUDE_CHANCE` was cut 0.40 → **0.30** to land the measured density
   back on the pre-arc **0.40 coins per slot** that `JUMP_UPGRADE_COSTS` is costed against.
   `terrain_invariant_check` **measures** it per seed (0.37–0.42 observed over 8) rather than
-  asserting a closed form, and `check_coin_arc_height()` holds both clearance ceilings.
+  asserting a closed form, and `check_coin_arc_height()` holds all four clearance edges.
 
 ## Fall death (chasms)
 

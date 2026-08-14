@@ -94,6 +94,9 @@ const COMBO_STEP_STREAK: int = 25
 const COMBO_STEP_MULTIPLIER: float = 0.5
 const COMBO_MAX_MULTIPLIER: float = 3.0
 var combo_streak: int = 0
+# Capsule reach plus pickup radius, measured off the scenes once in _ready(). The jump apex is
+# the only part of the grab ceiling that changes during a run.
+var grab_reach_base: float = 58.0
 var powerup_manager: PowerupManager
 # Read on death only, to bank how far into the biome cycle this run got. Optional and
 # null-guarded like the shop nodes: this is presentation state, and a run that cannot
@@ -237,6 +240,7 @@ func _ready() -> void:
 
 	coin_spawner.coin_collected.connect(_on_coin_collected)
 	coin_spawner.coin_missed.connect(_on_coin_missed)
+	grab_reach_base = measure_grab_reach_base()
 
 	# Optional, not required-and-return like coin_spawner/coin_label above: a missing
 	# GlideCoinSpawner should never take down the whole coin/score system, it just means
@@ -513,11 +517,53 @@ func _on_coin_collected(value: int) -> void:
 	sfx_player.play_coin()
 
 
-func _on_coin_missed() -> void:
+# A coin the player could not possibly have reached does not break the streak. Without this
+# the combo would be unplayable at low upgrade levels: an arc peak is hung at the MAX jump's
+# reach on purpose, so a starting player passes several per minute that no input could collect,
+# and their streak could never leave zero.
+#
+# The ceiling is computed from the durable UPGRADE multiplier only, never the ×√2 jump powerup:
+# a coin is judged against what the player can always do, not against a timer that may have run
+# out two seconds before the coin went past.
+func _on_coin_missed(surface_clearance: float) -> void:
 	if combo_streak == 0:
+		return
+	if surface_clearance > get_grab_ceiling():
 		return
 	combo_streak = 0
 	update_coin_label()
+
+
+# Highest clearance the player can collect from flat ground: the capsule's centre-to-top
+# distance doubled (the centre starts one half-height up and it is the top that reaches),
+# plus the jump apex, plus the pickup's radius. Same formula as physics.md's grab-ceiling
+# table and terrain_invariant_check's, read live so an upgrade bought mid-session applies.
+#
+# Both shape sizes come out of the SCENES via measure_grab_reach_base(), never restated here:
+# a hand-copied capsule height is one of the four couplings that make an art swap silently
+# wrong (visuals.md), and this one would fail as a combo that breaks on the wrong coins.
+func get_grab_ceiling() -> float:
+	var jump_speed: float = absf(Player.JUMP_VELOCITY) * player.upgrade_jump_multiplier
+	var apex: float = (jump_speed * jump_speed) / (2.0 * Player.GRAVITY)
+	return grab_reach_base + apex
+
+
+func measure_grab_reach_base() -> float:
+	var capsule_half_height: float = 24.0
+	var shape_node: CollisionShape2D = player.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	var capsule: CapsuleShape2D = shape_node.shape as CapsuleShape2D if shape_node != null else null
+	if capsule != null:
+		capsule_half_height = capsule.height * 0.5
+
+	var coin_radius: float = 10.0
+	var coin_root: Node = CoinSpawner.COIN_SCENE.instantiate()
+	var coin_shape: CollisionShape2D = coin_root.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	var circle: CircleShape2D = coin_shape.shape as CircleShape2D if coin_shape != null else null
+	if circle != null:
+		coin_radius = circle.radius
+	coin_root.free()
+
+	return (capsule_half_height * 2.0) + coin_radius
 
 
 # Stepped rather than continuous so the number on screen is a thing the player can aim at --

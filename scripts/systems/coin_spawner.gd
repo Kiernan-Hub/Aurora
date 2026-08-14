@@ -16,7 +16,7 @@ signal coin_collected(value: int)
 # is deliberately emitted by THIS spawner only: a rare coin needs a max upgrade to reach and a
 # glide coin only exists mid-powerup, so breaking a streak on either would punish the player
 # for something they could not do.
-signal coin_missed
+signal coin_missed(surface_clearance: float)
 
 const COIN_SCENE: PackedScene = preload("res://scenes/pickups/coin.tscn")
 # Fixed candidate x positions within a chunk, as a fraction of chunk_width. Each
@@ -44,16 +44,23 @@ const COIN_SURFACE_CLEARANCE: float = 34.0
 # until this existed.
 const COIN_ARC_CHANCE: float = 0.3
 const COIN_ARC_COIN_COUNT: int = 3
-# The middle coin. 92 clears the 58px no-jump line by a wide margin, so the arc always costs
-# a jump, and sits 12px under the 104px ceiling of jump level 0 -- the WEAKEST upgrade, since
-# a coin the starting player cannot reach reads as a bug rather than a goal. Asserted against
-# both ceilings in terrain_invariant_check.check_coin_arc_height().
-const COIN_ARC_PEAK_CLEARANCE: float = 92.0
-# The two shoulders sit on the jump parabola through that peak, not on an arbitrary lower
-# line: 0.5 * GRAVITY(1600) * (60 / run_speed)^2 is 11.5px of drop at 500 px/s and 5.1px at
-# 750, so 8px is the whole speed range to within ~4px -- far inside the grab window that a
-# 10px coin radius plus the capsule's height gives. All three are above the 58px free line.
-const COIN_ARC_SHOULDER_CLEARANCE: float = 84.0
+# The middle coin, and the whole arc is shaped around the MAX-upgrade jump: 174 sits in the
+# 24px gap between jump level 3's 161.7px grab ceiling and level 4's 186.0, so a fully upgraded
+# jump takes it with 12px of slack and nothing below level 4 reaches it at all. Same line, and
+# the same derivation, as RARE_COIN_CLEARANCE -- kept as its own constant rather than shared,
+# because two unrelated pickups agreeing on a number today is not a reason to couple them.
+const COIN_ARC_PEAK_CLEARANCE: float = 174.0
+# The shoulders are 44px under the peak, which is what makes the arc read as one jump rather
+# than three separate grabs: a capsule whose TOP is at the peak still spans 48px down plus the
+# coin's 10px radius, so a max jump apexing on the middle coin sweeps both shoulders on the way
+# through. (The trajectory itself only drops 5-11px over the 60px spacing -- 0.5 * GRAVITY *
+# (60/speed)^2 across the 500-750 px/s range -- so the sweep, not the parabola, is the binding
+# constraint here.)
+#
+# 130 is also under level 2's 139.9 ceiling, which is the intended gradient: levels 0 and 1 get
+# nothing from an arc, 2 and 3 can take the shoulders but never the peak, and only a max jump
+# clears all three.
+const COIN_ARC_SHOULDER_CLEARANCE: float = 130.0
 # Half the 153.6px gap between neighbouring slots (0.3 * chunk_width 512), so two arcs in
 # adjacent slots still leave a coin-sized gap instead of reading as one long chain.
 const COIN_ARC_SPACING_X: float = 60.0
@@ -203,6 +210,7 @@ func spawn_coin(group: Node2D, group_origin_x: float, world_x: float, clearance:
 
 	var coin: Coin = COIN_SCENE.instantiate() as Coin
 	coin.position = Vector2(world_x - group_origin_x, terrain_generator.get_terrain_height(world_x) - clearance)
+	coin.surface_clearance = clearance
 	coin.collected.connect(_on_coin_collected)
 	if has_biome_color:
 		coin.set_visual_color(biome_coin_color)
@@ -309,7 +317,7 @@ func report_missed_coins() -> void:
 			if coin.global_position.x >= miss_line_x:
 				continue
 			coin.has_been_missed = true
-			coin_missed.emit()
+			coin_missed.emit(coin.surface_clearance)
 
 
 func _on_coin_collected(value: int) -> void:

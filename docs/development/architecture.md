@@ -132,6 +132,13 @@ Three decisions worth keeping:
   The rare coin needs a max upgrade and a glide coin only exists mid-powerup, so breaking a
   streak on either punishes the player for something they could not do. An obstacle hit doesn't
   break it either — one break condition is what makes the counter readable at 750 px/s.
+- **A coin above the player's reach doesn't break it either.** The miss carries the coin's
+  `surface_clearance`, and `get_grab_ceiling()` (capsule + apex + pickup radius, off the
+  **durable upgrade** multiplier — never the ×√2 powerup timer) decides whether it was
+  collectable. This is load-bearing, not politeness: an arc peak hangs at the max jump's reach,
+  so a starting player passes several a minute that no input could take, and without this their
+  streak could never leave zero. Both shape sizes are read out of the scenes, never restated —
+  a hand-copied capsule height is one of `visuals.md`'s four art-swap couplings.
 - **It multiplies the coin, not a separate score.** Score and wallet are the same integer
   (`record_run` banks `coin_count` *and* sets `best_score` from it), so a good run banks more
   toward upgrades as well as scoring higher. That is a project-owner decision, made knowing it
@@ -140,7 +147,7 @@ Three decisions worth keeping:
 
 None of this was worth building before coin arcs existed: every ground coin sat under the 58px
 standing grab ceiling, so a streak could never break and the counter would have ticked up on
-its own. See `physics.md` → "Coin arcs".
+its own. See `physics.md` → "Coin arcs" for the arc's clearances and the reach gradient.
 
 ## The one autoload
 

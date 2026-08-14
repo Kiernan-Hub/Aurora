@@ -99,9 +99,10 @@ const RARE_COIN_REACH_MARGIN: float = 6.0
 # must clear this by a real margin or the arc costs no input, which is the entire reason arcs
 # exist. 8px is roughly a frame of the player's vertical travel at the top of a jump.
 const COIN_ARC_FREE_GRAB_MARGIN: float = 8.0
-# And the matching floor under jump level 0's ceiling, so the weakest upgrade can still take
-# the arc rather than watching it go by.
-const COIN_ARC_WEAKEST_JUMP_MARGIN: float = 8.0
+# Clear air the peak must keep on both sides of its max-jump-only window, and the shoulders
+# above the sweep floor. Small for the same reason RARE_COIN_REACH_MARGIN is: the window is
+# only ~24px wide, so this exists to stop the clearance being tuned to the exact edge.
+const COIN_ARC_REACH_MARGIN: float = 6.0
 # Coins per candidate slot, the number the upgrade costs are sized against. The tolerance is
 # wide because the measurement is genuinely seed-dependent -- how much of the sampled range is
 # flat enough for an arc varies -- and observed 0.39 to 0.44 across seeds.
@@ -422,14 +423,18 @@ func check_rare_coin_height() -> Array[String]:
 	return violations
 
 
-# Coin arcs, the same derivation from the other end. The rare coin has to be OUT of reach of
-# every jump but the best; an arc coin has to be out of reach of NO jump -- above the standing
-# grab ceiling, so it costs an input, and under the ceiling of jump level 0, so the player who
-# has bought nothing can still take it. Both edges are silent in play: an arc that is free
-# looks identical to one that is not, and an unreachable peak looks like a spawner bug.
+# Coin arcs. The arc is shaped around the MAX-upgrade jump: its peak sits in the same gap the
+# rare coin occupies (above jump level 3's ceiling, under level 4's), and the shoulders sit far
+# enough under that peak for one apexing jump to sweep all three -- while staying low enough
+# that levels 2 and 3 can still take the shoulders alone. That gradient is the feature, and
+# every edge of it is silent in play: an arc no jump can clear looks exactly like an arc that
+# is merely hard, and a peak the second-best jump reaches looks exactly like one it should not.
 #
-# The density product is asserted here too because it is the same edit: arcs are what forced
-# COIN_SLOT_INCLUDE_CHANCE down, and JUMP_UPGRADE_COSTS is costed against the result.
+# Three assertions, one per edge:
+#   1. the peak is out of reach below max     (or the max upgrade stops being what it buys)
+#   2. the peak is inside a max jump's reach   (or the arc is bait nobody can finish)
+#   3. the shoulders are inside the capsule sweep of a jump apexing on the peak, and still
+#      above the standing grab ceiling         (or the arc is three grabs, or it is free)
 func check_coin_arc_height() -> Array[String]:
 	var violations: Array[String] = []
 
@@ -443,21 +448,36 @@ func check_coin_arc_height() -> Array[String]:
 	var coin_radius: float = circle.radius
 	scene_root.free()
 
+	var multipliers: Array[float] = UpgradeStore.JUMP_MULTIPLIERS
+	if multipliers.size() < 2:
+		violations.append("UpgradeStore.JUMP_MULTIPLIERS has fewer than two levels -- the arc's 'max upgrade takes all three' rule has nothing to mean")
+		return violations
+
 	var capsule_reach: float = PLAYER_CAPSULE_HALF_HEIGHT * 2.0
 	var standing_ceiling: float = capsule_reach + coin_radius
-	var weakest_ceiling: float = capsule_reach + get_jump_apex(UpgradeStore.JUMP_MULTIPLIERS[0]) + coin_radius
+	var top_ceiling: float = capsule_reach + get_jump_apex(multipliers[multipliers.size() - 1]) + coin_radius
+	var second_ceiling: float = capsule_reach + get_jump_apex(multipliers[multipliers.size() - 2]) + coin_radius
 
-	# The shoulders are the lowest coins in the arc and the peak is the highest, so checking
-	# both ends covers every coin between them.
-	var lowest: float = minf(CoinSpawner.COIN_ARC_PEAK_CLEARANCE, CoinSpawner.COIN_ARC_SHOULDER_CLEARANCE)
-	var highest: float = maxf(CoinSpawner.COIN_ARC_PEAK_CLEARANCE, CoinSpawner.COIN_ARC_SHOULDER_CLEARANCE)
+	var peak: float = CoinSpawner.COIN_ARC_PEAK_CLEARANCE
+	var shoulder: float = CoinSpawner.COIN_ARC_SHOULDER_CLEARANCE
 
-	if lowest < standing_ceiling + COIN_ARC_FREE_GRAB_MARGIN:
-		violations.append("arc coin at %.1f is inside the standing grab ceiling %.1f (margin %.1f) -- the arc costs no input, which is the only reason it exists"
-			% [lowest, standing_ceiling, COIN_ARC_FREE_GRAB_MARGIN])
-	if highest > weakest_ceiling - COIN_ARC_WEAKEST_JUMP_MARGIN:
-		violations.append("arc coin at %.1f is out of reach of jump level 0 (ceiling %.1f, margin %.1f) -- the starting player watches it go by and reads it as a bug"
-			% [highest, weakest_ceiling, COIN_ARC_WEAKEST_JUMP_MARGIN])
+	if peak > top_ceiling - COIN_ARC_REACH_MARGIN:
+		violations.append("arc peak at %.1f is out of reach of a MAX jump (ceiling %.1f, margin %.1f) -- nobody can finish the arc"
+			% [peak, top_ceiling, COIN_ARC_REACH_MARGIN])
+	if peak < second_ceiling + COIN_ARC_REACH_MARGIN:
+		violations.append("arc peak at %.1f is within reach of jump level %d (ceiling %.1f, margin %.1f) -- the max upgrade stops being what buys the whole arc"
+			% [peak, multipliers.size() - 2, second_ceiling, COIN_ARC_REACH_MARGIN])
+
+	# A capsule whose top is at the peak spans one full capsule height downward, and the coin
+	# is caught by its own radius on top of that. Below this line the arc is three separate
+	# grabs rather than one jump, which is the whole read of the shape.
+	var sweep_floor: float = peak - capsule_reach - coin_radius
+	if shoulder < sweep_floor + COIN_ARC_REACH_MARGIN:
+		violations.append("arc shoulder at %.1f is below the %.1f a jump apexing on the peak sweeps (margin %.1f) -- one jump can no longer take all three"
+			% [shoulder, sweep_floor, COIN_ARC_REACH_MARGIN])
+	if shoulder < standing_ceiling + COIN_ARC_FREE_GRAB_MARGIN:
+		violations.append("arc shoulder at %.1f is inside the standing grab ceiling %.1f (margin %.1f) -- the arc costs no input, which is the only reason it exists"
+			% [shoulder, standing_ceiling, COIN_ARC_FREE_GRAB_MARGIN])
 
 	return violations
 

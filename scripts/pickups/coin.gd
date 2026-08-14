@@ -27,6 +27,10 @@ var has_been_collected: bool = false
 # break fires exactly once per coin. Lives here rather than in a spawner-side set because the
 # spawner already frees coins on its own schedule and a keyed set would outlive them.
 var has_been_missed: bool = false
+# How far above the terrain surface this coin was hung, stamped by the spawner. Travels with
+# the miss report so the combo can tell "you let an easy one go" from "that one was above your
+# upgrade level" -- an arc peak is deliberately out of reach below a max jump.
+var surface_clearance: float = 0.0
 
 var visual: CanvasItem
 var visual_base_scale: Vector2 = Vector2.ONE
