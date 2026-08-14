@@ -53,6 +53,13 @@ its first-spawn times in `_ready()` and so hashed seed 0 every session, making t
 different replay seeds produce byte-identical schedules (39.812038s / 19.395459s every
 time). Fixed 2026-08-03.
 
+`CoinSpawner` alone also skips anything at or behind `run_start_world_x`, the player's x when
+the first groups were built. The startup fill covers `chunk_count_behind` chunks *behind* the
+player so the terrain is there when the camera looks back, and those chunks were hanging coins
+over the player's shoulder — uncollectable, and reported as misses (so, combo breaks) the
+instant the run began. Only the first chunks can trip it: after that the player is always
+moving right into fresh ground.
+
 ## GameManager owns all state transitions
 
 `GameManager` runs an explicit `State { START, PLAYING, PAUSED, DEAD, SHOP }` machine.

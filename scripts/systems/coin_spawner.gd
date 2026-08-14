@@ -99,6 +99,13 @@ var player: CharacterBody2D
 var next_chunk_index: int = 0
 var active_coin_groups: Dictionary[int, Node2D] = {}
 var has_initialized_coin_groups: bool = false
+# Where the player stood when the run's first coin groups were built. The spawner fills
+# chunk_count_behind chunks BEHIND the player at startup so the terrain is already there when
+# the camera looks back, and those chunks were hanging coins the player begins the run behind
+# -- visible over their shoulder, uncollectable, and reported as misses the moment the run
+# starts. Anything at or behind this line is skipped; it only ever affects those first chunks,
+# because after that the player is always moving right into fresh ground.
+var run_start_world_x: float = -INF
 var magnet_active: bool = false
 
 # The current biome's coin colour, pushed by BiomeDirector.push_palette(). Absolute, not a
@@ -165,6 +172,7 @@ func _physics_process(delta: float) -> void:
 
 
 func initialize_coin_groups() -> void:
+	run_start_world_x = player.global_position.x
 	var chunk_width: float = terrain_generator.chunk_width
 	var player_chunk_index: int = int(floor(player.global_position.x / chunk_width))
 	next_chunk_index = player_chunk_index - terrain_generator.chunk_count_behind
@@ -205,6 +213,8 @@ func spawn_coin_group(chunk_index: int) -> void:
 # Checked PER COIN rather than per slot so an arc that reaches over a lip loses only the coins
 # that are actually over the hole.
 func spawn_coin(group: Node2D, group_origin_x: float, world_x: float, clearance: float) -> void:
+	if world_x <= run_start_world_x:
+		return
 	if not terrain_generator.has_ground_at_world_x(world_x):
 		return
 
