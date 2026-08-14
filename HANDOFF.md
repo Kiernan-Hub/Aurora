@@ -23,7 +23,8 @@ biome persistence, the opening biome).
 
 ## State
 
-`HEAD` is `cf90507` on `terrain/disable-mega-drop-camera-shake` and the working tree is
+`HEAD` is **"Spin both coins a quarter faster, and repoint the handoff"** on
+`terrain/disable-mega-drop-camera-shake`, and the working tree is
 **clean**. No temp knobs are set, so a playtest right now shows shipping timings (a biome lasts
 ~2.3 min through the early ramp).
 
@@ -269,8 +270,9 @@ error in a palette consumer does *not* fail these probes.
 > ## ▶ RESUME HERE — say "resume" and the next step is **COIN ARCS**, spec'd in full below.
 >
 > **2026-08-13, end of the coin session.** Branch `terrain/disable-mega-drop-camera-shake`,
-> `HEAD` = `cf90507`, working tree **clean**. Nothing is half-finished: every item below is
-> either done-and-committed or not started. **Nothing from the last two sessions has been seen
+> `HEAD` = **"Spin both coins a quarter faster, and repoint the handoff"**, working tree
+> **clean**. Nothing is half-finished: every item below is either done-and-committed or not
+> started. **Nothing from the last two sessions has been seen
 > in play** and no gate can judge any of it — the biome coin/obstacle colours, the rare coin, the
 > coin sprites, the spin and the collect pop are all unplayed.
 >
@@ -388,7 +390,7 @@ error in a palette consumer does *not* fail these probes.
 > loops forever on ±INF; six silent `push_error(); return` paths in `GameManager._ready()` can
 > leave a live game under an undismissable `StartScreen`.
 >
-> **Gate state at `cf90507`** — all green: `terrain_invariant_check` 8/8 seeds (rare-coin
+> **Gate state at that commit** — all green: `terrain_invariant_check` 8/8 seeds (rare-coin
 > clearance 174.0), `shipping_values_check` 13 knobs clean, `biome_schedule_check`,
 > `floor_flicker` 6 seeds / 120 000 frames with worst uphill flip rate 0.0000, 0 recoveries,
 > 0 stuck, worst forced snap **1.8633px** (baseline at `eca9711` was 1.76px — same ballpark, and
