@@ -11,7 +11,7 @@ collision_layer = 2
 collision_mask = 1
 script = ExtResource("1")
 value = 25
-spin_speed = 6.875
+spin_speed = 8.9375
 spin_min_scale = 0.22
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]

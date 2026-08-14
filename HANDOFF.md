@@ -448,10 +448,11 @@ screen. A 64px source would fix air coins and alias the far commoner ground coin
 so it was left alone deliberately.
 
 **Spin and collect pop shipped with them.** Both are exported on `Coin` so the two scenes differ
-sharply on purpose: the ordinary coin is calm (`spin_speed` **2.75** rad/s, `spin_min_scale`
+sharply on purpose: the ordinary coin is calm (`spin_speed` **3.575** rad/s, `spin_min_scale`
 **0.55**) because ~168 cross the screen in a two-minute run and a fast one strobes the ground;
-the diamond runs **6.875 / 0.22** because it is rare and has under a second on screen to be
-noticed. Both were tuned ×1.25 up from the first values (2.2 / 5.5) on the user's ear.
+the diamond runs **8.9375 / 0.22** because it is rare and has under a second on screen to be
+noticed. Both were tuned up from the first values (2.2 / 5.5) on the user's ear, ×1.25 and then
+×1.3 again — the ratio between the two scenes has been held at 2.5× throughout.
 
 Three things there are deliberate and will look like bugs if "fixed":
 
