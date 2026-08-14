@@ -418,6 +418,58 @@ const CHASM_MIN_SEGMENT_INDEX: int = 28
 # How far past a far lip get_next_ground_world_x() places a nudged item, so a powerup pushed
 # out of a void does not sit on the lip vertex itself.
 const CHASM_LIP_CLEARANCE: float = 32.0
+
+# --- The frozen lake ------------------------------------------------------------------
+#
+# A ~10 second stretch of perfectly flat ground, injected once every 20 minutes of cumulative
+# playtime as a set piece: nothing spawns on it, jumping is disabled, and a reflection surface
+# is drawn over it. FrozenLakeDirector owns the schedule; this file owns only the geometry.
+#
+# IT IS ONE SEGMENT, NOT SEVERAL, and that is a safety argument rather than a tidiness one.
+# Virginity (below) has to be proven for one index instead of N; is_lake_segment_index stays
+# an == rather than a range test; and if any one of N indices happened to also be a chasm
+# index, a VOID would open inside the lake -- the one thing the feature must not contain --
+# leaving a partial-lake case to handle. With one index that state cannot exist at all.
+#
+# SEGMENT_TYPE_FLAT with magnitude 0 means evaluate_segment_offset needs no new branch and
+# get_segment_baseline_delta() derives 0.0 from it, so C0 continuity at both seams is
+# guaranteed by construction -- exactly the same reasoning the chasm spec above relies on.
+#
+# Nothing in this file assumes a bounded segment length: MAX_COLLISION_SEGMENT_LENGTH is a
+# per-CHUNK sample stride, add_segment_boundary_sample_world_xs emits FEWER samples when a
+# chunk lies inside one segment, and every min_segment_index -> world_x conversion via
+# SMALL_SEGMENT_LENGTH is a lower bound that a longer segment only makes more conservative.
+# A chunk wholly interior to one segment is already routine: chasm_drop is 2400px.
+const LAKE_SEGMENT_LENGTH: float = 7500.0
+# How far past the cache watermark arm_lake() places the lake. 1 would be correct; 2 leaves a
+# segment of slack so that a chunk spawn racing the same frame cannot consume the candidate.
+const LAKE_ARM_LEAD_SEGMENTS: int = 2
+
+# The armed lake's segment index, or -1 for "no lake in this run". Set ONLY by arm_lake().
+#
+# THIS IS THE ONE RUNTIME INPUT TO THE HEIGHT FIELD, under a write-once, write-ahead rule.
+# get_terrain_height must stay pure in (session_seed, world_x) because chunk visuals,
+# collision, player tilt and the debug HUD all sample it independently and must agree. Setting
+# this breaks that literally -- so arm_lake() may only ever set it to an index STRICTLY GREATER
+# than highest_cached_segment_index, i.e. a segment whose spec, length, start_x and baseline
+# have never been computed by anything.
+#
+# ensure_segment_cache_through/cache_next_segment only move the watermark forward by one and
+# caches are never trimmed, so "above the watermark" provably means "never observed". The
+# consequence is the property the purity invariant actually protects: arming can only EXTEND
+# the height field, never REWRITE it. Any world_x sampled before arming returns the identical
+# value after it, because arming cannot reach any x that anything has ever looked at.
+#
+# Never assign this directly. arm_lake() is the only writer and enforces the rule itself.
+var lake_segment_index: int = -1
+
+# Pins a lake at a fixed index for gates and playtesting, with no FrozenLakeDirector and no
+# save file involved -- the deterministic counterpart to the runtime schedule.
+#
+# Deliberately NOT @export, for the same reason debug_chasm_disabled is not: an exported int
+# serialises into main.tscn and ships silently (CLAUDE.md, "Things that break silently").
+# shipping_values_check fails on it.
+var debug_force_lake_segment_index: int = -1
 const CHASM_HASH_INDEX_MULTIPLIER: int = 1597334677
 const CHASM_HASH_MIX_MULTIPLIER: int = 2654435761
 # Salt for the width draw, so which variant a chasm gets is uncorrelated with where the chasm
@@ -1232,6 +1284,81 @@ func is_chasm_segment_index(segment_index: int) -> bool:
 	return offset_in_window == chasm_offset
 
 
+# O(1), reads no cache, and safe to call from build_segment_spec for the same reasons
+# is_chasm_segment_index() is: an int compare touches none of the segment caches.
+func is_lake_segment_index(segment_index: int) -> bool:
+	if debug_force_lake_segment_index >= 0:
+		return segment_index == debug_force_lake_segment_index
+	return lake_segment_index >= 0 and segment_index == lake_segment_index
+
+
+# Chooses the lake's segment and commits it. The ONLY writer of lake_segment_index -- see
+# that var for why the write-ahead rule is what keeps the height field's purity claim honest.
+#
+# Candidates start LAKE_ARM_LEAD_SEGMENTS past the cache watermark, then step forward past
+# anything disqualifying:
+#
+#   - segment_spec_cache.has(): defensive. The watermark rule already guarantees this is
+#     false, but checking makes the guarantee LOCAL to this function instead of an audit of
+#     every get_segment_spec() caller in the file.
+#   - a chasm at the candidate: build_segment_spec puts the lake branch first, so the lake
+#     would silently DELETE that chasm. Stepping past it keeps chasm placement untouched.
+#   - a chasm at candidate +/- 1: a void immediately before the lake, or immediately after it,
+#     would put a jump-or-die hazard against a stretch where jumping is disabled. The lock is
+#     released at the far seam, so the segment after matters as much as the one before.
+#
+# Returns false only if there is no terrain to arm against yet, which a caller should treat as
+# "try again next frame" rather than as an error.
+func arm_lake() -> bool:
+	if lake_segment_index >= 0:
+		return false
+
+	var candidate: int = highest_cached_segment_index + LAKE_ARM_LEAD_SEGMENTS
+	while segment_spec_cache.has(candidate) \
+			or is_chasm_segment_index(candidate) \
+			or is_chasm_segment_index(candidate - 1) \
+			or is_chasm_segment_index(candidate + 1):
+		candidate += 1
+	lake_segment_index = candidate
+	return true
+
+
+# World-x span of the armed lake, or an empty span when none is armed. Both call
+# ensure_segment_cache_through() first, because start_x for a segment past the watermark does
+# not exist until the cache is walked out to it -- the ordering trap CLAUDE.md records for
+# find_segment_index_at_x, in its other form.
+func get_lake_start_x() -> float:
+	var index: int = get_active_lake_segment_index()
+	if index < 0:
+		return 0.0
+	ensure_segment_cache_through(index)
+	return segment_start_x_cache[index]
+
+
+func get_lake_end_x() -> float:
+	var index: int = get_active_lake_segment_index()
+	if index < 0:
+		return 0.0
+	ensure_segment_cache_through(index)
+	return get_cached_segment_end_x(index)
+
+
+func get_active_lake_segment_index() -> int:
+	return debug_force_lake_segment_index if debug_force_lake_segment_index >= 0 else lake_segment_index
+
+
+# "Is this world_x on the lake." The one thing every spawner asks, alongside the void question
+# has_ground_at_world_x() answers -- deliberately the same shape, so a suppression check reads
+# as one more reason a slot is unusable rather than as a new concept.
+#
+# Cheap early-out first: with no lake armed this is a single int compare and never touches the
+# segment cache, which matters because six spawners call it per candidate item.
+func is_lake_world_x(world_x: float) -> bool:
+	if get_active_lake_segment_index() < 0:
+		return false
+	return world_x >= get_lake_start_x() and world_x < get_lake_end_x()
+
+
 func get_chasm_window_segment_count() -> int:
 	return CHASM_REHEARSAL_WINDOW_SEGMENT_COUNT if debug_drop_chasm_rehearsal else CHASM_WINDOW_SEGMENT_COUNT
 
@@ -1512,6 +1639,22 @@ func build_segment_spec(segment_index: int) -> Dictionary:
 	# This also leaves the "no two flats in a row" rule alone: get_segment_selection()
 	# consults get_unconstrained_segment_selection(), which never comes through here, so a
 	# chasm is invisible to its neighbours' selection.
+	# The lake is checked FIRST, ahead of the chasm, so that if the two ever did land on one
+	# index the result is a flat lake rather than a void inside a stretch where jumping is
+	# disabled. arm_lake() already steps past any such index, so this branch cannot fire on a
+	# chasm today -- the ordering is here so a future edit to either placement rule fails safe.
+	#
+	# Same shape as the chasm spec below: FLAT with magnitude 0, so evaluate_segment_offset
+	# needs no branch and get_segment_baseline_delta() derives 0.0.
+	if is_lake_segment_index(segment_index):
+		return {
+			"type": SEGMENT_TYPE_FLAT,
+			"tier": SEGMENT_TIER_MEDIUM,
+			"length": LAKE_SEGMENT_LENGTH,
+			"magnitude": 0.0,
+			"label": "frozen_lake",
+		}
+
 	if is_chasm_segment_index(segment_index):
 		var chasm_variant: Dictionary = get_chasm_variant(segment_index)
 		return {

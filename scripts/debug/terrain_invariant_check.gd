@@ -35,6 +35,15 @@ const DEFAULT_SAMPLE_STEP: float = 1.0
 # well above the steepest legal 1px rise (tan(45 deg) * 1px = 1.0px) so a legitimately
 # steep face is reported as an angle violation rather than a discontinuity.
 const DISCONTINUITY_STEP_Y: float = 4.0
+# Where check_frozen_lake() pins its lake. Any index past CHASM_MIN_SEGMENT_INDEX works; 200
+# is deep enough to be well clear of the opening terrain and, on the seed below, lands clear
+# of a chasm on all three of index-1/index/index+1 (the check asserts that rather than
+# assuming it, and tells you to move this if it ever stops being true).
+const LAKE_TEST_SEGMENT_INDEX: int = 200
+# The lake is built from a literal constant and a magnitude of exactly 0.0, so its flatness
+# and its seams are exact in binary rather than approximately equal -- there is no
+# accumulating arithmetic to absorb. Anything above float noise is a real defect.
+const LAKE_EPSILON: float = 1e-6
 # Slope is compared against floor_max_angle, which is what CharacterBody2D uses to
 # decide "floor" vs "wall". Anything at or past it is terrain the player can wedge
 # against. A hair of tolerance absorbs float noise in the finite difference.
@@ -161,6 +170,12 @@ func _init() -> void:
 		print("    ", violation)
 	variant_violations.append_array(coin_line_violations)
 
+	# Needs a scene (the generator must be in the tree to have a seed), so it cannot join the
+	# three constant-only checks above -- but it is still seed-independent in everything it
+	# asserts, so it runs once against the first seed rather than per seed.
+	var lake_violations: Array[String] = await check_frozen_lake(session_seeds[0])
+	variant_violations.append_array(lake_violations)
+
 	var failed_seed_count: int = 0
 	for session_seed: int in session_seeds:
 		var seed_passed: bool = await check_session_seed(session_seed, start_world_x, end_world_x, sample_step)
@@ -222,6 +237,98 @@ func check_session_seed(session_seed: int, start_world_x: float, end_world_x: fl
 	main.queue_free()
 	await process_frame
 	return int(report["violation_count"]) == 0 and int(chasm_report["violation_count"]) == 0 and coin_violations.is_empty()
+
+
+# The frozen lake set piece: a runtime-injected 7500px flat segment that suppresses every
+# spawner and disables jumping while the player crosses it. Four claims, none of which is
+# visible from the generator alone, and all four fail silently in play -- a lake with a slope
+# in it just reads as ordinary terrain, and a lake with a void in it is a jump-or-die hazard
+# in a stretch where the jump button does nothing.
+#
+# Pinned through debug_force_lake_segment_index rather than arm_lake(), so this measures the
+# geometry with no FrozenLakeDirector, no save file and no playtime involved.
+#
+# Runs on ONE seed rather than the sweep: the lake spec is a constant, so the only thing a
+# second seed varies is the baseline the flat sits at, which the constant-height assertion is
+# already invariant to.
+func check_frozen_lake(session_seed: int) -> Array[String]:
+	var violations: Array[String] = []
+
+	var main: Node = MAIN_SCENE.instantiate()
+	var terrain_generator: TerrainGenerator = main.get_node("TerrainGenerator") as TerrainGenerator
+	var player: Player = main.get_node("Player") as Player
+	terrain_generator.debug_replay_session_seed = session_seed
+	terrain_generator.debug_force_lake_segment_index = LAKE_TEST_SEGMENT_INDEX
+	player.DEBUG_LOG_FREEZE_REPRO = false
+	player.DEBUG_SHOW_PLAYER_STATE = false
+	root.add_child(main)
+	await physics_frame
+
+	var lake_start_x: float = terrain_generator.get_lake_start_x()
+	var lake_end_x: float = terrain_generator.get_lake_end_x()
+
+	# 1. The span is the length the spec claims. A mismatch means something upstream is
+	#    overriding the spec -- most likely the chasm branch winning the ordering.
+	var span: float = lake_end_x - lake_start_x
+	if absf(span - TerrainGenerator.LAKE_SEGMENT_LENGTH) > LAKE_EPSILON:
+		violations.append("LAKE_SPAN_WRONG span=%.3f expected=%.3f (index %d is not a lake)" % [
+			span, TerrainGenerator.LAKE_SEGMENT_LENGTH, LAKE_TEST_SEGMENT_INDEX,
+		])
+
+	# 2. Dead flat, and dead flat is the WHOLE safety argument for injecting terrain at
+	#    runtime: zero slope cannot reach floor_max_angle, so no wall-wedge is reachable here
+	#    no matter what the lake lands next to. Sampled at 1px like the main sweep.
+	var lake_height: float = terrain_generator.get_terrain_height(lake_start_x)
+	var worst_deviation: float = 0.0
+	var worst_deviation_x: float = lake_start_x
+	var sample_x: float = lake_start_x
+	while sample_x < lake_end_x:
+		var deviation: float = absf(terrain_generator.get_terrain_height(sample_x) - lake_height)
+		if deviation > worst_deviation:
+			worst_deviation = deviation
+			worst_deviation_x = sample_x
+		# 4. And there is ground the whole way. A void anywhere inside the lake is the one
+		#    thing the feature must never contain.
+		if not terrain_generator.has_ground_at_world_x(sample_x):
+			violations.append("LAKE_VOID_INSIDE world_x=%.1f" % sample_x)
+			break
+		sample_x += 1.0
+	if worst_deviation > LAKE_EPSILON:
+		violations.append("LAKE_NOT_FLAT worst_deviation=%.6f at world_x=%.1f" % [
+			worst_deviation, worst_deviation_x,
+		])
+
+	# 3. Both seams are C0. Free by construction (magnitude 0 means the baseline delta derives
+	#    to 0.0), which is exactly why it is worth asserting -- "free by construction" is a
+	#    claim about code that can be edited.
+	var entry_step: float = absf(terrain_generator.get_terrain_height(lake_start_x)
+			- terrain_generator.get_terrain_height(lake_start_x - 1.0))
+	var exit_step: float = absf(terrain_generator.get_terrain_height(lake_end_x)
+			- terrain_generator.get_terrain_height(lake_end_x - 1.0))
+	if entry_step > DISCONTINUITY_STEP_Y:
+		violations.append("LAKE_ENTRY_SEAM_STEP step=%.3f at world_x=%.1f" % [entry_step, lake_start_x])
+	if exit_step > DISCONTINUITY_STEP_Y:
+		violations.append("LAKE_EXIT_SEAM_STEP step=%.3f at world_x=%.1f" % [exit_step, lake_end_x])
+
+	# 5. No chasm may touch the lake or either neighbouring segment. arm_lake() enforces this
+	#    at runtime; with a PINNED index it cannot, so a hit here means the pinned index is
+	#    unsuitable for the gate rather than that the feature is broken -- the message says so.
+	for offset: int in [-1, 0, 1]:
+		if terrain_generator.is_chasm_segment_index(LAKE_TEST_SEGMENT_INDEX + offset):
+			violations.append("LAKE_TEST_INDEX_MEETS_CHASM index=%d offset=%d -- pick a different LAKE_TEST_SEGMENT_INDEX" % [
+				LAKE_TEST_SEGMENT_INDEX, offset,
+			])
+
+	print("TERRAIN_INVARIANT_LAKE seed=", session_seed, " index=", LAKE_TEST_SEGMENT_INDEX,
+		" span=[%.1f, %.1f]" % [lake_start_x, lake_end_x],
+		" flatness=%.6f" % worst_deviation,
+		" status=", "PASS" if violations.is_empty() else "FAIL")
+	for violation: String in violations:
+		print("    ", violation)
+
+	main.queue_free()
+	await process_frame
+	return violations
 
 
 func sample_height_field(terrain_generator: TerrainGenerator, start_world_x: float, end_world_x: float, sample_step: float, max_slope_angle: float) -> Dictionary:

@@ -56,6 +56,10 @@ func check_flag_defaults() -> void:
 	expect_bool("TerrainGenerator.debug_drop_chasm_rehearsal", terrain.debug_drop_chasm_rehearsal, false)
 	expect_bool("TerrainGenerator.debug_log_segment_selection", terrain.debug_log_segment_selection, false)
 	expect_int("TerrainGenerator.debug_replay_session_seed", terrain.debug_replay_session_seed, -1)
+	# Left set, every run gets a frozen lake at a fixed index regardless of playtime -- and
+	# the lake suppresses every spawner across 7500px, so a shipped build would have a silent
+	# dead zone in it.
+	expect_int("TerrainGenerator.debug_force_lake_segment_index", terrain.debug_force_lake_segment_index, -1)
 	# mega_drop is SEGMENT CUT, not fixed (CLAUDE.md / camera_shake.md). A non-zero weight here
 	# reintroduces the one feature with a known unfixed visible shake.
 	expect_int("TerrainGenerator.debug_weight_mega_drop", terrain.debug_weight_mega_drop,
