@@ -18,6 +18,10 @@ class_name SaveStore
 # silently losing a new best score is worse than a log line.
 
 const SAVE_PATH: String = "user://save.dat"
+# Staging file for save_to_disk's write-then-rename. Never read back: if it exists at
+# startup it is the debris of a write that failed after the payload landed but before the
+# rename, and SAVE_PATH is still the last good save.
+const TEMP_SAVE_PATH: String = "user://save.dat.tmp"
 const CURRENT_VERSION: int = 2
 
 const DEFAULT_MUSIC_VOLUME: float = 0.8
@@ -82,10 +86,25 @@ func load_from_disk() -> void:
 			upgrade_levels[String(upgrade_id)] = maxi(int(stored_levels[upgrade_id]), 0)
 
 
+# WRITES VIA A TEMP FILE AND A RENAME, NEVER STRAIGHT OVER THE LIVE SAVE.
+#
+# Opening SAVE_PATH with FileAccess.WRITE truncates it to zero length before a single byte
+# of the new payload lands. A kill in that window -- the OS reclaiming a backgrounded app on
+# Android is the realistic one, not a crash -- leaves a truncated or empty file, and
+# load_from_disk's deliberately silent failure policy then reads it as a fresh save. The
+# player loses their wallet, best score and every upgrade level, with no error anywhere.
+#
+# rename is atomic on POSIX, and Godot's Windows DirAccess uses MoveFileExW with
+# MOVEFILE_REPLACE_EXISTING, so the live file is either the old payload or the new one and
+# never a partial write. The cost is one extra file create per save, which is nothing next
+# to what it protects: this is the only writer of every persisted field in the project.
+#
+# The temp file is deliberately NOT cleaned up on a failed write -- if the rename is what
+# failed, that file is the only complete copy of the payload that exists.
 func save_to_disk() -> void:
-	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var file: FileAccess = FileAccess.open(TEMP_SAVE_PATH, FileAccess.WRITE)
 	if file == null:
-		push_error("SaveStore failed to open %s for writing." % SAVE_PATH)
+		push_error("SaveStore failed to open %s for writing." % TEMP_SAVE_PATH)
 		return
 
 	var payload: Dictionary = {
@@ -100,6 +119,14 @@ func save_to_disk() -> void:
 		},
 	}
 	file.store_string(JSON.stringify(payload))
+	# Explicit, not left to the RefCounted going out of scope: the rename below must not
+	# race a buffer that has not been flushed yet.
+	file.close()
+
+	var rename_result: Error = DirAccess.rename_absolute(TEMP_SAVE_PATH, SAVE_PATH)
+	if rename_result != OK:
+		push_error("SaveStore failed to move %s over %s (error %d). The save on disk is unchanged."
+				% [TEMP_SAVE_PATH, SAVE_PATH, rename_result])
 
 
 # Returns true when this run beat the stored best, so the caller can show "New Best!".
