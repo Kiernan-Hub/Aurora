@@ -67,7 +67,7 @@ built here should generalise.
 
 ---
 
-## State: steps 1–5 COMMITTED, step 6 BUILT AND PLAYED BUT NOT COMMITTED
+## State: steps 1–6c COMMITTED. Step 7 is next.
 
 Branch `terrain/disable-mega-drop-camera-shake`.
 
@@ -79,7 +79,16 @@ Branch `terrain/disable-mega-drop-camera-shake`.
 | 3 | `98a9a05` | `Player.is_jump_suppressed` |
 | 4 | `5a4d9a4` | Six spawner suppression guards |
 | 5 | `0c5f9a9` | `FrozenLakeDirector` — the lake now actually happens |
-| 6 | **UNCOMMITTED** | The whole visual pass below. Owner's last verdict: **"not bad at all"** |
+| 6, 6b, 6c | `f18bb43` | The whole visual pass below: mirror, ice tint, spray, etched track |
+
+**`f18bb43` COMMITTED THE TWO LAKE TEMP KNOBS AT THEIR SHIPPING VALUE (0.0) AND THEY WERE THEN
+PUT BACK TO 10.0 IN THE WORKING TREE.** So the committed director is shippable and the tree is
+still fast to playtest. Do the same on the next lake commit rather than reverting the file —
+`git checkout` on `frozen_lake_director.gd` would take `get_lake_blend()` with it.
+
+**`f18bb43` deliberately excludes** the `art_source/` reorganisation, the biome `.tres` edits,
+`CLAUDE.md`, `docs/`, `biome_palette.gd`, `build_ice_texture.py`, and the three spawner files
+flagged below — all the owner's own staged work, none of it this session's.
 
 ### Uncommitted files, and which are mine
 
@@ -105,8 +114,8 @@ They appeared modified partway through 2026-08-14. Ask before committing them.
 
 | # | What | State |
 |---|---|---|
-| 6b | **The skate spray** — `SkateSpray` | **BUILT, NOT COMMITTED.** Owner approved rev 2: *"that looks way better"* |
-| 6c | **The etched glow track** — `SkateTrack` | **BUILT, NOT COMMITTED, awaiting playtest** |
+| 6b | **The skate spray** — `SkateSpray` | **DONE**, in `f18bb43`. Owner on rev 2: *"that looks way better"* |
+| 6c | **The etched glow track** — `SkateTrack` | **DONE**, in `f18bb43`. Owner on rev 1: *"looks good"* |
 | **7. NEXT** | "Still Water" achievement + on-screen notification | not started |
 | 8 | Fold a lake case into `terrain_invariant_check` beyond step 2's | probably nothing to do |
 | 9 | Docs — `CLAUDE.md`, `terrain.md`, `visuals.md`, `input.md` | partly done |
