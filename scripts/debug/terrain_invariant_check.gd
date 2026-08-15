@@ -44,6 +44,15 @@ const LAKE_TEST_SEGMENT_INDEX: int = 200
 # and its seams are exact in binary rather than approximately equal -- there is no
 # accumulating arithmetic to absorb. Anything above float noise is a real defect.
 const LAKE_EPSILON: float = 1e-6
+# How far check_lake_arming() walks the segment cache before arming, so that
+# highest_cached_segment_index is a real watermark with real terrain behind it rather than the
+# 0 a fresh generator starts at. Far enough to be past CHASM_MIN_SEGMENT_INDEX and to have
+# banked a few hundred segments of history for the re-sample to compare against.
+const ARMING_WARMUP_WORLD_X: float = 120000.0
+# Points re-sampled either side of arm_lake() to prove the existing height field is untouched.
+# Spread across everything cached at the moment of arming, which is the entire region that
+# could possibly disagree with a chunk already built from it.
+const ARMING_RESAMPLE_COUNT: int = 4000
 # Slope is compared against floor_max_angle, which is what CharacterBody2D uses to
 # decide "floor" vs "wall". Anything at or past it is terrain the player can wedge
 # against. A hair of tolerance absorbs float noise in the finite difference.
@@ -175,6 +184,11 @@ func _init() -> void:
 	# asserts, so it runs once against the first seed rather than per seed.
 	var lake_violations: Array[String] = await check_frozen_lake(session_seeds[0])
 	variant_violations.append_array(lake_violations)
+
+	# Same reasoning as check_frozen_lake for running once: what it asserts is a property of
+	# arm_lake's arithmetic, not of any seed. It takes the FIRST seed for the same reason.
+	var arming_violations: Array[String] = await check_lake_arming(session_seeds[0])
+	variant_violations.append_array(arming_violations)
 
 	var failed_seed_count: int = 0
 	for session_seed: int in session_seeds:
@@ -322,6 +336,187 @@ func check_frozen_lake(session_seed: int) -> Array[String]:
 	print("TERRAIN_INVARIANT_LAKE seed=", session_seed, " index=", LAKE_TEST_SEGMENT_INDEX,
 		" span=[%.1f, %.1f]" % [lake_start_x, lake_end_x],
 		" flatness=%.6f" % worst_deviation,
+		" status=", "PASS" if violations.is_empty() else "FAIL")
+	for violation: String in violations:
+		print("    ", violation)
+
+	main.queue_free()
+	await process_frame
+	return violations
+
+
+# THE ARMING PATH, which check_frozen_lake above deliberately does not touch: it pins the lake
+# through debug_force_lake_segment_index, so everything it proves is about the SHAPE of a lake
+# and nothing it proves is about arm_lake() ever being allowed to place one.
+#
+# WHY THIS IS THE HIGHEST-VALUE ASSERTION IN THE FILE. get_terrain_height must stay pure in
+# (session_seed, world_x); TerrainGenerator.lake_segment_index is the single runtime input the
+# project allows into it, and it is allowed only under a WRITE-ONCE, WRITE-AHEAD rule -- arm_lake
+# may set it only to an index STRICTLY GREATER than highest_cached_segment_index, a segment whose
+# spec, length, start_x and baseline have never been computed. Segment caches only ever grow
+# forward and are never trimmed, so such an index is provably virgin and arming can only EXTEND
+# the height field.
+#
+# BREAK THAT AND THE FAILURE IS THE WORST KIND. Arming at or below the watermark REWRITES height
+# that chunks, collision, player tilt and the debug HUD have already sampled independently, so
+# every cached chunk behind the player silently disagrees with a fresh sample of the same x.
+# Nothing throws. It looks like the terrain freeze class that cost this project weeks.
+#
+# WHICH ASSERTION ACTUALLY CATCHES IT -- established by mutation testing, not by reasoning, and
+# worth stating because the intuitive answer is wrong.
+#
+# Re-sampling the SAME generator either side of arm_lake() does NOT catch a write-behind.
+# get_terrain_height reads its spec through get_segment_spec(), which is cached, so once an index
+# is cached, arming behind the watermark cannot change what THAT generator returns. Mutating
+# arm_lake to arm 10 segments behind the watermark produced drift=0 while being maximally broken.
+# THAT IS THE BUG'S ENTIRE SIGNATURE, not a gap in the test: chunks already built keep the old
+# geometry, and only chunks built LATER see the lake. The disagreement is between two generators,
+# never inside one.
+#
+# So the catch is split. Assertion 2 compares the index against the watermark directly and is
+# what goes red on a write-behind. Assertion 3 re-samples the same generator and covers the other
+# direction -- an arm_lake that invalidated or trimmed the cache, which assertion 2 cannot see.
+# Assertion 6 builds a SECOND generator on the same seed with the lake pinned where the first one
+# armed it, and requires the two to agree bit for bit across everything the first had cached:
+# that is "arming can only EXTEND the height field" stated as the comparison it actually means.
+# Against the write-behind mutation it reported 292 disagreeing samples, worst 713.97px at
+# world_x=116956 -- a 714px cliff between a built chunk and a fresh sample of the same x, with
+# assertion 3 still reading drift=0 alongside it.
+#
+# A first mutation attempt is recorded here because it teaches something about the code. Starting
+# the candidate 10 segments behind the watermark did NOT break the invariant -- the skip loop's
+# segment_spec_cache.has(candidate) test walks forward past every cached index and lands on the
+# first virgin one. THE SKIP LOOP IS WHAT ENFORCES WRITE-AHEAD; LAKE_ARM_LEAD_SEGMENTS is only a
+# head start. Both had to be removed before the gate could be made to fail.
+func check_lake_arming(session_seed: int) -> Array[String]:
+	var violations: Array[String] = []
+
+	var main: Node = MAIN_SCENE.instantiate()
+	var terrain_generator: TerrainGenerator = main.get_node("TerrainGenerator") as TerrainGenerator
+	var player: Player = main.get_node("Player") as Player
+	terrain_generator.debug_replay_session_seed = session_seed
+	# Emphatically NOT debug_force_lake_segment_index: that override short-circuits
+	# get_active_lake_segment_index() and would mean this never exercises arm_lake at all.
+	player.DEBUG_LOG_FREEZE_REPRO = false
+	player.DEBUG_SHOW_PLAYER_STATE = false
+	root.add_child(main)
+	await physics_frame
+
+	# Walk the cache out the way play does, so the watermark below is a real one. Without this
+	# the generator is at index 0 and "strictly greater than the watermark" is trivially true.
+	terrain_generator.ensure_segment_cache_for_world_x(ARMING_WARMUP_WORLD_X)
+	var watermark_before: int = terrain_generator.highest_cached_segment_index
+	if watermark_before <= 0:
+		violations.append("LAKE_ARM_NO_WARMUP watermark=%d -- warmup did not walk the cache" % watermark_before)
+
+	# Sampled across the whole cached span, which is exactly the region an illegal arm could
+	# rewrite. Stored before arming and compared after.
+	var cached_end_x: float = terrain_generator.get_cached_segment_end_x(watermark_before)
+	var sample_span: float = cached_end_x
+	var heights_before: PackedFloat64Array = PackedFloat64Array()
+	heights_before.resize(ARMING_RESAMPLE_COUNT)
+	for i: int in ARMING_RESAMPLE_COUNT:
+		var sample_x: float = sample_span * float(i) / float(ARMING_RESAMPLE_COUNT)
+		heights_before[i] = terrain_generator.get_terrain_height(sample_x)
+
+	# 1. Arming succeeds on a generator with no lake.
+	var armed: bool = terrain_generator.arm_lake()
+	if not armed:
+		violations.append("LAKE_ARM_REFUSED arm_lake() returned false on an unarmed generator")
+
+	var armed_index: int = terrain_generator.lake_segment_index
+
+	# 2. WRITE-AHEAD. The whole invariant in one comparison.
+	if armed_index <= watermark_before:
+		violations.append("LAKE_ARM_NOT_AHEAD armed_index=%d watermark=%d -- arming REWROTE cached terrain" % [
+			armed_index, watermark_before,
+		])
+
+	# 3. Nothing already cached moved. NOT the write-behind detector -- see the header, this
+	#    reads drift=0 even when arm_lake is maximally broken, because the cache masks it. What
+	#    it does cover is the opposite failure: an arm_lake that trimmed or invalidated the
+	#    cache, at which point these samples WOULD be recomputed and could land differently.
+	#    Exact equality, not an epsilon: the claim is that they were not recomputed at all.
+	var drift_count: int = 0
+	var worst_drift: float = 0.0
+	var worst_drift_x: float = 0.0
+	for i: int in ARMING_RESAMPLE_COUNT:
+		var sample_x: float = sample_span * float(i) / float(ARMING_RESAMPLE_COUNT)
+		var after: float = terrain_generator.get_terrain_height(sample_x)
+		if after != heights_before[i]:
+			drift_count += 1
+			var drift: float = absf(after - heights_before[i])
+			if drift > worst_drift:
+				worst_drift = drift
+				worst_drift_x = sample_x
+	if drift_count > 0:
+		violations.append("LAKE_ARM_MUTATED_HEIGHT_FIELD samples=%d worst=%.9f at world_x=%.1f" % [
+			drift_count, worst_drift, worst_drift_x,
+		])
+
+	# 4. WRITE-ONCE. A second arm must refuse and must not move the index -- FrozenLakeDirector
+	#    calls try_arm on a schedule, so a re-arm that succeeded would relocate a lake the player
+	#    may already be standing on.
+	var rearmed: bool = terrain_generator.arm_lake()
+	if rearmed:
+		violations.append("LAKE_ARM_NOT_WRITE_ONCE second arm_lake() returned true")
+	if terrain_generator.lake_segment_index != armed_index:
+		violations.append("LAKE_ARM_INDEX_MOVED from=%d to=%d on a second arm" % [
+			armed_index, terrain_generator.lake_segment_index,
+		])
+
+	# 5. arm_lake skips forward past any index whose segment -- or either neighbour -- is a
+	#    chasm. Unlike the pinned check above, a hit HERE is a real defect rather than a badly
+	#    chosen test index, because this index is the one the runtime actually picked.
+	for offset: int in [-1, 0, 1]:
+		if terrain_generator.is_chasm_segment_index(armed_index + offset):
+			violations.append("LAKE_ARM_MEETS_CHASM armed_index=%d offset=%d" % [armed_index, offset])
+
+	# 6. THE ONE THAT MATCHES THE REAL FAILURE MODE. Everything above interrogates the generator
+	#    that did the arming, and that generator is exactly the one which cannot see the bug. So
+	#    build a fresh one on the same seed with the lake pinned where this one armed it -- the
+	#    state a chunk built AFTER arming is generated from -- and require it to agree with the
+	#    pre-arm samples across the whole region the first generator had already cached.
+	#
+	#    Identical means arming extended the field. Any disagreement is a chunk behind the player
+	#    that no longer matches a fresh sample of the same x, which is the silent class this whole
+	#    invariant exists to prevent.
+	var fresh_main: Node = MAIN_SCENE.instantiate()
+	var fresh_generator: TerrainGenerator = fresh_main.get_node("TerrainGenerator") as TerrainGenerator
+	var fresh_player: Player = fresh_main.get_node("Player") as Player
+	fresh_generator.debug_replay_session_seed = session_seed
+	# Pinned rather than armed: this generator has cached nothing, so its own arm_lake would pick
+	# an index near 0 instead of the one under test.
+	fresh_generator.debug_force_lake_segment_index = armed_index
+	fresh_player.DEBUG_LOG_FREEZE_REPRO = false
+	fresh_player.DEBUG_SHOW_PLAYER_STATE = false
+	root.add_child(fresh_main)
+	await physics_frame
+
+	var disagreement_count: int = 0
+	var worst_disagreement: float = 0.0
+	var worst_disagreement_x: float = 0.0
+	for i: int in ARMING_RESAMPLE_COUNT:
+		var sample_x: float = sample_span * float(i) / float(ARMING_RESAMPLE_COUNT)
+		var fresh_height: float = fresh_generator.get_terrain_height(sample_x)
+		if fresh_height != heights_before[i]:
+			disagreement_count += 1
+			var gap: float = absf(fresh_height - heights_before[i])
+			if gap > worst_disagreement:
+				worst_disagreement = gap
+				worst_disagreement_x = sample_x
+	if disagreement_count > 0:
+		violations.append("LAKE_ARM_FRESH_GENERATOR_DISAGREES samples=%d worst=%.9f at world_x=%.1f -- arming REWROTE terrain a built chunk already used" % [
+			disagreement_count, worst_disagreement, worst_disagreement_x,
+		])
+
+	fresh_main.queue_free()
+	await process_frame
+
+	print("TERRAIN_INVARIANT_LAKE_ARM seed=", session_seed,
+		" watermark=", watermark_before, " armed_index=", armed_index,
+		" resampled=", ARMING_RESAMPLE_COUNT, " drift=", drift_count,
+		" fresh_disagreements=", disagreement_count,
 		" status=", "PASS" if violations.is_empty() else "FAIL")
 	for violation: String in violations:
 		print("    ", violation)
