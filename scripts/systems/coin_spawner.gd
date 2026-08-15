@@ -213,6 +213,11 @@ func spawn_coin(group: Node2D, group_origin_x: float, world_x: float, clearance:
 		return
 	if not terrain_generator.has_ground_at_world_x(world_x):
 		return
+	# The frozen lake is a deliberately empty stretch -- no coins, no powerups, no obstacles.
+	# Checked per coin alongside the void check above and for the same reason: a line that
+	# straddles the lake's seam loses only the coins actually on the ice.
+	if terrain_generator.is_lake_world_x(world_x):
+		return
 
 	var coin: Coin = COIN_SCENE.instantiate() as Coin
 	coin.position = Vector2(world_x - group_origin_x, terrain_generator.get_terrain_height(world_x) - clearance)
@@ -245,6 +250,11 @@ func can_fit_line_at_world_x(world_x: float) -> bool:
 	for coin_index: int in range(COIN_LINE_COIN_COUNT):
 		var sample_x: float = world_x + get_line_offset_x(coin_index)
 		if not terrain_generator.has_ground_at_world_x(sample_x):
+			return false
+		# A line whose span touches the lake falls back to a single ground coin, which
+		# spawn_coin() then suppresses if it too is on the ice. Rejecting the whole line
+		# here rather than per coin avoids a two-coin stub hanging off the lake's edge.
+		if terrain_generator.is_lake_world_x(sample_x):
 			return false
 		var height: float = terrain_generator.get_terrain_height(sample_x)
 		lowest_height = minf(lowest_height, height)

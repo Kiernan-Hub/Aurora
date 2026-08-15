@@ -179,6 +179,13 @@ func spawn_cluster() -> void:
 	# OBSTACLE_VOID_CLEARANCE_AHEAD past the obstacle and a shorter margin behind it.
 	if not terrain_generator.has_ground_over_world_x_span(world_x - OBSTACLE_VOID_CLEARANCE_BEHIND, world_x + OBSTACLE_VOID_CLEARANCE_AHEAD):
 		return
+	# Third reason to skip, and safety-critical for the same shape of reason as the chasm
+	# rule above: jumping is disabled across the frozen lake, so an obstacle there is
+	# unavoidable death rather than a hazard. Skipped rather than rescheduled, matching the
+	# two checks above -- next_cluster_time has already advanced, so the cluster is simply
+	# lost, which is exactly the gap the set piece wants.
+	if terrain_generator.is_lake_world_x(world_x):
+		return
 	spawn_obstacle(world_x)
 
 

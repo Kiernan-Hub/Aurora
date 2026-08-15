@@ -163,6 +163,12 @@ func spawn_trail_coin() -> void:
 		# exactly what this mechanic should not do.
 		if not terrain_generator.has_ground_at_world_x(world_x):
 			continue
+		# Unreachable in practice -- a glide cannot start on the lake, since the powerup that
+		# grants it is suppressed there and is_glide_input_held() reads false while input is
+		# locked -- but a glide begun just before the seam can still be placing coins as the
+		# player crosses it. Guarded for that, and for symmetry with the other five.
+		if terrain_generator.is_lake_world_x(world_x):
+			continue
 		var clearance: float = randf_range(TRAIL_CLEARANCE_MIN, TRAIL_CLEARANCE_MAX)
 		var local_y: float = terrain_generator.get_terrain_height(world_x) - clearance
 		if is_far_enough_from_active_coins(world_x, local_y):
@@ -204,6 +210,10 @@ func is_far_enough_from_active_coins(world_x: float, local_y: float) -> bool:
 func spawn_bonus_coin(world_x: float) -> void:
 	if not terrain_generator.has_ground_at_world_x(world_x):
 		world_x = terrain_generator.get_next_ground_world_x(world_x)
+	# Skipped, not nudged, for the same reason PowerupSpawner skips: the lake is 7500px of
+	# perfectly good ground, so a nudge would walk the coin onto the ice rather than past it.
+	if terrain_generator.is_lake_world_x(world_x):
+		return
 	var local_y: float = terrain_generator.get_terrain_height(world_x) - BONUS_SURFACE_CLEARANCE
 	spawn_coin(world_x, local_y, BONUS_COIN_VALUE, AIR_COIN_SCALE, get_bonus_coin_color())
 

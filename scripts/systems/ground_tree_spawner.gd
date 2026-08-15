@@ -116,6 +116,11 @@ func spawn_tree_group(chunk_index: int) -> void:
 		# returns the lip height there, which would plant it floating over the gap.
 		if not terrain_generator.has_ground_at_world_x(world_x):
 			continue
+		# Nothing grows out of the frozen lake. Trees are decorative and collision-free, so
+		# this is the one suppression here that is purely a look -- but a pine standing in
+		# the middle of a mirror is the thing that would give the whole effect away.
+		if terrain_generator.is_lake_world_x(world_x):
+			continue
 
 		var tree_height: float = TREE_HEIGHT_MIN + (get_tree_hash_unit(tree_index, 2) * (TREE_HEIGHT_MAX - TREE_HEIGHT_MIN))
 		var local_x: float = world_x - chunk_start_x

@@ -170,6 +170,15 @@ func try_spawn_rare_coin(world_x: float) -> bool:
 		return false
 	if not terrain_generator.has_ground_over_world_x_span(world_x - VOID_CLEARANCE, world_x + VOID_CLEARANCE):
 		return false
+	# No diamonds on the frozen lake. The lake IS a long flat run-up, so without this it
+	# would be the single most attractive stretch of terrain in the game to the checks above
+	# -- and the one place the player cannot jump to reach the coin.
+	#
+	# Returning false rather than skipping is what makes this the best-behaved of the six
+	# suppressions: the caller retries in REJECTED_SLOT_RETRY_DELAY, so the diamond is
+	# DEFERRED past the lake rather than lost.
+	if terrain_generator.is_lake_world_x(world_x):
+		return false
 
 	var local_y: float = terrain_generator.get_terrain_height(world_x) - RARE_COIN_CLEARANCE
 	var coin: Coin = RARE_COIN_SCENE.instantiate() as Coin

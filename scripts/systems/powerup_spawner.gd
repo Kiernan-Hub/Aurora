@@ -236,6 +236,13 @@ func spawn_powerup(scene: PackedScene, world_x: float, effect: StringName) -> vo
 	# with no second chance, and silently dropping it would surface as "powerups sometimes
 	# just don't come" long after anyone remembers why.
 	world_x = terrain_generator.get_next_ground_world_x(world_x)
+	# The frozen lake is the one case that must be SKIPPED rather than nudged, which is the
+	# opposite of the void rule directly above. get_next_ground_world_x only walks forward to
+	# the next place with ground under it -- and the lake is 7500px of ground, so nudging
+	# would deposit the powerup on the ice, in the middle of the stretch that is supposed to
+	# be empty and where jump is disabled. Losing one scheduled powerup is the cheaper cost.
+	if terrain_generator.is_lake_world_x(world_x):
+		return
 	var world_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - POWERUP_SURFACE_CLEARANCE
 	var powerup: Powerup = scene.instantiate() as Powerup
 	powerup.position = Vector2(world_x, world_y)
