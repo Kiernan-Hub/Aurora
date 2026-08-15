@@ -67,7 +67,7 @@ built here should generalise.
 
 ---
 
-## State: steps 1–7 COMMITTED. Step 8 is next (and is probably nothing).
+## State: steps 1–8 COMMITTED. Step 9 (docs) is the last one.
 
 Branch `terrain/disable-mega-drop-camera-shake`.
 
@@ -81,6 +81,7 @@ Branch `terrain/disable-mega-drop-camera-shake`.
 | 5 | `0c5f9a9` | `FrozenLakeDirector` — the lake now actually happens |
 | 6, 6b, 6c | `f18bb43` | The whole visual pass below: mirror, ice tint, spray, etched track |
 | 7 | `bb04f70` | `AchievementManager` + `AchievementToast` — "Still Water" |
+| 8 | `96f6f52` | `check_lake_arming()` — six assertions on the arming path |
 
 **`f18bb43` COMMITTED THE TWO LAKE TEMP KNOBS AT THEIR SHIPPING VALUE (0.0) AND THEY WERE THEN
 PUT BACK TO 10.0 IN THE WORKING TREE.** So the committed director is shippable and the tree is
@@ -110,8 +111,48 @@ They appeared modified partway through 2026-08-14. Ask before committing them.
 | 6b | **The skate spray** — `SkateSpray` | **DONE**, in `f18bb43`. Owner on rev 2: *"that looks way better"* |
 | 6c | **The etched glow track** — `SkateTrack` | **DONE**, in `f18bb43`. Owner on rev 1: *"looks good"* |
 | 7 | "Still Water" achievement + on-screen notification | **DONE**, in `bb04f70`. **Not yet played by the owner** |
-| **8. NEXT** | Fold a lake case into `terrain_invariant_check` beyond step 2's | probably nothing to do |
-| 9 | Docs — `CLAUDE.md`, `terrain.md`, `visuals.md`, `input.md` | partly done |
+| 8 | Fold a lake case into `terrain_invariant_check` beyond step 2's | **DONE**, in `96f6f52`. It was NOT "nothing to do" |
+| **9. NEXT** | Docs — `CLAUDE.md`, `terrain.md`, `visuals.md`, `input.md` | partly done |
+
+---
+
+## STEP 8 — AS BUILT (`96f6f52`). It was not "nothing to do".
+
+`check_frozen_lake()` pins the lake through `debug_force_lake_segment_index` and says so itself:
+it measures **the shape of a lake**, and nothing about `arm_lake()` ever being allowed to place
+one. `arm_lake` is the sole writer of `lake_segment_index` — the single runtime input allowed
+into `get_terrain_height` — and had **no coverage at all**. `check_lake_arming()` adds six
+assertions: arming succeeds, the index is strictly ahead of the watermark, nothing cached moved,
+a second arm refuses and does not relocate, no chasm touches the armed segment, and a fresh
+generator pinned at the armed index agrees with the pre-arm samples.
+
+**Two things mutation testing corrected, both worth keeping:**
+
+1. **The skip loop is what enforces write-ahead; `LAKE_ARM_LEAD_SEGMENTS` is only a head start.**
+   Starting the candidate 10 segments *behind* the watermark did NOT break the invariant — the
+   `segment_spec_cache.has(candidate)` test walks forward past every cached index onto the first
+   virgin one. Both had to be removed before the gate could be made to fail.
+2. **RE-SAMPLING THE SAME GENERATOR CANNOT DETECT A WRITE-BEHIND.** `get_terrain_height` reads a
+   *cached* spec, so the generator that armed is exactly the one that cannot see the damage — the
+   mutation ran `drift=0` while maximally broken. **That is the bug's whole signature, not a gap
+   in the test: the disagreement is between two generators, never inside one.** Hence assertion 6,
+   which against the mutation reported **292 disagreeing samples, worst 713.97px at
+   world_x=116956** — a 714px cliff between a built chunk and a fresh sample of the same x.
+
+**Baseline to expect:** `watermark=164 armed_index=166 drift=0 fresh_disagreements=0`.
+
+### The gap deliberately NOT closed — flagged for the owner
+
+**No gate asserts that the six spawners actually suppress on a lake.** All six call
+`terrain_generator.is_lake_world_x()` (step 4), and nothing checks that no coin, air line, rare
+coin, powerup, obstacle or tree lands on the sheet. A lake with a coin line over it is a visible
+bug in a stretch where **the jump button does nothing**.
+
+It was left out because it is a different shape of test — it needs live spawner instances driven
+over a pinned lake, not the pure height-field sampling this gate is built from, and
+`terrain_invariant_check`'s existing coin-density band is calibrated globally over 1758 slots.
+**Moderate cost, real value, not urgent** (all six guards are one-line and were read at the time).
+Say the word and it becomes step 8b.
 
 ---
 
