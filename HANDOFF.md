@@ -116,7 +116,7 @@ They appeared modified partway through 2026-08-14. Ask before committing them.
 |---|---|---|
 | 6b | **The skate spray** — `SkateSpray` | **DONE**, in `f18bb43`. Owner on rev 2: *"that looks way better"* |
 | 6c | **The etched glow track** — `SkateTrack` | **DONE**, in `f18bb43`. Owner on rev 1: *"looks good"* |
-| **7. NEXT** | "Still Water" achievement + on-screen notification | not started |
+| **7. NEXT** | "Still Water" achievement + on-screen notification | not started — **full briefing in its own section below, read that** |
 | 8 | Fold a lake case into `terrain_invariant_check` beyond step 2's | probably nothing to do |
 | 9 | Docs — `CLAUDE.md`, `terrain.md`, `visuals.md`, `input.md` | partly done |
 
@@ -444,6 +444,69 @@ overlapping mountain layers with varied pine clusters, ours are flat two-tone si
 `background_generator.gd`. Ridge/pine PNGs with alpha, **authored at ~2× world size**, would let the
 procedural layers be swapped. **That is a separate piece of work from the lake and it improves the
 whole game, not just this set piece.**
+
+---
+
+## STEP 7 — "Still Water", the project's first achievement. START HERE.
+
+Briefing written 2026-08-15 at the end of the 6b/6c session, for a fresh context. Everything
+below was verified against the code, not recalled.
+
+### What already exists — do not rebuild any of it
+
+| Piece | Where | State |
+|---|---|---|
+| `achievements` storage | `save_store.gd:63`, `Dictionary[String, bool]` | **Done.** An OPEN dictionary on purpose, so a new achievement needs no save-version bump. Persisted at `:153`, loaded at `:119`, cleared by `reset_progress()` at `:203`. |
+| The trigger | `frozen_lake_director.gd:88`, `signal lake_finished(total_lakes: int)` | **Done and unconnected.** Emitted at `:230`, immediately after `frozen_lake_count += 1` and `save_to_disk()`. **Nothing listens to it or to `lake_started` yet** — they are both live and unused. |
+| The id and name | `still_water` / "Still Water" | Settled with the owner. Do not rename. |
+
+So step 7 is: **connect that signal, set the flag, and show something.** The storage and the
+trigger are already there.
+
+### What does NOT exist, and is the actual work
+
+**THE GAME HAS NO NOTIFICATION UI OF ANY KIND.** Every `Control` under `CanvasLayer` is either a
+full-screen modal (`StartScreen`, `PauseScreen`, `DeathScreen`, `ShopScreen`) or a persistent HUD
+label (`TimerLabel`, `CoinLabel`, `PowerupLabel`, `StuckTimeLabel`). There is no precedent for a
+transient toast, so this is a new shape and **it must generalise — an aurora set piece is planned
+as achievement #2.**
+
+### Two questions for the owner, ASKED AND NOT YET ANSWERED
+
+Both were put to them on 2026-08-15 and the session ended before they replied. **Get answers
+before building; do not guess.** They set a pattern that is expensive to undo later.
+
+1. **What the notification looks like, and how long it lingers.** First one in the game.
+2. **Does it fire mid-crossing or at the far shore?** `lake_finished` currently emits at the far
+   shore. Firing mid-lake competes with a set piece the owner spent three revisions tuning; the
+   far shore is quieter but further from the moment being rewarded. **This is a design call, not
+   a technical one** — both are trivial to implement.
+
+### Traps specific to this step
+
+- **`GameManager.set_state()` IS THE ONLY THING ALLOWED TO TOUCH A SCREEN'S VISIBILITY OR
+  `get_tree().paused`** (`game_manager.gd:323`, and `CLAUDE.md` states it as a hard rule). A toast
+  is NOT a screen and must not become a `GameManager.State` — the game stays PLAYING throughout,
+  exactly as the lake itself does (`frozen_lake_director.gd`'s header, "IT IS NOT A
+  GameManager.State"). Whatever node owns the toast owns its own visibility.
+- **The achievement fires ONCE; the lake recurs forever.** That is precisely why
+  `frozen_lake_count` and `achievements` are separate fields — `save_store.gd:59` says so. Gate on
+  the flag, never on `total_lakes == 1`.
+- **`reset_progress()` clears achievements deliberately**, so "Still Water" can be re-earned after
+  a reset. Do not add a guard that defeats that.
+- **Headless.** `FrozenLakeDirector` hard-skips headless, so no gate can reach this path at all —
+  same as the rest of the lake. Anything new needs the same locally-computed
+  `DisplayServer.get_name() == "headless"` guard the other four lake files use, not
+  `services.is_headless`.
+- **`SfxPlayer` has no `process_mode`** (listed under "Deferred" below), so if the toast plays a
+  sound, check that it is audible in the state it fires in.
+
+### Still outstanding from the 6b/6c session
+
+**THE SET PIECE HAS NEVER BEEN SEEN AT ITS SHIPPING PACE.** Every playtest so far ran with
+`debug_lake_min_run_time_override`, so the crossing took ~39s instead of the 10.0s it ships at.
+Colour and look are signed off; **pacing is not.** One full-length run with both lake knobs at 0.0
+is the only way to judge it, and it is the owner's call when to spend the two minutes.
 
 ---
 
