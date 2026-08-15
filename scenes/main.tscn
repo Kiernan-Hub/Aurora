@@ -21,6 +21,8 @@
 [ext_resource type="Script" path="res://scripts/systems/lake_reflection.gd" id="20_lake_reflection"]
 [ext_resource type="Script" path="res://scripts/systems/skate_spray.gd" id="21_skate_spray"]
 [ext_resource type="Script" path="res://scripts/systems/skate_track.gd" id="22_skate_track"]
+[ext_resource type="Script" path="res://scripts/systems/achievement_manager.gd" id="23_achievements"]
+[ext_resource type="Script" path="res://scripts/systems/achievement_toast.gd" id="24_achievement_toast"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -159,6 +161,9 @@ script = ExtResource("9_powerup")
 
 [node name="FrozenLakeDirector" type="Node" parent="."]
 script = ExtResource("19_frozen_lake")
+
+[node name="AchievementManager" type="Node" parent="."]
+script = ExtResource("23_achievements")
 
 [node name="SfxPlayer" type="Node" parent="." unique_id=1754029316]
 script = ExtResource("11_sfx_player")
@@ -322,6 +327,13 @@ offset_bottom = 72.0
 theme_override_font_sizes/font_size = 12
 text = "BOOST!"
 horizontal_alignment = 2
+
+[node name="AchievementToast" type="Control" parent="CanvasLayer"]
+visible = false
+layout_mode = 3
+anchors_preset = 0
+mouse_filter = 2
+script = ExtResource("24_achievement_toast")
 
 [node name="PauseButton" type="Button" parent="CanvasLayer" unique_id=1389630751]
 visible = false
