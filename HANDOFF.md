@@ -67,7 +67,7 @@ built here should generalise.
 
 ---
 
-## State: steps 1–6c COMMITTED. Step 7 is next.
+## State: steps 1–7 COMMITTED. Step 8 is next (and is probably nothing).
 
 Branch `terrain/disable-mega-drop-camera-shake`.
 
@@ -80,6 +80,7 @@ Branch `terrain/disable-mega-drop-camera-shake`.
 | 4 | `5a4d9a4` | Six spawner suppression guards |
 | 5 | `0c5f9a9` | `FrozenLakeDirector` — the lake now actually happens |
 | 6, 6b, 6c | `f18bb43` | The whole visual pass below: mirror, ice tint, spray, etched track |
+| 7 | `bb04f70` | `AchievementManager` + `AchievementToast` — "Still Water" |
 
 **`f18bb43` COMMITTED THE TWO LAKE TEMP KNOBS AT THEIR SHIPPING VALUE (0.0) AND THEY WERE THEN
 PUT BACK TO 10.0 IN THE WORKING TREE.** So the committed director is shippable and the tree is
@@ -92,21 +93,13 @@ flagged below — all the owner's own staged work, none of it this session's.
 
 ### Uncommitted files, and which are mine
 
-```
- M scenes/main.tscn                        LakeReflection node
- M scripts/main.gd                         lake camera framing
- M scripts/systems/frozen_lake_director.gd    get_lake_blend, min-run-time knob, temp knobs
- M scripts/player/player.gd                glide exemption from the input lock
- M scripts/terrain/terrain_generator.gd    lake ice colours, flatten, hue tint, blend
- M scripts/systems/obstacle_spawner.gd     TEMP KNOB ONLY
- M scripts/systems/biome_director.gd       TEMP KNOBS ONLY (owner's, pre-existing)
- M scripts/debug/shipping_values_check.gd  the new min-run-time knob
- M shaders/ice.gdshader                    `flatten` uniform + a pow() NaN fix
-?? scripts/systems/lake_reflection.gd      NEW
-?? shaders/frozen_lake_reflection.gdshader NEW
-```
+**That list was stale and has been removed (2026-08-15).** Everything it named as uncommitted
+had in fact landed in `f18bb43`; `git diff scenes/main.tscn` against HEAD before step 7 showed
+only step 7's own additions. **The only lake files still dirty are the two temp knobs**
+(`frozen_lake_director.gd`, `obstacle_spawner.gd`), plus the owner's `biome_director.gd` pair.
+Trust `git status`, not this section.
 
-**NOT MINE, and untouched by this session — do not assume they are part of step 6:**
+**NOT MINE, and untouched by any lake step — do not assume they are part of step 6 or 7:**
 `scripts/systems/glide_coin_spawner.gd`, `powerup_manager.gd`, `powerup_spawner.gd`.
 They appeared modified partway through 2026-08-14. Ask before committing them.
 
@@ -116,8 +109,8 @@ They appeared modified partway through 2026-08-14. Ask before committing them.
 |---|---|---|
 | 6b | **The skate spray** — `SkateSpray` | **DONE**, in `f18bb43`. Owner on rev 2: *"that looks way better"* |
 | 6c | **The etched glow track** — `SkateTrack` | **DONE**, in `f18bb43`. Owner on rev 1: *"looks good"* |
-| **7. NEXT** | "Still Water" achievement + on-screen notification | not started — **full briefing in its own section below, read that** |
-| 8 | Fold a lake case into `terrain_invariant_check` beyond step 2's | probably nothing to do |
+| 7 | "Still Water" achievement + on-screen notification | **DONE**, in `bb04f70`. **Not yet played by the owner** |
+| **8. NEXT** | Fold a lake case into `terrain_invariant_check` beyond step 2's | probably nothing to do |
 | 9 | Docs — `CLAUDE.md`, `terrain.md`, `visuals.md`, `input.md` | partly done |
 
 ---
@@ -447,12 +440,82 @@ whole game, not just this set piece.**
 
 ---
 
-## STEP 7 — "Still Water", the project's first achievement. START HERE.
+## STEP 7 — "Still Water" — AS BUILT (`bb04f70`)
 
-Briefing written 2026-08-15 at the end of the 6b/6c session, for a fresh context. Everything
-below was verified against the code, not recalled.
+**Owner's decisions this session, do not reopen:** quiet bottom-centre line; fires at the **far
+shore**; **no sound**; **no achievement addon** (see below). Not yet played — the look of the
+toast is unreviewed.
 
-### What already exists — do not rebuild any of it
+### The addon question, asked and answered
+
+The owner brought a recommendation to install a Godot achievement addon (Achievements – No-Code,
+or Milestone) and later GodotSteam. **Declined, with reasons, and they agreed** — the summary,
+so it is not re-litigated:
+
+- **The addons replace what already exists and keep what doesn't.** Persistence is done, with an
+  atomic temp-file+rename write that was its own commit (`e42f39d`) because an OS kill mid-write
+  wipes the wallet on Android. An addon brings its own save path to fight that. The only missing
+  piece was the popup, which is ~90 lines here.
+- **A second autoload is a real cost.** `project.godot` has exactly one, `Services`, and gameplay
+  code must use `GameServices.resolve(self)` or every headless probe breaks. Addons install as an
+  autoload and expect global calls.
+- **GodotSteam is for a platform this game doesn't target** — Mobile renderer, touch input, and
+  the save code reasons explicitly about Android backgrounding.
+- **The advice's architecture was right and was adopted**: data-driven definitions, one
+  centralized manager, no scattered `if score > 1000`.
+- **The gallery/progress-bar/rewards layer was scope creep** at one achievement. Worth building
+  at 8–10. The owner wants achievements that unlock biomes and cosmetics later; `ACHIEVEMENTS`
+  values are Dictionaries so a payload field can be added without touching the table's shape or
+  any reader. **There is deliberately no reward field yet.**
+
+### The two pieces
+
+| File | Owns |
+|---|---|
+| `scripts/systems/achievement_manager.gd` | WHETHER. The `ACHIEVEMENTS` table, `grant()`, and the **only** writes to `SaveStore.achievements` |
+| `scripts/systems/achievement_toast.gd` | Nothing but the look. Handed a display name; never reads the table |
+
+**Adding achievement #2 is two edits, both in the manager**: a row in `ACHIEVEMENTS`, and one
+`.connect()` in `connect_triggers()` pointing at a signal the relevant system **already emits**.
+The aurora set piece is expected to land exactly this way.
+
+**THE TRIGGERS COME TO THE MANAGER; IT NEVER GOES OUT TO THEM.** `FrozenLakeDirector` still does
+not know achievements exist — it emits `lake_finished`, as it already did, and the manager
+listens. Keep that direction; it is why "what unlocks this?" has one answer.
+
+### Traps carried into the build
+
+- **`ACHIEVEMENTS` keys are save data.** An id is written verbatim into `save.dat` forever.
+  Adding a row needs no version bump (the dictionary is open); **renaming one silently un-earns
+  it for every existing player.**
+- **Gated on the flag, never on `total_lakes == 1`** — the lake recurs forever, the achievement
+  fires once.
+- **THE MANAGER HAS NO HEADLESS GUARD, AND THAT IS ONLY SAFE BECAUSE ITS ONE TRIGGER IS THE
+  LAKE**, which hard-skips headless. **A trigger hung off score, coins, distance or death would
+  start writing to the developer's real `save.dat` during every probe** — the
+  `apply_upgrades()` class of bug, and this project has already lost one save file that way.
+  The file's footer says this and gives the guard to add. The toast has one already.
+- **The toast text is outlined** because it can appear over any of the nine biomes and can rely
+  on no background colour: white vanishes into the lake's luma-205 ice, dark vanishes into
+  `starlit_night`. It deliberately does **not** take a palette colour — it must also be legible
+  mid-transition between two palettes.
+- The toast sits in `main.tscn` **after the HUD labels and before `PauseButton`**, so the pause
+  and shop overlays draw over it. Tree order, no `z_index`.
+- It **queues** rather than overwrites, so two unlocks in one frame show in sequence.
+
+### Verification
+
+`shipping_values_check` the same five knobs, no sixth. `terrain_invariant_check` 8/8 PASS,
+`max_slope=20.13°`, coin density 0.3259–0.3464 — baseline. Editor pass for the two new
+`class_name`s left `project.godot` unchanged. Both scripts and `main.tscn` load-checked headless
+(the `../../AchievementManager` NodePath resolves). **No physics or camera gate rerun — step 7
+touches neither.**
+
+---
+
+## Step 7's original briefing, kept for the parts still true
+
+### What already existed — none of it was rebuilt
 
 | Piece | Where | State |
 |---|---|---|
@@ -471,16 +534,12 @@ label (`TimerLabel`, `CoinLabel`, `PowerupLabel`, `StuckTimeLabel`). There is no
 transient toast, so this is a new shape and **it must generalise — an aurora set piece is planned
 as achievement #2.**
 
-### Two questions for the owner, ASKED AND NOT YET ANSWERED
+### Two questions for the owner — ANSWERED 2026-08-15
 
-Both were put to them on 2026-08-15 and the session ended before they replied. **Get answers
-before building; do not guess.** They set a pattern that is expensive to undo later.
-
-1. **What the notification looks like, and how long it lingers.** First one in the game.
-2. **Does it fire mid-crossing or at the far shore?** `lake_finished` currently emits at the far
-   shore. Firing mid-lake competes with a set piece the owner spent three revisions tuning; the
-   far shore is quieter but further from the moment being rewarded. **This is a design call, not
-   a technical one** — both are trivial to implement.
+1. **What the notification looks like** → quiet bottom-centre line, no panel, no icon.
+   Built at 0.35s fade in / 2.6s hold / 0.6s fade out.
+2. **Mid-crossing or far shore?** → **far shore**, where `lake_finished` already emits. No new
+   emit point was added.
 
 ### Traps specific to this step
 
