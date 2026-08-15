@@ -1,6 +1,14 @@
 # Handoff — the Glossy Frozen Lake set piece
 
-Updated 2026-08-15. Delete this file once step 9 is done and it has stopped being true.
+Updated 2026-08-15. **Step 9 is done and the durable content now lives in the docs**
+(`terrain.md`, `input.md`, `debugging.md`, `architecture.md`, `visuals.md`) — this file is kept
+ONLY for the two things below that nothing else tracks. **Delete it once both are closed.**
+
+1. **THE SET PIECE HAS NEVER BEEN SEEN AT ITS SHIPPING PACE.** Every playtest ran with
+   `debug_lake_min_run_time_override`, so the crossing took ~39s instead of the 10.0s it ships
+   at. Colour, look and the toast are signed off; **pacing is not.** One full-length run with
+   both lake knobs at 0.0 is the only way to judge it.
+2. **The five temp knobs are still in the working tree** — the box below.
 
 Plan file: `/Users/kjh/.claude/plans/replicated-twirling-twilight.md` — the approved 9-step plan.
 **Read it before doing anything**; this file is the running state, that one is the design.
@@ -67,7 +75,7 @@ built here should generalise.
 
 ---
 
-## State: steps 1–8 COMMITTED. Step 9 (docs) is the last one.
+## State: ALL NINE STEPS COMMITTED. This file is KEPT for two live items only.
 
 Branch `terrain/disable-mega-drop-camera-shake`.
 
@@ -82,6 +90,7 @@ Branch `terrain/disable-mega-drop-camera-shake`.
 | 6, 6b, 6c | `f18bb43` | The whole visual pass below: mirror, ice tint, spray, etched track |
 | 7 | `bb04f70` | `AchievementManager` + `AchievementToast` — "Still Water" |
 | 8 | `96f6f52` | `check_lake_arming()` — six assertions on the arming path |
+| 9 | `325a41f`, `25c5aee` | Docs — the lake folded into terrain/input/debugging/architecture/visuals |
 
 **`f18bb43` COMMITTED THE TWO LAKE TEMP KNOBS AT THEIR SHIPPING VALUE (0.0) AND THEY WERE THEN
 PUT BACK TO 10.0 IN THE WORKING TREE.** So the committed director is shippable and the tree is
@@ -112,7 +121,7 @@ They appeared modified partway through 2026-08-14. Ask before committing them.
 | 6c | **The etched glow track** — `SkateTrack` | **DONE**, in `f18bb43`. Owner on rev 1: *"looks good"* |
 | 7 | "Still Water" achievement + on-screen notification | **DONE**, in `bb04f70`. **Not yet played by the owner** |
 | 8 | Fold a lake case into `terrain_invariant_check` beyond step 2's | **DONE**, in `96f6f52`. It was NOT "nothing to do" |
-| **9. NEXT** | Docs — `CLAUDE.md`, `terrain.md`, `visuals.md`, `input.md` | partly done |
+| 9 | Docs — `CLAUDE.md`, `terrain.md`, `visuals.md`, `input.md` | **DONE**, in `325a41f` + `25c5aee` |
 
 ---
 
