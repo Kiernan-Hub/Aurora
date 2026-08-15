@@ -1,7 +1,51 @@
 # Architecture & conventions
 
-How the scene is wired and what owns what. `CLAUDE.md` has the scene-graph diagram and
-the two or three rules that break things silently; this file has the reasoning.
+How the scene is wired and what owns what. `CLAUDE.md` keeps the handful of wiring rules that
+break things silently; the diagram and the reasoning both live here.
+
+## The scene graph (`scenes/main.tscn`)
+
+```
+Main (Node2D, scripts/main.gd)
+├── SkyBackdrop       CanvasLayer -200 ← sky_backdrop.gd; gradient + stars/glow/sun-moon,
+│                     rebaked only while a transition moves
+├── ParallaxBackground  FarPeaks/FarRidge/MidRidge/PineLine, motion_scale.y ALWAYS 0
+│                     one background_generator.gd each, differing only by @export
+├── BirdFlock         CanvasLayer -60, visible only while gliding ← bird_flock.gd
+├── SnowDrift         CanvasLayer -50 (behind all gameplay) ← snow_drift.gd
+├── Player            position (64,136), safe_margin 1.0  ← player.tscn
+├── TerrainGenerator  player_path = ../Player
+│   ├── CoinSpawner       per-chunk coin slots
+│   ├── ObstacleSpawner   timed clusters; a hit calls Player.absorb_hit()
+│   ├── PowerupSpawner    timed pickups, one weighted table
+│   ├── GroundTreeSpawner decorative, global grid keyed on session_seed
+│   ├── GlideCoinSpawner  air coins, only while Player.is_glide_active
+│   └── RareCoinSpawner   one 25-value coin ~every 60s, at MAX-JUMP-ONLY height
+├── LakeReflection    the frozen lake's surface quad — hidden, and costing nothing, unless a
+│                     lake is being crossed. AFTER TerrainGenerator on purpose
+├── SkateTrack        Line2D, the etch in the ice. ABOVE the mirror (that quad IS the
+│                     surface), BELOW the spray (the etch is IN the ice)
+├── SkateSpray        GPUParticles2D, the glints off the blades. AFTER LakeReflection or
+│                     it is spray drawn UNDER the ice. local_coords = false
+├── BiomeDirector     the ONLY reader of a BiomePalette; returns early under --headless
+├── Camera2D          position (0,136), zoom 0.833
+├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP }
+├── PowerupManager    effect timers; drives Player.start_boost etc.
+├── FrozenLakeDirector  owns WHEN a lake happens; returns early under --headless
+├── AchievementManager  the ONLY writer of SaveStore.achievements; triggers come to it
+├── SfxPlayer         6-voice AudioStreamPlayer pool on the SFX bus
+└── CanvasLayer       Start/Pause/Death/ShopScreen (all process_mode=ALWAYS),
+                      PauseButton, Timer/Coin/Powerup labels,
+                      AchievementToast (after the labels, BEFORE Pause/Shop so those
+                      overlays draw over it)
+```
+
+**Draw order is tree order plus `CanvasLayer.layer`, and there is no `z_index` anywhere.**
+That is why `LakeReflection` is a plain `Node2D` sitting *after* `TerrainGenerator` rather
+than a `CanvasLayer`: a `CanvasLayer` at layer 0 draws above the root viewport canvas
+regardless of tree position, so "between the world and the UI" would rest on a same-layer
+tie-break nothing else in the project relies on. Reordering these siblings reorders the
+rendering.
 
 ## Wiring is by sibling path
 
@@ -125,6 +169,62 @@ to a legal level by `UpgradeStore.get_level`, so saves stay compatible in both d
 run banks its coins, so there is always something to persist. It is still exactly one
 disk write per death. Anything that needs to persist per-run state should go through it
 rather than adding a second write.
+
+**v3 (2026-08-14)** added `total_playtime_seconds`, `frozen_lake_count` and `achievements`,
+plus an **atomic write** — a temp file and a rename, never straight over the live save.
+Opening the path with `FileAccess.WRITE` truncates it to zero before a byte of the new payload
+lands, and a kill in that window (Android reclaiming a backgrounded app, not a crash) leaves a
+truncated file that the silent-read policy above then reads as a fresh save. Wallet, best score
+and every upgrade level, gone, with no error anywhere.
+
+`total_playtime_seconds` is BANKED, not wall-clock — `GameManager.bank_playtime()` owns it, so
+it cannot tick while the app is closed. `frozen_lake_count` counts *completed* lakes, so it
+doubles as the index of the next 20-minute threshold.
+
+## Achievements (2026-08-15)
+
+`AchievementManager` (`scripts/systems/achievement_manager.gd`) is the **only** writer of
+`SaveStore.achievements`, an open `Dictionary[String, bool]` — same trick as `upgrades` above,
+so adding an achievement needs no version bump. Only the *concept* arriving needed one.
+
+**THE TRIGGERS COME TO THE MANAGER; IT NEVER GOES OUT TO THEM.** `FrozenLakeDirector` does not
+know achievements exist — it emits `lake_finished`, which it already did, and the manager
+listens. The failure being designed against is `if score > 1000` sprouting across thirty
+scripts, at which point "what unlocks this?" needs a full-project grep. Every trigger is wired
+in `connect_triggers()`, so that question has one answer.
+
+**Adding one is two edits, both in that file:** a row in `ACHIEVEMENTS`, and one `.connect()`
+on a signal the relevant system **already emits**. If a system has no suitable signal, add the
+signal *there* — do not add an achievement check there.
+
+Three traps:
+
+- **`ACHIEVEMENTS` keys are save data.** An id is written verbatim into `save.dat` forever.
+  Adding a row is free; **renaming one silently un-earns it for every existing player.**
+- **Gate on the flag, never on a count.** The lake recurs every 20 minutes forever and the
+  achievement fires once — which is exactly why `frozen_lake_count` and `achievements` are
+  separate fields. `reset_progress()` clears achievements deliberately, so they can be re-earned.
+- **The manager has no headless guard, and that is only safe while its one trigger is the lake**
+  (which hard-skips headless). A trigger hung off score, coins, distance or death — all of which
+  the gates exercise for millions of frames — would start writing to the developer's real
+  `save.dat` during every probe. That is the `apply_upgrades()` class of bug, and this project
+  has already lost a save file to a probe. The file's footer carries the guard to add.
+
+`AchievementToast` owns nothing but the look and is handed a display name, so it never reads the
+table. It is **not** a `GameManager.State` and not a screen: the game stays `PLAYING`, exactly
+as it does on the lake, and the node owns its own visibility. It queues rather than overwrites,
+so two unlocks in one frame show in sequence.
+
+**Deliberately not built yet:** an achievements gallery, progress bars and reward payloads.
+`ACHIEVEMENTS` values are Dictionaries so a payload field can be added without changing the
+table's shape or any reader, but there is no reward field today — nothing can consume one.
+**A Godot achievement addon was evaluated and declined (2026-08-15).** The addons on offer bundle
+persistence, a gallery and a popup; persistence is the part already built, so they would have
+brought a **second autoload** (this project has exactly one by hard rule, and a global identifier
+breaks every headless probe) and a **second save path** to fight the atomic write above — to gain
+a popup that is ~90 lines. GodotSteam was declined separately: it targets a platform this game
+does not have. What was adopted from the recommendation is its architecture — data-driven
+definitions, one centralized manager, no scattered checks.
 
 ## The coin combo (2026-08-13)
 

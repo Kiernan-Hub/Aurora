@@ -1,14 +1,15 @@
 # Visuals — background, scenery and palette
 
 Everything on screen except the player sprite is an untextured `Polygon2D` / `ColorRect` /
-`TextureRect`. There is exactly **one** shader — `shaders/ice.gdshader`, on the ice band only
-(`biomes.md`, "The ice shader") — and no `WorldEnvironment`, no MSAA and no `z_index` anywhere
-in the project. Draw order is scene-tree order plus `CanvasLayer.layer`, and that is
-deliberate.
+`TextureRect`. There are exactly **two** shaders, and both are ice: `shaders/ice.gdshader` on
+the ice band (`biomes.md`, "The ice shader") and `shaders/frozen_lake_reflection.gdshader` on
+the frozen lake's surface quad, which exists only while a lake is being crossed ("The skate
+trail" below, and `terrain.md`). There is no `WorldEnvironment`, no MSAA and no `z_index` in the
+project. Draw order is scene-tree order plus `CanvasLayer.layer`, and that is deliberate.
 
 Art direction: layered minimalist winter, in the Alto's-Adventure tradition — large open
 landscape, smooth silhouettes, soft gradients, heavy negative space. The palette is a
-*daylight reading* of `ChatGPT Image Aug 6, 2026, 07_13_24 PM.png` (that reference is a
+*daylight reading* of `art_source/ChatGPT Image Aug 6, 2026, 07_13_24 PM.png` (that reference is a
 night scene; its composition, layering and colour family carried over, its darkness did
 not — see "Why daylight" below).
 
@@ -281,7 +282,7 @@ source's steep cracks into the long lazy ones the reference art has, and slows t
 repeat to ~1.6 s at `MAX_SPEED` instead of ~0.5 s.
 
 **Texture provenance**: built by `scripts/tools/build_ice_texture.py` from a generated
-greyscale panel (`three.png` in the project root). **Run that script rather than dropping a
+greyscale panel (`art_source/three.png`). **Run that script rather than dropping a
 raw image in** — it does two things the raw panel needs. It lifts the darks: a raw panel
 bottoms out near 0.09, and since `Polygon2D` multiplies, that takes every biome tint to
 black. And it cross-fades the horizontal wrap. It deliberately does **not** mirror, which is
@@ -316,6 +317,57 @@ Birds aren't tied to terrain depth at all, so they read as something happening o
 regardless of how far below the surface actually is. `flock_alpha` fades them in/out off
 `player.is_glide_active` (`FADE_SMOOTHNESS`), so they only ever appear during the glide
 they exist for, never as clutter over obstacles during ordinary play.
+
+## The skate trail (frozen lake only)
+
+Two nodes, both visible only while a lake is being crossed, both riding
+`FrozenLakeDirector.get_lake_blend()` like everything else cosmetic on the lake.
+
+**`SkateSpray`** (`GPUParticles2D`) — the glints thrown off the blades. **`SkateTrack`**
+(`Line2D`) — the etch left in the ice. **Tree order between them is load-bearing:** the mirror
+quad at full blend *is* the lake surface, so the track sits above it (the etch is in the ice)
+and the spray above that (chips are on top). Spray drawn before the mirror is spray drawn under
+the ice.
+
+**Why one is particles and the other is not, which is not an inconsistency.** The spray is
+hundreds of independent motes with their own physics — what a particle system is for. The etch
+is one continuous mark whose whole character is that it is *connected* and lies exactly where
+the blades went, which particles cannot express without each one knowing about its neighbours.
+
+**Neither is `scripts/effects/flight_trail.gd`.** That is the project's earlier trail attempt
+and it is still live on boost; it spawns *unconnected* 14px sticks with random y jitter, so it
+reads as tally marks rather than a path. The failure was the construction, not the class.
+
+Four findings worth keeping:
+
+- **A glint is not a snowflake.** The first spray copied `snow_drift.gd`'s soft round puff and
+  read as *"snow being shot out."* The fix was shape (a four-point star with a hard core) and
+  **additive** blending, not more glow. Snow covers a surface; a glint is light arriving.
+- **Chips must not arc.** A parabola is the signature of a thrown object — the eye reads the arc
+  and infers mass. Gravity is now very slightly *negative* so the field creeps up rather than
+  hanging with the unnatural stillness of exactly 0, and the trail comes entirely from the player
+  running out from under them at 750 px/s. **Trail length is therefore not a constant**; a slower
+  player leaves a shorter one, which is correct.
+- **THE TRACK IS NOT ADDITIVE, AND THAT IS THE OPPOSITE CHOICE FROM THE SPRAY.** It shipped
+  additive once and read as *"just a single white line."* The lake measures (182,208,238) —
+  luma 205, with only **17 luma of blue headroom** — so additive light saturates blue first and
+  can only drift toward white, and the core clipped to (255,255,255) past ~400px. **A clipped
+  signal carries no information.** It now blends normally and makes its glow from *saturation
+  plus a modest luma lift*: the tail works by **removing red**, which additive structurally
+  cannot do. This is the standing "it looks grey means saturation, not brightness" finding on a
+  second axis — here it looked *white* and the answer was the same one.
+- **The spray stays additive deliberately.** Its chips are tiny, sparse and short-lived, so
+  clipping a few dozen pixels reads as a hot specular spark. A continuous line clipping the same
+  way is just a bar.
+
+**Verify a procedural sprite by rendering it, not by reading the formula.** The flare taper has
+to be squared; rendered out, a linear taper made the horizontal flare a uniform full-width bar —
+120 little dashes, exactly the geometric look that made `flight_trail.gd` unusable.
+
+**Rebasing is answered in opposite ways, and the reason is ownership.** Live particles belong to
+the GPU and nothing can move them, so `SkateSpray` can only drop its chips on a shift.
+`SkateTrack`'s points are an array it owns, so the shift is applied to them and the mark
+survives intact — shifts are whole powers of two, so adding one is exact in binary.
 
 ## Traps
 

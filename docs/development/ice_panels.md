@@ -199,7 +199,8 @@ Prompts below; all of them should end with:
 ## Where the files go
 
 - **Source panels** → `art_source/` (carries a `.gdignore`, so Godot never imports them).
-  The old `one.png`…`five.png` are still at the repo root for historical reasons.
+  **All of them, with no exceptions** — `one.png`…`fifteen.png` were moved there from the
+  repo root on 2026-08-15, along with every other reference image.
 - **Built tiles** → `assets/textures/terrain/ice_NAME_depth.png`.
 
 ## Two ways this goes wrong quietly

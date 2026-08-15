@@ -444,10 +444,12 @@ them toward its own scheme. A biome may **shift** them; it may not recolour them
 glide spawner used to, and it was one of the four art-swap traps in `visuals.md`) — so the
 eventual sprite swap is a change inside those two functions.
 
-**The glide bonus coin is derived, not fixed.** It was a hardcoded "brighter than the base
-gold". Once the base gold itself brightens under `starlit_night`, a fixed colour stops reading
-as the bonus, so it is now `biome_coin_color.lerp(WHITE, BONUS_COIN_LIGHTEN)`. On a repaint the
-bonus coin is told apart by `value`, the only coin the game gives a value other than 1.
+**The glide bonus coin takes no biome colour at all** (2026-08-15). It went hardcoded-brighter
+→ derived (`biome_coin_color.lerp(WHITE, …)`) → and is now the rare coin's own diamond scene,
+so there is nothing left to tint: like `RareCoinSpawner`'s diamond it keeps its authored
+`modulate` and no spawner pushes a colour into it. `GlideCoinSpawner.apply_biome_color()` skips
+it on a repaint, telling it apart by `value` — the only coin either spawner gives a value
+other than 1.
 
 **`biome_schedule_check` enforces this from the data side** — `check_gameplay_contrast()`. The
 first attempt was a luminance floor, which is wrong: the shipped gold is luma 0.79 against
@@ -728,8 +730,10 @@ per palette and nothing allocates inside the transition loop.
 
 ## The ice shader (2026-08-10)
 
-`shaders/ice.gdshader` is the **only** shader in the project, and it is on the ice band and
-nothing else. Sky, obstacles, player and UI stay `Polygon2D`/`TextureRect`. It has three jobs,
+`shaders/ice.gdshader` is on the ice band and nothing else. Sky, obstacles, player and UI stay
+`Polygon2D`/`TextureRect`. The project's only other shader is
+`shaders/frozen_lake_reflection.gdshader`, which is a set piece rather than a biome feature and
+is documented in `visuals.md` and `terrain.md`; a biome never reaches it. This one has three jobs,
 and they are the three things vertex colours provably cannot do:
 
 | Uniform | Default | What it is for |
@@ -903,9 +907,16 @@ they measured and, more usefully, **how to build one that is actually sound**:
 
 ## Not built yet
 
-`mist_strength`, `reflection_strength` and `star_density` are **authored in all eight
-palettes and read by nothing**. That is deliberate: the palettes are complete data from day
-one, and each renderer arrives in its own phase so it can be judged and reverted alone.
+`mist_strength` and `star_density` are **authored in all eight palettes and read by nothing**.
+That is deliberate: the palettes are complete data from day one, and each renderer arrives in
+its own phase so it can be judged and reverted alone.
+
+**`reflection_strength` was the third of these and is gone** (2026-08-15). The frozen lake's
+reflection shipped without ever reading it, and by design: the lake is a set piece that looks
+the same in every biome, tied to the world only by what its mirror happens to reflect. The
+field was speculative authoring for a renderer that turned out not to want it — which is the
+risk this "complete data from day one" policy runs, and the reason to delete rather than wire
+up when a phase lands and disagrees with its own placeholder.
 
 - **Phase 2** — gameplay contrast. **Done 2026-08-13, see "Gameplay contrast" below.**
 - **Phase 3** — mist/fog layer.
