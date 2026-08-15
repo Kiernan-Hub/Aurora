@@ -110,7 +110,11 @@ to touch `get_tree().paused` or a screen's visibility. Reasoning: `architecture.
   the first `_physics_process`; shipped as a real bug (identical powerup schedule every
   session). (`architecture.md`)
 - **`get_terrain_height` must stay pure** in `(session_seed, world_x)`. Chunk visuals,
-  collision, player tilt and the debug HUD all sample it independently.
+  collision, player tilt and the debug HUD all sample it independently. **One runtime input is
+  allowed**: `lake_segment_index` (the frozen lake), under a **write-once, write-ahead** rule —
+  `arm_lake()` is its only writer and may only set it *above* `highest_cached_segment_index`, a
+  segment nothing has ever computed. So arming can only **extend** the height field, never
+  rewrite it. Never assign it directly. (`HANDOFF.md`)
 - **Always `ensure_segment_cache_for_world_x(x)` before `find_segment_index_at_x(x)`**,
   or the binary search silently clamps and returns the wrong segment.
 - **Player spawn `(64,136)` is a manual invariant**: `ground_y(192) +
