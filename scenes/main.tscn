@@ -17,6 +17,7 @@
 [ext_resource type="Script" path="res://scripts/systems/glide_coin_spawner.gd" id="16_glide_coins"]
 [ext_resource type="Script" path="res://scripts/systems/biome_director.gd" id="17_biome"]
 [ext_resource type="Script" path="res://scripts/systems/rare_coin_spawner.gd" id="18_rare_coins"]
+[ext_resource type="Script" path="res://scripts/game/frozen_lake_director.gd" id="19_frozen_lake"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -140,6 +141,9 @@ script = ExtResource("6_j53ry")
 
 [node name="PowerupManager" type="Node" parent="." unique_id=1746217405]
 script = ExtResource("9_powerup")
+
+[node name="FrozenLakeDirector" type="Node" parent="."]
+script = ExtResource("19_frozen_lake")
 
 [node name="SfxPlayer" type="Node" parent="." unique_id=1754029316]
 script = ExtResource("11_sfx_player")

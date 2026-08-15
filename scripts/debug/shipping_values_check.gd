@@ -91,6 +91,13 @@ func check_flag_defaults() -> void:
 	expect_bool("BiomeDirector.debug_pin_intro_biome", director.debug_pin_intro_biome, false)
 	director.free()
 
+	# Left set, the 20-minute set piece fires on whatever the override says instead -- at a
+	# playtest value that is a lake every few seconds, each one suppressing every spawner
+	# across 7500px.
+	var lake_director: FrozenLakeDirector = FrozenLakeDirector.new()
+	expect_float("FrozenLakeDirector.debug_lake_interval_override", lake_director.debug_lake_interval_override, 0.0)
+	lake_director.free()
+
 
 # The freeze-bug check, generalised. Any of these appearing as a serialised property in the
 # scene means the editor wrote a debug knob into it -- which is the exact mechanism that
