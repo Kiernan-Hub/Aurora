@@ -21,7 +21,8 @@ extends SceneTree
 # in assets/textures/terrain. Omit it to just capture and report without an A/B.
 #
 # SceneTree.paused, never Engine.time_scale = 0 -- the latter zeroes the physics delta, trips
-# the stall watchdog and fires a world rebase, leaving the world off screen (HANDOFF.md trap 1).
+# the stall watchdog and fires a world rebase, leaving the world off screen (debugging.md,
+# "Measurement traps").
 # Rendering still runs while paused, which is what makes the swap visible.
 #
 # APPLY, WAIT, *THEN* CAPTURE: root.get_texture() returns the frame already rendered.

@@ -48,6 +48,35 @@ while tapping is the next step.
 platform input path can be completely dead with all gates green — that is exactly how
 the 2026-08-02 Android bug shipped.
 
+## Jump suppression — the frozen lake
+
+`Player.is_jump_suppressed` is the only thing in the game that switches jump off while the game
+is still `PLAYING`. `FrozenLakeDirector` sets it at the near seam and clears it at the far one
+(and on death, so a stall watchdog cannot leave it stuck on).
+
+**It is checked at THREE sites, and none of them is redundant** — this is the thing to get right
+if you touch it:
+
+| Site | Why it alone is not enough |
+|---|---|
+| `Input.is_action_just_pressed("ui_accept")` in `_physics_process` | The desktop path only. Gating just this leaves **touch jumps fully working on Android**, which is the platform this ships to |
+| `buffer_jump()` | The touch path. Covers the other half of the two-path split above |
+| The launch branch itself | **A jump buffered in the frames just BEFORE the seam still fires once the player is on the lake** — `JUMP_BUFFER_DURATION` outlives the crossing of a segment boundary |
+
+That third one is the non-obvious case, and it is the reason a lake entry does not eat one
+buffered jump on the far side of the seam.
+
+**Glide is deliberately exempt.** `is_glide_input_held()` returns false under suppression *only
+when a glide is not already active* — an in-flight glide keeps reading its input and ends
+through the normal `can_end_effect()` path. Force-ending it at the seam would add a call site to
+the `active_effects`/`Player` desync class instead. This cannot become a way to jump on the
+lake: jumping is gated separately at all three sites above, and the trick/spin branch already
+requires `is_glide_active` to be false.
+
+`FrozenLakeDirector.try_arm()` documents that **entering a lake mid-glide cannot be prevented**,
+which is why `SkateSpray` also gates its emission on `is_on_floor()` — spray thrown from a
+floating player announces that nobody checked.
+
 ## Why there's no "is gameplay running" guard
 
 `Main` uses the default `process_mode`, so `_input` does not fire while `GameManager`

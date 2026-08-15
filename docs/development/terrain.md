@@ -269,6 +269,79 @@ Window 0 is a drop, so the **first void of every run is the survivable one** —
 learns what a void looks like before one can kill them. The cost is that the first *hazard*
 chasm now arrives one chasm later than it used to.
 
+## The frozen lake — the one runtime input to the height field
+
+A **7500px dead-flat segment** injected at runtime for the frozen lake set piece. Every other
+segment in the file is a pure hash of `(session_seed, index)`; this one is not, and it is the
+only exception the project allows.
+
+`FrozenLakeDirector` owns *when* (see `architecture.md`); everything below is the generator's
+half.
+
+### The purity relaxation, stated exactly
+
+`get_terrain_height` stays pure in `(session_seed, world_x)` **plus one runtime input**,
+`lake_segment_index`, under a **write-once, write-ahead** rule:
+
+> `arm_lake()` is its only writer, and may set it only to an index **strictly greater than
+> `highest_cached_segment_index`** — a segment whose spec, length, start_x and baseline have
+> never been computed.
+
+Segment caches only ever grow forward and are never trimmed, so such an index is provably
+virgin. **Arming can therefore only EXTEND the height field, never REWRITE it.** Never assign
+`lake_segment_index` directly.
+
+**What enforces it is not the constant you would guess.** `arm_lake()` starts its candidate at
+`highest_cached_segment_index + LAKE_ARM_LEAD_SEGMENTS`, but the guarantee comes from the skip
+loop's `segment_spec_cache.has(candidate)` test, which walks forward past every cached index
+onto the first virgin one. `LAKE_ARM_LEAD_SEGMENTS` is only a head start — mutation-tested in
+step 8, where starting the candidate 10 segments *behind* the watermark still armed legally.
+The same loop also steps past any index whose segment, or either neighbour, is a chasm.
+
+### Why breaking it is the worst kind of bug
+
+Arming at or below the watermark rewrites height that chunks, collision, player tilt and the
+debug HUD have already sampled independently. Nothing throws. Chunks already built keep the old
+geometry and only chunks built *later* see the lake, so the terrain silently disagrees with
+itself behind the player — the freeze class that cost this project weeks.
+
+**The disagreement is between two generators, never inside one.** `get_terrain_height` reads a
+*cached* spec, so the generator that armed is exactly the one that cannot see the damage.
+Re-sampling it either side of `arm_lake()` reads zero drift while maximally broken. Any future
+test of this must compare against a **freshly built** generator; `check_lake_arming()` does.
+
+### The shape, and why flat is the safety argument
+
+Flatness is not an aesthetic choice. **Zero slope cannot reach `floor_max_angle`**, so no
+wall-wedge is reachable on a lake no matter what it lands next to — which is what makes
+injecting terrain at runtime defensible at all. Magnitude is exactly `0.0`, so both seams are C0
+by construction (the baseline delta derives to `0.0`) and flatness is exact in binary rather
+than approximately equal.
+
+`is_lake_world_x(world_x)` is the query every spawner asks, deliberately the same shape as
+`has_ground_at_world_x()` so suppression reads as one more reason a slot is unusable rather than
+as a new concept. With no lake armed it is a single int compare and never touches the segment
+cache — which matters, because six spawners call it per candidate item.
+
+`get_lake_start_x()` / `get_lake_end_x()` both call `ensure_segment_cache_through()` first:
+`start_x` for a segment past the watermark does not exist until the cache is walked out to it.
+That is the `find_segment_index_at_x` ordering trap above, in its other form.
+
+### Gate coverage
+
+`terrain_invariant_check` has two independent lake passes, and the split matters:
+
+| Pass | Covers |
+|---|---|
+| `check_frozen_lake()` | **The shape.** Span, flatness, no void inside, C0 seams, no chasm adjacent. Pins the lake with `debug_force_lake_segment_index`, so it says nothing about arming |
+| `check_lake_arming()` | **The arming path.** Six assertions, including the write-ahead comparison and a fresh-generator agreement check |
+
+Baseline: `flatness=0.000000` span exactly 7500.0; `watermark=164 armed_index=166 drift=0
+fresh_disagreements=0`.
+
+**Still ungated:** nothing asserts the six spawners actually suppress on a lake. See
+`debugging.md`.
+
 ## Feature history
 
 `large_valley` was removed entirely and `mega_drop` was collapsed from 4 segments to

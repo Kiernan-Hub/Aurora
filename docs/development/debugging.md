@@ -150,6 +150,30 @@ elapsed CPU time before killing it.
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/terrain_invariant_check.gd -- --seeds=8 --to=300000
 ```
 
+**Never shorten `--to`.** The coin-density band is calibrated for the full 1758-slot sample, so
+a shortened run produces a confident FAIL that means nothing. Always `--seeds=8 --to=300000`.
+
+It also carries **two independent frozen-lake passes**, and the split is the point:
+
+| Pass | Covers | Baseline |
+|---|---|---|
+| `check_frozen_lake()` | The lake's **shape** — span, flatness, no void, C0 seams, no chasm adjacent. Pins the index with `debug_force_lake_segment_index`, so it proves nothing about arming | `flatness=0.000000`, span 7500.0 |
+| `check_lake_arming()` | The **arming path** — `arm_lake()` is the sole writer of the one runtime input allowed into `get_terrain_height` | `watermark=164 armed_index=166 drift=0 fresh_disagreements=0` |
+
+**The lesson from mutation-testing `check_lake_arming` (step 8), because the intuitive test does
+not work:** re-sampling the SAME generator either side of `arm_lake()` reads `drift=0` even when
+arming is maximally broken. `get_terrain_height` reads a *cached* spec, so the generator that
+armed is the one that cannot see the damage. That is the bug's signature, not a gap — the
+disagreement is between two generators, never inside one. Assertion 6 builds a fresh generator
+and caught it at **292 disagreeing samples, worst 713.97px**. Both lake passes run once against
+the first seed; what they assert is seed-independent.
+
+**Known gap, deliberate:** nothing asserts the **six spawners actually suppress on a lake**. All
+six call `is_lake_world_x()`, and a coin line over a lake is a visible bug in a stretch where the
+jump button does nothing. It needs live spawner instances driven over a pinned lake rather than
+the pure height-field sampling this gate is built from, and the existing coin-density band is
+calibrated globally. Moderate cost, real value, not urgent.
+
 **Freeze replay** — steps physics frames from spawn, no input. Prints
 `status=no_freeze|freeze_detected|tree_paused|stall_recovered`. **`--frames` must be
 large** — every recorded freeze is past frame ~25,000; short runs report `no_freeze`
@@ -381,6 +405,43 @@ confidently false answer during the 2026-08-11 seam hunt:
 `SceneTree.paused` for the freeze, never `Engine.time_scale = 0` — that zeroes the physics
 delta, trips the stall watchdog and fires a world rebase, leaving the world off screen. Full
 list of the measurement traps in `docs/research/` and at the head of the file itself.
+
+## Measurement traps
+
+**Every one of these produced a confidently wrong answer at least once.** They are about
+measuring the game, so they apply to any new probe, not just the visual ones.
+
+1. **A windowed probe reads all-zero if the display is asleep or the window is occluded**, and
+   it holds no focus, so `NOTIFICATION_APPLICATION_FOCUS_OUT` pauses the game on frame one.
+   Re-assert `set_state(PLAYING)` every frame.
+2. **`Engine.time_scale = 0` is not a safe freeze.** It zeroes the physics delta, trips the
+   stall watchdog and fires a world rebase, leaving the world off screen. Use `SceneTree.paused`
+   — rendering still runs while paused, which is what makes a swap visible.
+3. **Never compare pixel numbers across two RUNS.** A/B inside one frozen frame
+   (`ice_seam_probe`).
+4. **Apply, wait a frame, *then* capture.** `root.get_texture()` returns the frame already
+   rendered.
+5. **Hide the sprites before measuring**, and **sample at constant DEPTH BELOW THE SURFACE, not
+   constant y** — on sloped terrain a fixed y walks through different parts of the band.
+6. **Count items, never containers.**
+7. **Any long-running harness needs obstacles AND chasms disabled** (`debug_chasm_disabled`
+   alongside the two `debug_spawning_disabled` flags), or a chasm death reports a confident wrong
+   number. `freeze_search` and `camera_shake_probe` take `--chasms=1` to opt back in.
+8. **Grep whole logs for `SCRIPT ERROR|Parse Error|Failed to load`.** A narrow grep once
+   discarded a probe's entire output and reported nothing at all.
+9. **`get_tree()` does not exist in a `SceneTree` script** — `self` is the tree; use `paused`.
+10. **A new `class_name` needs `Godot --headless --editor --quit --path .`** before any gate
+    compiles, and that pass can strip 40 lines from `project.godot`. `git diff project.godot`
+    afterwards is not optional.
+11. **A probe must never touch `SaveStore.SAVE_PATH`.** A step-1 verification probe deleted the
+    developer's real `user://save.dat` (2026-08-14). Back it up and restore it, or point the test
+    at a temp path. The gates already write to it on player death — pre-existing, and worth
+    fixing the same way.
+12. **Headless Godot loads shaders but does NOT compile them.** A shader syntax error appears in
+    no gate; it appears when someone runs the game. Read new shader code twice.
+13. **When a probe fails, suspect the probe first.** And a green check that cannot go red is
+    worthless — mutation-test a new assertion by breaking the thing it guards, as
+    `check_lake_arming` was.
 
 ## Watchdog mechanics
 
