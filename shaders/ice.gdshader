@@ -60,8 +60,23 @@ uniform float dissolve_softness : hint_range(0.02, 0.5) = 0.12;
 // ice_surface/ice_depth cannot express, since those are a hue ramp by contract (biomes.md).
 uniform float contrast : hint_range(0.0, 2.0) = 1.0;
 
-// Sheen for a later flat-lake biome. Left at 0; parameterised now so the band's geometry and
-// UV contract do not have to be revisited then.
+// FLATTENS THE TILE AWAY. 0 = the tile exactly (the identity, and every frame outside a lake);
+// 1 = a uniform 1.0 in place of it, so the band renders its vertex colours and nothing else.
+//
+// This is what turns the ice band into a flat surface for the frozen lake. The tile is a
+// MULTIPLIER, and its V axis carries a 1.0 -> ~0.38 ramp with depth -- that ramp is precisely
+// what makes ordinary ground read as a vertical mass of ice seen edge-on, which is correct
+// everywhere except on a sheet the player is meant to read as a horizontal plane receding away
+// from them. Removing the tile removes the ramp, the surface pattern and the snow structure in
+// one uniform, and leaves the vertex gradient the lake authors deliberately.
+//
+// NOTE FOR ANY FUTURE CALLER: contrast pivots around the tile's own structure, so it does
+// nothing useful once flatten is 1 and will merely brighten a flat 1.0 toward white.
+// TerrainGenerator lerps contrast to 1.0 across the same blend for that reason.
+uniform float flatten : hint_range(0.0, 1.0) = 0.0;
+
+// Sheen for the flat-lake set piece. Left at 0 everywhere else; parameterised in 2026-08-10 so
+// the band's geometry and UV contract would not have to be revisited when it arrived.
 uniform float gloss_strength : hint_range(0.0, 1.0) = 0.0;
 uniform float gloss_depth : hint_range(0.0, 1.0) = 0.16;
 uniform float gloss_softness : hint_range(0.02, 1.0) = 0.12;
@@ -165,13 +180,20 @@ void fragment() {
 		tile = mix(tile, texture(overlay_tile, UV), blend);
 	}
 
+	// Before the contrast/gloss work below, so both operate on whatever the tile has become
+	// rather than on structure that is about to be discarded.
+	tile.rgb = mix(tile.rgb, vec3(1.0), flatten);
+
 	float surface_weight = 1.0 - smoothstep(SURFACE_FADE_START, SURFACE_FADE_END, UV.y);
 
 	vec3 shaded = mix(vec3(CONTRAST_PIVOT), tile.rgb, 1.0 + (contrast - 1.0) * surface_weight);
 
 	// max() guards the divide: the hint_range floor is only advisory, and a 0 pushed in through
 	// set_shader_parameter() would put a NaN on every ice pixel in the world.
-	float sheen = exp(-pow((UV.y - gloss_depth) / max(gloss_softness, 0.001), 2.0));
+	// Squared by multiplication, never pow(x, 2.0): this base is negative above gloss_depth and
+	// pow() with a negative base is undefined in GLSL.
+	float sheen_offset = (UV.y - gloss_depth) / max(gloss_softness, 0.001);
+	float sheen = exp(-sheen_offset * sheen_offset);
 	shaded = mix(shaded, vec3(1.0), gloss_strength * sheen * surface_weight);
 
 	// The multiply the built-in path does for free, done explicitly because `tile` is no longer

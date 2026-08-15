@@ -79,8 +79,28 @@ var ice_material: ShaderMaterial = null
 # 0 = today's behaviour exactly: one flat colour across every surface vertex. Set from the
 # palette, so it stays 0 under --headless where no palette is ever applied.
 var ice_hue_variance: float = 0.0
+# The palette's own ice_contrast, held because the lake blend below has to lerp AWAY from it
+# and the shader uniform is write-only. Starts at the shader's identity, so a headless run --
+# where apply_ice_palette() never fires -- is unaffected.
+var ice_contrast: float = 1.0
 var snow_cap_tint: Color = Color(1.0, 1.0, 1.0, 1.0)
 var snow_cap_strength: float = 0.0
+# 0 = the biome's ice exactly, 1 = the frozen lake's, and FrozenLakeDirector moves it as the
+# player slides onto the sheet (see its get_lake_blend(), and the LAKE_* constants below for what
+# the 1 end looks like). WHY A BLEND AND NOT A PER-VERTEX TEST at the lake's seams: a spatial test
+# has to be answered for the band vertices, the deep fill, the snow caps and the shared material
+# separately, and the material is one object shared by every band in the world -- so the pattern
+# could only ever switch per chunk while the colour switched per vertex, and the two would
+# disagree across whichever chunk straddles the seam. A blend keyed on how far ONTO the lake the
+# player is has no seam to disagree about: it reaches 1 only once the screen holds nothing but
+# lake, and it retreats the same way at the far shore.
+var lake_ice_blend: float = 0.0
+# What the painters actually use: the palette's values with the lake blended in. Kept separate
+# from the palette fields above so apply_ice_palette() and set_lake_ice_blend() can be written by
+# two different systems without either having to read the other's state back.
+var effective_ice_surface: Color = FILL_GRADIENT_TOP_TINT
+var effective_ice_depth: Color = FILL_GRADIENT_BOTTOM_TINT
+var effective_ice_hue_variance: float = 0.0
 
 var player: CharacterBody2D
 var next_chunk_index: int = 0
@@ -190,6 +210,66 @@ const ICE_TILE_DEPTH_FLOOR: float = 0.38
 # colour anywhere the player could see. Sized to land the whole ramp inside the visible
 # band, which is also how much depth the reference art gives it.
 const ICE_BAND_DEPTH: float = 340.0
+
+# --- The frozen lake's fixed look -----------------------------------------------------------
+#
+# THE LAKE IS THE SAME EVERY TIME, and that is a deliberate exception to how everything else
+# here works. Eight biome palettes recolour the ice over a run because the ice is scenery; the
+# lake is a SET PIECE the player sees roughly every twenty minutes, so it has to be recognisable
+# on sight -- "that place", not "the ice, but flat today". The sky, the ridges and the pines are
+# still the biome's, which is what keeps it inside the world it interrupts.
+#
+# Sampled directly off the owner's reference (Glossy Frozen Lake.png, re-shot at 2109x746 on
+# 2026-08-15): RGB(154,197,238) just below the shelf to RGB(86,123,173) at the bottom of the
+# frame. Unlike every palette's ice_surface/ice_depth these REACH THE SCREEN UNMULTIPLIED, because
+# the lake discards the tile (LAKE_ICE_FLATTEN) -- so they are the measured numbers, not numbers
+# pre-brightened to survive a multiply.
+#
+# NOTE HOW BRIGHT THE SHORE END IS. In the reference the ice just below the shelf is brighter than
+# the sky at the horizon (116,149,193) and about as bright as the sky overhead. The lake GLOWS; an
+# earlier pass had it darker than its own sky and it read as a hole in the world.
+#
+# Saturation before brightness, as always (CLAUDE.md): the depth end holds ~50%.
+const LAKE_ICE_SURFACE: Color = Color(0.60, 0.77, 0.93, 1.0)
+const LAKE_ICE_DEPTH: Color = Color(0.34, 0.48, 0.68, 1.0)
+
+# HOW FAR THE LAKE'S COLOUR IS ALLOWED TO FOLLOW THE BIOME'S. 0 = the authored blues above,
+# always, whatever the sky is doing; 1 = the biome's own ice hue.
+#
+# WHY IT IS NOT 0. "The lake looks the same every time" was the owner's call and still holds for
+# its STRUCTURE -- the shelf, the banding, the gradient shape, the mirror. But shipped at a flat 0
+# it put a blue lake under a mauve sky and the two read as two different paintings in one frame
+# (owner, 2026-08-15). Hue is the one thing that has to agree with the world it interrupts.
+#
+# WHAT MOVES AND WHAT DOES NOT. Only hue: the authored value and saturation are preserved by
+# get_lake_tint(), so a dark biome cannot produce a dark lake and the shore end always glows.
+const LAKE_BIOME_HUE_WEIGHT: float = 0.45
+# EXACTLY 1.0, the shader's identity, and that is not laziness. Contrast pushes the TILE's own
+# light and dark away from a pivot -- and the lake flattens the tile away entirely (see
+# LAKE_ICE_FLATTEN), so there is no structure left for it to act on. Applied anyway it would
+# only drag a uniform 1.0 toward white. Held as a named constant rather than dropped so the
+# blend below has something to lerp toward and the reason survives in one place.
+const LAKE_ICE_CONTRAST: float = 1.0
+
+# HOW MUCH OF THE ICE TILE THE LAKE DISCARDS. The tile is a multiplier whose V axis carries a
+# 1.0 -> 0.38 ramp with depth, so it is not merely pattern -- that ramp IS the vertical depth cue
+# that makes ordinary ground read as a slab of ice seen edge-on, which is wrong for a sheet the
+# player is meant to read as a horizontal plane.
+#
+# TOTAL, and deliberately so as of 2026-08-14: the owner does not want the biome's ice tile on
+# the lake at all -- "I don't want the texture from the biome, I want its own." The lake's surface
+# detail now lives entirely in shaders/frozen_lake_reflection.gdshader, which paints over this
+# band opaquely across the middle of a crossing. What this ice is still for is the entry and exit
+# ramps, where that quad is partly transparent: painted in the same two colours, it is what makes
+# the handover at each shore invisible.
+const LAKE_ICE_FLATTEN: float = 1.0
+# The sheen ice.gdshader has carried since 2026-08-10 with a comment saying it was parameterised
+# "for a later flat-lake biome". This is that biome, and this is the first thing ever to write
+# these three uniforms.
+const LAKE_ICE_GLOSS_STRENGTH: float = 0.34
+const LAKE_ICE_GLOSS_DEPTH: float = 0.1
+const LAKE_ICE_GLOSS_SOFTNESS: float = 0.14
+
 const SLOPE_SAMPLE_DISTANCE: float = 2.0
 const MAX_COLLISION_SEGMENT_LENGTH: float = 16.0
 # How far from the most recently requested chunk the collision-sample cache keeps
@@ -833,11 +913,11 @@ func paint_ice_band(band: Polygon2D, row_size: int) -> void:
 	band_colors.resize(row_size * 2)
 	for vertex_index: int in range(row_size):
 		var world_x: float = band.uv[vertex_index].x / horizontal_scale
-		band_colors[vertex_index] = shift_ice_hue(ice_surface_tint, get_ice_hue_shift(world_x))
+		band_colors[vertex_index] = shift_ice_hue(effective_ice_surface, get_ice_hue_shift(world_x))
 		# Depth row deliberately UNSHIFTED -- see BiomePalette.ice_hue_variance. It keeps the
 		# bottom of the band at exactly the colour the flat deep fill below it uses, so no
 		# seam appears there, and the drift reads as a surface patch fading with depth.
-		band_colors[row_size + vertex_index] = ice_depth_tint
+		band_colors[row_size + vertex_index] = effective_ice_depth
 	band.vertex_colors = band_colors
 
 
@@ -924,10 +1004,10 @@ const WARM_GREEN_FALLOFF: float = 0.5
 # biomes with the most saturated ice. So warm removes blue (and a little green, see
 # WARM_GREEN_FALLOFF) and cool removes red.
 func shift_ice_hue(color: Color, shift: float) -> Color:
-	if ice_hue_variance <= 0.0:
+	if effective_ice_hue_variance <= 0.0:
 		return color
-	var warm: float = maxf(shift, 0.0) * ice_hue_variance
-	var cool: float = maxf(-shift, 0.0) * ice_hue_variance
+	var warm: float = maxf(shift, 0.0) * effective_ice_hue_variance
+	var cool: float = maxf(-shift, 0.0) * effective_ice_hue_variance
 	return Color(
 		color.r * (1.0 - cool),
 		color.g * (1.0 - (warm * WARM_GREEN_FALLOFF)),
@@ -1067,14 +1147,39 @@ func build_fill_vertex_colors(run_points: PackedVector2Array) -> PackedColorArra
 	return vertex_colors
 
 
+# One of the lake's authored colours, pulled part-way toward the biome's hue. See
+# LAKE_BIOME_HUE_WEIGHT for the decision this encodes.
+#
+# HUE ONLY, and that is the whole trick. Taking the palette's ice hue while keeping the authored
+# colour's own value and saturation means a night biome shifts the lake without darkening it --
+# so the shore keeps glowing and the sheet stays the same sheet, in a different light. Lerping the
+# colours directly instead would hand the lake the biome's brightness too, which is exactly the
+# "same every time" property the owner asked for and would lose.
+func get_lake_tint(authored: Color) -> Color:
+	var tinted: Color = Color.from_hsv(
+		ice_surface_tint.h, authored.s, authored.v, authored.a)
+	return authored.lerp(tinted, LAKE_BIOME_HUE_WEIGHT)
+
+
 # The band's bottom row renders as ICE_TILE_DEPTH_FLOOR * ice_depth_tint (texture times
 # vertex colour). The fill has no texture, so it must fold that floor in itself.
+#
+# ON THE LAKE THE FLOOR GOES TO 1.0, and it has to move in lockstep with ice.gdshader's flatten
+# uniform: that uniform replaces the tile with a uniform 1.0, so the band's bottom row stops
+# being darkened by the tile at all. Leaving the floor at 0.38 here would put a hard step across
+# the whole world exactly where the band ends -- the seam this function exists to prevent, in
+# the one place the player is looking straight at it.
 func get_deep_fill_color() -> Color:
+	# LAKE_ICE_FLATTEN * lake_ice_blend, exactly what refresh_ice_appearance() pushes into the
+	# shader's flatten uniform -- NOT the blend alone. The band's bottom row renders as the
+	# flattened tile times the depth tint, so anything else here reopens the very seam this
+	# function exists to close, at whichever partial value the lake happens to use.
+	var depth_floor: float = lerpf(ICE_TILE_DEPTH_FLOOR, 1.0, LAKE_ICE_FLATTEN * lake_ice_blend)
 	return Color(
-		ice_depth_tint.r * ICE_TILE_DEPTH_FLOOR,
-		ice_depth_tint.g * ICE_TILE_DEPTH_FLOOR,
-		ice_depth_tint.b * ICE_TILE_DEPTH_FLOOR,
-		ice_depth_tint.a,
+		effective_ice_depth.r * depth_floor,
+		effective_ice_depth.g * depth_floor,
+		effective_ice_depth.b * depth_floor,
+		effective_ice_depth.a,
 	)
 
 
@@ -1961,17 +2066,55 @@ func apply_ice_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ic
 	ice_band_texture = from_ice_texture if from_ice_texture != null else ICE_TERRAIN_TEXTURE
 	ice_overlay_texture = to_ice_texture if to_ice_texture != null else ICE_TERRAIN_TEXTURE
 	ice_overlay_weight = ice_weight
+	ice_contrast = palette.ice_contrast
 	# One write, seen by every band in the world at once -- the incoming tile and the dissolve
 	# weight are the only two things that are genuinely global, so they live on the shared
 	# material rather than being copied onto each chunk by the walk below.
 	if ice_material != null:
 		ice_material.set_shader_parameter("overlay_tile", ice_overlay_texture)
 		ice_material.set_shader_parameter("overlay_weight", ice_overlay_weight)
+	refresh_ice_appearance()
+
+
+# How much of the frozen lake's fixed look is mixed over the biome's ice, 0 to 1. The ONLY
+# caller is FrozenLakeDirector, once per physics frame while a lake is being crossed; it owns
+# the ramp's shape, this owns what the two ends look like.
+#
+# Early-out on an unchanged value, and that is what keeps the steady state free: the blend sits
+# at exactly 0 for nineteen of every twenty minutes and at exactly 1 through the middle of a
+# crossing, so the repaint walk below only runs during the two fades.
+func set_lake_ice_blend(blend: float) -> void:
+	var clamped: float = clampf(blend, 0.0, 1.0)
+	if is_equal_approx(clamped, lake_ice_blend):
+		return
+	lake_ice_blend = clamped
+	refresh_ice_appearance()
+
+
+# Folds the palette and the lake blend into the values the painters read, then pushes the
+# material uniforms and repaints what is already on screen. Both writers come through here, so
+# neither can leave the world half-updated: a biome transition DURING a lake crossing (nothing
+# aligns the two schedules, so it will happen) recomputes from both inputs rather than one
+# clobbering the other.
+func refresh_ice_appearance() -> void:
+	effective_ice_surface = ice_surface_tint.lerp(get_lake_tint(LAKE_ICE_SURFACE), lake_ice_blend)
+	effective_ice_depth = ice_depth_tint.lerp(get_lake_tint(LAKE_ICE_DEPTH), lake_ice_blend)
+	# Toward ZERO on the lake, not toward the palette's value. The hue drift is a slow warm/cool
+	# wash along the ride line -- correct for a landscape, wrong for a sheet that is supposed to
+	# look identical every time and identical along its own length.
+	effective_ice_hue_variance = lerpf(ice_hue_variance, 0.0, lake_ice_blend)
+	if ice_material != null:
 		# Already blended on the ice channel by the time it gets here, so this crossfades with
-		# the tints rather than snapping at the boundary. Global for the same reason the two
-		# above are: contrast is a property of the biome, not of a chunk, and every band in the
-		# world shares this one material.
-		ice_material.set_shader_parameter("contrast", palette.ice_contrast)
+		# the tints rather than snapping at the boundary. Global for the same reason the tile
+		# and the dissolve weight are: contrast is a property of the biome, not of a chunk, and
+		# every band in the world shares this one material.
+		ice_material.set_shader_parameter("contrast", lerpf(ice_contrast, LAKE_ICE_CONTRAST, lake_ice_blend))
+		ice_material.set_shader_parameter("flatten", LAKE_ICE_FLATTEN * lake_ice_blend)
+		# The sheen ice.gdshader has carried unwritten since it was built. Scaled by the blend
+		# alone, so it is exactly 0 -- the shader's documented identity -- everywhere but a lake.
+		ice_material.set_shader_parameter("gloss_strength", LAKE_ICE_GLOSS_STRENGTH * lake_ice_blend)
+		ice_material.set_shader_parameter("gloss_depth", LAKE_ICE_GLOSS_DEPTH)
+		ice_material.set_shader_parameter("gloss_softness", LAKE_ICE_GLOSS_SOFTNESS)
 	for chunk: Node2D in active_chunks.values():
 		repaint_chunk(chunk)
 

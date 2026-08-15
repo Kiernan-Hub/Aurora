@@ -17,7 +17,10 @@
 [ext_resource type="Script" path="res://scripts/systems/glide_coin_spawner.gd" id="16_glide_coins"]
 [ext_resource type="Script" path="res://scripts/systems/biome_director.gd" id="17_biome"]
 [ext_resource type="Script" path="res://scripts/systems/rare_coin_spawner.gd" id="18_rare_coins"]
-[ext_resource type="Script" path="res://scripts/game/frozen_lake_director.gd" id="19_frozen_lake"]
+[ext_resource type="Script" path="res://scripts/systems/frozen_lake_director.gd" id="19_frozen_lake"]
+[ext_resource type="Script" path="res://scripts/systems/lake_reflection.gd" id="20_lake_reflection"]
+[ext_resource type="Script" path="res://scripts/systems/skate_spray.gd" id="21_skate_spray"]
+[ext_resource type="Script" path="res://scripts/systems/skate_track.gd" id="22_skate_track"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -128,6 +131,18 @@ script = ExtResource("16_glide_coins")
 
 [node name="RareCoinSpawner" type="Node2D" parent="TerrainGenerator"]
 script = ExtResource("18_rare_coins")
+
+[node name="LakeReflection" type="Node2D" parent="."]
+visible = false
+script = ExtResource("20_lake_reflection")
+
+[node name="SkateTrack" type="Line2D" parent="."]
+visible = false
+script = ExtResource("22_skate_track")
+
+[node name="SkateSpray" type="GPUParticles2D" parent="."]
+emitting = false
+script = ExtResource("21_skate_spray")
 
 [node name="BiomeDirector" type="Node" parent="."]
 script = ExtResource("17_biome")

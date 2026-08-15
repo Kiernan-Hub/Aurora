@@ -899,13 +899,21 @@ func end_glide() -> void:
 	is_glide_active = false
 
 
-# Reads false outright while input is suppressed, which has two consequences and both are
-# wanted: no airborne trick spin can be started on the lake (update_visual_rotation's spin
-# branch is this function's other caller), and a glide that happens to still be running when
-# the lake begins loses its thrust and simply falls, putting the player back on the ice.
-# Landing on flat, void-free, obstacle-free ground is safe by construction.
+# Reads false while input is suppressed, so no airborne trick spin can be started on the lake
+# (update_visual_rotation's spin branch is this function's other caller).
+#
+# A GLIDE ALREADY IN THE AIR IS EXEMPT, and it was not at first. The original version cut
+# thrust the instant the lake began, on the argument that landing on flat, void-free,
+# obstacle-free ground is safe by construction -- which is true, and still beside the point:
+# the owner hit it in play on 2026-08-14 and what it reads as is the game confiscating a
+# powerup they were in the middle of using. Letting the glide keep its thrust costs nothing
+# the lake cares about (it is flat, so there is nothing to glide over that matters) and it
+# expires on its own timer through can_end_effect() a few seconds later, on the one
+# bookkeeping-safe path. Jumping stays blocked regardless -- that is gated separately, at all
+# three of its own input sites -- so this cannot become a way to jump on the lake, and the
+# spin branch already requires is_glide_active to be false, so no trick can start either.
 func is_glide_input_held() -> bool:
-	if is_jump_suppressed:
+	if is_jump_suppressed and not is_glide_active:
 		return false
 	if Input.is_action_pressed(&"ui_accept"):
 		return true

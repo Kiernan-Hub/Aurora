@@ -96,6 +96,9 @@ func check_flag_defaults() -> void:
 	# across 7500px.
 	var lake_director: FrozenLakeDirector = FrozenLakeDirector.new()
 	expect_float("FrozenLakeDirector.debug_lake_interval_override", lake_director.debug_lake_interval_override, 0.0)
+	# Left set, a lake can fire before the speed ramp has finished -- so the 7500px sheet takes
+	# up to 39s to cross instead of 10, and the set piece ships at a pace nobody has judged.
+	expect_float("FrozenLakeDirector.debug_lake_min_run_time_override", lake_director.debug_lake_min_run_time_override, 0.0)
 	lake_director.free()
 
 

@@ -46,6 +46,19 @@ const LAKE_INTERVAL_SECONDS: float = 1200.0
 # every 20 minutes. That was the project owner's choice between the two.
 const LAKE_MIN_RUN_TIME: float = 130.0
 
+# How far onto the sheet the player has to be before the lake LOOKS fully like itself, and how
+# far before the far seam it starts handing the look back. Everything cosmetic about the lake
+# rides this one ramp -- the mirror's strength and the ice's colour, contrast and sheen -- so
+# no two of them can disagree about how far in the player is.
+#
+# THIS IS NOT DECORATION. The mirror is a full-screen quad and the ice tint is global, so at the
+# instant the player crosses the near seam the screen still holds a screen's worth of ordinary
+# sloped ground behind them; at full strength that hillside would be reflected as though it were
+# lying on the ice, and painted lake blue while it was. At ~1382 world px of visible width this
+# is a little over one screen: by the time the look is fully on, there is nothing but lake on
+# screen to apply it to. It also reads as the surface settling, which is free.
+const LAKE_LOOK_FADE_DISTANCE: float = 1500.0
+
 # Playtest override for LAKE_INTERVAL_SECONDS. Any value > 0 replaces it, so a lake can be
 # reached in seconds instead of twenty minutes.
 #
@@ -56,6 +69,15 @@ const LAKE_MIN_RUN_TIME: float = 130.0
 # Note this does NOT bypass LAKE_MIN_RUN_TIME -- a playtest still has to survive past the
 # speed ramp, deliberately, because that is the state the real lake happens in.
 var debug_lake_interval_override: float = 0.0
+
+# Playtest override for LAKE_MIN_RUN_TIME, same rules as the knob above: any value > 0 replaces
+# it. Needed alongside that one, because the interval override alone cannot make a lake happen
+# before the 130-second gate -- which is most of the wait during a look-at-it iteration.
+#
+# WHAT IT COSTS, and it is not nothing: below ~120s into a run the speed ramp has not finished,
+# so the 7500px crossing runs long (39.4s with speed unpinned, measured) and the set piece is
+# NOT being seen at the pace it ships at. Fine for judging colour, wrong for judging pacing.
+var debug_lake_min_run_time_override: float = 0.0
 
 @export var player_path: NodePath = NodePath("../Player")
 @export var terrain_generator_path: NodePath = NodePath("../TerrainGenerator")
@@ -111,6 +133,10 @@ func _physics_process(_delta: float) -> void:
 			if player.global_position.x >= lake_start_x:
 				begin_lake()
 		Phase.ACTIVE:
+			# Pushed every frame rather than at entry and exit: it is a ramp, not a state, and
+			# set_lake_ice_blend() early-outs on an unchanged value, so the middle of a crossing
+			# costs one float compare.
+			terrain_generator.set_lake_ice_blend(get_lake_blend())
 			if player.global_position.x >= lake_end_x:
 				finish_lake()
 		Phase.DONE:
@@ -121,6 +147,26 @@ func get_interval_seconds() -> float:
 	return debug_lake_interval_override if debug_lake_interval_override > 0.0 else LAKE_INTERVAL_SECONDS
 
 
+func get_min_run_time() -> float:
+	return debug_lake_min_run_time_override if debug_lake_min_run_time_override > 0.0 else LAKE_MIN_RUN_TIME
+
+
+# How much the world should look like a lake right now: 0 anywhere but a crossing, 1 once a full
+# screen of ice sits behind the player, and back to 0 at the far shore. Read by LakeReflection
+# for the mirror's strength and pushed into TerrainGenerator for the ice; see
+# LAKE_LOOK_FADE_DISTANCE for why the ramp exists at all.
+#
+# The director owns this rather than either consumer because it is a fact about WHERE THE PLAYER
+# IS IN THE SET PIECE, which is this file's job -- and because two consumers computing the same
+# ramp off the same seams is two chances to compute it differently.
+func get_lake_blend() -> float:
+	if phase != Phase.ACTIVE:
+		return 0.0
+	var player_x: float = player.global_position.x
+	return clampf((player_x - lake_start_x) / LAKE_LOOK_FADE_DISTANCE, 0.0, 1.0) \
+			* clampf((lake_end_x - player_x) / LAKE_LOOK_FADE_DISTANCE, 0.0, 1.0)
+
+
 # Total playtime including the part of this run that has not been banked yet. Reads
 # Main.elapsed_time directly rather than asking GameManager to bank early: banking writes to
 # disk, and this is asked every physics frame.
@@ -129,7 +175,7 @@ func get_total_playtime_seconds() -> float:
 
 
 func is_lake_due() -> bool:
-	if main_node.elapsed_time < LAKE_MIN_RUN_TIME:
+	if main_node.elapsed_time < get_min_run_time():
 		return false
 	var next_threshold: float = float(services.save_store.frozen_lake_count + 1) * get_interval_seconds()
 	return get_total_playtime_seconds() >= next_threshold
@@ -172,6 +218,10 @@ func begin_lake() -> void:
 func finish_lake() -> void:
 	phase = Phase.DONE
 	player.is_jump_suppressed = false
+	# The ramp has already carried this to ~0 by the far seam; the explicit hand-back is so the
+	# world cannot keep a sliver of lake colour for the rest of the run if the end line happened
+	# to be crossed in a frame the ramp had not quite finished.
+	terrain_generator.set_lake_ice_blend(0.0)
 	# lake_segment_index is deliberately left set on the generator. The segment is behind the
 	# player and must stay in the height field -- clearing it would make every cached chunk
 	# and collision sample behind the player disagree with a fresh sample of the same x.
@@ -187,4 +237,5 @@ func finish_lake() -> void:
 func _on_player_died() -> void:
 	if phase == Phase.ACTIVE:
 		player.is_jump_suppressed = false
+		terrain_generator.set_lake_ice_blend(0.0)
 	phase = Phase.DONE

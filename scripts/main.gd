@@ -9,10 +9,28 @@ class_name Main
 @onready var stuck_time_label: Label = $CanvasLayer/StuckTimeLabel
 @onready var pause_button: Button = $CanvasLayer/PauseButton
 @onready var game_manager: GameManager = $GameManager
+# Null under any harness that builds its own scene, which is why every use is guarded. The lake
+# is a set piece, not a mechanic: a missing one must never stop the camera working.
+@onready var lake_director: FrozenLakeDirector = get_node_or_null("FrozenLakeDirector")
 
 const WORLD_REBASER_SCRIPT: Script = preload("res://scripts/systems/world_rebaser.gd")
 const VERTICAL_FOLLOW_MARGIN: float = 72.0
 const VERTICAL_FOLLOW_SMOOTHNESS: float = 6.0
+
+# WHERE THE FROZEN LAKE'S SHORE SITS ON SCREEN, as a fraction from the top, while a lake is being
+# crossed. Measured off the owner's reference screenshot (Glossy Frozen Lake.png), not chosen:
+# in the 2109x746 re-shot reference the shore sits at y=419-421, so 0.56. (An earlier 698x214
+# crop of the same image read 0.62; the larger re-shot one is the measurement that stands.)
+#
+# WHY THE LAKE NEEDS ITS OWN FRAMING AT ALL, and this was the single biggest visual difference
+# when the two were put side by side (2026-08-15). The ordinary follow keeps the player near the
+# middle of the frame with a margin, which is right for a runner reading terrain ahead -- but it
+# left the shore high in the frame, so most of the screen was empty ice and the ridges and pine
+# line (which the background layers pin at 0.42-0.60 of the screen, motion_scale.y being 0) sat
+# BELOW the waterline. The mirror can only reflect what is in the frame, so there was nothing for
+# it to reflect but sky, and no shader change could have fixed that. Framing the shore this low
+# puts the whole ridgeline above it, which is what the reference does.
+const LAKE_HORIZON_FRACTION: float = 0.56
 # Horizontal follow was a rigid `camera.x = player.x` until 2026-08-01. The
 # terrain is static in world space, so the on-screen motion of the ENTIRE view
 # is exactly the camera's per-frame displacement -- a rigid follow therefore
@@ -211,6 +229,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		target_camera_y = get_vertical_camera_target()
 		interpolation_weight = 1.0 - exp(-VERTICAL_FOLLOW_SMOOTHNESS * delta)
+	target_camera_y = apply_lake_framing(target_camera_y)
 	camera_y = lerpf(camera_y, target_camera_y, interpolation_weight)
 
 	var player_x: float = player.global_position.x
@@ -298,6 +317,32 @@ func get_vertical_camera_target() -> float:
 		return climb_camera_y
 
 	return camera_baseline_y
+
+
+# Blends the camera toward the lake's own framing -- shore at LAKE_HORIZON_FRACTION -- by however
+# much of a lake the player is currently on.
+#
+# Applied to the TARGET, not to camera_y itself, so it goes through the same exponential follow
+# everything else does. That is what makes the change of framing a drift rather than a cut, and it
+# means this cannot introduce a camera motion the shake gate has not already been measuring.
+#
+# The blend is FrozenLakeDirector's, the same ramp the ice colour and the mirror ride, so the
+# framing arrives with the surface rather than ahead of it.
+func apply_lake_framing(target_camera_y: float) -> float:
+	if lake_director == null:
+		return target_camera_y
+	var lake_blend: float = lake_director.get_lake_blend()
+	if lake_blend <= 0.0:
+		return target_camera_y
+
+	# The surface under the player. On the lake it is dead flat, so any x on it would do.
+	var surface_world_y: float = terrain_generator.get_surface_world_y(player.global_position.x)
+	var visible_world_height: float = get_viewport_rect().size.y / camera_2d.zoom.y
+	# Camera Y is the CENTRE of the view, so the shore has to sit (fraction - 0.5) of a screen
+	# below it. Derived from the viewport rather than the project's base height because
+	# aspect="expand" makes that base a minimum -- a taller window genuinely sees more world.
+	var lake_camera_y: float = surface_world_y - (LAKE_HORIZON_FRACTION - 0.5) * visible_world_height
+	return lerpf(target_camera_y, lake_camera_y, lake_blend)
 
 
 # Shifts the whole play area back toward y=0 so physics contacts keep float
