@@ -154,13 +154,53 @@ func _ready() -> void:
 	# paused-ness is already true. This node has no _process/_physics_process, so ALWAYS
 	# costs nothing.
 	process_mode = Node.PROCESS_MODE_ALWAYS
+
+	# A WIRING FAILURE MUST STILL REACH set_state(). Every gate in wire_scene() used to
+	# `return` straight out of _ready(), which skipped set_state() entirely -- and since
+	# set_state() is the only thing that initialises any screen's visibility, the result was
+	# a fully running game underneath an un-dismissable overlay, with only a log line to say
+	# why. The comment that used to sit on the shop block described exactly this.
+	#
+	# PLAYING rather than START, deliberately: a build broken enough to get here may have no
+	# start button to press, and START would pause the tree with no way to unpause it. PLAYING
+	# leaves the game running and every screen it managed to find hidden, so the push_error is
+	# the loudest thing about the session instead of the quietest.
+	if not wire_scene():
+		set_state(State.PLAYING)
+		return
+
+	# Must run before the first gameplay frame. Safe here: Player is an earlier sibling
+	# in main.tscn so its _ready() has already run, and upgrade_jump_multiplier is only
+	# read inside _physics_process, which cannot start until every _ready() completes.
+	apply_upgrades()
+
+	# require_start_screen=false is the harness opt-out, and it has to skip straight to
+	# PLAYING rather than sitting on START -- see the comment on that var. A quick
+	# restart (see _on_quick_restart_pressed) takes the same PLAYING shortcut, via the
+	# static flag rather than this instance var, because it has to survive the reload.
+	var quick_restart: bool = GameManager.pending_quick_restart
+	GameManager.pending_quick_restart = false
+	if quick_restart:
+		set_state(State.PLAYING)
+		# Same reasoning as _on_start_pressed / _on_resume_pressed: the click that
+		# triggered the reload is still "just pressed" on the Input singleton, which
+		# survives reload_current_scene() because it isn't part of the scene tree.
+		Input.action_release(&"ui_accept")
+	else:
+		set_state(State.START if require_start_screen else State.PLAYING)
+
+
+# All the node lookups and signal connections, split out of _ready() so a failure can be
+# HANDLED rather than escape as a bare `return`. Returns false on the first hard gate that
+# fails, having already pushed the error describing it. See _ready() for what false costs.
+func wire_scene() -> bool:
 	services = GameServices.resolve(self)
 	main = get_parent() as Main
 	player = get_node_or_null(player_path) as Player
 	sfx_player = get_node_or_null(sfx_player_path) as SfxPlayer
 	if main == null or player == null or sfx_player == null:
 		push_error("GameManager requires a Main parent, a Player node at %s, and an SfxPlayer at %s." % [player_path, sfx_player_path])
-		return
+		return false
 
 	player.jumped.connect(_on_player_jumped)
 	player.trick_completed.connect(_on_player_trick_completed)
@@ -169,7 +209,7 @@ func _ready() -> void:
 	start_button = get_node_or_null(start_button_path) as Button
 	if start_screen == null or start_button == null:
 		push_error("GameManager requires a start screen at %s." % start_screen_path)
-		return
+		return false
 
 	start_button.pressed.connect(_on_start_pressed)
 
@@ -179,7 +219,7 @@ func _ready() -> void:
 	death_home_button = get_node_or_null(death_home_button_path) as Button
 	if death_screen == null or death_stats_label == null or restart_button == null or death_home_button == null:
 		push_error("GameManager requires a death screen at %s with restart and home buttons." % death_screen_path)
-		return
+		return false
 
 	# "Restart" jumps straight back into a new run (see _on_quick_restart_pressed);
 	# "Home" is the one that lands on the START/main screen, same as the pause
@@ -197,7 +237,7 @@ func _ready() -> void:
 	sfx_slider = get_node_or_null(sfx_slider_path) as HSlider
 	if pause_screen == null or pause_button == null or resume_button == null or pause_restart_button == null or pause_home_button == null or music_slider == null or sfx_slider == null:
 		push_error("GameManager requires a pause screen at %s with a pause button, resume/restart/home buttons and two volume sliders." % pause_screen_path)
-		return
+		return false
 
 	# button_down, NOT pressed. BaseButton emits `pressed` on pointer-UP, which leaves
 	# the game live for the whole down..up interval -- and the pointer-DOWN that started
@@ -238,7 +278,7 @@ func _ready() -> void:
 	coin_label = get_node_or_null(coin_label_path) as Label
 	if coin_spawner == null or coin_label == null:
 		push_error("GameManager requires a CoinSpawner at %s and a coin label at %s." % [coin_spawner_path, coin_label_path])
-		return
+		return false
 
 	coin_spawner.coin_collected.connect(_on_coin_collected)
 
@@ -261,7 +301,7 @@ func _ready() -> void:
 	powerup_manager = get_node_or_null(powerup_manager_path) as PowerupManager
 	if powerup_manager == null:
 		push_error("GameManager requires a PowerupManager at %s." % powerup_manager_path)
-		return
+		return false
 
 	# No push_error and no early return, unlike the nodes above: losing the biome phase
 	# costs a run its colour continuity and nothing else, which is not worth refusing to
@@ -297,25 +337,7 @@ func _ready() -> void:
 		reset_progress_button.pressed.connect(_on_reset_progress_pressed)
 		reset_confirm_dialog.confirmed.connect(_on_reset_progress_confirmed)
 
-	# Must run before the first gameplay frame. Safe here: Player is an earlier sibling
-	# in main.tscn so its _ready() has already run, and upgrade_jump_multiplier is only
-	# read inside _physics_process, which cannot start until every _ready() completes.
-	apply_upgrades()
-
-	# require_start_screen=false is the harness opt-out, and it has to skip straight to
-	# PLAYING rather than sitting on START -- see the comment on that var. A quick
-	# restart (see _on_quick_restart_pressed) takes the same PLAYING shortcut, via the
-	# static flag rather than this instance var, because it has to survive the reload.
-	var quick_restart: bool = GameManager.pending_quick_restart
-	GameManager.pending_quick_restart = false
-	if quick_restart:
-		set_state(State.PLAYING)
-		# Same reasoning as _on_start_pressed / _on_resume_pressed: the click that
-		# triggered the reload is still "just pressed" on the Input singleton, which
-		# survives reload_current_scene() because it isn't part of the scene tree.
-		Input.action_release(&"ui_accept")
-	else:
-		set_state(State.START if require_start_screen else State.PLAYING)
+	return true
 
 
 # The single owner of get_tree().paused and of every screen's visibility. Nothing else
@@ -326,15 +348,24 @@ func set_state(new_state: State) -> void:
 
 	# START/DEAD stay visible underneath SHOP: the shop is a modal over whichever screen
 	# opened it (see shop_return_state), and closing it returns there without a flicker.
-	start_screen.visible = new_state == State.START or (new_state == State.SHOP and shop_return_state == State.START)
-	pause_screen.visible = new_state == State.PAUSED
-	death_screen.visible = new_state == State.DEAD or (new_state == State.SHOP and shop_return_state == State.DEAD)
-	# Null-guarded because the shop is optional wiring -- see _ready().
+	# EVERY SCREEN IS NULL-GUARDED, not just the optional shop, and that is what lets a failed
+	# wire_scene() still come through here. On a correctly wired scene all four are always
+	# present, so these guards never fire in a shipped build; on a broken one they are the
+	# difference between "the game runs and the log says why" and a frozen overlay. The nulls
+	# are not silently tolerated -- wire_scene() has already pushed an error naming the missing
+	# node. This only keeps that error from being followed by a crash on the next line.
+	if start_screen != null:
+		start_screen.visible = new_state == State.START or (new_state == State.SHOP and shop_return_state == State.START)
+	if pause_screen != null:
+		pause_screen.visible = new_state == State.PAUSED
+	if death_screen != null:
+		death_screen.visible = new_state == State.DEAD or (new_state == State.SHOP and shop_return_state == State.DEAD)
 	if shop_screen != null:
 		shop_screen.visible = new_state == State.SHOP
 	# Hidden on the menus so it can't be tapped while a screen is up, and hidden on
 	# death because the death screen owns the input at that point.
-	pause_button.visible = new_state == State.PLAYING
+	if pause_button != null:
+		pause_button.visible = new_state == State.PLAYING
 
 	get_tree().paused = new_state != State.PLAYING
 	# Leaving the pause screen is the end of any settings interaction, and the only
