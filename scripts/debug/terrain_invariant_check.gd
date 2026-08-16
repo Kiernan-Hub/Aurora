@@ -121,6 +121,17 @@ const COIN_LINE_FREE_GRAB_MARGIN: float = 8.0
 # reason RARE_COIN_REACH_MARGIN is: the window is only ~24px wide, so this exists to stop the
 # clearance being tuned to the exact edge.
 const COIN_LINE_REACH_MARGIN: float = 6.0
+# Slack between where a boosted max-upgrade jump lands and where the void starts, from
+# upgrade_store.gd's derivation ("LEAD_IN_MARGIN(32)"). It is not a constant anywhere in the
+# game -- the game never computes this -- so it lives here with the check that uses it.
+const UPGRADE_CURVE_LEAD_IN_MARGIN: float = 32.0
+# How far the weakest jump's apex must clear an obstacle by. upgrade_store.gd rejects 0.55
+# (6.7px of clearance) as "a broken game rather than a hard one" and accepts 0.60 (14.1px), so
+# the line sits between them.
+const OBSTACLE_APEX_MARGIN: float = 10.0
+# The player must be above an obstacle for meaningfully longer than it takes to cross it, not
+# merely for exactly its width -- landing on the far edge is still a death.
+const OBSTACLE_WIDTH_MARGIN: float = 16.0
 # Slowest speed a line's end coins have to be catchable at. A jump apexing on the middle coin
 # has fallen 0.5 * GRAVITY * (spacing/speed)^2 by the time it reaches an end, and the slower the
 # run, the further it has fallen -- so the slowest speed in the ramp is the binding case.
@@ -178,6 +189,11 @@ func _init() -> void:
 	for violation: String in coin_line_violations:
 		print("    ", violation)
 	variant_violations.append_array(coin_line_violations)
+
+	# The two that CLAUDE.md, upgrade_store.gd and obstacle_spawner.gd have all claimed existed
+	# since before they were written. Constant-only, so they join the group above.
+	variant_violations.append_array(check_upgrade_curve())
+	variant_violations.append_array(check_obstacle_clearance())
 
 	# Needs a scene (the generator must be in the tree to have a seed), so it cannot join the
 	# three constant-only checks above -- but it is still seed-independent in everything it
@@ -855,6 +871,139 @@ func measure_coin_density(terrain_generator: TerrainGenerator, spawner: CoinSpaw
 
 
 # Apex of a jump at the given upgrade multiplier: v^2 / 2g, with v scaled by the multiplier.
+# ================= THE TWO GATES THAT WERE DOCUMENTED BUT NEVER EXISTED =================
+#
+# `check_upgrade_curve()` and `check_obstacle_clearance()` were named in THREE places --
+# `CLAUDE.md`, `upgrade_store.gd:57` and `obstacle_spawner.gd:56` -- as the thing that stops a
+# bad constant shipping. Neither was anywhere in `scripts/debug/`. Written 2026-08-15.
+#
+# That is worse than having no gate: `CLAUDE.md` stated "raising the ceiling fails the build
+# rather than shipping the bug", so the one person most likely to raise `JUMP_MULTIPLIERS` was
+# the one being told a net would catch them. Both are pure arithmetic over constants, so they
+# join the other scene-free checks and cost nothing.
+
+
+# The ceiling on the jump upgrade curve, from upgrade_store.gd's own derivation:
+#
+#   MAX_SPEED * airtime(M * JUMP_BOOST) + LEAD_IN_MARGIN  <=  CHASM_LEAD_IN_LENGTH
+#
+# A max-upgrade player holding the sqrt(2) jump powerup, jumping at the FIRST PIXEL of a chasm
+# run-up, must still come down before the void starts. Above the ceiling they overshoot the
+# lead-in and land inside it -- with the powerup active, so it is reachable in ordinary play.
+#
+# WHY THE POWERUP IS IN THE BOUND AND NOT IGNORED "to stay conservative": this is the opposite
+# bound from get_chasm_jump_reach() above. Clearability asks about the WEAKEST jump, so it
+# ignores the powerup; this asks about the STRONGEST, so it must include it.
+func check_upgrade_curve() -> Array[String]:
+	var violations: Array[String] = []
+
+	var multipliers: Array[float] = UpgradeStore.JUMP_MULTIPLIERS
+	if multipliers.is_empty():
+		violations.append("UpgradeStore.JUMP_MULTIPLIERS is empty -- there is no curve to bound")
+		return violations
+
+	var max_multiplier: float = multipliers[0]
+	for multiplier: float in multipliers:
+		max_multiplier = maxf(max_multiplier, multiplier)
+
+	var boosted: float = max_multiplier * PowerupManager.JUMP_BOOST_VELOCITY_MULTIPLIER
+	# exit_drop 0.0 -- a chasm lead-in is flat, so this is the plain 2v/g airtime.
+	var airtime: float = get_jump_airtime(0.0, boosted)
+	var reach: float = SpeedManager.MAX_SPEED * airtime
+	var budget: float = TerrainGenerator.CHASM_LEAD_IN_LENGTH - UPGRADE_CURVE_LEAD_IN_MARGIN
+
+	if reach > budget:
+		# The derived ceiling is reported because "it failed" is not actionable on its own --
+		# whoever raised the curve needs the number it may not exceed.
+		var reach_at_one: float = SpeedManager.MAX_SPEED * get_jump_airtime(0.0, PowerupManager.JUMP_BOOST_VELOCITY_MULTIPLIER)
+		var ceiling: float = budget / reach_at_one
+		violations.append("UPGRADE_CURVE_OVERSHOOTS_LEAD_IN max_multiplier=%.4f reach=%.1fpx budget=%.1fpx (lead-in %.1f - margin %.1f) -- ceiling is %.4f" % [
+			max_multiplier, reach, budget,
+			TerrainGenerator.CHASM_LEAD_IN_LENGTH, UPGRADE_CURVE_LEAD_IN_MARGIN, ceiling,
+		])
+
+	print("TERRAIN_INVARIANT_UPGRADE_CURVE max_multiplier=%.4f boosted_reach=%.1f budget=%.1f" % [
+		max_multiplier, reach, budget,
+		], " status=", "PASS" if violations.is_empty() else "FAIL")
+	for violation: String in violations:
+		print("    ", violation)
+	return violations
+
+
+# The floor under the jump upgrade curve, from the other half of upgrade_store.gd's derivation.
+# An obstacle is 32x32 sitting ON the surface and kills on any contact, so the WEAKEST jump the
+# curve sells still has to clear one. At multiplier 0.50 the apex is exactly 32.0 and the first
+# cluster becomes a literal wall.
+#
+# Two independent facts, because apex alone is not clearance:
+#
+#   1. VERTICAL. Apex must clear the obstacle's height with room to spare.
+#   2. HORIZONTAL. The player must cross the obstacle's WIDTH while still above its height --
+#      at the slowest speed an obstacle is ever met at, which obstacle_spawner.gd documents as
+#      deriving from FIRST_CLUSTER_TIME.
+#
+# NOTE ON A NUMBER NOT ASSERTED HERE. upgrade_store.gd quotes "~8.6 frames" of window at 0.60
+# and "~3.7" at 0.55; the plain projectile derivation gives 15.9 and 11.0, so those came from a
+# derivation this file could not reproduce. Rather than encode a figure that cannot be checked,
+# this asserts the two geometric facts above and PRINTS its own window so the two can be
+# compared. Do not "fix" the comment to match until someone establishes which is right.
+func check_obstacle_clearance() -> Array[String]:
+	var violations: Array[String] = []
+
+	var multipliers: Array[float] = UpgradeStore.JUMP_MULTIPLIERS
+	if multipliers.is_empty():
+		violations.append("UpgradeStore.JUMP_MULTIPLIERS is empty -- there is no floor to check")
+		return violations
+
+	var min_multiplier: float = multipliers[0]
+	for multiplier: float in multipliers:
+		min_multiplier = minf(min_multiplier, multiplier)
+
+	var obstacle_height: float = ObstacleSpawner.OBSTACLE_HALF_HEIGHT * 2.0
+	var apex: float = get_jump_apex(min_multiplier)
+
+	# 1. Vertical.
+	if apex < obstacle_height + OBSTACLE_APEX_MARGIN:
+		violations.append("OBSTACLE_APEX_TOO_LOW min_multiplier=%.2f apex=%.1fpx obstacle=%.1fpx margin=%.1f -- the weakest jump the curve sells cannot clear an obstacle" % [
+			min_multiplier, apex, obstacle_height, OBSTACLE_APEX_MARGIN,
+		])
+
+	# 2. Horizontal. Time spent above the obstacle's height, times the slowest speed an obstacle
+	#    is judged against. launch^2 - 2*g*h goes negative exactly when the apex cannot reach the
+	#    obstacle at all, which assertion 1 has already reported -- guarded so this does not NaN
+	#    on top of it.
+	var launch_speed: float = absf(Player.JUMP_VELOCITY) * min_multiplier
+	var discriminant: float = (launch_speed * launch_speed) - (2.0 * Player.GRAVITY * obstacle_height)
+	var window_seconds: float = 0.0
+	var window_px: float = 0.0
+	var slowest_speed: float = get_speed_at_time(ObstacleSpawner.FIRST_CLUSTER_TIME)
+	if discriminant > 0.0:
+		window_seconds = 2.0 * sqrt(discriminant) / Player.GRAVITY
+		window_px = window_seconds * slowest_speed
+		var obstacle_width: float = obstacle_height
+		if window_px < obstacle_width + OBSTACLE_WIDTH_MARGIN:
+			violations.append("OBSTACLE_WINDOW_TOO_TIGHT window=%.1fpx obstacle_width=%.1fpx at %.1f px/s -- the player is above the obstacle for less than its own width" % [
+				window_px, obstacle_width, slowest_speed,
+			])
+
+	print("TERRAIN_INVARIANT_OBSTACLE_CLEARANCE min_multiplier=%.2f apex=%.1f obstacle=%.1f window=%.3fs/%.1fpx at %.1fpx/s" % [
+		min_multiplier, apex, obstacle_height, window_seconds, window_px, slowest_speed,
+		], " frames=%.1f" % (window_seconds * 60.0),
+		" status=", "PASS" if violations.is_empty() else "FAIL")
+	for violation: String in violations:
+		print("    ", violation)
+	return violations
+
+
+# Speed the ramp has reached at elapsed_time t. The world_x-keyed twin of this is
+# get_min_speed_at_world_x above; this one is keyed on TIME because the obstacle cadence is.
+func get_speed_at_time(elapsed_time: float) -> float:
+	if elapsed_time < SpeedManager.PHASE1_DURATION:
+		return SpeedManager.INITIAL_SPEED + (SpeedManager.PHASE1_ACCELERATION * elapsed_time)
+	var phase2_time: float = elapsed_time - SpeedManager.PHASE1_DURATION
+	return minf(SpeedManager.PHASE1_TARGET_SPEED + (SpeedManager.PHASE2_ACCELERATION * phase2_time), SpeedManager.MAX_SPEED)
+
+
 func get_jump_apex(jump_velocity_multiplier: float) -> float:
 	var jump_speed: float = absf(Player.JUMP_VELOCITY) * jump_velocity_multiplier
 	return (jump_speed * jump_speed) / (2.0 * Player.GRAVITY)

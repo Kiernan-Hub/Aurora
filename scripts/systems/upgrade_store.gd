@@ -54,7 +54,14 @@ const UPGRADE_IDS: Array[String] = [JUMP_UPGRADE_ID]
 # m = 0.50 gives an apex of exactly 32.0 and the first cluster becomes a wall. 0.55
 # clears it by 6.7px and leaves ~3.7 frames of window, which reads as a broken game
 # rather than a hard one. 0.60 gives 46.1px of apex and ~8.6 frames -- hard but fair.
-# check_obstacle_clearance() in terrain_invariant_check.gd asserts all of this.
+#
+# check_obstacle_clearance() in terrain_invariant_check.gd asserts the APEX and a horizontal
+# window, and it reproduces the apex figures above exactly (46.1 at 0.60; 32.0 at 0.50, where
+# the obstacle becomes a literal wall). IT DOES NOT ASSERT THE FRAME COUNTS -- the plain
+# projectile derivation of "time spent above 32px" gives 15.9 frames at 0.60 and 11.0 at 0.55,
+# not 8.6 and 3.7, so those two numbers came from a derivation nobody has since reproduced.
+# The gate prints its own window for comparison. Do not reconcile the two by editing whichever
+# is easier to change; work out which is right first.
 const JUMP_MULTIPLIERS: Array[float] = [0.60, 0.70, 0.80, 0.90, 1.00]
 
 # Cost of the purchase that moves level i -> i+1, so this is always one shorter than
