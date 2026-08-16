@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Turn a raw generated ice panel into the game-ready depth tile.
 
-    python3 scripts/tools/build_ice_texture.py --check panel.png   (validate a source panel)
-python3 scripts/tools/build_ice_texture.py three.png
-    python3 scripts/tools/build_ice_texture.py four.png assets/textures/terrain/ice_faceted.png
+    python3 scripts/tools/build_ice_texture.py --check art_source/panel.png
+    python3 scripts/tools/build_ice_texture.py art_source/three.png
+    python3 scripts/tools/build_ice_texture.py art_source/four.png assets/textures/terrain/ice_faceted.png
+
+Every source panel lives in art_source/ (2026-08-15). They used to sit at the
+repository root, where Godot imported all 31MB of them into the export for
+nothing; art_source/ carries a .gdignore, which is the whole point of it.
 
 The output path is optional and defaults to DEFAULT_OUTPUT_PATH (the smooth tile
 every biome starts on). Pass it to build one of the pattern VARIANTS -- see

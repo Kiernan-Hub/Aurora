@@ -218,8 +218,14 @@ const UNSET_COLOR: Color = Color(0.0, 0.0, 0.0, 0.0)
 @export_group("Optional layers")
 # Authored now, inert until each layer's own phase ships. A palette is complete data from
 # day one; the renderers arrive one at a time. See docs/development/biomes.md.
+#
+# `reflection_strength` used to sit here and was DELETED on 2026-08-15, after the frozen
+# lake's reflection shipped without it. The lake is a set piece, not a biome layer: it looks
+# the same in every biome by the owner's decision, and what ties it to the world is that the
+# mirror reflects the biome's own sky and ridges -- so there was never a per-palette number
+# for it to read. Do not re-add one speculatively; the two fields left here are inert because
+# their renderer has not been built yet, which is a different thing from inert by design.
 @export_range(0.0, 1.0) var mist_strength: float = 0.0
-@export_range(0.0, 1.0) var reflection_strength: float = 0.0
 @export_range(0.0, 1.0) var star_density: float = 0.0
 
 @export_group("Rare variant")
@@ -322,7 +328,6 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	out.snow_tint = from.snow_tint.lerp(to.snow_tint, atmosphere)
 	out.snow_density_scale = lerpf(from.snow_density_scale, to.snow_density_scale, atmosphere)
 	out.mist_strength = lerpf(from.mist_strength, to.mist_strength, atmosphere)
-	out.reflection_strength = lerpf(from.reflection_strength, to.reflection_strength, atmosphere)
 	out.star_density = lerpf(from.star_density, to.star_density, atmosphere)
 
 	var gameplay: float = weights[CHANNEL_GAMEPLAY]

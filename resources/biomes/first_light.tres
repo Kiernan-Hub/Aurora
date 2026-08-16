@@ -38,7 +38,6 @@ ice_texture = ExtResource("2")
 snow_tint = Color(1, 1, 1, 0.3)
 snow_density_scale = 0.7
 mist_strength = 0.8
-reflection_strength = 0.4
 star_density = 0.0
 coin_color = Color(0.95, 0.75, 0.1, 1)
 obstacle_color = Color(0.92, 0.13, 0.15, 1)

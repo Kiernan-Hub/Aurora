@@ -41,6 +41,9 @@ class_name GlideCoinSpawner
 signal coin_collected(value: int)
 
 const COIN_SCENE: PackedScene = preload("res://scenes/pickups/coin.tscn")
+# The end-of-glide bonus reuses the rare coin's own scene rather than a tinted regular
+# coin -- it now IS the diamond, not a coin styled to look bonus-y.
+const BONUS_COIN_SCENE: PackedScene = preload("res://scenes/pickups/rare_coin.tscn")
 const TRAIL_COIN_VALUE: int = 1
 const COIN_FIELD_COUNT: int = 30
 # All 30 pop-in times are drawn from [0, FIELD_SPAWN_DURATION) at glide start, then popped
@@ -73,19 +76,29 @@ const MAX_PLACEMENT_ATTEMPTS: int = 6
 # size they read as barely-there specks against how spread out and far away the field
 # already is; bigger is what actually makes a coin poking out of that empty sky readable.
 const AIR_COIN_SCALE: float = 1.9
+# THE BONUS DIAMOND IS SPAWNED AT 1.0, NOT AT AIR_COIN_SCALE, and it must stay that way while
+# it shares rare_coin.tscn with RareCoinSpawner (2026-08-15).
+#
+# Node scale here scales the Area2D, so it moves the art and the CollisionShape2D together --
+# that lockstep is the design (visuals.md's art-swap traps) and it is why the trail coins'
+# 38px art matches their 38px pickup exactly. The consequence is that a scale is not a look,
+# it is a size: at AIR_COIN_SCALE this diamond rendered 42x59 against the 22x31 diamond
+# RareCoinSpawner hangs, so the SAME ART meant two values with the bigger one worth LESS (15
+# against 25). Matching the rare coin's scale is what makes one diamond mean one thing.
+#
+# Scaling the rare coin UP to 1.9 instead was rejected: its pickup circle would grow from r10
+# to r19, dropping the collectible edge 9px into the ~24px gap between the top two jump levels
+# that makes it max-jump-only (physics.md, CLAUDE.md). Scaling only the child Sprite2D would
+# dodge that, and is worse -- it breaks the art/hitbox lockstep and leaves a diamond that looks
+# collectible 10px before it is.
+#
+# AIR_COIN_SCALE's own "barely-there specks" reasoning does not carry over: it was measured on
+# the 20px round coin, and this diamond is already read in the air at 174px clearance every
+# time RareCoinSpawner hangs one.
+const BONUS_DIAMOND_SCALE: float = 1.0
 const BONUS_COIN_VALUE: int = 15
 const BONUS_COIN_LEAD_DISTANCE: float = 200.0
 const BONUS_SURFACE_CLEARANCE: float = 130.0
-# Brighter/richer than the base coin's 0.98,0.82,0.15 -- the one visual cue (besides size)
-# that this coin is the end-of-glide bonus, not a field coin. Only used before a biome has
-# been pushed (--headless, and every gate); once one has, the bonus is DERIVED from that
-# biome's coin colour by BONUS_COIN_LIGHTEN so the "brighter than a field coin" relationship
-# survives a biome that already brightens the field coin -- a fixed colour here would read as
-# an ordinary coin under starlit_night.
-const BONUS_COIN_COLOR: Color = Color(1.0, 0.87, 0.22, 1.0)
-# Toward white. 0.15 reproduces the authored colour above almost exactly from the shipped
-# gold, so this changes nothing in the daylight biomes it was tuned against.
-const BONUS_COIN_LIGHTEN: float = 0.15
 # A field coin the player flew past without collecting has no despawn trigger of its own
 # (unlike CoinSpawner's chunk-indexed groups) -- this is what frees it instead.
 const DESPAWN_BEHIND_DISTANCE: float = 700.0
@@ -215,13 +228,16 @@ func spawn_bonus_coin(world_x: float) -> void:
 	if terrain_generator.is_lake_world_x(world_x):
 		return
 	var local_y: float = terrain_generator.get_terrain_height(world_x) - BONUS_SURFACE_CLEARANCE
-	spawn_coin(world_x, local_y, BONUS_COIN_VALUE, AIR_COIN_SCALE, get_bonus_coin_color())
+	spawn_coin(world_x, local_y, BONUS_COIN_VALUE, BONUS_DIAMOND_SCALE, null, BONUS_COIN_SCENE)
 
 
 # null means "whatever this coin's colour should be right now", which is the biome's once one
 # has been pushed and coin.tscn's authored gold before that. A Color overrides it outright.
-func spawn_coin(world_x: float, local_y: float, coin_value: int, coin_scale: float, tint: Variant) -> void:
-	var coin: Coin = COIN_SCENE.instantiate() as Coin
+# scene defaults to the ordinary trail coin; the bonus call passes BONUS_COIN_SCENE, which is
+# never tinted below -- same reasoning as RareCoinSpawner: no spawner pushes a colour into the
+# diamond, so it keeps its own authored modulate.
+func spawn_coin(world_x: float, local_y: float, coin_value: int, coin_scale: float, tint: Variant, scene: PackedScene = COIN_SCENE) -> void:
+	var coin: Coin = scene.instantiate() as Coin
 	coin.value = coin_value
 	coin.collected.connect(_on_coin_collected)
 	coin.position = Vector2(world_x, local_y)
@@ -229,32 +245,26 @@ func spawn_coin(world_x: float, local_y: float, coin_value: int, coin_scale: flo
 		coin.scale = Vector2(coin_scale, coin_scale)
 	if tint is Color:
 		coin.set_visual_color(tint)
-	elif has_biome_color:
+	elif has_biome_color and scene != BONUS_COIN_SCENE:
 		coin.set_visual_color(biome_coin_color)
 	add_child(coin)
 	active_coins.append(coin)
 
 
-func get_bonus_coin_color() -> Color:
-	if not has_biome_color:
-		return BONUS_COIN_COLOR
-	return biome_coin_color.lerp(Color.WHITE, BONUS_COIN_LIGHTEN)
-
-
 # Repaints the field coins already hanging in the air along with every one spawned from here
-# on. The bonus coin is told apart by its value rather than by a flag: it is the only coin
-# either spawner ever gives a value other than 1, and repainting it as a field coin would
-# throw away the cue that it is the bonus.
+# on. The bonus coin is skipped -- it is the diamond now, not a tinted field coin, and is told
+# apart by its value (the only coin either spawner ever gives a value other than 1).
 func apply_biome_color(color: Color) -> void:
 	if has_biome_color and biome_coin_color.is_equal_approx(color):
 		return
 	has_biome_color = true
 	biome_coin_color = color
-	var bonus_color: Color = get_bonus_coin_color()
 	for coin: Coin in active_coins:
 		if not is_instance_valid(coin):
 			continue
-		coin.set_visual_color(bonus_color if coin.value == BONUS_COIN_VALUE else color)
+		if coin.value == BONUS_COIN_VALUE:
+			continue
+		coin.set_visual_color(color)
 
 
 func despawn_trailing_coins() -> void:

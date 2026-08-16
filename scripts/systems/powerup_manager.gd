@@ -37,7 +37,7 @@ const JUMP_BOOST_VELOCITY_MULTIPLIER: float = 1.4142135
 const COIN_MAGNET_DURATION: float = 4.0
 const COIN_DOUBLER_DURATION: float = 6.0
 const COIN_DOUBLER_MULTIPLIER: float = 2.0
-const GLIDE_DURATION: float = 15.0
+const GLIDE_DURATION: float = 7.0
 
 # How long each timed effect lasts. An effect absent from this table is untimed and is
 # never expired by _process() -- it is owned by whatever consumes it (a shield is spent

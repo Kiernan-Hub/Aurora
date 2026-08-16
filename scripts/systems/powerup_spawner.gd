@@ -49,7 +49,7 @@ var debug_first_powerup_time_override: float = 5.0 if OS.is_debug_build() else -
 # Pins ONLY the first spawn's kind, unlike debug_forced_effect above which pins every
 # spawn for the whole run -- this is meant to pair with the time override for a quick
 # look at one specific powerup, without losing variety for the rest of the session.
-var debug_first_powerup_effect_override: StringName = PowerupManager.EFFECT_GLIDE if OS.is_debug_build() else &""
+var debug_first_powerup_effect_override: StringName = &""
 
 # The full powerup catalogue: one row per kind, and the ONLY place a kind is declared.
 #
