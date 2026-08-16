@@ -153,6 +153,46 @@ elapsed CPU time before killing it.
 **Never shorten `--to`.** The coin-density band is calibrated for the full 1758-slot sample, so
 a shortened run produces a confident FAIL that means nothing. Always `--seeds=8 --to=300000`.
 
+It also carries several **constant-only checks** that need no scene and no seed — chasm variant
+table, rare-coin height, coin-line height, and the two below. They are cheap, so they run on
+every invocation.
+
+### `check_upgrade_curve()` and `check_obstacle_clearance()` (2026-08-15)
+
+**These two were documented in three places for weeks before they existed** — `CLAUDE.md`,
+`upgrade_store.gd:57` and `obstacle_spawner.gd:56` all named them as the thing that stops a bad
+constant shipping, and neither was anywhere in `scripts/debug/`. That is worse than having no
+gate: CLAUDE.md said "raising the ceiling fails the build rather than shipping the bug", so the
+person most likely to raise `JUMP_MULTIPLIERS` was the one being told a net would catch them.
+
+They bound the jump upgrade curve from both ends:
+
+| Check | Bounds | Baseline |
+|---|---|---|
+| `check_upgrade_curve()` | **The ceiling.** A boosted max-upgrade jump taken at the first pixel of a chasm run-up must still land before the void | `max_multiplier=1.0000 boosted_reach=848.5 budget=868.0` |
+| `check_obstacle_clearance()` | **The floor.** The weakest jump the curve sells must clear a 32×32 obstacle, vertically *and* horizontally | `min_multiplier=0.60 apex=46.1 obstacle=32.0 window=0.265s/138.7px` |
+
+**The powerup is included in the ceiling and excluded from clearability, and that is not an
+inconsistency** — they are opposite bounds. `get_chasm_jump_reach()` asks about the *weakest*
+jump, so ignoring the ×√2 powerup keeps it conservative; this asks about the *strongest*, so it
+must include it.
+
+Mutation-tested, each independently:
+
+```
+max 1.00 -> 1.10  =>  UPGRADE_CURVE_OVERSHOOTS_LEAD_IN, reach 933.4 > budget 868.0
+min 0.60 -> 0.50  =>  OBSTACLE_APEX_TOO_LOW, apex 32.0 = obstacle 32.0, window 0.0s
+```
+
+The second reproduces `upgrade_store.gd`'s documented failure exactly — at 0.50 the apex equals
+the obstacle height and the first cluster becomes a literal wall.
+
+**One number is printed but deliberately NOT asserted.** `upgrade_store.gd` quotes "~8.6 frames"
+of window at 0.60 and "~3.7" at 0.55; the plain projectile derivation of *time spent above 32px*
+gives **15.9 and 11.0**. Those figures came from a derivation nobody has reproduced, so the gate
+asserts the apex — which *does* reproduce exactly — and prints its own window for comparison.
+**Do not reconcile the two by editing whichever is easier to change.**
+
 It also carries **two independent frozen-lake passes**, and the split is the point:
 
 | Pass | Covers | Baseline |

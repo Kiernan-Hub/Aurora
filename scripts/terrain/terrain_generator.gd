@@ -1637,6 +1637,18 @@ func initialize_segment_cache() -> void:
 
 
 func ensure_segment_cache_for_world_x(world_x: float) -> void:
+	# BOTH INFINITIES HANG THIS FUNCTION, and it is the hang rather than the wrong answer that
+	# makes the guard worth having: +INF is never < any cached end_x, so the forward loop caches
+	# segments until memory runs out, and -INF is always < any cached start_x, so the backward
+	# loop does the same. Neither ever throws -- the game simply stops, which reads as the
+	# terrain freeze class this project has already spent weeks on.
+	#
+	# NaN is already safe and deliberately not special-cased: every NaN comparison is false, so
+	# `world_x >= 0.0` sends it to the else branch and `world_x < start_x` immediately ends it.
+	if not is_finite(world_x):
+		push_error("ensure_segment_cache_for_world_x called with non-finite world_x (%s); ignoring." % world_x)
+		return
+
 	if world_x >= 0.0:
 		while world_x >= get_cached_segment_end_x(highest_cached_segment_index):
 			cache_next_segment()
