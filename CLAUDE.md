@@ -40,7 +40,9 @@ pointer); the full log — measurements, ruled-out approaches — goes in `docs/
 No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/MacOS/Godot`
 (play with `--path .`; opens a window and blocks, so only when asked).
 
-**Eleven maintained checks, and only eleven.** Commands and flags: `debugging.md`.
+**Twelve maintained checks, and only twelve** — everything else in `scripts/debug/` now
+lives in `scripts/debug/archive/`, so the directory answers "is this a gate?". Commands and
+flags: `debugging.md`.
 
 | Check | Run after |
 |---|---|
@@ -50,9 +52,10 @@ No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/Ma
 | chasm | anything touching voids, fall death or the boost velocity model |
 | `biome_schedule_check.gd` (~1s, palette data) | any palette change |
 | `sky_layer_check.gd`, `ice_look_capture.gd`, `biome_contact_sheet.gd` | any visual change. **These three must run WITHOUT `--headless`** — they diff or save rendered frames |
+| `lake_suppression_probe.gd` (~10s) | any spawner change, or a new spawner — asserts nothing spawns on a frozen lake |
 | **`shipping_values_check.gd`** (~0.2s) | **every commit** |
 
-The six headless gates are blind to biome code (`BiomeDirector` returns early under
+The seven headless gates are blind to biome code (`BiomeDirector` returns early under
 `--headless`), which is the only reason the visual four exist. `shipping_values_check` is the
 only thing watching the debug knobs: each is a plain `var` so the editor can't serialise it,
 which also means no other gate can see one left flipped. It fails on all of them and on any
@@ -60,9 +63,9 @@ which also means no other gate can see one left flipped. It fails on all of them
 
 Plus one *diagnostic*, `ice_seam_probe.gd` (windowed): A/Bs tile bytes inside one frozen frame
 to tell a tile's content from a rendering artifact. It prints and never fails — reach for it
-when a new ice tile reads as a line on screen. The other ~19 files in `scripts/debug/` are
-archived one-offs that measure a *paused* game and print confident, meaningless numbers; never
-trust one without reviving it. Log any new seed that trips `FREEZE_REPRO` in
+when a new ice tile reads as a line on screen. The 18 files in `scripts/debug/archive/` are
+one-offs that measure a *paused* game and print confident, meaningless numbers; never trust one
+without reviving it. Log any new seed that trips `FREEZE_REPRO` in
 `docs/research/freeze_bug.md` before fixing it.
 
 ## Scene wiring

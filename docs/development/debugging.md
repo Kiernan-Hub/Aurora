@@ -225,11 +225,8 @@ disagreement is between two generators, never inside one. Assertion 6 builds a f
 and caught it at **292 disagreeing samples, worst 713.97px**. Both lake passes run once against
 the first seed; what they assert is seed-independent.
 
-**Known gap, deliberate:** nothing asserts the **six spawners actually suppress on a lake**. All
-six call `is_lake_world_x()`, and a coin line over a lake is a visible bug in a stretch where the
-jump button does nothing. It needs live spawner instances driven over a pinned lake rather than
-the pure height-field sampling this gate is built from, and the existing coin-density band is
-calibrated globally. Moderate cost, real value, not urgent.
+**That gap is now closed** by `lake_suppression_probe.gd` below — it needs live spawner
+instances driven over a pinned lake, which is why it is a separate file rather than a case here.
 
 **Freeze replay** — steps physics frames from spawn, no input. Prints
 `status=no_freeze|freeze_detected|tree_paused|stall_recovered`. **`--frames` must be
@@ -499,6 +496,41 @@ measuring the game, so they apply to any new probe, not just the visual ones.
 13. **When a probe fails, suspect the probe first.** And a green check that cannot go red is
     worthless — mutation-test a new assertion by breaking the thing it guards, as
     `check_lake_arming` was.
+
+## Lake suppression probe (`scripts/debug/lake_suppression_probe.gd`)
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/lake_suppression_probe.gd
+```
+
+**Asserts that nothing spawns on a frozen lake.** ~10s. Run it after any spawner change, and
+without fail when adding a seventh spawner.
+
+Suppression is not a property of the height field, so `terrain_invariant_check` structurally
+cannot cover it — that file is geometry-only by contract. Six spawners each ask
+`is_lake_world_x()` and skip the slot; the only way to know all six *do* is to run them and look.
+
+**Why it matters more than it sounds:** jumping is disabled across a lake, so a coin placed on
+one is unreachable by construction and an **obstacle** placed on one is unavoidable by
+construction — a guaranteed death in a stretch where the jump button does nothing. All of it
+fails silently, with the terrain still perfectly flat and every geometry gate still green.
+
+It pins a lake with `debug_force_lake_segment_index` (no probe can reach a naturally armed one —
+`FrozenLakeDirector` hard-skips headless), warps onto it at `MAX_SPEED`, crosses, and collects
+every item any of the six spawners places with an x strictly inside the span. Deduplicated by
+instance id, so the count is distinct offending nodes.
+
+Baseline: `frames=600 spawners=6 status=PASS`.
+
+Mutation-tested by deleting both `is_lake_world_x` guards from `CoinSpawner`:
+`SPAWNED_ON_LAKE spawner=CoinSpawner count=21 first=Coin` — with the other five still clean.
+
+**THE TRAP IT WALKED INTO FIRST, because it is this file's own trap 6.** `CoinSpawner` and
+`GroundTreeSpawner` wrap each chunk's items in an unnamed `Node2D` group positioned at the
+chunk. The first version recursed blindly, saw those groups inside the lake, and reported
+thousands of violations. **An empty group inside the lake is the CORRECT result** — the chunk
+still exists, it just holds no coins, so the group is evidence of suppression *working*. Count
+items, never containers.
 
 ## Watchdog mechanics
 
