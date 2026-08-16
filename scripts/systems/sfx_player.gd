@@ -28,6 +28,18 @@ var is_headless: bool = false
 
 
 func _ready() -> void:
+	# PROCESS_MODE_ALWAYS, because the sounds that matter most all fire on a frame the tree
+	# is being paused. GameManager.set_state() sets get_tree().paused for DEAD, PAUSED and
+	# SHOP, and death, menu clicks and the shop's purchase click are all played from inside
+	# those transitions -- under the default INHERIT the pool stops processing on the same
+	# frame the sound is requested, so the one-shot is cut or never audible.
+	#
+	# Safe in the direction that matters: nothing here plays on its own. Every voice is
+	# started by an explicit play_*() call, and while paused the only code still running to
+	# make one is the menu UI, which is exactly what should be audible. GameManager already
+	# uses ALWAYS for the same reason.
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
 	# Deliberately NOT read from Services.is_headless: in at least one headless
 	# harness (freeze_replay_runner.gd), root.add_child(main) runs synchronously
 	# inside the script's _init(), which calls this _ready() before the Services
