@@ -339,8 +339,8 @@ That is the `find_segment_index_at_x` ordering trap above, in its other form.
 Baseline: `flatness=0.000000` span exactly 7500.0; `watermark=164 armed_index=166 drift=0
 fresh_disagreements=0`.
 
-**Still ungated:** nothing asserts the six spawners actually suppress on a lake. See
-`debugging.md`.
+**Spawner suppression is gated separately** by `lake_suppression_probe.gd` — it needs live
+spawners, which this geometry-only file cannot host. See `debugging.md`.
 
 ## Feature history
 

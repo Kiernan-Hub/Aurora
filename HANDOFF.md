@@ -150,9 +150,11 @@ generator pinned at the armed index agrees with the pre-arm samples.
 
 **Baseline to expect:** `watermark=164 armed_index=166 drift=0 fresh_disagreements=0`.
 
-### The gap deliberately NOT closed — flagged for the owner
+### The gap flagged here — NOW CLOSED (`fd83fbb`)
 
-**No gate asserts that the six spawners actually suppress on a lake.** All six call
+`lake_suppression_probe.gd` asserts it, mutation-tested. Original note kept for the reasoning:
+
+**No gate asserted that the six spawners actually suppress on a lake.** All six call
 `terrain_generator.is_lake_world_x()` (step 4), and nothing checks that no coin, air line, rare
 coin, powerup, obstacle or tree lands on the sheet. A lake with a coin line over it is a visible
 bug in a stretch where **the jump button does nothing**.
@@ -721,21 +723,24 @@ or point the test at a temp path. The gates *already* write to it on player deat
 
 ## Deferred, deliberately — do not act on these unprompted
 
-- **`BiomePalette.reflection_strength` now has NO consumer.** It is authored 0.2–0.7 across all nine
-  palettes and was going to drive the mirror until the owner chose one fixed look. It is a deletion
-  candidate, not a knob to reach for.
+- ~~**`BiomePalette.reflection_strength` has no consumer.**~~ **DELETED 2026-08-15** by the owner,
+  from the class and all nine `.tres`. The comment left in `biome_palette.gd` says not to re-add one.
 - **A dedicated lake ice tile (`six.png`)** — superseded. The lake discards the tile entirely now.
 - **More upgrade tracks.** The combo multiplies every banked coin, so the 1130-coin curve empties in
   ~4 runs, not 8–15. **Cut `coin value` from the list** — it is a sink that raises income.
-- **Two documented gates do not exist.** `check_upgrade_curve()` and `check_obstacle_clearance()` are
-  named in `CLAUDE.md:142`, `upgrade_store.gd:57` and `obstacle_spawner.gd:56`. Neither is anywhere
-  in `scripts/debug/`. The offered one-line fix is still awaiting a go.
+- ~~**Two documented gates do not exist.**~~ **BUILT 2026-08-15** (`990132d`). Both now exist in
+  `terrain_invariant_check`, mutation-tested from both ends. See `debugging.md`.
 - **Diamonds as a second currency** — SaveStore v3 is done, but nothing to spend it on.
 - **Glide vertical drift on the parallax layers.** `look-thorugh-my-files-wobbly-church.md`.
-- **Also found and unscheduled**: `SfxPlayer` has no `process_mode`, so death/menu SFX play into an
-  already-paused tree; `ensure_segment_cache_for_world_x` loops forever on ±INF; six silent
-  `push_error(); return` paths in `GameManager._ready()` can leave a live game under an
-  undismissable `StartScreen`.
+- **Also found and unscheduled** — all three now FIXED 2026-08-15:
+  ~~`SfxPlayer` has no `process_mode`~~ (now `ALWAYS`; death/menu/shop SFX all fire on the frame
+  the tree is being paused); ~~`ensure_segment_cache_for_world_x` loops forever on ±INF~~ (now
+  guarded — NaN was already safe, both infinities hung it).
+  ~~six silent `push_error(); return` paths in `GameManager._ready()`~~ **FIXED 2026-08-15**
+  (`ccca968`) — the lookups moved into `wire_scene() -> bool` and `set_state()` null-guards all
+  four screens, so a wiring failure now enters PLAYING with the screens hidden and the error
+  loud, instead of a live game behind an un-dismissable `StartScreen`. Flagged as the riskiest
+  of the three; the owner asked for it anyway.
 
 ---
 
