@@ -26,7 +26,7 @@ extends SceneTree
 # Runs WINDOWED (the stretch/canvas transform is meaningless headless).
 #
 # Usage:
-#   Godot --path . --script res://scripts/debug/canvas_transform_probe.gd -- \
+#   Godot --path . --script res://scripts/debug/archive/canvas_transform_probe.gd -- \
 #       [--seed=941462462] [--frames=240]
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 const SPEED_CAP: float = 500.0

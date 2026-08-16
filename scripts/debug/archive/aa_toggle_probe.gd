@@ -31,7 +31,7 @@ extends SceneTree
 # Current mode is drawn on screen and printed to the console on every change.
 #
 # Usage (must be windowed -- do NOT pass --headless):
-#   Godot --path . --script res://scripts/debug/aa_toggle_probe.gd -- [--seed=941462462]
+#   Godot --path . --script res://scripts/debug/archive/aa_toggle_probe.gd -- [--seed=941462462]
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 
 const MSAA_MODE_NAMES: Array[String] = ["disabled", "2x", "4x", "8x"]

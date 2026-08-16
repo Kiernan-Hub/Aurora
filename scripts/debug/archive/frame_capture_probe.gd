@@ -23,7 +23,7 @@ extends SceneTree
 # Self-terminating.
 #
 # Usage:
-#   Godot --path . --script res://scripts/debug/frame_capture_probe.gd -- \
+#   Godot --path . --script res://scripts/debug/archive/frame_capture_probe.gd -- \
 #       [--seed=941462462] [--frames=90] [--out=user://framecap]
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 # mega_drop tops out at floor_max_angle * 0.9 = 40.5 degrees (0.707 rad); this

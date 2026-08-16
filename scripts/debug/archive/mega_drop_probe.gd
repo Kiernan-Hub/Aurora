@@ -40,7 +40,7 @@ extends SceneTree
 # visible on screen regardless of anything the camera itself does.
 #
 # Usage:
-#   Godot --headless --path . --script res://scripts/debug/mega_drop_probe.gd -- \
+#   Godot --headless --path . --script res://scripts/debug/archive/mega_drop_probe.gd -- \
 #       --seeds=941462462,2160065702,3188032853,222894852 --frames=9000 \
 #       [--megadroponly=1] [--speed=0] [--deciles=10]
 #

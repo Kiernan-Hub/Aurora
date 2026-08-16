@@ -33,10 +33,10 @@ extends SceneTree
 # Self-terminating so it needs no external kill.
 #
 # Usage:
-#   Godot --path . --script res://scripts/debug/render_pacing_probe.gd -- \
+#   Godot --path . --script res://scripts/debug/archive/render_pacing_probe.gd -- \
 #       [--seed=941462462] [--seconds=20]
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
-const LOG_FILE_PATH: String = "res://scripts/debug/render_pacing_probe_output.log"
+const LOG_FILE_PATH: String = "res://scripts/debug/archive/render_pacing_probe_output.log"
 
 class RenderSampler extends Node:
 	var on_render_frame: Callable

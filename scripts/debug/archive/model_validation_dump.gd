@@ -5,7 +5,7 @@ extends SceneTree
 # reimplementation. Read-only with respect to game logic: no physics is stepped.
 #
 # Usage:
-#   Godot --headless --path . --script res://scripts/debug/model_validation_dump.gd -- \
+#   Godot --headless --path . --script res://scripts/debug/archive/model_validation_dump.gd -- \
 #       --seed=2160065702 --window=226800 --span=512
 
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")

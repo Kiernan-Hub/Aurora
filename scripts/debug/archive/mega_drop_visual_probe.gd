@@ -33,7 +33,7 @@ extends SceneTree
 # entered_from=<label> below).
 #
 # Usage (do NOT pass --headless -- this needs a real window):
-#   Godot --path . --script res://scripts/debug/mega_drop_visual_probe.gd -- \
+#   Godot --path . --script res://scripts/debug/archive/mega_drop_visual_probe.gd -- \
 #       [--seed=941462462] [--zoom=20] [--trail=90]
 #
 # Close the window to quit. ui_up/ui_down still adjust speed manually
@@ -59,7 +59,7 @@ var label: Label
 # skip. A self-flushing file survives that regardless. print() is kept too,
 # for live viewing when the terminal isn't redirected.
 var log_file: FileAccess
-const LOG_FILE_PATH: String = "res://scripts/debug/mega_drop_visual_probe_output.log"
+const LOG_FILE_PATH: String = "res://scripts/debug/archive/mega_drop_visual_probe_output.log"
 
 var baseline_position: Vector2 = Vector2.ZERO
 var has_baseline: bool = false

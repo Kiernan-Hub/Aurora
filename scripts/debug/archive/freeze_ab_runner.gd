@@ -12,7 +12,7 @@ extends SceneTree
 # itself introduce rounding.
 #
 # Usage:
-#   Godot --headless --path . --script res://scripts/debug/freeze_ab_runner.gd -- \
+#   Godot --headless --path . --script res://scripts/debug/archive/freeze_ab_runner.gd -- \
 #     --seed=2160065702 --warp=226000 --from=226700 --to=227100 --rebase=1
 #
 #   --warp=0 disables warm-start and runs from spawn (slow: ~28k/~47k frames).

@@ -34,7 +34,7 @@ extends SceneTree
 # constants, or collision shapes are touched.
 #
 # Usage:
-#   Godot --headless --path . --script res://scripts/debug/contact_instability_probe.gd -- \
+#   Godot --headless --path . --script res://scripts/debug/archive/contact_instability_probe.gd -- \
 #       --seeds=941462462 --frames=9000 [--maxlogs=60] [--residual-threshold=0.15]
 #       [--trace=medium_hill]  (restricts detailed logs to one segment label)
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")

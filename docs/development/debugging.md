@@ -86,10 +86,20 @@ the tell: if a camera measurement looks inflated, check `scroll_rate_x` against 
 
 ## Archived probes are NOT gates — and most of them no longer run
 
-`scripts/debug/` holds 30 GDScript files, but only the **eleven** listed in `CLAUDE.md` are
-maintained — the six headless gates, the four visual checks, and `ice_seam_probe.gd`.
-Everything else is a one-off from a closed investigation, kept for its measurements and its
-comments. **Audited 2026-08-03, and most of them silently lie now:**
+**They live in `scripts/debug/archive/` as of 2026-08-15.** `scripts/debug/` now holds exactly
+the **twelve maintained** files and nothing else — the six headless gates, the four visual
+checks, `shipping_values_check.gd` and `ice_seam_probe.gd` — so "is this thing a gate?" is
+answered by which directory it is in rather than by checking a list.
+
+**Comments across the codebase name these probes by bare filename** (`freeze_ab_runner.gd`,
+`stall_recovery_probe.gd`, …) in `player.gd`, `game_manager.gd`, `speed_manager.gd`,
+`obstacle_spawner.gd`, `powerup_spawner.gd` and several research docs. Those were left as
+written — none of them is a path, they are prose naming a measurement's source, and rewriting
+28 comment lines across gameplay files to add a directory earns nothing. **A bare probe
+filename in a comment means `scripts/debug/archive/<name>`** unless it is one of the twelve.
+
+Everything in `archive/` is a one-off from a closed investigation, kept for its measurements and
+its comments. **Audited 2026-08-03, and most of them silently lie now:**
 
 | Probe | State |
 |---|---|
@@ -110,6 +120,13 @@ which is the player's spawn x. It moved zero pixels.
 
 **Before trusting any archived probe, add the opt-outs from the table above and check
 its `distance=` output is not 64.** Reviving one is a few lines, but it is never free.
+
+Each archived probe's own usage line was rewritten to its new path when it moved, so copying
+the command out of a file's header still works:
+
+```bash
+Godot --headless --path . --script res://scripts/debug/archive/<probe>.gd -- ...
+```
 
 ## The six headless gates
 

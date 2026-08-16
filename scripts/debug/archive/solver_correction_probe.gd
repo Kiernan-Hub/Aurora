@@ -34,7 +34,7 @@ extends SceneTree
 #                       sign crossing -- curved, but away from the sharpest point
 #
 # Usage:
-#   Godot --headless --path . --script res://scripts/debug/solver_correction_probe.gd -- \
+#   Godot --headless --path . --script res://scripts/debug/archive/solver_correction_probe.gd -- \
 #       --seeds=941462462,2160065702,3188032853,222894852 --frames=9000
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 const DEFAULT_SEEDS: String = "941462462,2160065702,3188032853,222894852"

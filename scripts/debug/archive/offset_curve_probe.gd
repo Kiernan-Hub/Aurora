@@ -53,7 +53,7 @@ extends SceneTree
 # No player.gd or terrain_generator.gd code is touched by this probe.
 #
 # Usage:
-#   Godot --headless --path . --script res://scripts/debug/offset_curve_probe.gd -- \
+#   Godot --headless --path . --script res://scripts/debug/archive/offset_curve_probe.gd -- \
 #       --seeds=941462462,2160065702 --frames=20000 [--trace=small_hill --tracelines=40]
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 const DEFAULT_SEEDS: String = "941462462,2160065702,3188032853,222894852"
