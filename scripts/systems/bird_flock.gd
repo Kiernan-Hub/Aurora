@@ -24,7 +24,7 @@ class_name BirdFlock
 # would just be clutter over the obstacles/coins the player is reading.
 
 const BIRD_COUNT: int = 4
-# Mid-dark, same family as ShardLine/MidRidge (docs/development/visuals.md palette) so a
+# Mid-dark, same family as PineLine/MidRidge (docs/development/visuals.md palette) so a
 # bird reads as part of the distant scenery rather than a foreground gameplay object.
 const BIRD_COLOR: Color = Color(0.4, 0.49, 0.6, 0.88)
 const WING_LENGTH_MIN: float = 12.0
