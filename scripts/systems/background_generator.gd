@@ -127,25 +127,25 @@ const MASS_WIDTH_RATIO: float = 1.6
 # the background goes back to reading as noise -- generated art that came in at ~5px facets
 # is exactly what this number exists to prevent.
 const MASS_TOP_POINTS: int = 6
-# Floor for a skyline vertex as a fraction of the mass height, before the taper. Keeps a
-# mass from collapsing to a flat lump when every hash draw lands low.
-const MASS_MIN_PEAK: float = 0.34
-# Hash slots consumed per mass: jitter, height, skew and width, then one per skyline
-# vertex. Must stay >= MASS_HASH_SLOT_SKYLINE + MASS_TOP_POINTS. Everything about a mass
-# is drawn from this one
-# block, so no two properties can share a draw and correlate -- if the stride were smaller
-# than the block a mass consumes, mass N's skyline would collide with mass N+k's jitter and
-# the field would develop a visible repeat.
-const MASS_HASH_STRIDE: int = 10
+# Hash slots consumed per mass: jitter, height, skew, width, form kind, the two wall
+# heights, then one per skyline vertex. Must stay >= MASS_HASH_SLOT_SKYLINE +
+# MASS_TOP_POINTS. Everything about a mass is drawn from this one block, so no two
+# properties can share a draw and correlate -- if the stride were smaller than the block a
+# mass consumes, mass N's skyline would collide with mass N+k's jitter and the field would
+# develop a visible repeat.
+const MASS_HASH_STRIDE: int = 14
 const MASS_HASH_SLOT_JITTER: int = 0
 const MASS_HASH_SLOT_HEIGHT: int = 1
 const MASS_HASH_SLOT_SKEW: int = 2
 const MASS_HASH_SLOT_WIDTH: int = 3
-const MASS_HASH_SLOT_SKYLINE: int = 4
-# Where a mass's summit sits across its own width, as a fraction. Kept off both 0 and 1 so
-# the taper below never divides by zero. The FIRST cut of this had no skew at all -- every
-# summit landed at 0.5 and the field rendered as a row of identical symmetrical tents,
-# because a centred taper re-imposes the symmetry the per-vertex skyline hash removes.
+const MASS_HASH_SLOT_KIND: int = 4
+const MASS_HASH_SLOT_WALL_LEFT: int = 5
+const MASS_HASH_SLOT_WALL_RIGHT: int = 6
+const MASS_HASH_SLOT_SKYLINE: int = 7
+# Where a peaked mass's summit sits across its own width. Kept off both 0 and 1 so the
+# flank interpolation never divides by zero. Without skew every summit lands at 0.5 and the
+# field renders as a row of identical symmetrical tents, because a centred profile
+# re-imposes the symmetry the per-vertex skyline hash exists to remove.
 const MASS_SKEW_MIN: float = 0.22
 const MASS_SKEW_MAX: float = 0.78
 # Width variance, multiplying MASS_WIDTH_RATIO. Width is deliberately NOT a pure function
@@ -154,9 +154,26 @@ const MASS_SKEW_MAX: float = 0.78
 # and a tall narrow spire come out of the same generator.
 const MASS_WIDTH_VARIANCE_MIN: float = 0.62
 const MASS_WIDTH_VARIANCE_MAX: float = 1.55
-# Shoulder fullness. 1.0 is a straight taper to the feet, which reads as a cone; below 1.0
-# the flanks bulge and the form reads as a solid mass of ice instead.
-const MASS_SHOULDER_FULLNESS: float = 0.62
+# WHY THE SIDES ARE WALLS AND NOT SLOPES -- the correction that made this read as ice.
+#
+# The previous cut tapered every mass to zero height at both feet. That is the silhouette
+# of a MOUND, and a field of mounds reads as rock and gravel no matter what colour it is
+# (shipped, and it did). Ice fractures along planes: bergs and shelves have near-vertical
+# side walls and flat or sharply angular tops. So a mass now begins and ends at a
+# substantial wall height and the outline drops STRAIGHT DOWN to the base at each end.
+#
+# The side effect is wanted: neighbouring masses no longer blend at the feet, they overlap
+# as hard vertical edges, which is what a jumble of stacked ice slabs looks like.
+const MASS_WALL_MIN: float = 0.34
+const MASS_WALL_MAX: float = 0.86
+# Share of masses built as flat-topped tabular shelves rather than angular peaks. Both are
+# needed: all-peaks is a mountain range, all-shelves is a wall.
+const MASS_TABULAR_CHANCE: float = 0.42
+# Flat runs across a tabular top. Each plateau takes ONE hash draw and every vertex in it
+# shares that height, which is what makes the top read as flat steps rather than as a
+# wobble. Keep well below MASS_TOP_POINTS or there are no flats left.
+const MASS_TABULAR_PLATEAUS: int = 3
+const MASS_TABULAR_STEP_MIN: float = 0.72
 # How far below its root point a mass's base edge is buried, so the flat bottom never shows
 # against the layer fill it sits on.
 const MASS_ROOT_SINK: float = 4.0
@@ -164,11 +181,16 @@ const MASS_ROOT_SINK: float = 4.0
 # is in build_ice_mass, but briefly: these are multiplied by the palette colour and then by
 # the haze band, so a value that looks merely "mid grey" here arrives near black on screen
 # and the ice reads as rock. Measured against the reference, which bottoms out around 0.75.
-const MASS_VALUE_FLOOR: float = 0.80
-const MASS_SILHOUETTE_VALUE: float = 0.92
-const MASS_FACET_VALUES: Array[float] = [1.0, 0.90, 0.96, 0.86, 0.93]
+#
+# Widened back out after being compressed to a 0.06 spread, which made the facets invisible
+# and left the masses reading as flat blobs with a faint crease. With ShardLine's depth_t at
+# 0.32 the layer colour is ~0.63 red, so this range lands at roughly 0.47-0.63 on screen:
+# separate planes, still unmistakably pale ice.
+const MASS_VALUE_FLOOR: float = 0.74
+const MASS_SILHOUETTE_VALUE: float = 0.88
+const MASS_FACET_VALUES: Array[float] = [1.0, 0.82, 0.94, 0.76, 0.88]
 # How much darker a facet's base vertex is than its two top vertices.
-const MASS_FACET_FALLOFF: float = 0.06
+const MASS_FACET_FALLOFF: float = 0.05
 # How far past the bottom of the screen the silhouette fill extends. Only needs to
 # survive the camera's vertical excursion, since terrain draws in front and covers the
 # rest; generous because that excursion is unbounded during a glide.
@@ -427,21 +449,34 @@ func build_ice_mass(mass_height: float, mass_index: int) -> Node2D:
 	var half_width: float = mass_height * MASS_WIDTH_RATIO * width_variance * 0.5
 	var skew: float = lerpf(MASS_SKEW_MIN, MASS_SKEW_MAX, get_hash_unit_float(hash_base + MASS_HASH_SLOT_SKEW))
 
-	# The skyline of this one mass: MASS_TOP_POINTS vertices, each height hashed
-	# independently so the outline is irregular rather than a tidy pyramid. The taper still
-	# pulls both ends to zero -- that is what lets neighbouring masses interlock at their
-	# feet rather than butt together as separate objects -- but it now peaks at `skew`
-	# instead of at the centre, so the two flanks are different lengths and no two masses
-	# share a profile.
+	# Both ends start at a WALL height rather than at zero -- see MASS_WALL_MIN. The outline
+	# below drops straight down from these, giving the vertical side faces that read as
+	# fractured ice instead of the sloping feet that read as a rock mound.
+	var wall_left: float = mass_height * lerpf(MASS_WALL_MIN, MASS_WALL_MAX, get_hash_unit_float(hash_base + MASS_HASH_SLOT_WALL_LEFT))
+	var wall_right: float = mass_height * lerpf(MASS_WALL_MIN, MASS_WALL_MAX, get_hash_unit_float(hash_base + MASS_HASH_SLOT_WALL_RIGHT))
+	var is_tabular: bool = get_hash_unit_float(hash_base + MASS_HASH_SLOT_KIND) < MASS_TABULAR_CHANCE
+
+	# The skyline of this one mass, in one of two vocabularies:
+	#
+	#   TABULAR -- a flat-topped shelf. `across` is quantised into MASS_TABULAR_PLATEAUS
+	#   runs and every vertex in a run shares one hash draw, so the top comes out as flat
+	#   steps with hard risers between them rather than as a wobble.
+	#
+	#   PEAKED -- an angular summit at `skew`. The interpolation from wall height to summit
+	#   is LINEAR, deliberately: a smoothed curve here is what made the previous cut read as
+	#   an eroded hill. Straight edges meeting at an angle is the whole look.
 	var top: PackedVector2Array = PackedVector2Array()
 	for point_index: int in range(MASS_TOP_POINTS):
 		var across: float = float(point_index) / float(MASS_TOP_POINTS - 1)
-		# Distance from the near foot toward the summit, normalised per flank: 0 at
-		# whichever foot this vertex is closer to, 1 at the summit.
-		var toward_summit: float = across / skew if across < skew else (1.0 - across) / (1.0 - skew)
-		var taper: float = pow(sin(clampf(toward_summit, 0.0, 1.0) * PI * 0.5), MASS_SHOULDER_FULLNESS)
-		var height_unit: float = get_hash_unit_float(hash_base + MASS_HASH_SLOT_SKYLINE + point_index)
-		var point_height: float = mass_height * lerpf(MASS_MIN_PEAK, 1.0, height_unit) * taper
+		var point_height: float = 0.0
+		if is_tabular:
+			var plateau_index: int = mini(int(across * float(MASS_TABULAR_PLATEAUS)), MASS_TABULAR_PLATEAUS - 1)
+			var plateau_unit: float = get_hash_unit_float(hash_base + MASS_HASH_SLOT_SKYLINE + plateau_index)
+			point_height = mass_height * lerpf(MASS_TABULAR_STEP_MIN, 1.0, plateau_unit)
+		else:
+			var toward_summit: float = across / skew if across < skew else (1.0 - across) / (1.0 - skew)
+			var flank_wall: float = wall_left if across < skew else wall_right
+			point_height = lerpf(flank_wall, mass_height, clampf(toward_summit, 0.0, 1.0))
 		top.append(Vector2(lerpf(-half_width, half_width, across), -point_height))
 
 	# The silhouette, closed across the bottom. Drawn first and never faceted, so however
@@ -457,10 +492,16 @@ func build_ice_mass(mass_height: float, mass_index: int) -> Node2D:
 	silhouette.vertex_colors = build_flat_vertex_colors(outline.size(), MASS_SILHOUETTE_VALUE)
 	mass.add_child(silhouette)
 
-	# One facet per span of the skyline, each dropped to the base to make a big triangle.
-	# MASS_TOP_POINTS is 6, so that is five facets across a form -- large by construction,
-	# which is the whole point. The value alternates so adjacent facets always read as two
-	# different planes of the same solid rather than as flat colour.
+	# One facet per span of the skyline, each dropped STRAIGHT DOWN to the base as a quad.
+	#
+	# These were triangles fanning to a shared point under the centre, which drew a set of
+	# radiating diagonals -- the shading of a cone. Vertical quads instead read as the
+	# parallel slab faces ice actually fractures into, and they leave the side walls
+	# genuinely vertical all the way down instead of pinching toward the middle.
+	#
+	# MASS_TOP_POINTS is 6, so five facets across a form: large by construction, which is
+	# the point. The value alternates so adjacent facets always read as two different planes
+	# of one solid rather than as flat colour.
 	for facet_index: int in range(MASS_TOP_POINTS - 1):
 		var left_point: Vector2 = top[facet_index]
 		var right_point: Vector2 = top[facet_index + 1]
@@ -469,17 +510,20 @@ func build_ice_mass(mass_height: float, mass_index: int) -> Node2D:
 		facet.polygon = PackedVector2Array([
 			left_point,
 			right_point,
-			Vector2((left_point.x + right_point.x) * 0.5, MASS_ROOT_SINK),
+			Vector2(right_point.x, MASS_ROOT_SINK),
+			Vector2(left_point.x, MASS_ROOT_SINK),
 		])
-		# Per-vertex, not flat: the two top vertices sit one step lighter than the base
-		# vertex, so each facet carries a shallow vertical falloff. Same technique as
+		# Per-vertex, not flat: the two top vertices sit one step lighter than the two base
+		# vertices, so each facet carries a shallow vertical falloff. Same technique as
 		# terrain_generator.build_fill_vertex_colors(), and the reason a flat `color` would
 		# be ignored here anyway (visuals.md, trap 9).
 		var facet_value: float = MASS_FACET_VALUES[facet_index % MASS_FACET_VALUES.size()]
+		var facet_base_value: float = maxf(facet_value - MASS_FACET_FALLOFF, MASS_VALUE_FLOOR)
 		facet.vertex_colors = PackedColorArray([
 			make_mass_color(facet_value),
 			make_mass_color(facet_value),
-			make_mass_color(maxf(facet_value - MASS_FACET_FALLOFF, MASS_VALUE_FLOOR)),
+			make_mass_color(facet_base_value),
+			make_mass_color(facet_base_value),
 		])
 		mass.add_child(facet)
 
