@@ -26,6 +26,7 @@ under `docs/`.
 | `development/input.md` | Any input change — desktop *or* touch |
 | `development/visuals.md` | Background, scenery, palette or draw order |
 | `development/biomes.md` | Any colour that changes over a run — palettes, the director, a transition, `shaders/ice.gdshader` |
+| `development/aurora_borealis.md` | The aurora feature — the game's namesake, planned but not started |
 | `development/ice_panels.md` | Making a new ice tile — panel requirements, prompts, the `--check` validator |
 | `development/debugging.md` | Running a gate, or reviving an archived probe |
 | `development/dead_code.md` | Something looks reachable but isn't |
@@ -164,6 +165,7 @@ behind each is in the doc named at the end of its row.
 | 9 | Upgrades | Vertical slice: one track (jump, five levels), SHOP screen, banked coins. Missions/zones not started |
 | 10 | **Frozen lake** | The first set piece. Every 20 min of *cumulative* playtime, and only past 130s into a run, a forced 7500px flat segment is armed ahead of the player: jumping locked, all six spawners suppressed, ice takes a fixed authored blue under a full-screen reflection quad. Everything cosmetic rides ONE ramp, `FrozenLakeDirector.get_lake_blend()` — including the camera's framing. Skate spray and an etched track ride it too. The first crossing grants the game's first **achievement**. `terrain.md`, `visuals.md`, `input.md` |
 | 11 | **Achievements** | `AchievementManager` is the ONLY writer of `SaveStore.achievements` (an open dictionary, so a new one needs no version bump). **Triggers come TO it** — it listens to signals systems already emit, never the reverse — so adding one is a table row plus one `.connect()`, both in that file. **Its ids are save data**: adding is free, renaming un-earns it for everyone. No gallery/rewards yet, and an addon was evaluated and declined. `architecture.md` |
+| 12 | **Aurora borealis** | PLANNED, not started — the feature the game is named after. Rare sky-only spectacle, sibling of the frozen lake but rarer (~60 min cumulative playtime vs. 20) and purely cosmetic, riding its own single blend ramp the same way the lake does. `aurora_borealis.md` |
 
 **Two `.gdshader`s exist, both owned by ice** — `shaders/ice.gdshader` (the band: two-tile
 noise dissolve, per-biome `ice_contrast`, plus a `flatten` and a `gloss` only the lake writes)
