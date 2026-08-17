@@ -108,6 +108,42 @@ const RIDGE_PEAK_SHARPNESS: float = 1.5
 # samples across the shortest octave above, which is what keeps peaks rounded rather than
 # faceted. These are static nodes built once per segment, so the cost is one-off.
 const RIDGE_SAMPLE_COUNT: int = 64
+# --- Ice masses (shape_kind = Shards) ------------------------------------------------------
+# Width as a multiple of height. Above 1.0 a mass is wider than it is tall, and once that
+# width exceeds shard_spacing neighbouring masses OVERLAP -- which is the point. The
+# reference look is a continuous drift of ice running off both edges of the screen, not a
+# row of separate mountains, and overlap is what turns one into the other. At the shipped
+# 52px spacing and 26-58px heights this is already true for every mass above ~33px.
+const MASS_WIDTH_RATIO: float = 1.6
+# Vertices along one mass's skyline; MASS_TOP_POINTS - 1 is therefore the facet count. Six
+# points = five facets per form, each a large fraction of the width. Raising this is how
+# the background goes back to reading as noise -- generated art that came in at ~5px facets
+# is exactly what this number exists to prevent.
+const MASS_TOP_POINTS: int = 6
+# Floor for a skyline vertex as a fraction of the mass height, before the taper. Keeps a
+# mass from collapsing to a flat lump when every hash draw lands low.
+const MASS_MIN_PEAK: float = 0.34
+# Hash slots consumed per mass: slot 0 is jitter, slot 1 is height, then one per skyline
+# vertex. Must stay >= MASS_TOP_POINTS + 2. Everything about a mass is drawn from this one
+# block, so no two properties can share a draw and correlate -- if the stride were smaller
+# than the block a mass consumes, mass N's skyline would collide with mass N+k's jitter and
+# the field would develop a visible repeat.
+const MASS_HASH_STRIDE: int = 8
+const MASS_HASH_SLOT_JITTER: int = 0
+const MASS_HASH_SLOT_HEIGHT: int = 1
+const MASS_HASH_SLOT_SKYLINE: int = 2
+# How far below its root point a mass's base edge is buried, so the flat bottom never shows
+# against the layer fill it sits on.
+const MASS_ROOT_SINK: float = 4.0
+# The high-key value set. NOTHING here may go below MASS_VALUE_FLOOR -- the full reasoning
+# is in build_ice_mass, but briefly: these are multiplied by the palette colour and then by
+# the haze band, so a value that looks merely "mid grey" here arrives near black on screen
+# and the ice reads as rock. Measured against the reference, which bottoms out around 0.75.
+const MASS_VALUE_FLOOR: float = 0.74
+const MASS_SILHOUETTE_VALUE: float = 0.88
+const MASS_FACET_VALUES: Array[float] = [1.0, 0.86, 0.95, 0.80, 0.91]
+# How much darker a facet's base vertex is than its two top vertices.
+const MASS_FACET_FALLOFF: float = 0.06
 # How far past the bottom of the screen the silhouette fill extends. Only needs to
 # survive the camera's vertical excursion, since terrain draws in front and covers the
 # rest; generous because that excursion is unbounded during a glide.
@@ -315,68 +351,118 @@ func build_wave_phases() -> void:
 # position within a segment -- that is what keeps a shard at the same x with the same
 # height no matter which segment happens to contain it.
 #
-# Three hash slots per shard, hence the stride of 3: jitter, height, and shape (lean plus
-# mirror). The third was reserved by the original stride and is now used.
+# MASS_HASH_STRIDE slots per mass -- see the constant for the slot map and why one stride
+# has to cover every property a mass draws.
 func build_shards(segment: Node2D, segment_origin_x: float) -> void:
 	var first_shard_index: int = int(floor(segment_origin_x / shard_spacing))
 	var last_shard_index: int = int(floor((segment_origin_x + segment_width) / shard_spacing))
 	for shard_index: int in range(first_shard_index, last_shard_index + 1):
-		# Jitter keeps the grid from reading as a grid. Bounded to under half the
-		# spacing, so shards cannot reorder or stack.
-		var jitter: float = (get_hash_unit_float(shard_index * 3) - 0.5) * shard_spacing * 0.7
+		# Jitter keeps the grid from reading as a grid. Bounded to under half the spacing,
+		# so masses cannot reorder -- they overlap by width (MASS_WIDTH_RATIO), which is
+		# controlled, rather than by wandering off their own slot, which would not be.
+		var hash_base: int = shard_index * MASS_HASH_STRIDE
+		var jitter: float = (get_hash_unit_float(hash_base + MASS_HASH_SLOT_JITTER) - 0.5) * shard_spacing * 0.7
 		var shard_x: float = (float(shard_index) * shard_spacing) + jitter
 		if shard_x < segment_origin_x or shard_x >= segment_origin_x + segment_width:
 			continue
 
-		var shard_height: float = shard_height_min + (get_hash_unit_float((shard_index * 3) + 1) * (shard_height_max - shard_height_min))
-		var shard: Polygon2D = Polygon2D.new()
-		shard.name = "Shard%d" % shard_index
-		# Rooted ON the ridge line, so the shard field reads as broken ice pushing out of
-		# the hill rather than floating in front of it.
-		shard.position = Vector2(shard_x - segment_origin_x, base_y - get_ridge_height(shard_x))
-		shard.polygon = build_shard_polygon(shard_height, get_hash_unit_float((shard_index * 3) + 2))
-		# White for the same reason as the ridge: ridges_root.modulate tints it.
-		shard.color = Color.WHITE
-		segment.add_child(shard)
+		var shard_height: float = shard_height_min + (get_hash_unit_float(hash_base + MASS_HASH_SLOT_HEIGHT) * (shard_height_max - shard_height_min))
+		var mass: Node2D = build_ice_mass(shard_height, shard_index)
+		mass.name = "Shard%d" % shard_index
+		# Rooted ON the ridge line, so the mass reads as broken ice pushing out of the hill
+		# rather than floating in front of it. Sunk by MASS_ROOT_SINK so the flat base edge
+		# is buried under the layer's own fill and can never show a seam against it -- the
+		# "the ice doesn't even touch" read that the first shard cut produced.
+		mass.position = Vector2(shard_x - segment_origin_x, base_y - get_ridge_height(shard_x) + MASS_ROOT_SINK)
+		segment.add_child(mass)
 
 
-# A leaning ice shard, drawn from the apex clockwise: narrow base, apex pushed off centre,
-# and one shoulder break per side at DIFFERENT heights so no two edges mirror each other.
-# That asymmetry is the whole point -- a symmetrical spire still reads as a conifer.
+# ONE ice mass: an opaque silhouette with large flat facets laid over it.
 #
-# Deliberately only six vertices, and every facet a large fraction of the height. These are
-# 26-52px tall on screen: finer notching would land at 2-3px and read as noise, not ice.
-# The same rule the far layers follow -- fewer, larger facets the smaller the element.
+# WHY THIS IS BUILT FROM POLYGONS AND NOT A SPRITE. Two rounds of generated ice art failed
+# on exactly the four things this function fixes with a constant apiece -- the value range
+# crept dark and read as grey rock, facets came out ~5px and mushed into noise, silhouettes
+# came out symmetrical, and every form was an isolated object rather than part of a mass.
+# Facet count, value range and silhouette are parameters here, and the overlap falls out of
+# the scatter spacing for free. See the handoff notes for the two rejected art rounds.
 #
-# shape_unit is one hash draw in [0, 1) carrying both the lean and the mirror, so a shard's
-# silhouette is a pure function of its index like its height and jitter already were.
-func build_shard_polygon(shard_height: float, shape_unit: float) -> PackedVector2Array:
-	# Narrower than the conifer it replaced (0.21): ice spires read tall and thin.
-	var half_width: float = shard_height * 0.19
-	# Mirror off the top bit of the hash, lean off the rest, so the two are independent.
-	var mirror: float = 1.0 if shape_unit < 0.5 else -1.0
-	var lean_unit: float = fmod(shape_unit * 2.0, 1.0)
-	# Up to slightly past the base corner, which is what makes a shard look toppled rather
-	# than merely tilted. Bounded: beyond ~1.2 the apex edge would cross the base edge and
-	# the polygon stops being simple, which Polygon2D triangulates into garbage.
-	var apex_x: float = ((lean_unit * 2.2) - 1.1) * half_width
+# THE FACETS MUST STAY OPAQUE. The sun and moon live on SkyBackdrop at layer -200, behind
+# ParallaxBackground's -100, and they hide behind this layer purely because these polygons
+# are solid. Give a facet alpha and the sun shines through the mountain.
+#
+# Values are deliberately HIGH-KEY -- nothing below MASS_VALUE_FLOOR. Distant ice is nearly
+# flat in value; strong form shadows read as stone. These are also multiplied twice more
+# before they reach the screen (by ridges_root.modulate, then by the haze band over them),
+# and the near layer's palette colour is around 0.45 red, so a facet drawn at 0.45 here
+# lands near 0.2 on screen. Darkening this is how the background stops looking like ice.
+func build_ice_mass(mass_height: float, mass_index: int) -> Node2D:
+	var mass: Node2D = Node2D.new()
+	var half_width: float = mass_height * MASS_WIDTH_RATIO * 0.5
 
-	var points: PackedVector2Array = PackedVector2Array([
-		Vector2(apex_x, -shard_height),
-		# Right side: lower shoulder, then a shallow concave notch under it.
-		Vector2(half_width * 0.95, -shard_height * 0.42),
-		Vector2(half_width * 0.62, -shard_height * 0.30),
-		Vector2(half_width, 0.0),
-		Vector2(-half_width, 0.0),
-		# Left side: a single break, set higher than the right shoulder.
-		Vector2(-half_width * 0.70, -shard_height * 0.58),
-	])
+	# The skyline of this one mass: MASS_TOP_POINTS vertices, each height hashed
+	# independently so the outline is irregular rather than a tidy pyramid. sin() taper
+	# pulls both ends to zero, so neighbouring masses interlock at their feet instead of
+	# butting together as a row of separate objects.
+	var top: PackedVector2Array = PackedVector2Array()
+	for point_index: int in range(MASS_TOP_POINTS):
+		var across: float = float(point_index) / float(MASS_TOP_POINTS - 1)
+		var taper: float = sin(across * PI)
+		var height_unit: float = get_hash_unit_float((mass_index * MASS_HASH_STRIDE) + MASS_HASH_SLOT_SKYLINE + point_index)
+		var point_height: float = mass_height * lerpf(MASS_MIN_PEAK, 1.0, height_unit) * taper
+		top.append(Vector2(lerpf(-half_width, half_width, across), -point_height))
 
-	if mirror < 0.0:
-		for point_index: int in range(points.size()):
-			points[point_index] = Vector2(-points[point_index].x, points[point_index].y)
+	# The silhouette, closed across the bottom. Drawn first and never faceted, so however
+	# the facets above land there is always solid geometry occluding the sky behind it.
+	var outline: PackedVector2Array = PackedVector2Array()
+	outline.append(Vector2(-half_width, MASS_ROOT_SINK))
+	outline.append_array(top)
+	outline.append(Vector2(half_width, MASS_ROOT_SINK))
 
-	return points
+	var silhouette: Polygon2D = Polygon2D.new()
+	silhouette.name = "Silhouette"
+	silhouette.polygon = outline
+	silhouette.vertex_colors = build_flat_vertex_colors(outline.size(), MASS_SILHOUETTE_VALUE)
+	mass.add_child(silhouette)
+
+	# One facet per span of the skyline, each dropped to the base to make a big triangle.
+	# MASS_TOP_POINTS is 6, so that is five facets across a form -- large by construction,
+	# which is the whole point. The value alternates so adjacent facets always read as two
+	# different planes of the same solid rather than as flat colour.
+	for facet_index: int in range(MASS_TOP_POINTS - 1):
+		var left_point: Vector2 = top[facet_index]
+		var right_point: Vector2 = top[facet_index + 1]
+		var facet: Polygon2D = Polygon2D.new()
+		facet.name = "Facet%d" % facet_index
+		facet.polygon = PackedVector2Array([
+			left_point,
+			right_point,
+			Vector2((left_point.x + right_point.x) * 0.5, MASS_ROOT_SINK),
+		])
+		# Per-vertex, not flat: the two top vertices sit one step lighter than the base
+		# vertex, so each facet carries a shallow vertical falloff. Same technique as
+		# terrain_generator.build_fill_vertex_colors(), and the reason a flat `color` would
+		# be ignored here anyway (visuals.md, trap 9).
+		var facet_value: float = MASS_FACET_VALUES[facet_index % MASS_FACET_VALUES.size()]
+		facet.vertex_colors = PackedColorArray([
+			make_mass_color(facet_value),
+			make_mass_color(facet_value),
+			make_mass_color(maxf(facet_value - MASS_FACET_FALLOFF, MASS_VALUE_FLOOR)),
+		])
+		mass.add_child(facet)
+
+	return mass
+
+
+# Opaque by construction -- see the occlusion note in build_ice_mass.
+func make_mass_color(value: float) -> Color:
+	return Color(value, value, value, 1.0)
+
+
+func build_flat_vertex_colors(vertex_count: int, value: float) -> PackedColorArray:
+	var colors: PackedColorArray = PackedColorArray()
+	for _vertex_index: int in range(vertex_count):
+		colors.append(make_mass_color(value))
+	return colors
 
 
 # Transparent at the top, full haze by the time it reaches the skyline, and holding that
