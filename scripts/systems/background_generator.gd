@@ -11,7 +11,14 @@ class_name BackgroundGenerator
 #
 #   * Colour. Distant ridges sit closer to the sky colour and near ones further from it
 #     (atmospheric perspective). Under a PALE sky that means far = lighter, so FarRidge is
-#     the lightest scenery and ShardLine the darkest.
+#     the lightest scenery and the near layers the darkest.
+#
+#     ShardLine IS A DELIBERATE EXCEPTION and its depth_t is 0.32, not 1.0. Its ice masses
+#     are meant to read as pale ice, and at depth_t 1.0 they took the near palette colour
+#     (~0.45 red), which no vertex colour can lighten -- vertex_colors only ever multiply
+#     DOWN. They came out reading as grey rock. The reference look carries distance by
+#     CONTRAST rather than by darkness: near ice is about as light as far ice, just
+#     crisper. Don't "fix" this back to 1.0 without also solving why the masses go muddy.
 #   * Parallax rate. Far layers scroll slower. ShardLine keeps the 0.3 that was already
 #     shipped and proven; the two ridge layers are slower still, so this change only ever
 #     moves background pixels *less* per frame than before, never more.
@@ -157,9 +164,9 @@ const MASS_ROOT_SINK: float = 4.0
 # is in build_ice_mass, but briefly: these are multiplied by the palette colour and then by
 # the haze band, so a value that looks merely "mid grey" here arrives near black on screen
 # and the ice reads as rock. Measured against the reference, which bottoms out around 0.75.
-const MASS_VALUE_FLOOR: float = 0.74
-const MASS_SILHOUETTE_VALUE: float = 0.88
-const MASS_FACET_VALUES: Array[float] = [1.0, 0.86, 0.95, 0.80, 0.91]
+const MASS_VALUE_FLOOR: float = 0.80
+const MASS_SILHOUETTE_VALUE: float = 0.92
+const MASS_FACET_VALUES: Array[float] = [1.0, 0.90, 0.96, 0.86, 0.93]
 # How much darker a facet's base vertex is than its two top vertices.
 const MASS_FACET_FALLOFF: float = 0.06
 # How far past the bottom of the screen the silhouette fill extends. Only needs to

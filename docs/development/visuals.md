@@ -162,7 +162,14 @@ were derived by hand from the placeholder rect sizes.
 Three independent cues, no shaders involved:
 
 1. **Colour.** Distant things sit closer to the sky colour. Under a *pale* sky that means
-   far = lighter, so `FarRidge` is the lightest scenery and `ShardLine` the darkest.
+   far = lighter, so `FarRidge` is the lightest scenery and the near layers the darkest.
+
+   **`ShardLine` is a deliberate exception**, `depth_t = 0.32` rather than `1.0`. Its ice
+   masses are meant to read as pale ice, and at `1.0` they took the near palette colour
+   (~`0.45` red) — which no facet value can lighten, because `vertex_colors` only ever
+   multiply *down*. They rendered as grey rock. The reference look carries distance by
+   **contrast**, not by darkness: near ice is about as light as far ice, only crisper.
+   Don't restore `1.0` without solving why the masses go muddy.
 
    **The old corollary — "terrain is lighter than all of them" — is dead as of 2026-08-08.**
    `one.png`, the target art, is *dark saturated ice under a pale sky*, and that inversion
