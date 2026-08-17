@@ -3,16 +3,16 @@ extends ParallaxLayer
 class_name BackgroundGenerator
 
 # One layer of background scenery: a recycled strip of silhouette, plus the haze that
-# veils it. main.tscn attaches this same script to three ParallaxLayers (FarRidge,
-# MidRidge, PineLine) which differ only by their @export values -- the recycling logic
+# veils it. main.tscn attaches this same script to four ParallaxLayers (FarPeaks, FarRidge,
+# MidRidge, ShardLine) which differ only by their @export values -- the recycling logic
 # exists once, and a new layer is a scene edit rather than a new script.
 #
 # HOW DEPTH IS PRODUCED, since it is not obvious from any single value:
 #
 #   * Colour. Distant ridges sit closer to the sky colour and near ones further from it
 #     (atmospheric perspective). Under a PALE sky that means far = lighter, so FarRidge is
-#     the lightest scenery and PineLine the darkest.
-#   * Parallax rate. Far layers scroll slower. PineLine keeps the 0.3 that was already
+#     the lightest scenery and ShardLine the darkest.
+#   * Parallax rate. Far layers scroll slower. ShardLine keeps the 0.3 that was already
 #     shipped and proven; the two ridge layers are slower still, so this change only ever
 #     moves background pixels *less* per frame than before, never more.
 #   * Haze. Each layer owns two child containers, built once in _ready(): "Ridges" then
@@ -40,10 +40,10 @@ class_name BackgroundGenerator
 #     arithmetic it already was; do no per-frame node work.
 
 const SHAPE_RIDGE: int = 0
-const SHAPE_PINES: int = 1
+const SHAPE_SHARDS: int = 1
 
 @export var player_path: NodePath
-@export_enum("Ridge:0", "Pines:1") var shape_kind: int = SHAPE_RIDGE
+@export_enum("Ridge:0", "Shards:1") var shape_kind: int = SHAPE_RIDGE
 @export var segment_width: float = 1024.0
 @export var segment_count_ahead: int = 2
 @export var segment_count_behind: int = 1
@@ -72,10 +72,10 @@ const SHAPE_PINES: int = 1
 @export var haze_rise: float = 130.0
 # Per-layer hash salt. Any two layers sharing a salt would generate the same skyline.
 @export var rng_salt: int = 0
-# Ignored unless shape_kind is Pines.
-@export var pine_spacing: float = 52.0
-@export var pine_height_min: float = 26.0
-@export var pine_height_max: float = 52.0
+# Ignored unless shape_kind is Shards.
+@export var shard_spacing: float = 52.0
+@export var shard_height_min: float = 26.0
+@export var shard_height_max: float = 52.0
 
 var player: CharacterBody2D
 var next_segment_index: int = 0
@@ -242,8 +242,8 @@ func spawn_segment(segment_index: int) -> void:
 	segment.name = "Segment%d" % segment_index
 	segment.position = Vector2(segment_origin_x, 0.0)
 	segment.add_child(build_ridge_polygon(segment_origin_x))
-	if shape_kind == SHAPE_PINES:
-		build_pines(segment, segment_origin_x)
+	if shape_kind == SHAPE_SHARDS:
+		build_shards(segment, segment_origin_x)
 	ridges_root.add_child(segment)
 	active_segments[segment_index] = segment
 
@@ -311,45 +311,72 @@ func build_wave_phases() -> void:
 		wave_phases.append(get_hash_unit_float(wave_index) * TAU)
 
 
-# Trees are placed on a global grid so a tree's identity is its absolute index, not its
-# position within a segment -- that is what keeps a tree at the same x with the same
+# Shards are placed on a global grid so a shard's identity is its absolute index, not its
+# position within a segment -- that is what keeps a shard at the same x with the same
 # height no matter which segment happens to contain it.
-func build_pines(segment: Node2D, segment_origin_x: float) -> void:
-	var first_tree_index: int = int(floor(segment_origin_x / pine_spacing))
-	var last_tree_index: int = int(floor((segment_origin_x + segment_width) / pine_spacing))
-	for tree_index: int in range(first_tree_index, last_tree_index + 1):
+#
+# Three hash slots per shard, hence the stride of 3: jitter, height, and shape (lean plus
+# mirror). The third was reserved by the original stride and is now used.
+func build_shards(segment: Node2D, segment_origin_x: float) -> void:
+	var first_shard_index: int = int(floor(segment_origin_x / shard_spacing))
+	var last_shard_index: int = int(floor((segment_origin_x + segment_width) / shard_spacing))
+	for shard_index: int in range(first_shard_index, last_shard_index + 1):
 		# Jitter keeps the grid from reading as a grid. Bounded to under half the
-		# spacing, so trees cannot reorder or stack.
-		var jitter: float = (get_hash_unit_float(tree_index * 3) - 0.5) * pine_spacing * 0.7
-		var tree_x: float = (float(tree_index) * pine_spacing) + jitter
-		if tree_x < segment_origin_x or tree_x >= segment_origin_x + segment_width:
+		# spacing, so shards cannot reorder or stack.
+		var jitter: float = (get_hash_unit_float(shard_index * 3) - 0.5) * shard_spacing * 0.7
+		var shard_x: float = (float(shard_index) * shard_spacing) + jitter
+		if shard_x < segment_origin_x or shard_x >= segment_origin_x + segment_width:
 			continue
 
-		var tree_height: float = pine_height_min + (get_hash_unit_float((tree_index * 3) + 1) * (pine_height_max - pine_height_min))
-		var pine: Polygon2D = Polygon2D.new()
-		pine.name = "Pine%d" % tree_index
-		# Rooted ON the ridge line, so the tree line reads as growing out of the hill
-		# rather than floating in front of it.
-		pine.position = Vector2(tree_x - segment_origin_x, base_y - get_ridge_height(tree_x))
-		pine.polygon = build_pine_polygon(tree_height)
+		var shard_height: float = shard_height_min + (get_hash_unit_float((shard_index * 3) + 1) * (shard_height_max - shard_height_min))
+		var shard: Polygon2D = Polygon2D.new()
+		shard.name = "Shard%d" % shard_index
+		# Rooted ON the ridge line, so the shard field reads as broken ice pushing out of
+		# the hill rather than floating in front of it.
+		shard.position = Vector2(shard_x - segment_origin_x, base_y - get_ridge_height(shard_x))
+		shard.polygon = build_shard_polygon(shard_height, get_hash_unit_float((shard_index * 3) + 2))
 		# White for the same reason as the ridge: ridges_root.modulate tints it.
-		pine.color = Color.WHITE
-		segment.add_child(pine)
+		shard.color = Color.WHITE
+		segment.add_child(shard)
 
 
-# A two-tier conifer, drawn from the apex clockwise. Deliberately simple: at this scale
-# the silhouette is what carries, and detail would only add noise behind the play area.
-func build_pine_polygon(tree_height: float) -> PackedVector2Array:
-	var half_width: float = tree_height * 0.21
-	return PackedVector2Array([
-		Vector2(0.0, -tree_height),
-		Vector2(half_width * 0.56, -tree_height * 0.52),
-		Vector2(half_width * 0.32, -tree_height * 0.52),
+# A leaning ice shard, drawn from the apex clockwise: narrow base, apex pushed off centre,
+# and one shoulder break per side at DIFFERENT heights so no two edges mirror each other.
+# That asymmetry is the whole point -- a symmetrical spire still reads as a conifer.
+#
+# Deliberately only six vertices, and every facet a large fraction of the height. These are
+# 26-52px tall on screen: finer notching would land at 2-3px and read as noise, not ice.
+# The same rule the far layers follow -- fewer, larger facets the smaller the element.
+#
+# shape_unit is one hash draw in [0, 1) carrying both the lean and the mirror, so a shard's
+# silhouette is a pure function of its index like its height and jitter already were.
+func build_shard_polygon(shard_height: float, shape_unit: float) -> PackedVector2Array:
+	# Narrower than the conifer it replaced (0.21): ice spires read tall and thin.
+	var half_width: float = shard_height * 0.19
+	# Mirror off the top bit of the hash, lean off the rest, so the two are independent.
+	var mirror: float = 1.0 if shape_unit < 0.5 else -1.0
+	var lean_unit: float = fmod(shape_unit * 2.0, 1.0)
+	# Up to slightly past the base corner, which is what makes a shard look toppled rather
+	# than merely tilted. Bounded: beyond ~1.2 the apex edge would cross the base edge and
+	# the polygon stops being simple, which Polygon2D triangulates into garbage.
+	var apex_x: float = ((lean_unit * 2.2) - 1.1) * half_width
+
+	var points: PackedVector2Array = PackedVector2Array([
+		Vector2(apex_x, -shard_height),
+		# Right side: lower shoulder, then a shallow concave notch under it.
+		Vector2(half_width * 0.95, -shard_height * 0.42),
+		Vector2(half_width * 0.62, -shard_height * 0.30),
 		Vector2(half_width, 0.0),
 		Vector2(-half_width, 0.0),
-		Vector2(-half_width * 0.32, -tree_height * 0.52),
-		Vector2(-half_width * 0.56, -tree_height * 0.52),
+		# Left side: a single break, set higher than the right shoulder.
+		Vector2(-half_width * 0.70, -shard_height * 0.58),
 	])
+
+	if mirror < 0.0:
+		for point_index: int in range(points.size()):
+			points[point_index] = Vector2(-points[point_index].x, points[point_index].y)
+
+	return points
 
 
 # Transparent at the top, full haze by the time it reaches the skyline, and holding that

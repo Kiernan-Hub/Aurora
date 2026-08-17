@@ -13,7 +13,7 @@ class_name GroundTreeSpawner
 
 # Global grid, not per-chunk slots: a tree's identity is its absolute index, so it keeps
 # the same x/height regardless of which chunk currently contains it (same reasoning as
-# background_generator.build_pines).
+# background_generator.build_shards).
 const TREE_SPACING: float = 190.0
 const TREE_INCLUDE_CHANCE: float = 0.5
 const TREE_HEIGHT_MIN: float = 70.0

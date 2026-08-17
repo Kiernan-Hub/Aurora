@@ -25,7 +25,7 @@ Front-to-back, as wired in `scenes/main.tscn`:
 | `Player` | world | `0` | `player.gd` |
 | `SnowDrift/SnowParticles` | `GPUParticles2D` | `-50` | `snow_drift.gd` |
 | `BirdFlock/Flock` | `Node2D` | `-60` | `bird_flock.gd` |
-| `ParallaxBackground/PineLine` | `ParallaxLayer` | `(0.30, 0)` | `background_generator.gd` |
+| `ParallaxBackground/ShardLine` | `ParallaxLayer` | `(0.30, 0)` | `background_generator.gd` |
 | `ParallaxBackground/MidRidge` | `ParallaxLayer` | `(0.14, 0)` | `background_generator.gd` |
 | `ParallaxBackground/FarRidge` | `ParallaxLayer` | `(0.06, 0)` | `background_generator.gd` |
 | `ParallaxBackground/FarPeaks` | `ParallaxLayer` | `(0.03, 0)` | `background_generator.gd` |
@@ -60,10 +60,10 @@ The layers were lowered and compressed so the tallest peak now tops out at y ≈
 | `FarPeaks` | 0.34 → **0.42** | 140–340 → **65–135** | y 0.21–0.32 |
 | `FarRidge` | 0.44 → **0.47** | 110–260 → **55–110** | y 0.30–0.39 |
 | `MidRidge` | 0.52 → **0.52** | 75–190 → **45–90** | y 0.38–0.45 |
-| `PineLine` | **unchanged** | unchanged | y 0.51–0.57 |
+| `ShardLine` | **unchanged** | unchanged | y 0.51–0.57 |
 
-**`PineLine` is deliberately untouched.** It is the near layer and its ridge line sits *below*
-the ice surface (~y 0.46), which is what makes the pines read as rooted behind the slope rather
+**`ShardLine` is deliberately untouched.** It is the near layer and its ridge line sits *below*
+the ice surface (~y 0.46), which is what makes the shards read as rooted behind the slope rather
 than standing on top of it. Raising it breaks that immediately.
 
 `haze_rise` came down with the heights (230/190/140 → 140/120/100), or the haze band starts
@@ -162,7 +162,7 @@ were derived by hand from the placeholder rect sizes.
 Three independent cues, no shaders involved:
 
 1. **Colour.** Distant things sit closer to the sky colour. Under a *pale* sky that means
-   far = lighter, so `FarRidge` is the lightest scenery and `PineLine` the darkest.
+   far = lighter, so `FarRidge` is the lightest scenery and `ShardLine` the darkest.
 
    **The old corollary — "terrain is lighter than all of them" — is dead as of 2026-08-08.**
    `one.png`, the target art, is *dark saturated ice under a pale sky*, and that inversion
@@ -173,7 +173,7 @@ Three independent cues, no shaders involved:
    by), and **far and near scenery stay separated in luminance** so the recession below
    still has something to work with. Ordering of *scenery* layers still holds; ordering of
    terrain against scenery does not, and was never what made the surface readable.
-2. **Parallax rate.** `PineLine` keeps the `0.30` that was already shipped and proven; the
+2. **Parallax rate.** `ShardLine` keeps the `0.30` that was already shipped and proven; the
    two ridge layers are *slower*. The pass therefore only ever moves background pixels
    less per frame than before, never more.
 3. **Haze.** Each layer builds two child containers in `_ready()`: `Ridges`, then `Haze`.
@@ -199,11 +199,21 @@ wavelengths 2π larger — ~16,000 px for the first octave — and rendered ever
 straight diagonal line. If the mountains ever look flat again, check this first: an octave
 much longer than the ~1150 px viewport cannot read as a mountain, only as a slope.
 
-Pines (`shape_kind = 1`) are placed on a **global** grid, so a tree's identity is its
-absolute index rather than its offset within a segment — that is what keeps a given tree
+Ice shards (`shape_kind = 1`) are placed on a **global** grid, so a shard's identity is its
+absolute index rather than its offset within a segment — that is what keeps a given shard
 at the same x with the same height regardless of which segment contains it. Each is rooted
-on the ridge line at its own x, so the tree line grows out of the hill instead of floating
+on the ridge line at its own x, so the shard field grows out of the hill instead of floating
 in front of it.
+
+`build_shard_polygon()` is where the *anti-Alto's* silhouette lives, and it is deliberately
+six vertices: apex pushed off centre (up to slightly past the base corner), one shoulder
+break per side at **different** heights, one shallow concave notch on one side only, and a
+per-shard mirror. A symmetrical spire reads as a conifer no matter how you shape it — the
+asymmetry is the whole point. Three hash slots per shard (jitter, height, shape), which is
+why the index stride is 3. **Lean is bounded at ±1.1 × half-width**: past ~1.2 the apex edge
+crosses the base edge, the polygon stops being simple, and `Polygon2D` triangulates it into
+garbage. These render 26–52 px tall, so every facet is a large fraction of the height —
+finer notching lands at 2–3 px and reads as noise, not as ice.
 
 ## Ground-attached trees
 
@@ -426,7 +436,7 @@ survives intact — shifts are whole powers of two, so adding one is exact in bi
 | Sky top / mid / horizon | `0.60,0.72,0.86` → `0.74,0.83,0.91` → `0.88,0.92,0.96` | `sky_backdrop.gd` |
 | Far ridge | `0.68, 0.77, 0.86` | `main.tscn` export |
 | Mid ridge | `0.57, 0.68, 0.80` | `main.tscn` export |
-| Pine line | `0.45, 0.56, 0.69` | `main.tscn` export |
+| Shard line | `0.45, 0.56, 0.69` | `main.tscn` export |
 | Haze bands | pale sky tint, alpha 0.44–0.52 | `main.tscn` export |
 | Snow | white, alpha 0.42 | `snow_drift.gd` |
 | Terrain fill | `assets/textures/terrain/ice_depth_gradient.png`, V = depth below surface | `terrain_generator.gd` |

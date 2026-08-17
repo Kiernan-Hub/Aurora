@@ -78,7 +78,7 @@ haze_color = Color(0.86, 0.9, 0.95, 0.44)
 haze_rise = 100.0
 rng_salt = 202
 
-[node name="PineLine" type="ParallaxLayer" parent="ParallaxBackground"]
+[node name="ShardLine" type="ParallaxLayer" parent="ParallaxBackground"]
 motion_scale = Vector2(0.3, 0)
 script = ExtResource("4")
 player_path = NodePath("../../Player")
@@ -92,9 +92,9 @@ ridge_period_scale = 0.62
 haze_color = Color(0.85, 0.9, 0.95, 0.52)
 haze_rise = 100.0
 rng_salt = 303
-pine_spacing = 52.0
-pine_height_min = 26.0
-pine_height_max = 52.0
+shard_spacing = 52.0
+shard_height_min = 26.0
+shard_height_max = 52.0
 
 [node name="BirdFlock" type="CanvasLayer" parent="."]
 layer = -60

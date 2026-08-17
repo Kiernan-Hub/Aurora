@@ -9,7 +9,7 @@ break things silently; the diagram and the reasoning both live here.
 Main (Node2D, scripts/main.gd)
 ├── SkyBackdrop       CanvasLayer -200 ← sky_backdrop.gd; gradient + stars/glow/sun-moon,
 │                     rebaked only while a transition moves
-├── ParallaxBackground  FarPeaks/FarRidge/MidRidge/PineLine, motion_scale.y ALWAYS 0
+├── ParallaxBackground  FarPeaks/FarRidge/MidRidge/ShardLine, motion_scale.y ALWAYS 0
 │                     one background_generator.gd each, differing only by @export
 ├── BirdFlock         CanvasLayer -60, visible only while gliding ← bird_flock.gd
 ├── SnowDrift         CanvasLayer -50 (behind all gameplay) ← snow_drift.gd
