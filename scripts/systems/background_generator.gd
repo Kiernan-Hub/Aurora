@@ -123,15 +123,33 @@ const MASS_TOP_POINTS: int = 6
 # Floor for a skyline vertex as a fraction of the mass height, before the taper. Keeps a
 # mass from collapsing to a flat lump when every hash draw lands low.
 const MASS_MIN_PEAK: float = 0.34
-# Hash slots consumed per mass: slot 0 is jitter, slot 1 is height, then one per skyline
-# vertex. Must stay >= MASS_TOP_POINTS + 2. Everything about a mass is drawn from this one
+# Hash slots consumed per mass: jitter, height, skew and width, then one per skyline
+# vertex. Must stay >= MASS_HASH_SLOT_SKYLINE + MASS_TOP_POINTS. Everything about a mass
+# is drawn from this one
 # block, so no two properties can share a draw and correlate -- if the stride were smaller
 # than the block a mass consumes, mass N's skyline would collide with mass N+k's jitter and
 # the field would develop a visible repeat.
-const MASS_HASH_STRIDE: int = 8
+const MASS_HASH_STRIDE: int = 10
 const MASS_HASH_SLOT_JITTER: int = 0
 const MASS_HASH_SLOT_HEIGHT: int = 1
-const MASS_HASH_SLOT_SKYLINE: int = 2
+const MASS_HASH_SLOT_SKEW: int = 2
+const MASS_HASH_SLOT_WIDTH: int = 3
+const MASS_HASH_SLOT_SKYLINE: int = 4
+# Where a mass's summit sits across its own width, as a fraction. Kept off both 0 and 1 so
+# the taper below never divides by zero. The FIRST cut of this had no skew at all -- every
+# summit landed at 0.5 and the field rendered as a row of identical symmetrical tents,
+# because a centred taper re-imposes the symmetry the per-vertex skyline hash removes.
+const MASS_SKEW_MIN: float = 0.22
+const MASS_SKEW_MAX: float = 0.78
+# Width variance, multiplying MASS_WIDTH_RATIO. Width is deliberately NOT a pure function
+# of height: when it was, a tall mass was just a scaled-up short one and the whole field
+# read as one shape at several sizes. Independent variance is what makes a squat wide berg
+# and a tall narrow spire come out of the same generator.
+const MASS_WIDTH_VARIANCE_MIN: float = 0.62
+const MASS_WIDTH_VARIANCE_MAX: float = 1.55
+# Shoulder fullness. 1.0 is a straight taper to the feet, which reads as a cone; below 1.0
+# the flanks bulge and the form reads as a solid mass of ice instead.
+const MASS_SHOULDER_FULLNESS: float = 0.62
 # How far below its root point a mass's base edge is buried, so the flat bottom never shows
 # against the layer fill it sits on.
 const MASS_ROOT_SINK: float = 4.0
@@ -397,17 +415,25 @@ func build_shards(segment: Node2D, segment_origin_x: float) -> void:
 # lands near 0.2 on screen. Darkening this is how the background stops looking like ice.
 func build_ice_mass(mass_height: float, mass_index: int) -> Node2D:
 	var mass: Node2D = Node2D.new()
-	var half_width: float = mass_height * MASS_WIDTH_RATIO * 0.5
+	var hash_base: int = mass_index * MASS_HASH_STRIDE
+	var width_variance: float = lerpf(MASS_WIDTH_VARIANCE_MIN, MASS_WIDTH_VARIANCE_MAX, get_hash_unit_float(hash_base + MASS_HASH_SLOT_WIDTH))
+	var half_width: float = mass_height * MASS_WIDTH_RATIO * width_variance * 0.5
+	var skew: float = lerpf(MASS_SKEW_MIN, MASS_SKEW_MAX, get_hash_unit_float(hash_base + MASS_HASH_SLOT_SKEW))
 
 	# The skyline of this one mass: MASS_TOP_POINTS vertices, each height hashed
-	# independently so the outline is irregular rather than a tidy pyramid. sin() taper
-	# pulls both ends to zero, so neighbouring masses interlock at their feet instead of
-	# butting together as a row of separate objects.
+	# independently so the outline is irregular rather than a tidy pyramid. The taper still
+	# pulls both ends to zero -- that is what lets neighbouring masses interlock at their
+	# feet rather than butt together as separate objects -- but it now peaks at `skew`
+	# instead of at the centre, so the two flanks are different lengths and no two masses
+	# share a profile.
 	var top: PackedVector2Array = PackedVector2Array()
 	for point_index: int in range(MASS_TOP_POINTS):
 		var across: float = float(point_index) / float(MASS_TOP_POINTS - 1)
-		var taper: float = sin(across * PI)
-		var height_unit: float = get_hash_unit_float((mass_index * MASS_HASH_STRIDE) + MASS_HASH_SLOT_SKYLINE + point_index)
+		# Distance from the near foot toward the summit, normalised per flank: 0 at
+		# whichever foot this vertex is closer to, 1 at the summit.
+		var toward_summit: float = across / skew if across < skew else (1.0 - across) / (1.0 - skew)
+		var taper: float = pow(sin(clampf(toward_summit, 0.0, 1.0) * PI * 0.5), MASS_SHOULDER_FULLNESS)
+		var height_unit: float = get_hash_unit_float(hash_base + MASS_HASH_SLOT_SKYLINE + point_index)
 		var point_height: float = mass_height * lerpf(MASS_MIN_PEAK, 1.0, height_unit) * taper
 		top.append(Vector2(lerpf(-half_width, half_width, across), -point_height))
 
