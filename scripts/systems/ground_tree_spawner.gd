@@ -2,9 +2,15 @@ extends Node2D
 
 class_name GroundTreeSpawner
 
-# Foreground trees that are physically rooted in the terrain surface, unlike the
-# ParallaxLayer pine silhouettes in background_generator.gd which are decorative and never
-# touch the actual ridden ground. Modeled directly on coin_spawner.gd's chunk lifecycle:
+# Foreground ICE FORMATIONS rooted in the terrain surface, unlike the ParallaxLayer shard
+# silhouettes in background_generator.gd which are decorative and never touch the actual
+# ridden ground.
+#
+# The class, the node name in main.tscn, biome_director's ground_trees_path and the
+# palettes' tree_tint all still say "tree", from when these were conifers. Those names are
+# WIRING -- renaming them means touching the scene, the director's export default and nine
+# palette resources for no behavioural gain -- so they are left as historical names rather
+# than churned. Nothing here spawns a tree. Modeled directly on coin_spawner.gd's chunk lifecycle:
 # a child of TerrainGenerator so it inherits world-rebase Y shifts for free (see that
 # file's header comment), spawning/despawning in lockstep with the same chunk window
 # TerrainGenerator itself uses.
@@ -25,10 +31,13 @@ const TREE_JITTER_FRACTION: float = 0.55
 # CLAUDE.md); this only needs to read as "planted on the slope", not track it exactly.
 const MAX_TREE_TILT: float = deg_to_rad(14.0)
 
-const TRUNK_COLOR: Color = Color(0.36, 0.27, 0.22)
-const FOLIAGE_COLOR: Color = Color(0.16, 0.32, 0.27)
-const FOLIAGE_HIGHLIGHT_COLOR: Color = Color(0.22, 0.4, 0.34)
-const SNOW_CAP_COLOR: Color = Color(0.93, 0.96, 0.99)
+# Pale on purpose. biome_director.gd tints this whole spawner with palette.tree_tint,
+# which ranges from (1, 1, 1) down to starlit_night's (0.42, 0.48, 0.68) -- every one a
+# MULTIPLIER, so a colour authored dark here can only get darker and would go black at
+# night. The three tones are body, lit face, and the crest highlight along the top edge.
+const ICE_BODY_COLOR: Color = Color(0.62, 0.74, 0.86)
+const ICE_LIT_COLOR: Color = Color(0.8, 0.89, 0.96)
+const ICE_CREST_COLOR: Color = Color(0.93, 0.97, 1.0)
 
 const HASH_MASK: int = 0x7fffffff
 # Distinct from every other spawner's multiplier pair (CoinSpawner, TerrainGenerator,
@@ -142,54 +151,64 @@ func remove_tree_group(chunk_index: int) -> void:
 	group.queue_free()
 
 
-# A three-tier conifer with a trunk and a snow-dusted top tier, rooted at (0, 0) -- the
-# caller positions that origin exactly on the terrain surface line. Simple flat-shaded
-# polygons only, matching the project's "no textures anywhere" rule.
+# A chunky ice formation rooted at (0, 0) -- the caller positions that origin exactly on
+# the terrain surface line. Flat-shaded polygons only, matching the project's "no textures
+# anywhere" rule.
+#
+# Replaces the three-tier conifer this spawner drew until the background became icebergs
+# on open water, where a pine forest in the play area was the loudest wrong note on
+# screen. THE SPAWNER ITSELF IS UNCHANGED -- spacing, jitter, tilt, the hash and the chunk
+# lifecycle all still work exactly as they did; only the shape and its colours moved.
+#
+# DELIBERATELY SIMPLE, and expected to be replaced by real art. Three polygons is enough
+# to read as ice at gameplay speed, and anything more detailed is work thrown away when
+# the painted sprites land.
+#
+# The foot is FLAT and has width. A shape tapering to nothing at both feet is a mound, and
+# HANDOFF records mounds reading as rock however they are shaded; ice meets ground at an
+# edge. Same rule as build_shard_polygon in background_generator.gd.
 func build_tree(tree_height: float) -> Node2D:
-	var tree: Node2D = Node2D.new()
+	var formation: Node2D = Node2D.new()
+	var half_width: float = tree_height * 0.42
 
-	var trunk_height: float = tree_height * 0.16
-	var trunk_width: float = tree_height * 0.07
-	var trunk: Polygon2D = Polygon2D.new()
-	trunk.polygon = PackedVector2Array([
-		Vector2(-trunk_width, 0.0),
-		Vector2(trunk_width, 0.0),
-		Vector2(trunk_width, -trunk_height),
-		Vector2(-trunk_width, -trunk_height),
+	var body: Polygon2D = Polygon2D.new()
+	body.polygon = PackedVector2Array([
+		Vector2(-half_width, 0.0),
+		Vector2(-half_width * 0.92, -tree_height * 0.42),
+		Vector2(-half_width * 0.45, -tree_height * 0.86),
+		Vector2(half_width * 0.1, -tree_height),
+		Vector2(half_width * 0.68, -tree_height * 0.6),
+		Vector2(half_width, -tree_height * 0.22),
+		Vector2(half_width * 0.9, 0.0),
 	])
-	trunk.color = TRUNK_COLOR
-	tree.add_child(trunk)
+	body.color = ICE_BODY_COLOR
+	formation.add_child(body)
 
-	var foliage_top: float = -tree_height
-	var foliage_base: float = -trunk_height
-	var tier_count: int = 3
-	for tier_index: int in range(tier_count):
-		var tier_fraction_bottom: float = float(tier_index) / float(tier_count)
-		var tier_fraction_top: float = float(tier_index + 1) / float(tier_count)
-		var tier_bottom_y: float = lerpf(foliage_base, foliage_top, tier_fraction_bottom)
-		var tier_top_y: float = lerpf(foliage_base, foliage_top, tier_fraction_top) - (tree_height * 0.05)
-		# Widest at the base tier, narrowing toward the apex.
-		var tier_half_width: float = tree_height * 0.24 * (1.0 - (tier_fraction_bottom * 0.55))
-		var tier: Polygon2D = Polygon2D.new()
-		tier.polygon = PackedVector2Array([
-			Vector2(0.0, tier_top_y),
-			Vector2(tier_half_width, tier_bottom_y),
-			Vector2(-tier_half_width, tier_bottom_y),
-		])
-		tier.color = FOLIAGE_HIGHLIGHT_COLOR if tier_index == tier_count - 1 else FOLIAGE_COLOR
-		tree.add_child(tier)
-
-	var snow_half_width: float = tree_height * 0.09
-	var snow_cap: Polygon2D = Polygon2D.new()
-	snow_cap.polygon = PackedVector2Array([
-		Vector2(0.0, foliage_top),
-		Vector2(snow_half_width, foliage_top + (tree_height * 0.14)),
-		Vector2(-snow_half_width, foliage_top + (tree_height * 0.14)),
+	# The sunlit right face, as its own wedge off the apex. One flat plane catching light
+	# is what separates ice from a rounded snow lump at this size.
+	var lit_face: Polygon2D = Polygon2D.new()
+	lit_face.polygon = PackedVector2Array([
+		Vector2(half_width * 0.1, -tree_height),
+		Vector2(half_width * 0.68, -tree_height * 0.6),
+		Vector2(half_width, -tree_height * 0.22),
+		Vector2(half_width * 0.9, 0.0),
+		Vector2(half_width * 0.34, 0.0),
+		Vector2(half_width * 0.2, -tree_height * 0.5),
 	])
-	snow_cap.color = SNOW_CAP_COLOR
-	tree.add_child(snow_cap)
+	lit_face.color = ICE_LIT_COLOR
+	formation.add_child(lit_face)
 
-	return tree
+	var crest: Polygon2D = Polygon2D.new()
+	crest.polygon = PackedVector2Array([
+		Vector2(-half_width * 0.45, -tree_height * 0.86),
+		Vector2(half_width * 0.1, -tree_height),
+		Vector2(half_width * 0.02, -tree_height * 0.88),
+		Vector2(-half_width * 0.4, -tree_height * 0.76),
+	])
+	crest.color = ICE_CREST_COLOR
+	formation.add_child(crest)
+
+	return formation
 
 
 # Pure function of (session_seed, tree_index, salt) -> [0, 1). Same style as

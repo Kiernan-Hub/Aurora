@@ -40,10 +40,12 @@ class_name BackgroundGenerator
 #     arithmetic it already was; do no per-frame node work.
 
 const SHAPE_RIDGE: int = 0
-const SHAPE_PINES: int = 1
+# Named SHAPE_PINES until the world became ice. The VALUE is what main.tscn stores,
+# so it stays 1; only what gets built on the ridge changed.
+const SHAPE_SHARDS: int = 1
 
 @export var player_path: NodePath
-@export_enum("Ridge:0", "Pines:1") var shape_kind: int = SHAPE_RIDGE
+@export_enum("Ridge:0", "Shards:1") var shape_kind: int = SHAPE_RIDGE
 @export var segment_width: float = 1024.0
 @export var segment_count_ahead: int = 2
 @export var segment_count_behind: int = 1
@@ -72,7 +74,19 @@ const SHAPE_PINES: int = 1
 @export var haze_rise: float = 130.0
 # Per-layer hash salt. Any two layers sharing a salt would generate the same skyline.
 @export var rng_salt: int = 0
-# Ignored unless shape_kind is Pines.
+# Quantises this layer's skyline to flat steps of this many px; 0 leaves it smooth.
+#
+# This is what makes a layer read as ICE rather than as a snow dune. HANDOFF's
+# hard-won rule from the reverted procedural pass: "Mound silhouettes read as rock.
+# Ice fractures along planes: vertical side walls, flat or sharply angular tops."
+# A sine hump is a mound by definition, so no amount of amplitude tuning fixes it --
+# the fix is removing the curve, not resizing it.
+#
+# The step is applied inside get_ridge_height, so the function stays PURE in
+# (rng_salt, x) and the seam guarantee is untouched: two adjacent segments feed the
+# same x to the same function and still land on the same quantised height.
+@export var terrace_step: float = 0.0
+# Ignored unless shape_kind is Shards.
 @export var pine_spacing: float = 52.0
 @export var pine_height_min: float = 26.0
 @export var pine_height_max: float = 52.0
@@ -242,7 +256,7 @@ func spawn_segment(segment_index: int) -> void:
 	segment.name = "Segment%d" % segment_index
 	segment.position = Vector2(segment_origin_x, 0.0)
 	segment.add_child(build_ridge_polygon(segment_origin_x))
-	if shape_kind == SHAPE_PINES:
+	if shape_kind == SHAPE_SHARDS:
 		build_pines(segment, segment_origin_x)
 	ridges_root.add_child(segment)
 	active_segments[segment_index] = segment
@@ -275,9 +289,20 @@ func build_ridge_polygon(segment_origin_x: float) -> Polygon2D:
 	# <=, so the last vertex lands exactly on the segment's right edge. That vertex and
 	# the next segment's first are the same x fed to the same pure function, so the two
 	# polygons meet at an identical y and the seam is invisible by construction.
-	for sample_index: int in range(RIDGE_SAMPLE_COUNT + 1):
+	var previous_height: float = get_ridge_height(segment_origin_x)
+	points.append(Vector2(0.0, base_y - previous_height))
+	for sample_index: int in range(1, RIDGE_SAMPLE_COUNT + 1):
 		var local_x: float = float(sample_index) * step
-		points.append(Vector2(local_x, base_y - get_ridge_height(segment_origin_x + local_x)))
+		var height: float = get_ridge_height(segment_origin_x + local_x)
+		# On a terraced layer the height changes in discrete jumps. Emitting the OLD
+		# height at the NEW x first turns that jump into a true vertical wall; without
+		# it the jump is spread over one sample step (16px here) and comes out as a
+		# diagonal ramp, which is a slope, which reads as rock again. The wall is the
+		# entire point of terracing, so it is built rather than approximated.
+		if not is_equal_approx(height, previous_height):
+			points.append(Vector2(local_x, base_y - previous_height))
+		points.append(Vector2(local_x, base_y - height))
+		previous_height = height
 	points.append(Vector2(segment_width, fill_bottom_y))
 	points.append(Vector2(0.0, fill_bottom_y))
 
@@ -302,7 +327,10 @@ func get_ridge_height(x: float) -> float:
 		wave += sin((TAU * x / wavelength) + wave_phases[wave_index]) * RIDGE_WAVE_AMPLITUDES[wave_index]
 
 	var normalized: float = clampf((wave * 0.5) + 0.5, 0.0, 1.0)
-	return ridge_height_min + (pow(normalized, RIDGE_PEAK_SHARPNESS) * (ridge_height_max - ridge_height_min))
+	var height: float = ridge_height_min + (pow(normalized, RIDGE_PEAK_SHARPNESS) * (ridge_height_max - ridge_height_min))
+	if terrace_step > 0.0:
+		height = floor(height / terrace_step) * terrace_step
+	return height
 
 
 func build_wave_phases() -> void:
@@ -326,29 +354,39 @@ func build_pines(segment: Node2D, segment_origin_x: float) -> void:
 			continue
 
 		var tree_height: float = pine_height_min + (get_hash_unit_float((tree_index * 3) + 1) * (pine_height_max - pine_height_min))
+		var lean: float = get_hash_unit_float((tree_index * 3) + 2)
 		var pine: Polygon2D = Polygon2D.new()
-		pine.name = "Pine%d" % tree_index
+		pine.name = "Shard%d" % tree_index
 		# Rooted ON the ridge line, so the tree line reads as growing out of the hill
 		# rather than floating in front of it.
 		pine.position = Vector2(tree_x - segment_origin_x, base_y - get_ridge_height(tree_x))
-		pine.polygon = build_pine_polygon(tree_height)
+		pine.polygon = build_shard_polygon(tree_height, lean)
 		# White for the same reason as the ridge: ridges_root.modulate tints it.
 		pine.color = Color.WHITE
 		segment.add_child(pine)
 
 
-# A two-tier conifer, drawn from the apex clockwise. Deliberately simple: at this scale
-# the silhouette is what carries, and detail would only add noise behind the play area.
-func build_pine_polygon(tree_height: float) -> PackedVector2Array:
-	var half_width: float = tree_height * 0.21
+# An ice shard: sheer sides, a flat foot and one sharp leaning apex. Replaces the
+# two-tier conifer this layer used to draw, which made no sense once the world became
+# ice and water.
+#
+# THE FOOT HAS WIDTH, deliberately. A shape that tapers to nothing at both feet is a
+# mound, and HANDOFF records mounds reading as rock no matter how they are shaded. Ice
+# meets ice at an edge, so the base is a flat cut.
+#
+# `lean` comes from the caller's hash so a row of these is not a row of one shape --
+# it slides the apex across the foot, which also keeps every silhouette asymmetric.
+func build_shard_polygon(shard_height: float, lean: float) -> PackedVector2Array:
+	var half_width: float = shard_height * 0.19
+	var apex_x: float = lerpf(-half_width * 0.55, half_width * 0.55, lean)
 	return PackedVector2Array([
-		Vector2(0.0, -tree_height),
-		Vector2(half_width * 0.56, -tree_height * 0.52),
-		Vector2(half_width * 0.32, -tree_height * 0.52),
-		Vector2(half_width, 0.0),
-		Vector2(-half_width, 0.0),
-		Vector2(-half_width * 0.32, -tree_height * 0.52),
-		Vector2(-half_width * 0.56, -tree_height * 0.52),
+		Vector2(apex_x, -shard_height),
+		Vector2(half_width * 0.72, -shard_height * 0.46),
+		Vector2(half_width, -shard_height * 0.16),
+		Vector2(half_width * 0.86, 0.0),
+		Vector2(-half_width * 0.86, 0.0),
+		Vector2(-half_width, -shard_height * 0.21),
+		Vector2(-half_width * 0.72, -shard_height * 0.52),
 	])
 
 
