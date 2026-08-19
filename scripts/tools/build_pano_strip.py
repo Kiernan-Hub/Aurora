@@ -53,16 +53,20 @@ THE SKY MODEL, AND WHY IT IS NOT A PER-ROW MEDIAN
     tracks a gradient. The remaining low-level error is removed by ALPHA_DEADZONE
     rather than by trusting the model to be exact.
 
-WHY THE OUTPUT IS NEAR-GREYSCALE
-    Same reason as build_iceberg_sprites.py, and the same measurement backs it: the
-    strip hangs under BackgroundGenerator's `ridges_root`, whose `modulate` carries
-    the biome's scenery colour, and Godot renders texture * modulate. Stored
-    greyscale in a fixed bright band, all eight biome palettes come free with no
-    per-biome art and no shader.
+WHY THE OUTPUT KEEPS ITS COLOUR, UNLIKE THE OTHER TWO BAKE TOOLS
+    The strip hangs under a `modulate` carrying the biome's scenery colour and Godot
+    renders texture * modulate, so what is stored here is a MULTIPLIER. Its LUMINANCE
+    is seated on a fixed bright band, which is what makes all eight palettes work.
 
-    Measured on this source before conversion: saturation mean 0.126, luminance p5
-    0.72. It was already most of the way there -- the recorded fear that a painted
-    panel is "too colourful to survive the multiply" does not hold for this art.
+    Its HUE, though, is the source painting's own, and that is a deliberate departure
+    from build_ice_texture.py and build_iceberg_sprites.py, which both store
+    greyscale. Those store greyscale to survive being multiplied by a warm palette;
+    measured, this palette set has no warm entry -- all nine scenery_far colours are
+    blue-dominant -- so there is nothing for greyscale to defend against here, and
+    it costs the difference between reading as ice and reading as rock.
+
+    Shipped grey once before this was understood. See CHROMA_STRENGTH for the
+    numbers and for the gamut cost that comes with it.
 
 WHAT THE ALPHA BUYS BEYOND THE LOOK -- READ THIS BEFORE MAKING IT OPAQUE
     SkyBackdrop is CanvasLayer -200 and ParallaxBackground is -100, so the sun, the
@@ -138,9 +142,42 @@ SUBJECT_ALPHA = 0.5
 #   with its brightest facets going above the sky as lit highlights. The narrow
 #   range is also what the reference looks like -- in example.png the ice is barely
 #   visible, low contrast and half dissolved into the sky.
-OUTPUT_FLOOR = 0.80
-OUTPUT_CEILING = 1.0
-TARGET_MEDIAN = 0.88
+OUTPUT_FLOOR = 0.78
+OUTPUT_CEILING = 0.95
+TARGET_MEDIAN = 0.86
+
+# --- Chroma ----------------------------------------------------------------
+# How much of the SOURCE's own hue is kept, 0 = pure greyscale, 1 = the painting's
+# full cast. This is the difference between ice and rock on screen and it was set
+# to 0 for the first two cuts, which is why the shipped strip read grey.
+#
+# WHY GREYSCALE WAS WRONG HERE, HAVING BEEN RIGHT EVERYWHERE ELSE
+#
+#   build_ice_texture.py and build_iceberg_sprites.py both store greyscale, on the
+#   rule that baked art must survive being multiplied by eight biome palettes and
+#   so cannot carry colour of its own. That rule defends against ONE failure: cool
+#   art times a warm tint, which goes muddy.
+#
+#   Measured, this palette set contains no warm entry. All nine scenery_far colours
+#   are blue-dominant -- the reddest, mauve_haze at (0.72, 0.68, 0.78), still has
+#   blue on top. There is no cool-times-warm case to defend against, so the rule
+#   costs the look and buys nothing.
+#
+#   What greyscale actually cost: the source ice measures saturation 0.206, and
+#   scenery_far averages 0.15, so greyscale x tint rendered at 0.12 -- grey. Keeping
+#   the source cast puts the ice near 0.30 and it reads as ice again.
+#
+# THE CEILING ABOVE IS WHY THIS COSTS SOMETHING. Preserving hue at a fixed
+# luminance means the brightest channel runs above that luminance: this source's
+# blue sits at 1.143x its own luma, peaking at 1.215x. At the previous band median
+# of 0.88 the blue channel would have crossed 1.0 on half the ice and clipped back
+# toward grey -- the exact thing being fixed. So the band drops to a median of 0.86
+# under a 0.95 ceiling, which keeps the typical blue at 0.98, inside gamut.
+#
+# The top of the band still clips, deliberately and only there: 0.95 x 1.143 is
+# 1.09, so the brightest facet edges lose blue and go white. That is what an ice
+# highlight should do, so it is left alone rather than compressed.
+CHROMA_STRENGTH = 1.0
 # Percentiles the source's own band is normalised on. Not min/max -- one stray
 # bright pixel would set the range and collapse the band.
 BAND_PERCENTILES = (2.0, 98.0)
@@ -173,9 +210,12 @@ SKY_FRACTION_LIMITS = (0.45, 0.95)
 # A panorama is wide by definition. A squarer image is a single panel that was
 # never stitched, or the wrong file.
 MIN_ASPECT_RATIO = 2.0
-# Saturation over the ice. The multiply-tint only reconstructs cleanly from art
-# that is near-greyscale to begin with; example.png's ice measures ~0.19.
-SUBJECT_SATURATION_MAX = 0.28
+# Saturation over the ice. NOT a near-greyscale requirement -- the build keeps the
+# source's hue on purpose (see CHROMA_STRENGTH), and example.png, the target art,
+# measures ~0.19 here itself. This is only a guard against a garish source: past
+# this the cast starts fighting the biome tint it gets multiplied by rather than
+# riding it, and no palette in this game is saturated enough to absorb that.
+SUBJECT_SATURATION_MAX = 0.45
 # THE SHADOW TEST, asked of the SOURCE for the same reason build_iceberg_sprites.py
 # gives: the build seats everything on [OUTPUT_FLOOR, OUTPUT_CEILING], so an
 # absolute darkness test on the RESULT is zero by construction and could never
@@ -282,6 +322,38 @@ def remap_levels(luminance, subject_mask):
     return OUTPUT_FLOOR + np.power(normalized, clamped) * (OUTPUT_CEILING - OUTPUT_FLOOR)
 
 
+def apply_source_chroma(value, ice_rgb, subject_mask):
+    """Put the source painting's hue back onto the seated luminance.
+
+    The ratio is normalised BY THE SOURCE'S OWN LUMINANCE, which is what makes this
+    safe to do after remap_levels: multiplying a luminance by a ratio whose luminance
+    is 1 leaves the luminance alone. So the far-lighter depth ordering that the band
+    was tuned for survives having colour added, and the two decisions stay separable.
+
+    Reported rather than silent: how much of the ice ends up out of gamut, because
+    that is the number that says whether the band and CHROMA_STRENGTH still agree.
+    Some clipping is intended and only at the very top -- see the CHROMA_STRENGTH
+    comment -- but a large figure means the band crept back up and the cast is being
+    quietly flattened toward grey again.
+    """
+    if CHROMA_STRENGTH <= 0.0:
+        return np.repeat(value[..., None], 3, axis=2)
+
+    source_luminance = np.maximum(to_luminance(ice_rgb), 1e-4)
+    ratio = ice_rgb / source_luminance[..., None]
+    ratio = 1.0 + (ratio - 1.0) * CHROMA_STRENGTH
+
+    tinted = value[..., None] * ratio
+    if subject_mask.any():
+        out_of_gamut = float((tinted[subject_mask] > 1.0).mean())
+        saturation = float(to_saturation(np.clip(tinted, 0.0, 1.0))[subject_mask].mean())
+        print(
+            "  chroma: strength %.2f, ice saturation %.3f, %.1f%% of ice channels clipped"
+            % (CHROMA_STRENGTH, saturation, out_of_gamut * 100.0)
+        )
+    return np.clip(tinted, 0.0, 1.0)
+
+
 def make_loop_seamless(value, alpha):
     """Ramp the right edge onto the left edge's values. See THE LOOP SEAM."""
     width = value.shape[1]
@@ -292,11 +364,16 @@ def make_loop_seamless(value, alpha):
     before = float(np.abs(value[:, -1] - value[:, 0]).mean())
 
     # 0 at the start of the margin, 1 at the last column, so only the wrap moves.
+    # value carries a colour plane (h, w, 3) while alpha is (h, w), so the taper
+    # needs a trailing axis to broadcast against the former.
     taper = (np.arange(ramp_width) / float(ramp_width - 1))[None, :]
+    colour_taper = taper[..., None]
 
     value_delta = (value[:, 0] - value[:, -1])[:, None]
     value = value.copy()
-    value[:, -ramp_width:] = np.clip(value[:, -ramp_width:] + value_delta * taper, 0.0, 1.0)
+    value[:, -ramp_width:] = np.clip(
+        value[:, -ramp_width:] + value_delta * colour_taper, 0.0, 1.0
+    )
 
     alpha_delta = (alpha[:, 0] - alpha[:, -1])[:, None]
     alpha = alpha.copy()
@@ -445,12 +522,18 @@ def build(source_path, output_path):
 
     ice_rgb = recover_subject_color(rgb, alpha, sky_rgb)
 
-    # Near-greyscale, then seated on the bright band. Greyscale AFTER the fog is
-    # undone, so the fog's own tint never enters the statistics.
+    # Seat the LUMINANCE on the bright band, then put the source's own hue back on
+    # top of it. Luminance is what the far-lighter depth ordering is judged on and
+    # what remap_levels controls; hue rides along without changing it, because the
+    # ratio below is normalised by that same luminance.
+    #
+    # Both steps run AFTER the fog is undone, so the fog's tint enters neither the
+    # levels statistics nor the hue.
     value = to_luminance(ice_rgb)
     value = remap_levels(value, subject_mask)
+    value_rgb = apply_source_chroma(value, ice_rgb, subject_mask)
 
-    value, alpha, _ = make_loop_seamless(value, alpha)
+    value_rgb, alpha, _ = make_loop_seamless(value_rgb, alpha)
 
     seated = value[subject_mask]
     print("  built ice band: p2 %.3f  median %.3f  p98 %.3f"
@@ -462,7 +545,7 @@ def build(source_path, output_path):
     # RGBA, so a transparent pixel that holds black comes back black and reappears
     # as a dark halo the moment anything resamples this texture. Godot's mipmapper
     # has the same property.
-    rgba[..., :3] = value[..., None]
+    rgba[..., :3] = value_rgb
     rgba[..., 3] = alpha
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
