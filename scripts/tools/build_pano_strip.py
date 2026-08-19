@@ -109,13 +109,38 @@ ALPHA_SCALE = 0.05
 SUBJECT_ALPHA = 0.5
 
 # --- Levels ----------------------------------------------------------------
-# Lifted verbatim from build_iceberg_sprites.py, which calibrated them against
-# art_source/background/example.png -- the same target art, measured through
-# equivalent code paths. NOTHING IS DARK: the recorded raster failure put 7.5% of
-# the form below 0.45 luminance against a reference that bottoms out near 0.67.
-OUTPUT_FLOOR = 0.70
+# NOT the same band as build_iceberg_sprites.py, and the difference is a bug that
+# shipped once. That tool builds NEAR-layer sprites on [0.70, 1.00]; this is the
+# FAR layer, where the requirement inverts.
+#
+# WHY A TEXTURED FAR LAYER NEEDS A HIGHER BAND THAN A PROCEDURAL ONE
+#
+#   background_generator.gd renders its ridges FLAT -- ridge.color is WHITE and
+#   ridges_root.modulate carries the palette colour -- so a procedural layer's
+#   on-screen lightness IS its palette colour, exactly. A textured layer renders
+#   texture * colour, so its average lightness is the band's median TIMES that
+#   colour, i.e. always darker than a flat layer at the same palette entry.
+#
+#   visuals.md's depth read depends on far = lighter, with FarRidge the lightest
+#   scenery and PineLine the darkest. This layer sits at depth_t 0.0 and so already
+#   gets scenery_far, the lightest colour a palette offers; there is no lighter
+#   entry to reach for, and a texture can only multiply DOWN. So if the band is
+#   low, the FURTHEST layer renders darker than the near ones and the whole depth
+#   ordering inverts.
+#
+#   Measured in game on the [0.70, 1.00] band, first attempt: sky 0.771, ice 0.623,
+#   MidRidge 0.704, PineLine 0.735 -- the far layer was the darkest thing on screen
+#   and read as rock, which is the exact failure the reverted procedural session
+#   ended on.
+#
+#   The band below targets a rendered median of ~0.74: comfortably lighter than
+#   MidRidge's 0.704, still darker than the sky's 0.771 so the ice stays visible,
+#   with its brightest facets going above the sky as lit highlights. The narrow
+#   range is also what the reference looks like -- in example.png the ice is barely
+#   visible, low contrast and half dissolved into the sky.
+OUTPUT_FLOOR = 0.80
 OUTPUT_CEILING = 1.0
-TARGET_MEDIAN = 0.80
+TARGET_MEDIAN = 0.88
 # Percentiles the source's own band is normalised on. Not min/max -- one stray
 # bright pixel would set the range and collapse the band.
 BAND_PERCENTILES = (2.0, 98.0)
