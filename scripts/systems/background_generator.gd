@@ -3,19 +3,26 @@ extends ParallaxLayer
 class_name BackgroundGenerator
 
 # One layer of background scenery: a recycled strip of silhouette, plus the haze that
-# veils it. main.tscn attaches this script to FarPeaks alone -- the distant mountain
-# range, and the only procedural scenery layer left, now that everything nearer is either
-# the raster panorama (background_strip.gd) or the terrain itself. It stays generic rather
-# than being folded into its one caller, because a second ridge layer should be a scene
-# edit rather than a new script.
+# veils it. main.tscn attaches this same script to three ParallaxLayers (FarPeaks,
+# FarRidge, MidRidge) which differ only by their @export values -- the recycling logic
+# exists once, and a new layer is a scene edit rather than a new script.
+#
+# All three sit BEHIND the raster panorama (background_strip.gd), which is the frontmost
+# scenery. They are the distant mountain ranges; nothing procedural draws in front of the
+# ice any more, because two attempts at near procedural ice both failed -- see the commit
+# that reverted terracing and shards.
 #
 # HOW DEPTH IS PRODUCED, since it is not obvious from any single value:
 #
 #   * Colour. Distant ridges sit closer to the sky colour and near ones further from it
 #     (atmospheric perspective). Under a PALE sky that means far = lighter, so FarPeaks at
-#     depth_t 0 is the lightest scenery on screen and the panorama in front of it darker.
-#   * Parallax rate. Far layers scroll slower: FarPeaks sits at 0.02, behind the raster
-#     IceStrip's 0.05 -- see background_strip.gd.
+#     depth_t 0 is the lightest scenery on screen, and each layer forward of it darker,
+#     ending with the panorama.
+#   * Parallax rate. Far layers scroll slower: 0.015 / 0.025 / 0.035, behind the raster
+#     IceStrip's 0.05. That whole spread is slower than the 0.03-0.30 this file once used,
+#     because the panorama in front CANNOT go fast -- its loop length is
+#     texture_width * scale / motion_scale, so speed and repeat period trade directly, and
+#     every layer behind it has to stay slower still to keep the depth ordering.
 #   * Haze. Each layer owns two child containers, built once in _ready(): "Ridges" then
 #     "Haze". Because Haze is added second it draws over every silhouette in ITS OWN
 #     layer and only that layer -- so layer N's haze veils layer N, and layer N+1's

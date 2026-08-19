@@ -36,7 +36,7 @@ script = ExtResource("12_sky")
 [node name="ParallaxBackground" type="ParallaxBackground" parent="." unique_id=1047312801]
 
 [node name="FarPeaks" type="ParallaxLayer" parent="ParallaxBackground"]
-motion_scale = Vector2(0.02, 0)
+motion_scale = Vector2(0.015, 0)
 script = ExtResource("4")
 player_path = NodePath("../../Player")
 shape_kind = 0
@@ -45,10 +45,40 @@ base_y_fraction = 0.45
 silhouette_color = Color(0.74, 0.81, 0.9, 1)
 ridge_height_min = 90.0
 ridge_height_max = 160.0
-ridge_period_scale = 3.0
+ridge_period_scale = 3.2
 haze_color = Color(0.88, 0.92, 0.96, 0.4)
 haze_rise = 150.0
 rng_salt = 55
+
+[node name="FarRidge" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.025, 0)
+script = ExtResource("4")
+player_path = NodePath("../../Player")
+shape_kind = 0
+depth_t = 0.15
+base_y_fraction = 0.48
+silhouette_color = Color(0.7, 0.78, 0.87, 1)
+ridge_height_min = 70.0
+ridge_height_max = 125.0
+ridge_period_scale = 2.2
+haze_color = Color(0.88, 0.92, 0.96, 0.46)
+haze_rise = 130.0
+rng_salt = 101
+
+[node name="MidRidge" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.035, 0)
+script = ExtResource("4")
+player_path = NodePath("../../Player")
+shape_kind = 0
+depth_t = 0.3
+base_y_fraction = 0.51
+silhouette_color = Color(0.65, 0.74, 0.84, 1)
+ridge_height_min = 50.0
+ridge_height_max = 95.0
+ridge_period_scale = 1.5
+haze_color = Color(0.86, 0.9, 0.95, 0.5)
+haze_rise = 110.0
+rng_salt = 202
 
 [node name="IceStrip" type="ParallaxLayer" parent="ParallaxBackground"]
 motion_scale = Vector2(0.05, 0)
@@ -58,8 +88,8 @@ skyline_y_fraction = 0.33
 horizon_y_fraction = 0.55
 source_skyline_y = 242.0
 source_horizon_y = 489.0
-depth_t = 0.3
-silhouette_color = Color(0.68, 0.77, 0.86, 1)
+depth_t = 0.45
+silhouette_color = Color(0.6, 0.7, 0.81, 1)
 
 [node name="BirdFlock" type="CanvasLayer" parent="."]
 layer = -60
