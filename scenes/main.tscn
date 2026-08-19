@@ -23,6 +23,8 @@
 [ext_resource type="Script" path="res://scripts/systems/skate_track.gd" id="22_skate_track"]
 [ext_resource type="Script" path="res://scripts/systems/achievement_manager.gd" id="23_achievements"]
 [ext_resource type="Script" path="res://scripts/systems/achievement_toast.gd" id="24_achievement_toast"]
+[ext_resource type="Script" path="res://scripts/systems/background_strip.gd" id="25_strip"]
+[ext_resource type="Texture2D" uid="uid://csplkncwj3uke" path="res://assets/textures/background/ice_pano.png" id="26_pano"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -33,35 +35,16 @@ script = ExtResource("12_sky")
 
 [node name="ParallaxBackground" type="ParallaxBackground" parent="." unique_id=1047312801]
 
-[node name="FarPeaks" type="ParallaxLayer" parent="ParallaxBackground"]
+[node name="IceStrip" type="ParallaxLayer" parent="ParallaxBackground"]
 motion_scale = Vector2(0.03, 0)
-script = ExtResource("4")
-player_path = NodePath("../../Player")
-shape_kind = 0
+script = ExtResource("25_strip")
+strip_texture = ExtResource("26_pano")
+skyline_y_fraction = 0.26
+horizon_y_fraction = 0.5
+source_skyline_y = 242.0
+source_horizon_y = 489.0
 depth_t = 0.0
-base_y_fraction = 0.42
 silhouette_color = Color(0.74, 0.81, 0.9, 1)
-ridge_height_min = 65.0
-ridge_height_max = 135.0
-ridge_period_scale = 2.6
-haze_color = Color(0.88, 0.92, 0.96, 0.4)
-haze_rise = 140.0
-rng_salt = 55
-
-[node name="FarRidge" type="ParallaxLayer" parent="ParallaxBackground"]
-motion_scale = Vector2(0.06, 0)
-script = ExtResource("4")
-player_path = NodePath("../../Player")
-shape_kind = 0
-depth_t = 0.22
-base_y_fraction = 0.47
-silhouette_color = Color(0.68, 0.77, 0.86, 1)
-ridge_height_min = 55.0
-ridge_height_max = 110.0
-ridge_period_scale = 1.7
-haze_color = Color(0.88, 0.92, 0.96, 0.5)
-haze_rise = 120.0
-rng_salt = 101
 
 [node name="MidRidge" type="ParallaxLayer" parent="ParallaxBackground"]
 motion_scale = Vector2(0.14, 0)

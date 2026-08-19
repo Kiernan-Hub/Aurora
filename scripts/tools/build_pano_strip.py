@@ -285,6 +285,36 @@ def make_loop_seamless(value, alpha):
     return value, alpha, before
 
 
+def print_placement(alpha):
+    """The two source rows BackgroundStrip needs to place this texture.
+
+    The strip is positioned in the scene by naming where its SKYLINE and its
+    WATERLINE should land as fractions of viewport height; the script then derives
+    both scale and offset from those two, which means it needs to know which rows
+    of this particular texture they are. They are a property of the art, not of the
+    game, so they are measured here and typed into main.tscn rather than hardcoded
+    in the script -- a re-baked or replaced panorama just reprints them.
+    """
+    height = alpha.shape[0]
+    solid_rows = np.where((alpha >= SUBJECT_ALPHA).any(axis=1))[0]
+    if solid_rows.size == 0:
+        return
+    skyline = int(solid_rows.min())
+    horizon = int(np.argmax((alpha >= SUBJECT_ALPHA).mean(axis=1)))
+    print(
+        "  placement for main.tscn: source_skyline_y = %d, source_horizon_y = %d"
+        % (skyline, horizon)
+    )
+    print(
+        "    (skyline is the tallest ice at %.3f of texture height, waterline at %.3f;"
+        % (skyline / float(height), horizon / float(height))
+    )
+    print(
+        "     everything above row %d is empty sky and costs VRAM -- see BackgroundStrip)"
+        % skyline
+    )
+
+
 def load_source(path):
     image = Image.open(path)
     rgb = np.asarray(image.convert("RGB")).astype(np.float32) / 255.0
@@ -400,6 +430,7 @@ def build(source_path, output_path):
     seated = value[subject_mask]
     print("  built ice band: p2 %.3f  median %.3f  p98 %.3f"
           % (*np.percentile(seated, [2.0, 50.0]), np.percentile(seated, 98.0)))
+    print_placement(alpha)
 
     rgba = np.zeros((height, value.shape[1], 4), dtype=np.float32)
     # White where alpha is zero, not black: Pillow's resize() is alpha-weighted on

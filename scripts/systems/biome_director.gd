@@ -125,6 +125,10 @@ var is_headless: bool = false
 var player: CharacterBody2D
 var sky_backdrop: Node
 var background_layers: Array[BackgroundGenerator] = []
+# The raster far layer. A second typed array rather than one array of Node: both
+# element types are then still checked by the compiler, which is the whole reason
+# resolve_palette_consumer() exists for the two scripts that carry no class_name.
+var background_strips: Array[BackgroundStrip] = []
 var terrain_generator: TerrainGenerator
 var snow: Node
 var ground_trees: Node2D
@@ -240,6 +244,10 @@ func _ready() -> void:
 			var background_layer: BackgroundGenerator = layer as BackgroundGenerator
 			if background_layer != null:
 				background_layers.append(background_layer)
+				continue
+			var strip_layer: BackgroundStrip = layer as BackgroundStrip
+			if strip_layer != null:
+				background_strips.append(strip_layer)
 
 	# Push frame one, so the run opens already inside its first biome instead of spending
 	# the first seconds on whatever the constants happen to be.
@@ -453,6 +461,8 @@ func push_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_tex
 		sky_backdrop.apply_palette(palette)
 	for background_layer: BackgroundGenerator in background_layers:
 		background_layer.apply_palette(palette)
+	for background_strip: BackgroundStrip in background_strips:
+		background_strip.apply_palette(palette)
 	if terrain_generator != null:
 		terrain_generator.apply_ice_palette(palette, from_ice_texture, to_ice_texture, ice_weight)
 	if snow != null:
