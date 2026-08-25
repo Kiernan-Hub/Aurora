@@ -418,6 +418,25 @@ func bank_playtime() -> bool:
 	return true
 
 
+# The part of THIS run that bank_playtime() has not folded into
+# SaveStore.total_playtime_seconds yet.
+#
+# Anything gating on CUMULATIVE playtime must add this to the saved total, never
+# main.elapsed_time. Banking runs on every PLAYING -> not-PLAYING transition -- which on
+# Android includes every notification and app switch (see _notification below) -- so adding
+# the whole run again credits phantom playtime equal to elapsed-at-pause, and it compounds
+# once per pause. FrozenLakeDirector shipped that way: three pauses at 3/6/9 minutes credited
+# +18 phantom minutes, on their own enough to cross LAKE_INTERVAL_SECONDS and hand out a set
+# piece that 20 minutes of real play had not earned.
+#
+# Correct in headless too, where bank_playtime() returns early and never advances
+# banked_run_seconds: nothing was banked, so the whole run reads as unbanked.
+func get_unbanked_seconds() -> float:
+	if main == null:
+		return 0.0
+	return maxf(main.elapsed_time - banked_run_seconds, 0.0)
+
+
 # Android lifecycle. There was no _notification anywhere in the project before
 # 2026-08-03, which meant three device-only failures that desktop testing cannot show:
 # the back button quit the app mid-run, a notification/call/app-switch left the game in

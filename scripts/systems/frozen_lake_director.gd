@@ -167,11 +167,24 @@ func get_lake_blend() -> float:
 			* clampf((lake_end_x - player_x) / LAKE_LOOK_FADE_DISTANCE, 0.0, 1.0)
 
 
-# Total playtime including the part of this run that has not been banked yet. Reads
-# Main.elapsed_time directly rather than asking GameManager to bank early: banking writes to
-# disk, and this is asked every physics frame.
+# Total playtime including the part of this run that has not been banked yet.
+#
+# The unbanked part comes from GameManager rather than being computed here, and it is NOT
+# main_node.elapsed_time: GameManager.bank_playtime() has usually already folded part of this
+# run into save_store.total_playtime_seconds -- it fires on every PLAYING -> not-PLAYING
+# transition, so on Android every notification and app switch banks. Adding the whole run on
+# top of that double-counted the banked part and armed lakes early; get_unbanked_seconds()
+# carries the reasoning and owns banked_run_seconds. Asking GameManager does not bank, so this
+# is still free to call every physics frame.
+#
+# The fallback when GameManager is missing is the full elapsed time, which is right for the
+# same reason: with nothing banking, none of the run is banked.
 func get_total_playtime_seconds() -> float:
-	return services.save_store.total_playtime_seconds + main_node.elapsed_time
+	var game_manager: GameManager = main_node.game_manager
+	var unbanked_seconds: float = main_node.elapsed_time
+	if game_manager != null:
+		unbanked_seconds = game_manager.get_unbanked_seconds()
+	return services.save_store.total_playtime_seconds + unbanked_seconds
 
 
 func is_lake_due() -> bool:
