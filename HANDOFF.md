@@ -11,6 +11,33 @@ and wait for an explicit "go." Flag anything with real bug potential, or with a 
 alternative, before building it. Don't self-verify visuals with screenshots — the owner checks
 in-game faster.
 
+## Last session — 2026-08-24, organization pass
+
+Not background work. A cleanup pass against the two same-day reviews, then everything was
+pushed: `origin/main` had been 16 commits behind and now has all of it.
+
+- The two reviews were folded into one, `docs/review/2026-08-24-code-and-repo-review.md`.
+  It is the single source for what is still open; **read its "Suggested order" before
+  starting anything organizational.**
+- **One real bug fixed:** pausing inflated cumulative playtime, so the frozen lake could
+  arrive in a single run. `GameManager.get_unbanked_seconds()` now owns that arithmetic, and
+  the planned aurora should reuse it rather than reading `Main.elapsed_time`.
+- `art_source/` split into `terrain/` and `background/` (recorded as renames), and the
+  panorama's source is tracked now — it was untracked and unbacked.
+- Debug and experiment material no longer ships: `export_presets.cfg` has an
+  `exclude_filter`. The rest of the release preset is still not release-shaped.
+- `build_iceberg_sprites.py` deleted (dead), plus a sweep of `PineLine` and pre-split
+  `art_source/` paths through the docs and tool headers.
+
+Gates run: `shipping_values_check`, `biome_schedule_check`, `lake_suppression_probe` — all
+PASS. **Not run:** freeze-search, floor-flicker, and the three windowed visual gates. Nothing
+touched physics or rendering, but the visual three are the ones that would catch a background
+regression if you want certainty before editing.
+
+Still open, cheapest first: the release preset proper (#6), one fast validation runner (#10),
+Godot 4.7.2 (#9), process priorities on `main.gd` (#8), and making `biome_schedule_check` read
+the scene's real `depth_t` (#5).
+
 ## Where things actually stand
 
 The panorama **is wired into the shipping game**. `ParallaxBackground` has four layers, three
