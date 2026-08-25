@@ -21,15 +21,27 @@ level, and older docs and tool examples may still show the flat paths.
 
 ### `background/` — inputs to `build_pano_strip.py`
 
-- `arch_spike_massif.png` — **the source of the shipped
-  `assets/textures/background/ice_pano.png`.** The rebuild is deterministic; verified
-  byte-identical on 2026-08-24. Do not lose this file. `arch_spike_massif.xcf` and
+- `pano.png` — **the current source of the shipped `assets/textures/background/ice_pano.png`**,
+  as of 2026-08-25. It supersedes `arch_spike_massif.png` as the direct build input: it's
+  `arch_spike_massif.png`'s art with a fourth panel (`sharp.png`) stitched onto it, widening the
+  panorama from 3548px to 5220px — a step toward the repeat-cadence item in `HANDOFF.md`, though
+  the new cycle time hasn't been re-measured against `MAX_SPEED`. `pano.xcf` is the GIMP working
+  file (layered, not flattened — reopen it, don't restart from the PNG, if the seam needs more
+  work). Rebuild with `python3 scripts/tools/build_pano_strip.py art_source/background/pano.png
+  assets/textures/background/ice_pano.png`, and update `main.tscn`'s `IceStrip.source_skyline_y`
+  to whatever the build prints — it moves if the art above the skyline changes at all.
+- `arch_spike_massif.png` — the previous shipped source, now superseded by `pano.png` but kept
+  for provenance (its art is still embedded in the new stitch). `arch_spike_massif.xcf` and
   `spike_massif.xcf` are its GIMP working files.
+- `sharp.png`, `pano2.png` — the panel stitched onto `arch_spike_massif.png` to build `pano.png`.
+  `pano2.png` is an earlier, too-short (725px) generation of the same panel; `sharp.png` (842px)
+  is what actually got used, then scaled to 887px inside `pano.xcf` to match.
+- `next.png` — unlabeled reference art, not used by any build step.
 - `example.png` — the load-bearing target-look reference, cited throughout
   `docs/research/background_differentiation.md`.
 - `archtower.png`, `spikefield.png`, `massif.png` — the three hand-picked panels that were
-  stitched into the panorama. `full_strip.png` is an intermediate stitch.
-- `mountains.png` — a spare, not used by anything.
+  stitched into `arch_spike_massif.png`. `full_strip.png` is an intermediate stitch of those
+  three, one generation further back than `pano.xcf`.
 
 ### Loose at the top level
 
@@ -40,6 +52,7 @@ level, and older docs and tool examples may still show the flat paths.
 
 `glacier_teal_faceted_depth_panel.png` was a stale 2026-08-08 build output kept as a
 before/after reference for an unmatched depth ramp; it was deleted on 2026-08-24.
+`background/mountains.png`, a spare not used by anything, was deleted on 2026-08-25.
 
 ## Why they are all in here
 
