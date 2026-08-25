@@ -25,10 +25,10 @@ Front-to-back, as wired in `scenes/main.tscn`:
 | `Player` | world | `0` | `player.gd` |
 | `SnowDrift/SnowParticles` | `GPUParticles2D` | `-50` | `snow_drift.gd` |
 | `BirdFlock/Flock` | `Node2D` | `-60` | `bird_flock.gd` |
-| `ParallaxBackground/PineLine` | `ParallaxLayer` | `(0.30, 0)` | `background_generator.gd` |
-| `ParallaxBackground/MidRidge` | `ParallaxLayer` | `(0.14, 0)` | `background_generator.gd` |
-| `ParallaxBackground/FarRidge` | `ParallaxLayer` | `(0.06, 0)` | `background_generator.gd` |
-| `ParallaxBackground/FarPeaks` | `ParallaxLayer` | `(0.03, 0)` | `background_generator.gd` |
+| `ParallaxBackground/IceStrip` | `ParallaxLayer` | `(0.05, 0)` | `background_strip.gd` |
+| `ParallaxBackground/MidRidge` | `ParallaxLayer` | `(0.035, 0)` | `background_generator.gd` |
+| `ParallaxBackground/FarRidge` | `ParallaxLayer` | `(0.025, 0)` | `background_generator.gd` |
+| `ParallaxBackground/FarPeaks` | `ParallaxLayer` | `(0.015, 0)` | `background_generator.gd` |
 | `SkyBackdrop/SkyCelestial` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 | `SkyBackdrop/SkyStars` | `TextureRect` | `-200` | `sky_backdrop.gd` |
 | `SkyBackdrop/SkyGlow` | `TextureRect` | `-200` | `sky_backdrop.gd` |
@@ -62,9 +62,12 @@ The layers were lowered and compressed so the tallest peak now tops out at y ≈
 | `MidRidge` | 0.52 → **0.52** | 75–190 → **45–90** | y 0.38–0.45 |
 | `PineLine` | **unchanged** | unchanged | y 0.51–0.57 |
 
-**`PineLine` is deliberately untouched.** It is the near layer and its ridge line sits *below*
-the ice surface (~y 0.46), which is what makes the pines read as rooted behind the slope rather
-than standing on top of it. Raising it breaks that immediately.
+**Historical: `PineLine` no longer exists.** The table above records a 2026-08-08 pass, when the
+near layer was a procedural pine treeline. It was replaced by the raster `IceStrip` (see the
+draw-order table); the three ridge layers and their retuned heights are still live. The reason
+`PineLine` was left alone then still applies to what sits there now: the near layer's line sits
+*below* the ice surface (~y 0.46), which is what makes it read as standing behind the slope
+rather than on top of it. Raising it breaks that immediately.
 
 `haze_rise` came down with the heights (230/190/140 → 140/120/100), or the haze band starts
 above the ridge it is supposed to be veiling and washes out the new sky.
@@ -162,7 +165,12 @@ were derived by hand from the placeholder rect sizes.
 Three independent cues, no shaders involved:
 
 1. **Colour.** Distant things sit closer to the sky colour. Under a *pale* sky that means
-   far = lighter, so `FarRidge` is the lightest scenery and `PineLine` the darkest.
+   far = lighter, so `FarRidge` is the lightest scenery and the near layer the darkest.
+
+   **Note the near layer no longer reaches its authored end of that ramp.** `get_scenery_color`
+   lerps `scenery_far → scenery_near`, but the scene's `depth_t` values now top out at 0.45, so
+   `scenery_near` is never rendered and `biome_schedule_check` — which measures the authored
+   endpoints — cannot see it. Open as review item #5.
 
    **The old corollary — "terrain is lighter than all of them" — is dead as of 2026-08-08.**
    `one.png`, the target art, is *dark saturated ice under a pale sky*, and that inversion
@@ -173,9 +181,9 @@ Three independent cues, no shaders involved:
    by), and **far and near scenery stay separated in luminance** so the recession below
    still has something to work with. Ordering of *scenery* layers still holds; ordering of
    terrain against scenery does not, and was never what made the surface readable.
-2. **Parallax rate.** `PineLine` keeps the `0.30` that was already shipped and proven; the
-   two ridge layers are *slower*. The pass therefore only ever moves background pixels
-   less per frame than before, never more.
+2. **Parallax rate.** Layers further back move slower. The near-to-far spread is currently
+   `0.05 … 0.015` (3.3:1); it was `0.30 … 0.03` (10:1) before the panorama landed, and whether
+   that flattening was deliberate is open as review item #3.
 3. **Haze.** Each layer builds two child containers in `_ready()`: `Ridges`, then `Haze`.
    Because `Haze` is added second it draws over every silhouette in **its own** layer and
    only that layer — so layer N's haze veils layer N, and layer N+1's silhouette then
@@ -282,7 +290,7 @@ source's steep cracks into the long lazy ones the reference art has, and slows t
 repeat to ~1.6 s at `MAX_SPEED` instead of ~0.5 s.
 
 **Texture provenance**: built by `scripts/tools/build_ice_texture.py` from a generated
-greyscale panel (`art_source/three.png`). **Run that script rather than dropping a
+greyscale panel (`art_source/terrain/three.png`). **Run that script rather than dropping a
 raw image in** — it does two things the raw panel needs. It lifts the darks: a raw panel
 bottoms out near 0.09, and since `Polygon2D` multiplies, that takes every biome tint to
 black. And it cross-fades the horizontal wrap. It deliberately does **not** mirror, which is

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Turn a raw generated ice panel into the game-ready depth tile.
 
-    python3 scripts/tools/build_ice_texture.py --check art_source/panel.png
-    python3 scripts/tools/build_ice_texture.py art_source/three.png
-    python3 scripts/tools/build_ice_texture.py art_source/four.png assets/textures/terrain/ice_faceted.png
+    python3 scripts/tools/build_ice_texture.py --check art_source/terrain/panel.png
+    python3 scripts/tools/build_ice_texture.py art_source/terrain/three.png
+    python3 scripts/tools/build_ice_texture.py art_source/terrain/four.png assets/textures/terrain/ice_faceted.png
 
 Every source panel lives in art_source/ (2026-08-15). They used to sit at the
 repository root, where Godot imported all 31MB of them into the export for

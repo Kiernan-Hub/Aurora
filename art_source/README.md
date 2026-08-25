@@ -8,23 +8,38 @@ it every panel here would be imported to VRAM and shipped in the export for noth
 
 ## Contents
 
-- `glacier_teal_faceted_depth_panel.png` — a **stale build output**, not a source panel,
-  despite the name. Built 2026-08-08, before `build_ice_texture.py` gained `match_depth_ramp()`
-  and the `OUTPUT_FLOOR = 0.38` lift: it bottoms out at 0.227 and its depth ramp sits ~0.10 off
-  the default tile's, which is exactly the whole-view brightness wobble that
-  `MAX_ICE_RAMP_DEVIATION` now gates against. Superseded by
-  `assets/textures/terrain/ice_faceted_depth.png`. Kept only as a before/after reference for
-  what an unmatched ramp looks like.
+Split into two subfolders on 2026-08-24; before that everything sat loose at this folder's top
+level, and older docs and tool examples may still show the flat paths.
+
+### `terrain/` — inputs to `build_ice_texture.py`
 
 - `one.png` … `fifteen.png` — the ice panel generations, live inputs to
   `build_ice_texture.py`. The numbering is chronological, not meaningful; which panel built
   which shipped tile is the table in `docs/development/biomes.md`, "Per-biome ice textures".
+- `raster_wall_1.png`, `raster_wall_2.png` — unused by any scene; safe to delete.
+- `Glossy Frozen Lake.png`, `glossy biome trail.png` — the frozen lake's look targets.
+
+### `background/` — inputs to `build_pano_strip.py`
+
+- `arch_spike_massif.png` — **the source of the shipped
+  `assets/textures/background/ice_pano.png`.** The rebuild is deterministic; verified
+  byte-identical on 2026-08-24. Do not lose this file. `arch_spike_massif.xcf` and
+  `spike_massif.xcf` are its GIMP working files.
+- `example.png` — the load-bearing target-look reference, cited throughout
+  `docs/research/background_differentiation.md`.
+- `archtower.png`, `spikefield.png`, `massif.png` — the three hand-picked panels that were
+  stitched into the panorama. `full_strip.png` is an intermediate stitch.
+- `mountains.png` — a spare, not used by anything.
+
+### Loose at the top level
+
 - `coin_source.png`, `rare_coin_source.png` — the raw coin exports, before the transparent
   re-crops in `assets/sprites/`.
 - `ChatGPT Image Aug 6, 2026, 07_13_24 PM.png` — the original art-direction reference the
-  whole palette is a daylight reading of (`docs/development/visuals.md`).
-- `Glossy Frozen Lake.png`, `glossy biome trail.png` — the frozen lake's look targets
-  (`HANDOFF.md`). Untracked, deliberately: they are big and they are the owner's inputs.
+  whole palette is a daylight reading of (`docs/development/visuals.md`). Deserves a real name.
+
+`glacier_teal_faceted_depth_panel.png` was a stale 2026-08-08 build output kept as a
+before/after reference for an unmatched depth ramp; it was deleted on 2026-08-24.
 
 ## Why they are all in here
 

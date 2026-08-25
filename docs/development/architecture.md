@@ -9,8 +9,9 @@ break things silently; the diagram and the reasoning both live here.
 Main (Node2D, scripts/main.gd)
 ├── SkyBackdrop       CanvasLayer -200 ← sky_backdrop.gd; gradient + stars/glow/sun-moon,
 │                     rebaked only while a transition moves
-├── ParallaxBackground  FarPeaks/FarRidge/MidRidge/PineLine, motion_scale.y ALWAYS 0
-│                     one background_generator.gd each, differing only by @export
+├── ParallaxBackground  FarPeaks/FarRidge/MidRidge/IceStrip, motion_scale.y ALWAYS 0
+│                     the three ridges are one background_generator.gd each, differing
+│                     only by @export; IceStrip is background_strip.gd (raster panorama)
 ├── BirdFlock         CanvasLayer -60, visible only while gliding ← bird_flock.gd
 ├── SnowDrift         CanvasLayer -50 (behind all gameplay) ← snow_drift.gd
 ├── Player            position (64,136), safe_margin 1.0  ← player.tscn

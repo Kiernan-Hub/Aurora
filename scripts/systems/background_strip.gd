@@ -4,8 +4,8 @@ class_name BackgroundStrip
 
 # One background layer drawn from a looping raster panorama instead of generated
 # geometry. Sibling of background_generator.gd, not a replacement for it: main.tscn
-# uses this for the far layer (the stitched ice panorama) and that file for the near
-# ones, and BiomeDirector recolours both the same way.
+# uses this for the FRONTMOST layer (the stitched ice panorama, depth_t 0.45) and that
+# file for the three ranges behind it, and BiomeDirector recolours both the same way.
 #
 # WHY THIS IS NOT BackgroundGenerator WITH A TEXTURE
 #
@@ -48,8 +48,8 @@ class_name BackgroundStrip
 #     main.gd's world rebase.
 #   * X is never world-rebased (world_rebaser.gd rebases Y only), so the scroll
 #     offset this layer mirrors against grows without bound. That is fine here and
-#     the arithmetic is worth writing down: at motion_scale 0.03 and MAX_SPEED 750,
-#     an hour of play reaches ~81,000 layer-local px, nowhere near float32's exact
+#     the arithmetic is worth writing down: at motion_scale 0.05 and MAX_SPEED 750,
+#     an hour of play reaches ~135,000 layer-local px, nowhere near float32's exact
 #     integer range. There is no counterpart to the terrain's rebase to add.
 #   * Do NOT read TerrainGenerator.session_seed here. ParallaxBackground is
 #     main.tscn's first child, so this _ready() runs before TerrainGenerator's and

@@ -33,7 +33,7 @@ t≈0.10s, killing the run and making every manual playtest and the harness's
 
 ## Vertical parallax — tried, reverted
 
-Background parallax is **horizontal only** — four layers, `motion_scale.x` 0.03 to 0.3,
+Background parallax is **horizontal only** — four layers, `motion_scale.x` 0.015 to 0.05,
 `motion_scale.y` always 0 on every one of them. Vertical
 parallax is deliberately off: it made the layer jump ~0.3× the camera's Y move, so
 each world rebase (~every 26s) snapped the background, and the layer's

@@ -8,8 +8,13 @@
 The output path is optional and defaults to assets/textures/background/<stem>.png.
 
 Sources live in art_source/, which carries a .gdignore -- the repo root and assets/
-both ship, art_source/ does not. Same rule as build_ice_texture.py and
-build_iceberg_sprites.py.
+both ship, art_source/ does not. Same rule as build_ice_texture.py.
+
+NOTE ON build_iceberg_sprites.py, referenced several times below: it was DELETED on
+2026-08-24 (dead -- it wrote iceberg_*.png sprites that never existed, from a source
+panel that never existed, and was superseded by this file two commits after it landed).
+The comparisons to it are kept because the reasoning is what justifies this file's
+choices; read them as history. Recover it from Git history if a claim needs checking.
 
 WHAT THE SOURCE MUST BE
     ONE wide, already-stitched panorama of ice formations over water, opaque RGB,
@@ -20,8 +25,8 @@ WHAT THE SOURCE MUST BE
     Everything pale, the way art_source/background/example.png is pale: the ice is
     a narrow bright band, and NOTHING in the frame is dark. --check enforces that.
 
-WHY THIS IS A SEPARATE FILE FROM build_iceberg_sprites.py
-    That tool takes ONE formation, alone, on a solid magenta backdrop, and emits a
+WHY THIS WAS A SEPARATE FILE FROM build_iceberg_sprites.py
+    That tool took ONE formation, alone, on a solid magenta backdrop, and emits a
     small sprite to be scattered on a grid. Three of its assumptions are false here
     and each would be a bug:
 
@@ -117,7 +122,16 @@ SUBJECT_ALPHA = 0.5
 # shipped once. That tool builds NEAR-layer sprites on [0.70, 1.00]; this is the
 # FAR layer, where the requirement inverts.
 #
-# WHY A TEXTURED FAR LAYER NEEDS A HIGHER BAND THAN A PROCEDURAL ONE
+# WHY A TEXTURED LAYER NEEDS A HIGHER BAND THAN A PROCEDURAL ONE
+#
+#   HISTORICAL PLACEMENT, LIVE CONSTANT. The calibration below was measured when this
+#   strip was the FAR layer at depth_t 0.0, taking scenery_far. It now ships FRONTMOST
+#   as IceStrip at depth_t 0.45, in front of the three procedural ranges, so the
+#   "there is no lighter entry to reach for" argument no longer applies as written.
+#   OUTPUT_FLOOR is unchanged because it is what shipped and looks right, not because
+#   the reasoning below still derives it -- re-measure before moving it. The general
+#   point, that texture * colour is always darker than a flat layer at the same palette
+#   entry, holds at any depth.
 #
 #   background_generator.gd renders its ridges FLAT -- ridge.color is WHITE and
 #   ridges_root.modulate carries the palette colour -- so a procedural layer's
@@ -133,7 +147,8 @@ SUBJECT_ALPHA = 0.5
 #   ordering inverts.
 #
 #   Measured in game on the [0.70, 1.00] band, first attempt: sky 0.771, ice 0.623,
-#   MidRidge 0.704, PineLine 0.735 -- the far layer was the darkest thing on screen
+#   MidRidge 0.704, PineLine 0.735 (PineLine, the then-near layer, no longer exists)
+#   -- the far layer was the darkest thing on screen
 #   and read as rock, which is the exact failure the reverted procedural session
 #   ended on.
 #
