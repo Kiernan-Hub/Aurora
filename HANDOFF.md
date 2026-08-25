@@ -110,11 +110,29 @@ commits so they could land with the visual pass instead. Full detail in
 `docs/review/2026-08-24-code-and-repo-review.md`, items #3, #4 and #5. **Each states its own
 status below — read that before acting on it, not this heading.**
 
-1. **Parallax depth was flattened.** Near-to-far went from 10:1 (`0.30 … 0.03`) to 3.3:1
-   (`0.05 … 0.015`), and the fastest layer is now 6× slower than it was. The owner's stated
-   reason the old background worked was *"the front layer moves faster than the ones behind
-   it."* Whether this was a deliberate re-tune for the panorama or drift across eight commits
-   is not recoverable from the commits. Four numbers in `main.tscn`.
+1. **Parallax depth — DECIDED 2026-08-25, keeping the current 3.3:1.** Near-to-far had gone
+   from 10:1 (`0.30 … 0.03`) to 3.3:1 (`0.05 … 0.015`) when the panorama landed, and whether
+   that was a re-tune or drift across eight commits was not recoverable from the commits. The
+   owner's call is to keep it. **No change to `main.tscn`; the four numbers stand.**
+
+   **Do not "restore" the old ratio later without reading this, because #1 and #2 are coupled
+   and the obvious fix is the bad one.** `motion_mirroring` is fixed in *layer* px, so the loop
+   distance is `mirror ÷ motion_scale` — raising the front layer to get separation shortens
+   the loop in direct proportion:
+
+   | front `motion_scale` | ratio | loop @ `MAX_SPEED` |
+   |---|---|---|
+   | 0.05 (now) | 3.3:1 | **106.1 s** |
+   | 0.15 (10:1 by raising the front) | 10:1 | **35.4 s** |
+
+   That is worse than the 54.6 s that made #2 a defect in the first place. Restoring 10:1 by
+   raising `IceStrip` would spend the entire widen and then some.
+
+   **If the flatness is ever actually complained about, lower the back layers instead** — it
+   preserves the old spread's shape and costs nothing in loop period, because the front layer
+   never moves: `0.05 / 0.0233 / 0.0100 / 0.0050` (front → back). Untested, and the far layers
+   would be very nearly static, which may read worse than the flatness does. Not doing it on
+   spec.
 2. **The panorama's repeat — CLOSED 2026-08-25, measured.** It was ~55 s at `MAX_SPEED`
    (40,956 world px) with 56% of the strip on screen at once. After the widen it is **106.1 s
    / 79,590 world px, 29% on screen**:

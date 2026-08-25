@@ -181,9 +181,19 @@ Three independent cues, no shaders involved:
    by), and **far and near scenery stay separated in luminance** so the recession below
    still has something to work with. Ordering of *scenery* layers still holds; ordering of
    terrain against scenery does not, and was never what made the surface readable.
-2. **Parallax rate.** Layers further back move slower. The near-to-far spread is currently
-   `0.05 … 0.015` (3.3:1); it was `0.30 … 0.03` (10:1) before the panorama landed, and whether
-   that flattening was deliberate is open as review item #3.
+2. **Parallax rate.** Layers further back move slower. The near-to-far spread is
+   `0.05 … 0.015` (3.3:1); it was `0.30 … 0.03` (10:1) before the panorama landed. **That
+   flattening was reviewed and kept, 2026-08-25** (review item #3) — not drift any more, a
+   decision.
+
+   **`IceStrip`'s `motion_scale` is not a free knob, and this is the trap.** It is the front
+   layer, so it is the one anybody reaching for more depth separation would raise — but it is
+   also the *raster* layer, and a raster layer loops. `ParallaxLayer.motion_mirroring` is fixed
+   in layer px, so the panorama's repeat distance is `mirror ÷ motion_scale`: at the shipped
+   0.05 the loop is 79,590 world px (106 s at `MAX_SPEED`, 1.06 biome cycles); at 0.15 it is
+   26,530 px (35 s). Depth separation and repeat visibility are the same number pulled in
+   opposite directions, and the three procedural layers behind it have no such constraint
+   because they never repeat. Raise the front layer only with the loop re-measured.
 3. **Haze.** Each layer builds two child containers in `_ready()`: `Ridges`, then `Haze`.
    Because `Haze` is added second it draws over every silhouette in **its own** layer and
    only that layer — so layer N's haze veils layer N, and layer N+1's silhouette then

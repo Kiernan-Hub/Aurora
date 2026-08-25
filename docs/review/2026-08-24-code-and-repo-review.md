@@ -73,6 +73,14 @@ The whole document is also written around `PineLine`, a node that no longer exis
 
 ### 3. Parallax depth was flattened, and it is the thing the owner said worked
 
+> **DECIDED 2026-08-25 — keeping 3.3:1. No change made.** The owner's call, taken with #4's
+> measurement in hand. The two items are coupled and the obvious fix is the bad one: loop
+> distance is `motion_mirroring ÷ motion_scale`, so restoring 10:1 by raising `IceStrip` to
+> 0.15 would cut the panorama loop from 106.1 s to **35.4 s** — worse than the 54.6 s that
+> made #4 a defect. The cost-free lever, if the flatness is ever actually complained about, is
+> to *lower the back layers* (`0.05 / 0.0233 / 0.0100 / 0.0050`), which keeps the old spread's
+> shape and leaves the loop untouched. `HANDOFF.md`, open decision 1, carries both tables.
+
 `main.tscn` vs `7ffd9f7`:
 
 | Layer | was | now |
