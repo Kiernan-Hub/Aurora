@@ -45,6 +45,7 @@ func _init() -> void:
 
 	check_flag_defaults()
 	check_scene_has_no_debug_overrides()
+	check_project_settings()
 	report(allow_temp)
 
 
@@ -126,6 +127,45 @@ func check_scene_has_no_debug_overrides() -> void:
 			failures.append("%s:%d serialises `%s` -- a debug knob must never reach the scene file. Delete the line in the editor (or by hand); this is the world_rebase_enabled regression's exact mechanism (docs/research/freeze_bug.md)"
 				% [MAIN_SCENE_PATH, line_number, line.strip_edges()])
 	file.close()
+
+
+# THE PINNED ENGINE SETTINGS, read from ProjectSettings rather than from project.godot's text.
+#
+# WHY THIS IS NOT A TEXT SCAN, unlike check_scene_has_no_debug_overrides() above. Godot only
+# SERIALISES a setting that differs from the engine default, and four of the values CLAUDE.md
+# calls load-bearing are currently equal to their defaults -- 1152x648, 60Hz, interpolation
+# off. So the editor strips those lines (and their comments) from project.godot every time it
+# opens the project, and no amount of `git checkout` makes them stay. Only quit_on_go_back
+# survives, because its default is true and ours is false.
+#
+# That stripping is cosmetic: the engine applies the same values either way, so a text scan
+# would fail constantly while nothing was wrong -- a gate that cries wolf gets disabled.
+#
+# WHAT IS ACTUALLY DANGEROUS is the same fact from the other side: because the file no longer
+# states these values, NOTHING in the repo notices if an engine default MOVES under us. Several
+# terrain constants derive from 1.0/physics_ticks_per_second, so that number is level geometry
+# (CLAUDE.md, "Editing rules"), and base size and Camera2D.zoom are one decision whose ratio is
+# the player's reaction time. A point-release default change would silently alter both, and the
+# 4.7.2 upgrade is an open item. get_setting() returns the EFFECTIVE value -- the file's, or the
+# engine's when the file is silent -- so this fails exactly when the effective value drifts, and
+# stays quiet for the harmless stripping. That is the whole reason it reads settings, not text.
+func check_project_settings() -> void:
+	expect_int("ProjectSettings display/window/size/viewport_width",
+		int(ProjectSettings.get_setting("display/window/size/viewport_width", 0)), 1152)
+	expect_int("ProjectSettings display/window/size/viewport_height",
+		int(ProjectSettings.get_setting("display/window/size/viewport_height", 0)), 648)
+	expect_int("ProjectSettings physics/common/physics_ticks_per_second",
+		int(ProjectSettings.get_setting("physics/common/physics_ticks_per_second", 0)), 60)
+	expect_bool("ProjectSettings physics/common/physics_interpolation",
+		bool(ProjectSettings.get_setting("physics/common/physics_interpolation", true)), false)
+	expect_string("ProjectSettings display/window/stretch/mode",
+		str(ProjectSettings.get_setting("display/window/stretch/mode", "")), "canvas_items")
+	expect_string("ProjectSettings display/window/stretch/aspect",
+		str(ProjectSettings.get_setting("display/window/stretch/aspect", "")), "expand")
+	expect_string("ProjectSettings display/window/handheld/orientation",
+		str(ProjectSettings.get_setting("display/window/handheld/orientation", "")), "landscape")
+	expect_bool("ProjectSettings application/config/quit_on_go_back",
+		bool(ProjectSettings.get_setting("application/config/quit_on_go_back", true)), false)
 
 
 func expect_bool(label: String, actual: bool, shipping: bool) -> void:
