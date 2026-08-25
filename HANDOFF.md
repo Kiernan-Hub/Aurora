@@ -105,23 +105,49 @@ survive the multiply. That measurement is why this attempt shipped where the oth
 
 ## Open decisions — the owner's call, not a cleanup
 
-Three findings from the 2026-08-24 review are background numbers, deliberately left untouched
-so they land with the visual pass rather than a hygiene commit. Full detail in
-`docs/review/2026-08-24-code-and-repo-review.md`, items #3, #4 and #5.
+Three findings from the 2026-08-24 review are background numbers, held back from the hygiene
+commits so they could land with the visual pass instead. Full detail in
+`docs/review/2026-08-24-code-and-repo-review.md`, items #3, #4 and #5. **Each states its own
+status below — read that before acting on it, not this heading.**
 
 1. **Parallax depth was flattened.** Near-to-far went from 10:1 (`0.30 … 0.03`) to 3.3:1
    (`0.05 … 0.015`), and the fastest layer is now 6× slower than it was. The owner's stated
    reason the old background worked was *"the front layer moves faster than the ones behind
    it."* Whether this was a deliberate re-tune for the panorama or drift across eight commits
    is not recoverable from the commits. Four numbers in `main.tscn`.
-2. **The panorama repeats every ~55 s** at `MAX_SPEED` (40,956 world px), on the most visible
-   layer, with 56% of it on screen at once. Cheapest levers: raise `motion_scale` (also helps
-   1, but shortens the loop in time), or bake a wider strip. **Do not** add a second offset
-   copy — `motion_mirroring` is one span by construction and a second sprite reintroduces the
-   tear `centered = false` exists to prevent. **Partially acted on 2026-08-25**: the source
-   went from 3548px to 5220px (+47%), which pushes the cycle time up proportionally at the same
-   `motion_scale` — call it roughly ~80s now, not measured. Still open until someone re-times
-   it against `MAX_SPEED` and decides whether that's enough.
+2. **The panorama's repeat — CLOSED 2026-08-25, measured.** It was ~55 s at `MAX_SPEED`
+   (40,956 world px) with 56% of the strip on screen at once. After the widen it is **106.1 s
+   / 79,590 world px, 29% on screen**:
+
+   | | 2026-08-24 | now |
+   |---|---|---|
+   | source | 3548×887 | 5220×887 |
+   | `source_skyline_y` | 242 | 302 |
+   | `display_scale` | 0.577 | 0.762 |
+   | `motion_mirroring.x` | 2048 layer px | 3979 layer px |
+   | loop | 40,956 world px / 54.6 s | **79,590 world px / 106.1 s** |
+   | on screen at once | 56% (70% on a 1440 phone) | **29% (36%)** |
+
+   **Nearly 2×, not the ~47% the wider source alone would buy, and the reason is worth
+   keeping**: `display_scale` is `(horizon_y_fraction − skyline_y_fraction) · viewport_height
+   ÷ (source_horizon_y − source_skyline_y)`, so moving `source_skyline_y` 242 → 302 shrank the
+   source span 247 → 187 and scaled the whole strip up 32%. 1.47 × 1.32 = 1.94. **Anything that
+   moves `source_skyline_y` moves the loop period too** — the two are not independent knobs.
+
+   The useful comparison is the biome cycle, 75,000 px: the loop was 0.55 of one and is now
+   **1.06**, so a repeat can no longer land inside the same biome. Calling that enough.
+
+   One consequence checked while measuring, since it is the failure mode
+   `background_strip.gd`'s header warns about: at `display_scale` 0.762 the strip is 676 px
+   tall on a 648 px viewport and now **covers the full screen height**, where at 0.577 it
+   spanned y 74–586 and structurally could not reach the celestial discs at y-fraction
+   0.08–0.09. Measured on the baked texture: the keyed sky band above the skyline has **mean
+   alpha 0.05–0.45 / 255** (max 62 in isolated pixels). It does not occlude anything. Re-check
+   this if the key-out in `build_pano_strip.py` is ever loosened.
+
+   **Do not** add a second offset copy if this ever needs more — `motion_mirroring` is one span
+   by construction and a second sprite reintroduces the tear `centered = false` exists to
+   prevent. The remaining levers are the same two: raise `motion_scale`, or bake wider still.
 3. **`scenery_near` is never rendered.** `depth_t` now tops out at 0.45, so only the far 45%
    of every palette's `scenery_far → scenery_near` ramp reaches the screen, and
    `biome_schedule_check` measures the authored endpoints — so it cannot see this. Nothing is

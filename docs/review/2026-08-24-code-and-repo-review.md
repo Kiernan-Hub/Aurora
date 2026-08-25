@@ -91,6 +91,14 @@ four-number change in `main.tscn`, not a code change.
 
 ### 4. The panorama repeats every ~55 seconds, on the frontmost layer
 
+> **CLOSED 2026-08-25 — re-measured at 106.1 s / 79,590 world px, 29% on screen.** The strip
+> was re-baked from a wider source (3548 → 5220 px) and `source_skyline_y` moved 242 → 302,
+> which together took `motion_mirroring.x` from 2048 to 3979 layer px. The loop is now 1.06
+> biome cycles rather than 0.55, so a repeat cannot land inside the same biome. The two inputs
+> are **not** independent — `display_scale` divides by `source_horizon_y − source_skyline_y`,
+> so the skyline row is also a loop-period knob. Full working in `HANDOFF.md`, open decision 2.
+> The arithmetic below is the pre-widen state and is kept because it is the method.
+
 `ice_pano.png` is 3548×887. At the scene's `skyline_y_fraction 0.33` / `horizon_y_fraction
 0.55` and a 648px viewport, `display_scale` = 0.577, so `motion_mirroring.x` = 2048 layer-px.
 At `motion_scale 0.05` the loop covers **40,956 world px ≈ 55 s at MAX_SPEED** (82 s at 500
