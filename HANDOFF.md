@@ -64,6 +64,26 @@ Also still open from the review, not urgent: #7 (segment caches are never pruned
 warning there before touching it**, `arm_lake()`'s write-ahead rule and deterministic replay both
 depend on cached history staying available).
 
+### The three visual gates are no longer owed — run 2026-08-26, all clean
+
+They had been outstanding since the background commit that moved `source_skyline_y` 242 → 302.
+Run with a window, as they must be; `project.godot` verified clean after each.
+
+- **`sky_layer_check` PASS** — 9 biomes, 45 layers measured, every claimed layer above the
+  24/255 floor. Tightest: `first_light` ice contrast at 13 against its own 10/255 floor.
+- **`biome_contact_sheet`** — all eight render distinctly and the day arc reads in order.
+- **`ice_look_capture`** — three frames, no funnel warp and no wash-out (the two failures this
+  capture exists to catch). The widened panorama parallaxes correctly: different silhouettes at
+  `player_x` 271 / 1645 / 7048, with the arch arriving only in the last. **No regression from
+  the `source_skyline_y` change.**
+
+**Two contact-sheet rows print an empty biome name, and that is not a bug.** `resolve_variant()`
+returns `base.make_variant()`, a duplicated *in-memory* resource with no `resource_path`, and the
+sheet labels rows from `palette.resource_path`. A blank label means "a rare variant rolled for
+this session's salt" — rows 4 and 5 were `sunset_rose` (`variant_chance` 0.5) and `violet_dusk`
+(0.2), the two most likely to roll. Only those two and `glacier_teal` have a variant at all.
+Labelling them `<base> (variant)` is a one-line change in the debug script, not made.
+
 ### Read before you run any Godot command: the `project.godot` strip is wider than documented
 
 **`--export-debug` and `--export-release` strip `project.godot`, not just `--editor`.** It
