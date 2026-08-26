@@ -160,6 +160,39 @@ child *named* `"ColorRect"`; `AIR_COIN_SCALE` scales the whole `Area2D`, so visu
 pickup range; and the surface clearances in `coin_spawner.gd` (34) and `powerup_spawner.gd` (40)
 were derived by hand from the placeholder rect sizes.
 
+### The app icon (2026-08-25)
+
+Not game art, but the same pipeline: source in `art_source/`, baked into `assets/` by a tool in
+`scripts/tools/`, never hand-placed.
+
+`art_source/aura.png` is a **3×3 contact sheet of nine candidate icons**, not an icon.
+`scripts/tools/build_app_icons.py` measures the sheet's gutters, cuts one tile and writes the
+three launcher images. The shipped tile is `--row 1 --col 2`, the aurora over dark peaks — the
+game's namesake, and the highest-contrast of the nine. Re-cutting a different one is one flag.
+
+Four things here fail silently, all verified by exporting an APK and unzipping it, which is the
+only way to see what actually ships:
+
+- **An empty `launcher_icons/*` path does not mean "no layer".** Godot substitutes the project
+  icon, still the stock Godot robot. That is why `adaptive_foreground_432x432` points at a
+  deliberately **fully transparent** PNG rather than being left blank: the art lives in the
+  background layer, and a blank path would have put the Godot logo on top of it.
+- **`adaptive_monochrome_432x432` is still empty, so the themed icon IS the Godot robot** on
+  Android 13+ with themed icons enabled. Confirmed in the APK: 23,679 opaque pixels of Godot
+  logo. Deriving a silhouette from the aurora tile was tried at several thresholds and produced
+  unreadable mush — a photographic scene has no single-colour reduction. It needs a simple
+  drawn mark, which is a design decision, not a build step. **Open.**
+- **The two crops are different on purpose.** The tile has rounded corners baked into its
+  pixels. The adaptive background takes the *full* tile, because the launcher's mask cuts well
+  inside those corners; the legacy 192px icon takes an *inset* crop, because old launchers draw
+  the square as-is and the baked corners read as a black frame. Backwards, it is either
+  black-cornered or over-zoomed.
+- **`assets/icons/*` is in `export_presets.cfg`'s `exclude_filter`, and must stay excluded but
+  present.** The exporter reads launcher icons off disk at export time, not out of the pack, so
+  excluding them saves ~225 KB of `.ctex` that no code ever loads (verified: the `res/mipmap-*`
+  icons are identical either way). **Excluded does not mean unused — deleting these files
+  breaks the icon**, and nothing will fail to tell you.
+
 ## How depth is produced
 
 Three independent cues, no shaders involved:

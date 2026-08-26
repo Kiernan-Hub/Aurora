@@ -45,6 +45,11 @@ level, and older docs and tool examples may still show the flat paths.
 
 ### Loose at the top level
 
+- `aura.png` — **the app-icon source, and a 3×3 contact sheet of nine candidates, not an icon.**
+  Input to `scripts/tools/build_app_icons.py`, which measures the sheet's gutters and cuts one
+  tile. Shipping tile is row 1, column 2 (the aurora over dark peaks); `--row`/`--col` re-cuts a
+  different one. What the three outputs in `assets/icons/` are for, and the four ways an app
+  icon fails silently, are in `docs/development/visuals.md`, "The app icon".
 - `coin_source.png`, `rare_coin_source.png` — the raw coin exports, before the transparent
   re-crops in `assets/sprites/`.
 - `ChatGPT Image Aug 6, 2026, 07_13_24 PM.png` — the original art-direction reference the
