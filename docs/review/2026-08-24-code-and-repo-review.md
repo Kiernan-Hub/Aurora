@@ -247,7 +247,39 @@ the fast gates, the chasm and lake gates, the three visual checks, and one devic
 not move to the 4.8 development line.** Watch `project.godot` afterwards — an `--editor` run
 strips the pinned physics settings, so `git diff` it before committing.
 
-### 10. There is no single fast validation command
+**Amended 2026-08-25 — it is not only `--editor`.** `--export-debug` and `--export-release` strip
+`project.godot` exactly the same way, and it happened during this session's icon verification:
+`viewport_width`/`viewport_height`, `physics_ticks_per_second`, `physics_interpolation` and every
+explanatory comment in the file were deleted. Reverted, nothing shipped. Two things make this
+worse than it looks:
+
+- **`shipping_values_check` does not catch it.** Measured: it PASSES on the stripped file. It
+  reads `ProjectSettings` at runtime, and the stripped keys fall back to engine defaults that
+  currently *equal* the pinned values, so nothing is visibly wrong until an engine default moves
+  — which is precisely what a 4.7.2 or 4.8 upgrade could do. The pin exists so the value is
+  declared rather than inherited, and the gate cannot see the difference.
+- **`--export-pack` is safe** — verified, and it is the only export form `check.sh` uses.
+
+**Cheap hardening, not yet done:** have `shipping_values_check` scan `project.godot` as *text* for
+the pinned keys, the same way it already text-scans `main.tscn` rather than reading properties,
+and for the same stated reason. Until then: `git diff project.godot` after any export or editor
+run, which this review already said and which is now the only thing standing between an upgrade
+session and silently un-pinning level geometry.
+
+### 10. There is no single fast validation command — CLOSED 2026-08-25
+
+**`./scripts/check.sh` is that command** (`bfad804`, `1be85a0`): ~25s, the four fast gates plus
+the export-content check, all five run even after one fails, non-zero exit. Both halves were
+mutation-tested. Two deviations from what this item asked for, both deliberate:
+
+- **Project import is NOT in it.** Import is `--headless --editor --quit`, and an `--editor` run
+  strips the pinned settings out of `project.godot` — see the amendment on #9 below. A validation
+  script that silently changes level geometry is worse than none.
+- **The export check's forbidden list is hardcoded, not read from `exclude_filter`.** Deriving it
+  would make the check agree with the preset by construction, including when someone deletes a
+  line from it — the regression worth catching.
+
+The original text follows.
 
 The custom gates are strong, but there is no runner and no CI, so their protection depends on a
 person remembering several commands. Add one script (or CI job) covering project import plus
@@ -312,7 +344,16 @@ is ever assigned anywhere in the project — `SfxPlayer` is the only thing that 
 A player will drag it, hear no change, and read it as a bug. Either hide it until music
 ships, or label it.
 
-**Android export is not release-shaped.**
+**Android export is not release-shaped — MOSTLY CLOSED 2026-08-25** (`bd27aa8`).
+`com.kiernan.aura`, `"Aura"`, `0.1.0` / code 1, launcher and adaptive icons cut from
+`art_source/aura.png` by `scripts/tools/build_app_icons.py`, and an `exclude_filter` that a gate
+now verifies. **Still open, all deliberate:** the debug keystore (nothing is being published),
+`export_format = 0` (APK, not AAB — an AAB is a store-upload decision), empty `min_sdk`/
+`target_sdk`, and the **themed icon, which is still the Godot robot** because an empty
+`adaptive_monochrome` path makes Godot substitute the project icon (`HANDOFF.md`). The original
+text follows.
+
+
 `package/unique_name = "com.example.$genname"`, `version/code = 1` with an empty
 `version/name`, no launcher/adaptive icons, `export_format = 0` (APK, not AAB), empty
 `min_sdk` / `target_sdk`, and `export_filter = "all_resources"` with no exclusions. The
@@ -382,7 +423,10 @@ move investigation history to `docs/research/`.
    soaks of 36–55 min each completed with no slowdown (steady 75 frames/s to the end) and no
    failure, which is weak evidence against it being urgent. Measure memory properly before
    touching it, and re-read the warning there first.
-6. Release preset + export-content check and the #10 validation runner, which share the same
-   exclude list — do them together.
-7. #9 (Godot 4.7.2) in an isolated commit, then #8 (process priority) as a behaviour change
-   with the full physics gate suite behind it.
+6. ~~Release preset + export-content check and the #10 validation runner~~ — **done 2026-08-25.**
+   `./scripts/check.sh` is the runner, the export-content check is its fifth gate, and the preset
+   carries a real application id, version and icons. Read #10 and the P2 export note for the
+   deliberate deviations and what is still open (keystore, AAB, themed icon).
+7. #9 (Godot 4.7.2) in an isolated commit — **read the 2026-08-25 amendment on it first, the
+   `project.godot` strip is wider than this review originally said** — then #8 (process priority)
+   as a behaviour change with the full physics gate suite behind it.

@@ -52,8 +52,9 @@ the aurora. Don't "clean up" that empty-looking file. Full detail: `docs/develop
 
 1. **#9, Godot 4.7.2** in an isolated commit — editor plus matching Android export templates,
    then `check.sh`, the physics gates, the three visual gates, and one device build. Do **not**
-   move to the 4.8 line. `git diff project.godot` afterwards; an `--editor` run strips the pinned
-   physics settings.
+   move to the 4.8 line. **`git diff project.godot` after every single engine invocation** — see
+   the warning directly below, which is wider than the review originally said and is the main
+   hazard of this particular task.
 2. **#8, `main.gd`'s process priorities** — `main.gd:221` documents a tree-order requirement for
    `apply_world_rebase()` with nothing enforcing it. Treat it as a behaviour change: full physics
    gate suite behind it.
@@ -62,6 +63,24 @@ the aurora. Don't "clean up" that empty-looking file. Full detail: `docs/develop
 Also still open from the review, not urgent: #7 (segment caches are never pruned — **read the
 warning there before touching it**, `arm_lake()`'s write-ahead rule and deterministic replay both
 depend on cached history staying available).
+
+### Read before you run any Godot command: the `project.godot` strip is wider than documented
+
+**`--export-debug` and `--export-release` strip `project.godot`, not just `--editor`.** It
+happened during this session's icon verification: `viewport_width`/`viewport_height`,
+`physics_ticks_per_second`, `physics_interpolation` and every explanatory comment in the file were
+deleted. Caught by `git status` and reverted; nothing shipped, and the tree is clean.
+
+**`shipping_values_check` does NOT catch this — measured, it PASSES on the stripped file.** The
+gate reads `ProjectSettings` at runtime, and the stripped keys fall back to engine defaults that
+currently *equal* the pinned values. Nothing looks wrong until an engine default moves, which is
+exactly what item 1 above could cause. `--export-pack` is safe and is the only export form
+`check.sh` uses.
+
+So: **`git diff project.godot` after any editor or export run**, and treat a clean `check.sh` as
+no evidence at all on this one point. The cheap hardening — text-scan `project.godot` for the
+pinned keys, the way the gate already text-scans `main.tscn` and for the same stated reason — is
+written up in the review under #9 and **not built**.
 
 ## Older session — 2026-08-25, the three open background decisions are closed
 
