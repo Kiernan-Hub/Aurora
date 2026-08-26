@@ -1,5 +1,30 @@
 # Handoff — background
 
+## Last session — 2026-08-25, the three open background decisions are closed
+
+All three of the "Open decisions" below were resolved in one pass, one commit each. **Read
+each item's own status line rather than this summary** — they carry the numbers.
+
+- **#2, the panorama repeat: measured, closed.** 106.1 s at `MAX_SPEED`, up from 54.6 s; 29%
+  of the strip on screen at once, down from 56%. The loop is now 1.06 biome cycles, so a repeat
+  cannot land inside one biome.
+- **#1, parallax depth: decided, keeping 3.3:1.** No scene change. The two items are coupled —
+  restoring 10:1 by raising `IceStrip` would have cut the loop to 35.4 s, worse than the defect
+  #2 started as.
+- **#3, the gate's blind spot: fixed.** `biome_schedule_check` reads the scene's real `depth_t`
+  now. No palette data changed.
+
+**Nothing in this pass touched physics, collision, spawning, or `main.tscn`.** The only code
+change is inside a debug gate. `shipping_values_check` and `biome_schedule_check` both PASS;
+the three windowed visual gates were **not** run and did not need to be, since no rendered
+value moved — but they are still owed from the 2026-08-25 background commit below, which did
+move one (`source_skyline_y` 242 → 302).
+
+Next, per `docs/review/2026-08-24-code-and-repo-review.md`'s "Suggested order": the release
+preset + export-content check and the one fast validation runner (#6 and #10, same exclude
+list, do them together), then Godot 4.7.2 (#9), then `main.gd`'s process priorities (#8). The
+**aurora borealis** is the next real feature and the background is no longer in its way.
+
 Rewritten 2026-08-24. The previous version described the panorama as an unwired experiment
 and was written around `PineLine`; both had been false for eight commits, and it was sending
 sessions back toward finished work. The investigation history it carried now lives in
@@ -166,12 +191,21 @@ status below — read that before acting on it, not this heading.**
    **Do not** add a second offset copy if this ever needs more — `motion_mirroring` is one span
    by construction and a second sprite reintroduces the tear `centered = false` exists to
    prevent. The remaining levers are the same two: raise `motion_scale`, or bake wider still.
-3. **`scenery_near` is never rendered.** `depth_t` now tops out at 0.45, so only the far 45%
-   of every palette's `scenery_far → scenery_near` ramp reaches the screen, and
-   `biome_schedule_check` measures the authored endpoints — so it cannot see this. Nothing is
-   broken today (`pale_morning` is the tightest at 0.100 against a 0.08 floor) but the gate
-   would keep passing all the way to collapse. Fixing the gate to read the scene's real
-   `depth_t` is the durable half of this.
+3. **`scenery_near` is never rendered — GATE FIXED 2026-08-25, the data left alone.**
+   `depth_t` tops out at 0.45, so only the far 45% of every palette's
+   `scenery_far → scenery_near` ramp reaches the screen. Nothing was broken
+   (`pale_morning` is the tightest at 0.100 against a 0.08 floor) but `biome_schedule_check`
+   measured the *authored* endpoints and would have kept passing all the way to collapse.
+
+   The durable half is done: the gate now reads the four layers' `depth_t` out of `main.tscn`
+   via `SceneState` and applies the floor at that real range, printing it on the PASS line as
+   `scenery_depth=0.00..0.45`. **No palette and no `depth_t` was changed** — the numbers are
+   the same, something is finally watching them.
+
+   **What this means for authoring, and it is the part worth remembering:** an authored
+   `scenery_far`/`scenery_near` pair is roughly **twice** the separation that lands on screen.
+   Widening the palette and spreading the layers' `depth_t` are interchangeable fixes and the
+   gate's failure text names both.
 
 ## Before trusting this file
 

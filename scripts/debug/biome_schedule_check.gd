@@ -17,8 +17,9 @@ extends SceneTree
 #   2. ice_surface stays bright in every biome, and ice_depth stays close to it. The first
 #      is the read of "this is the edge you ride on"; the second stops the palette ramp and
 #      the tile's own depth ramp multiplying deep ice down to black.
-#   3. Far scenery stays separated from near scenery, so the depth read survives every
-#      palette (the far/near lerp in BiomePalette.get_scenery_color assumes it).
+#   3. Far scenery stays separated from near scenery AT THE DEPTHS main.tscn ACTUALLY USES,
+#      so the depth read survives every palette (the far/near lerp in
+#      BiomePalette.get_scenery_color assumes it).
 #   4. The schedule is pure in world_x: same x always yields the same biome and progress,
 #      progress stays in [0, 1], and the cycle wraps in both directions.
 #   5. Channel weights are monotonic, land exactly on 0 and 1 at the window ends, and
@@ -62,6 +63,16 @@ const MIN_ICE_SURFACE_LUMINANCE: float = 0.55
 const MAX_ICE_DEPTH_DARKENING: float = 0.55
 # Far and near scenery must differ by at least this much luminance or the parallax layers
 # collapse into one flat mass and the depth cue is gone.
+#
+# MEASURED ON THE DEPTHS main.tscn ACTUALLY RENDERS, not on the authored endpoints. Those are
+# different numbers and the difference is the whole of review item #5: get_scenery_color()
+# lerps scenery_far -> scenery_near over depth_t, and the scene's four layers sit at
+# 0.0 / 0.15 / 0.30 / 0.45, so only the far 45% of every palette's ramp ever reaches a screen.
+# Until 2026-08-25 this floor was applied to the authored pair, which no player has ever seen:
+# pale_morning passed at 0.223 while the frame showed 0.100. Nothing was broken, but the gate
+# would have kept passing all the way to a visible collapse -- it was guarding a property of
+# the .tres files rather than a property of the game. 0.08 was always a statement about what is
+# on screen, so it is the reading that moved, not the number.
 const MIN_SCENERY_SEPARATION: float = 0.08
 
 # --- Gameplay contrast (coin_color / obstacle_color) ---------------------------------------
@@ -128,13 +139,30 @@ const ICE_RAMP_COLUMN_STRIDE: int = 8
 # Swept rather than probed at the ends because a snap fires in the middle.
 const ICE_CROSSFADE_PROBE_STEPS: int = 64
 
+# --- The scenery depth range the scene actually renders ------------------------------------
+#
+# Read out of main.tscn rather than assumed, so the separation floor above measures the frame
+# instead of the .tres files. Read through SceneState, NOT by instantiating: this gate is
+# deliberately physics-free, player-free and render-free (see the header), and instantiating
+# main.tscn to learn four floats would hand it the entire game -- plus a BiomeDirector, which
+# is the thing under test.
+const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
+const DEPTH_PROPERTY: String = "depth_t"
+
 var failures: Array[String] = []
 var ice_variant_count: int = 0
+# Defaults are the authored endpoints, i.e. the pre-2026-08-25 behaviour. They are only ever
+# used if reading the scene failed, which is itself recorded as a failure -- so a broken read
+# degrades to the old check rather than to no check.
+var rendered_depth_far: float = 0.0
+var rendered_depth_near: float = 1.0
+var rendered_depth_source: String = "authored endpoints (scene not read)"
 
 
 func _init() -> void:
 	var schedule_steps: int = get_int_argument("--steps", DEFAULT_SCHEDULE_STEPS)
 
+	read_rendered_depth_range()
 	check_palettes()
 	if ice_variant_count < MIN_ICE_VARIANTS:
 		failures.append("no palette resolved an ice_texture (expected at least %d) -- every pattern variant is missing, so the whole cycle silently fell back to the smooth tile"
@@ -150,6 +178,10 @@ func _init() -> void:
 			" biome_distance=", BiomeDirector.BIOME_DISTANCE,
 			" transition=", BiomeDirector.TRANSITION_DISTANCE,
 			" ice_variants=", ice_variant_count,
+			# Printed on PASS so the rendered range is visible in the log even when nothing is
+			# wrong: it is the number that silently shrank once already, and a gate that only
+			# mentions it on failure cannot show it drifting.
+			" scenery_depth=", "%.2f..%.2f" % [rendered_depth_far, rendered_depth_near],
 			" steps=", schedule_steps)
 		quit(0)
 		return
@@ -168,6 +200,87 @@ func get_all_palettes() -> Array[BiomePalette]:
 	var all_palettes: Array[BiomePalette] = [BiomeDirector.PALETTE_FIRST_LIGHT]
 	all_palettes.append_array(BiomeDirector.BIOME_CYCLE)
 	return all_palettes
+
+
+# Every node in main.tscn carrying a depth_t, and the min/max of them -- which is the slice of
+# scenery_far -> scenery_near that a player can actually be shown.
+#
+# DISCOVERED BY PROPERTY, NOT BY NODE PATH. A fifth parallax layer, or a rename, should widen
+# this automatically; a hardcoded list of four paths would keep passing while measuring a range
+# the scene had stopped using, which is the same shape of bug as the one being fixed.
+#
+# FINDING NOTHING IS A FAILURE, NOT AN EMPTY PASS, for the same reason.
+func read_rendered_depth_range() -> void:
+	var packed_scene: PackedScene = load(MAIN_SCENE_PATH) as PackedScene
+	if packed_scene == null:
+		failures.append("could not load %s to read the parallax layers' %s -- the scenery separation floor is measuring authored endpoints again"
+			% [MAIN_SCENE_PATH, DEPTH_PROPERTY])
+		return
+
+	var state: SceneState = packed_scene.get_state()
+	var found_far: float = INF
+	var found_near: float = -INF
+	var layer_count: int = 0
+
+	for node_index: int in range(state.get_node_count()):
+		var depth: Variant = get_scene_property(state, node_index, DEPTH_PROPERTY)
+		if depth == null:
+			continue
+		found_far = minf(found_far, float(depth))
+		found_near = maxf(found_near, float(depth))
+		layer_count += 1
+
+	if layer_count == 0:
+		failures.append("no node in %s carries a %s -- either the parallax layers were renamed or restructured, or the property was dropped. Either way this check has nothing to measure and the scenery separation floor is unguarded"
+			% [MAIN_SCENE_PATH, DEPTH_PROPERTY])
+		return
+
+	rendered_depth_far = found_far
+	rendered_depth_near = found_near
+	rendered_depth_source = "%d layers in %s" % [layer_count, MAIN_SCENE_PATH.get_file()]
+
+
+# One property off one node in a saved scene, or null if the node does not have it.
+#
+# THE STRIPPED-DEFAULT TRAP, which is why this is not just get_node_property_value(). Godot
+# omits any property still equal to its script's default when it saves a scene -- the same
+# stripping that stops shipping_values_check from text-scanning project.godot, documented in
+# that file. A layer left at depth_t 0.0 would therefore be absent from main.tscn entirely and
+# read here as "this node has no depth", quietly narrowing the measured range. So an absent
+# property falls back to the script's own default rather than being skipped.
+func get_scene_property(state: SceneState, node_index: int, property_name: String) -> Variant:
+	var node_script: Script = null
+	for property_index: int in range(state.get_node_property_count(node_index)):
+		var found_name: String = state.get_node_property_name(node_index, property_index)
+		if found_name == property_name:
+			return state.get_node_property_value(node_index, property_index)
+		if found_name == "script":
+			node_script = state.get_node_property_value(node_index, property_index) as Script
+	if node_script == null:
+		return null
+	return get_script_default(node_script, property_name)
+
+
+# The value a fresh instance of `node_script` gives `property_name`, or null if it has no such
+# property. Instantiating the SCRIPT is not instantiating the scene: this builds one bare
+# ParallaxLayer with no children, no _ready() worth speaking of and no tree, which is a
+# different thing from loading main.tscn.
+func get_script_default(node_script: Script, property_name: String) -> Variant:
+	var probe: Variant = node_script.new()
+	if probe == null:
+		return null
+	var probe_object: Object = probe as Object
+	var value: Variant = null
+	for property: Dictionary in probe_object.get_property_list():
+		if property["name"] == property_name:
+			value = probe_object.get(property_name)
+			break
+	# These scripts extend ParallaxLayer, so the probe is a Node and is NOT refcounted -- it
+	# leaks for the life of the gate unless it is freed by hand. Checked rather than assumed,
+	# since nothing stops a future depth_t-carrying script from extending Resource.
+	if not (probe_object is RefCounted):
+		probe_object.free()
+	return value
 
 
 func check_palettes() -> void:
@@ -222,10 +335,18 @@ func check_palettes() -> void:
 			failures.append("%s.ice_depth much darker than ice_surface (%.3f vs %.3f) -- it multiplies with the tile's own depth ramp and deep ice goes black"
 				% [label, depth_luminance, surface_luminance])
 
-		var separation: float = absf(get_luminance(palette.scenery_far) - get_luminance(palette.scenery_near))
+		# Evaluated at the depths the scene really uses, NOT at the authored endpoints -- see
+		# MIN_SCENERY_SEPARATION. Both numbers go in the failure text because the gap between
+		# them is usually the actual finding: an author looking at a healthy-looking .tres
+		# needs to be told the scene is only showing them a slice of it.
+		var authored_separation: float = absf(get_luminance(palette.scenery_far) - get_luminance(palette.scenery_near))
+		var separation: float = absf(
+			get_luminance(palette.get_scenery_color(rendered_depth_far))
+			- get_luminance(palette.get_scenery_color(rendered_depth_near)))
 		if separation < MIN_SCENERY_SEPARATION:
-			failures.append("%s scenery_far/near separation %.3f < %.3f -- parallax depth collapses"
-				% [label, separation, MIN_SCENERY_SEPARATION])
+			failures.append("%s scenery separation is %.3f on screen (< %.3f) -- parallax depth collapses. The palette authors %.3f between scenery_far and scenery_near, but %s only reach depth_t %.2f..%.2f, so that is the fraction of the ramp a player is shown. Widen the palette, or spread the layers' depth_t."
+				% [label, separation, MIN_SCENERY_SEPARATION, authored_separation,
+					rendered_depth_source, rendered_depth_far, rendered_depth_near])
 
 		# ice_texture is allowed to be null (= the default smooth tile), so a .tres whose
 		# ExtResource path went stale resolves to null and looks EXACTLY like a palette that

@@ -306,6 +306,17 @@ per-call state shows up rather than passing on a monotonic sweep; that every cha
 is monotonic and lands exactly on 0 and 1; and that `BiomePalette.blend_into` never
 allocates, since it runs every frame of a transition.
 
+**The scenery separation is measured at the `depth_t` values `main.tscn` really uses, not at
+the palettes' authored endpoints** (2026-08-25, review item #5). Those are different numbers:
+the four parallax layers sit at 0.0 / 0.15 / 0.30 / 0.45, so a palette only ever shows the far
+45% of its `scenery_far → scenery_near` ramp, and the gate used to pass `pale_morning` at 0.223
+while the frame showed 0.100. It reads the range out of the saved scene through `SceneState` —
+no instantiation, so the gate stays physics- and render-free — and reports it on the PASS line
+as `scenery_depth=0.00..0.45` so the range is visible when nothing is wrong. **A layer with no
+`depth_t` line in `main.tscn` is not skipped**: Godot omits a property still equal to its
+script's default (the same stripping documented in `shipping_values_check.gd`), so the default
+is recovered from the script. Finding *no* layers at all is a failure, not an empty pass.
+
 It also guards the **per-biome ice textures**, which are invisible everywhere else: `ice_texture`
 is legally `null` (= use the default smooth tile), so a stale `ExtResource` path resolves to
 `null` and is indistinguishable from a palette that never wanted a variant. The PASS line
@@ -318,6 +329,13 @@ variant's depth ramp drifts off the default tile's (`MAX_ICE_RAMP_DEVIATION`), o
 scenery separation, and (for the texture checks) by tightening `MAX_ICE_RAMP_DEVIATION` to
 0.001 — all were caught, and the file passed again on revert. Worth repeating
 if you extend it: this file's whole reason to exist is that nothing else can see this code.
+
+The depth-range read was negative-tested the same way, and the first of the two is the one
+that proves the change rather than the code: raising `MIN_SCENERY_SEPARATION` to 0.15 failed
+**7 palettes at a rendered 0.100–0.137 while every one of them authors 0.223–0.304** — under
+the old endpoint-based check all seven would have passed. Deleting a layer's `depth_t` line
+from `main.tscn` was caught too, via the script-default fallback (`FarPeaks` came back as
+`BackgroundGenerator`'s own 0.5, which is exactly why its authored 0.0 is serialised at all).
 
 **What even this gate cannot see is the two-band build/repaint code**, because `BiomeDirector`
 is inert under `--headless` and never calls `apply_ice_palette()`. That was verified once with

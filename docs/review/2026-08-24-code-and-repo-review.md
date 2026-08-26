@@ -128,6 +128,21 @@ the tear the `centered = false` comment exists to prevent.
 
 ### 5. `biome_schedule_check` no longer measures what the scene renders
 
+> **FIXED 2026-08-25.** The gate reads the four layers' `depth_t` out of `main.tscn` through
+> `SceneState` — no instantiation, so it stays physics- and render-free — and applies
+> `MIN_SCENERY_SEPARATION` to `get_scenery_color()` evaluated at that real range. The range is
+> printed on the PASS line (`scenery_depth=0.00..0.45`) so it is visible when nothing is wrong,
+> a layer missing its `depth_t` line falls back to the script default rather than being
+> skipped, and finding no layers at all fails instead of passing vacuously. Negative-tested:
+> at a 0.15 floor, 7 palettes fail at a rendered 0.100–0.137 while all 7 author 0.223–0.304 —
+> under the old check every one of them passed.
+>
+> **One claim below is wrong and was not acted on:** `check_gameplay_contrast` does *not*
+> compare against `scenery_near`. Its backgrounds are `ice_surface`, `ice_depth` and
+> `sky_horizon` (`GAMEPLAY_CONTRAST_BACKGROUNDS`), none of which are depth-ramped, so it never
+> had this blind spot. Whether a coin should also be checked against the scenery it is
+> silhouetted against is a real question, but it is a new check, not a fix to this one.
+
 `get_scenery_color(depth_t)` lerps `scenery_far → scenery_near`. The scene's `depth_t` values
 were `0.0 / 0.22 / 0.58 / 1.0`; they are now `0.0 / 0.15 / 0.30 / 0.45`. **`scenery_near` — the
 darkest authored colour in all nine palettes — is never rendered.** Only the far 45% of every
@@ -358,8 +373,9 @@ move investigation history to `docs/research/`.
 
 1. Fix #1 (playtime double-count) — smallest diff, real gameplay impact, and the aurora will
    inherit the same call.
-2. Decide #3, #4 and #5 with the owner before touching them; all three are background/parallax
-   numbers that belong to the visual pass in flight, not to a cleanup.
+2. ~~Decide #3, #4 and #5 with the owner~~ — **done 2026-08-25, all three closed.** #4
+   re-measured (106.1 s, up from 54.6 s), #3 decided (keep 3.3:1; the two are coupled and
+   raising the front layer would have cost more than it bought), #5 fixed in the gate.
 3. Rewrite or retire `HANDOFF.md` (#2), then one sweep over the stale locations in P2.
 4. Commit the art relocation deliberately, then push the 16 commits.
 5. ~~Run the soak for #6~~ — **done, #6 is closed.** #7 still unmeasured directly, but six

@@ -828,6 +828,11 @@ shows up); channel weights are monotonic and land exactly on 0 and 1; and `blend
 allocates. Verified to actually fail by darkening `starlit_night.rim_core` and flattening its
 scenery separation — both were caught.
 
+**The scenery separation is measured at the `depth_t` values `main.tscn` really uses**, read
+out of the saved scene, not at the palettes' authored endpoints — the layers only reach 0.45,
+so a palette shows the far 45% of its ramp and an authored pair is roughly double what lands
+on screen. Details in `debugging.md`; the authoring consequence is in `visuals.md`.
+
 It also covers the ice textures, which nothing else can see. `ice_texture` is legally `null`,
 so a `.tres` whose `ExtResource` path went stale resolves to `null` and looks **identical** to
 a palette that never wanted a variant — the biome would just quietly keep the smooth tile. So

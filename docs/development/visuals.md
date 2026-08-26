@@ -167,10 +167,18 @@ Three independent cues, no shaders involved:
 1. **Colour.** Distant things sit closer to the sky colour. Under a *pale* sky that means
    far = lighter, so `FarRidge` is the lightest scenery and the near layer the darkest.
 
-   **Note the near layer no longer reaches its authored end of that ramp.** `get_scenery_color`
-   lerps `scenery_far → scenery_near`, but the scene's `depth_t` values now top out at 0.45, so
-   `scenery_near` is never rendered and `biome_schedule_check` — which measures the authored
-   endpoints — cannot see it. Open as review item #5.
+   **Note the near layer never reaches its authored end of that ramp.** `get_scenery_color`
+   lerps `scenery_far → scenery_near`, but the scene's `depth_t` values top out at 0.45, so
+   `scenery_near` itself is never rendered and every palette shows only the far 45% of its
+   ramp. **That is not a bug and it is now guarded** — as of 2026-08-25 `biome_schedule_check`
+   reads the scene's real `depth_t` range and applies its separation floor there, rather than
+   to the authored endpoints it used to measure (review item #5, closed). Before that it
+   passed `pale_morning` at 0.223 while the frame showed 0.100.
+
+   The consequence for authoring: **a palette's `scenery_far`/`scenery_near` pair has to be
+   roughly twice as wide as the separation you want on screen.** Widening the ramp and
+   spreading the layers' `depth_t` are interchangeable fixes, and the gate's failure text names
+   both.
 
    **The old corollary — "terrain is lighter than all of them" — is dead as of 2026-08-08.**
    `one.png`, the target art, is *dark saturated ice under a pale sky*, and that inversion
