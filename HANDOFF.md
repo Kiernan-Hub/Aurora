@@ -1,6 +1,69 @@
-# Handoff — background
+# Handoff
 
-## Last session — 2026-08-25, the three open background decisions are closed
+The sections below run newest first. The older ones are all background work, which is **parked
+in a shippable state, not finished** — read "Where things actually stand" before touching it.
+
+## Last session — 2026-08-25, shipping hygiene: review items #6 and #10 are closed
+
+Four commits, all pushed (`bfad804`, `1be85a0`, `4604b08`, `bd27aa8`). `origin/main` is level.
+Nothing here touched physics, collision, spawning, terrain or `main.tscn`.
+
+- **`./scripts/check.sh` exists — one command, ~25s, the before-every-commit tier.** It runs
+  `shipping_values_check`, `biome_schedule_check`, `terrain_invariant_check` (`--seeds=8
+  --to=300000`, hardcoded so nobody shortens it into a meaningless FAIL), `lake_suppression_probe`,
+  and an export-content check. It runs **all five even after one fails**. Mutation-tested by
+  flipping `debug_chasm_disabled`: two gates caught it, exit 1.
+- **Project import is deliberately NOT in the runner**, against the letter of review #10. Import is
+  `--headless --editor --quit`; an `--editor` run strips the pinned physics settings out of
+  `project.godot`, and terrain constants derive from `physics_ticks_per_second`. A validation script
+  that silently changes level geometry is worse than none. `--export-pack` was checked and does
+  *not* rewrite it, which is the only reason the export check can live in a runner.
+- **The export-content check verifies `exclude_filter` actually does something** — it had been in
+  `export_presets.cfg` since 2026-08-24 with nothing watching it. Its forbidden list is hardcoded
+  rather than read from the preset, on purpose: deriving it would make the check agree with the
+  preset by construction, including when someone deletes a line from it. Mutation-tested by
+  blanking `exclude_filter` — 3 of 4 paths appeared, run went red.
+- **`CLAUDE.md` trimmed 201 → 179 lines**, back under its own ~175 cap. Every trap and number
+  survives; four cuts removed text duplicated one level down and still linked from here.
+- **The release preset is real now**: `com.kiernan.aura`, `"Aura"`, `0.1.0` / code 1, launcher
+  icons cut from `art_source/aura.png` (a 3×3 sheet of nine candidates — the owner picked row 1
+  col 2, the aurora). Debug keystore left alone; nothing is being published yet.
+
+### Deferred, and fine to leave: the themed icon is the Godot robot
+
+`launcher_icons/adaptive_monochrome_432x432` is empty, and **an empty path does not mean "no
+layer"** — Godot substitutes the project icon. So on Android 13+ with themed icons enabled the
+launcher shows 23,679 opaque pixels of Godot logo. Confirmed by unzipping a built APK, which is
+the only way to see it.
+
+**Explicitly deferred by the owner on 2026-08-25 — worry about it later.** It is not urgent:
+nothing is being published, and it only appears in themed-icon mode. Deriving a silhouette from
+the aurora tile was tried at six thresholds and produces unreadable mush — a photographic scene
+has no single-colour reduction — so the fix is a **simple drawn mark** (peaks plus an arc, or
+similar), which is a design decision, not a build step. Pick the mark, save it 432×432 on
+transparency, point the preset at it, re-export and unzip to confirm.
+
+The same trap already bit the *foreground* layer and is handled there: it points at a
+deliberately fully-transparent PNG, because a blank path would have put the Godot logo on top of
+the aurora. Don't "clean up" that empty-looking file. Full detail: `docs/development/visuals.md`,
+"The app icon".
+
+### Next, in order
+
+1. **#9, Godot 4.7.2** in an isolated commit — editor plus matching Android export templates,
+   then `check.sh`, the physics gates, the three visual gates, and one device build. Do **not**
+   move to the 4.8 line. `git diff project.godot` afterwards; an `--editor` run strips the pinned
+   physics settings.
+2. **#8, `main.gd`'s process priorities** — `main.gd:221` documents a tree-order requirement for
+   `apply_world_rebase()` with nothing enforcing it. Treat it as a behaviour change: full physics
+   gate suite behind it.
+3. **The aurora borealis** — the next real feature, `docs/development/aurora_borealis.md`.
+
+Also still open from the review, not urgent: #7 (segment caches are never pruned — **read the
+warning there before touching it**, `arm_lake()`'s write-ahead rule and deterministic replay both
+depend on cached history staying available).
+
+## Older session — 2026-08-25, the three open background decisions are closed
 
 All three of the "Open decisions" below were resolved in one pass, one commit each. **Read
 each item's own status line rather than this summary** — they carry the numbers.
@@ -36,7 +99,7 @@ and wait for an explicit "go." Flag anything with real bug potential, or with a 
 alternative, before building it. Don't self-verify visuals with screenshots — the owner checks
 in-game faster.
 
-## Last session — 2026-08-25, background called done for now
+## Older session — 2026-08-25, background called done for now
 
 **Background is being parked here, not finished.** It's in a shippable, decent-looking state;
 the three open decisions from 2026-08-24 (below) are still open, and nothing here should read
@@ -75,7 +138,7 @@ visual three (`sky_layer_check`, `ice_look_capture`, `biome_contact_sheet`) are 
 would actually catch a regression from the skyline_y change or the new source width — run them
 before trusting this further, especially before touching background again.
 
-## Last session — 2026-08-24, organization pass
+## Older session — 2026-08-24, organization pass
 
 Not background work. A cleanup pass against the two same-day reviews, then everything was
 pushed: `origin/main` had been 16 commits behind and now has all of it.
@@ -209,10 +272,9 @@ status below — read that before acting on it, not this heading.**
 
 ## Before trusting this file
 
-Re-run the fast gates — `shipping_values_check`, `biome_schedule_check`,
-`terrain_invariant_check`. After any silhouette or palette change, also run the three windowed
-visual gates (`sky_layer_check`, `ice_look_capture`, `biome_contact_sheet`), which **must run
-without `--headless`**.
+Run `./scripts/check.sh` (~25s, five gates). After any silhouette or palette change, also run
+the three windowed visual gates (`sky_layer_check`, `ice_look_capture`, `biome_contact_sheet`),
+which **must run without `--headless`** and so can never join the runner.
 
 ## Still in view
 
