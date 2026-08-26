@@ -1,22 +1,21 @@
 # Aura — endless 2D skater (Godot 4.7, GDScript, Mobile renderer)
 
-Alto's-Adventure-style endless downhill skater: the player auto-runs right at a speed that
-ramps over time, riding an infinite, seeded, procedurally generated terrain. Gameplay art is
-still placeholder `ColorRect`/`Polygon2D`.
+Alto's-Adventure-style endless downhill skater: the player auto-runs right at a speed that ramps
+over time, on infinite seeded procedural terrain. Gameplay art is still placeholder rects.
 
 **Priority order:** terrain stability > physics/collision correctness > game feel. Missions,
 upgrades and visual polish stay deprioritized until the core loop is stable.
 
-**Editing rules.** Inspect connected files and find the root cause before changing anything.
-Prefer targeted changes; preserve existing architecture unless you propose and explain first.
-`project.godot` is features `4.7` + `Mobile`, physics **60 Hz**, interpolation **OFF** — some
-terrain constants derive from `1.0/physics_ticks_per_second`, so changing the tick rate
-silently changes level geometry.
+**Editing rules.** Find the root cause in the connected files before changing anything; prefer
+targeted changes, and propose before altering existing architecture. `project.godot` pins `4.7` +
+`Mobile`, physics **60 Hz**, interpolation **OFF** — some terrain constants derive from
+`1.0/physics_ticks_per_second`, so changing the tick rate silently changes level geometry.
 
 ## Where things are documented
 
-This file is the map; everything else is one level down, read on demand. Paths below are
-under `docs/`.
+This file is the map. Everything else is one level down under `docs/`, read on demand. **Finishing
+an investigation?** The conclusion goes here (what's true, what to avoid, one pointer); the full
+log — measurements, ruled-out approaches — goes in `docs/research/`.
 
 | Doc | Open it when |
 |---|---|
@@ -26,15 +25,10 @@ under `docs/`.
 | `development/input.md` | Any input change — desktop *or* touch |
 | `development/visuals.md` | Background, scenery, palette or draw order |
 | `development/biomes.md` | Any colour that changes over a run — palettes, the director, a transition, `shaders/ice.gdshader` |
-| `development/aurora_borealis.md` | The aurora feature — the game's namesake, planned but not started |
 | `development/ice_panels.md` | Making a new ice tile — panel requirements, prompts, the `--check` validator |
 | `development/debugging.md` | Running a gate, or reviving an archived probe |
-| `development/dead_code.md` | Something looks reachable but isn't |
 | `review/*.md` | Point-in-time audits — the running list of known-but-unfixed debt. Read the newest before a cleanup pass |
 | `research/*.md` | Closed investigations. **Not required reading** — open one only when something here points at it |
-
-**Finishing an investigation?** The conclusion goes here (what's true, what to avoid, one
-pointer); the full log — measurements, ruled-out approaches — goes in `docs/research/`.
 
 ## Run / debug / test
 
@@ -43,66 +37,57 @@ No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/Ma
 
 **`./scripts/check.sh` runs the fast five in ~25s** — shipping-values, biome-schedule,
 terrain-shape, lake-suppression, and an export-content check that fails if `scripts/debug` or
-either `experiments/` reaches a real pack. It is the before-every-commit tier, and deliberately
-does *not* import the project: `--editor` strips the pinned physics settings (`--export-pack`
-doesn't). The physics gates and the three windowed visual ones stay manual and can't join it.
+either `experiments/` reaches a real pack. Run it before every commit. It deliberately does *not*
+import the project: `--editor` strips the pinned physics settings (`--export-pack` doesn't).
 
-**Twelve maintained checks, and only twelve** — everything else in `scripts/debug/` now
-lives in `scripts/debug/archive/`, so the directory answers "is this a gate?". Commands and
-flags: `debugging.md`.
+**Twelve maintained checks, and only twelve** — everything else lives in `scripts/debug/archive/`,
+so the directory answers "is this a gate?". `check.sh` runs four; the other eight take minutes each
+or need a window (commands: `debugging.md`):
 
 | Check | Run after |
 |---|---|
-| terrain-shape (fast, physics-free) | any segment/shape change |
 | freeze-replay, **freeze-search**, floor-flicker | any player/collision/segment change. Freeze-search is the one that actually finds stalls — replay alone isn't sufficient |
 | camera-shake | any change to the camera follow in `main.gd` |
 | chasm | anything touching voids, fall death or the boost velocity model |
-| `biome_schedule_check.gd` (~1s, palette data) | any palette change |
 | `sky_layer_check.gd`, `ice_look_capture.gd`, `biome_contact_sheet.gd` | any visual change. **These three must run WITHOUT `--headless`** — they diff or save rendered frames |
-| `lake_suppression_probe.gd` (~10s) | any spawner change, or a new spawner — asserts nothing spawns on a frozen lake |
-| **`shipping_values_check.gd`** (~0.2s) | **every commit** |
 
-The seven headless gates are blind to biome code (`BiomeDirector` returns early under
-`--headless`), which is the only reason the visual four exist. `shipping_values_check` is the
-only thing watching the debug knobs: each is a plain `var` so the editor can't serialise it,
-which also means no other gate can see one left flipped. It fails on all of them and on any
-`debug_*` override reaching `main.tscn`; `--allow-temp` downgrades it to a warning.
+**Every headless gate is blind to biome code** (`BiomeDirector` returns early under `--headless`) —
+the only reason the visual three exist. And `shipping_values_check` is the only thing watching the
+debug knobs: each is a plain `var` the editor can't serialise, so no other gate sees one left
+flipped. It fails on all of them and on any `debug_*` override reaching `main.tscn`; `--allow-temp`
+downgrades it to a warning.
 
-Plus one *diagnostic*, `ice_seam_probe.gd` (windowed): A/Bs tile bytes inside one frozen frame
-to tell a tile's content from a rendering artifact. It prints and never fails — reach for it
-when a new ice tile reads as a line on screen. The 18 files in `scripts/debug/archive/` are
-one-offs that measure a *paused* game and print confident, meaningless numbers; never trust one
-without reviving it. Log any new seed that trips `FREEZE_REPRO` in
-`docs/research/freeze_bug.md` before fixing it.
+A 13th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing; the 18 files in
+`scripts/debug/archive/` measure a *paused* game and print confident, meaningless numbers, so never
+trust one without reviving it (`debugging.md`, which also has the `FREEZE_REPRO` seed log rule).
 
 ## Scene wiring
 
-**The annotated scene graph is the first section of `architecture.md`** — open it before
-touching `main.tscn`. The rules that break things silently if you don't know them:
+**The annotated scene graph is the first section of `architecture.md`** — open it before touching
+`main.tscn`. The rules that break things silently if you don't know them:
 
 - Nodes find each other **by sibling path** (`NodePath("../Player")`), resolved with
   `get_node_or_null` and null-guarded. There is no service locator.
 - **Exactly one autoload**, `Services` (`class_name GameServices`); a new global needs a real
-  justification. **Never write `Services.x` in gameplay code** — use
-  `GameServices.resolve(self)` and null-guard it, or you break every headless probe.
-- `GameManager.set_state()` is the **only** place allowed to touch `get_tree().paused` or a
-  screen's visibility.
-- **Draw order is tree order plus `CanvasLayer.layer`; no `z_index` anywhere.** Reordering
-  siblings reorders rendering.
+  justification. **Never write `Services.x` in gameplay code** — use `GameServices.resolve(self)`
+  and null-guard it, or you break every headless probe.
+- `GameManager.set_state()` is the **only** place allowed to touch `get_tree().paused` or a screen's
+  visibility.
+- **Draw order is tree order plus `CanvasLayer.layer`; no `z_index` anywhere.** Reordering siblings
+  reorders rendering.
 - **The six spawners live under `TerrainGenerator`** so world rebasing carries them for free.
 
 ## Things that break silently
 
-- **World rebasing must stay on.** `Main.world_rebase_enabled` isn't `@export`ed — exporting
-  it once serialised to `false` and reintroduced the freeze for weeks. (`freeze_bug.md`)
-- **Spawners under `TerrainGenerator` must not read `session_seed` in `_ready()`** — children
-  ready before parents, so it's still 0 there. Initialise seed-derived state on the first
+- **World rebasing must stay on.** `Main.world_rebase_enabled` isn't `@export`ed — exporting it
+  once serialised to `false` and reintroduced the freeze for weeks. (`freeze_bug.md`)
+- **Spawners under `TerrainGenerator` must not read `session_seed` in `_ready()`** — children ready
+  before parents, so it's still 0 there; initialise seed-derived state on the first
   `_physics_process`. Shipped as a real bug: identical powerup schedule every session.
-- **`get_terrain_height` must stay pure** in `(session_seed, world_x)` — chunk visuals,
-  collision, player tilt and the debug HUD all sample it independently. **One runtime input is
-  allowed**, `lake_segment_index`, under a **write-once, write-ahead** rule: `arm_lake()` is its
-  only writer and may only set it *above* `highest_cached_segment_index`, a segment nothing has
-  computed, so arming can only **extend** the height field. Never assign it directly.
+- **`get_terrain_height` must stay pure** in `(session_seed, world_x)` — chunk visuals, collision,
+  player tilt and the debug HUD all sample it independently. **One runtime input is allowed**,
+  `lake_segment_index`, **write-once and write-ahead**: `arm_lake()` is its only writer and may only
+  set it *above* `highest_cached_segment_index`, so arming can only **extend** the height field.
 - **Always `ensure_segment_cache_for_world_x(x)` before `find_segment_index_at_x(x)`**, or the
   binary search silently clamps and returns the wrong segment.
 - **Player spawn `(64,136)` is a manual invariant**: `ground_y(192) + surface_y_offset(-32) −
@@ -111,33 +96,31 @@ touching `main.tscn`. The rules that break things silently if you don't know the
 - **Any long-running harness needs `debug_chasm_disabled = true`**, next to the two
   `debug_spawning_disabled` flags, or a chasm death reports a confident wrong number
   (`freeze_search`/`camera_shake_probe` take `--chasms=1` to opt back in).
-- **A chasm's *void* is flat and must stay flat** — zero added slope, steepest terrain still
-  20.13°. Anything ≥ `floor_max_angle` is a wall and wedges the player (`large_valley`, three
-  weeks). `exit_drop` is a **step exactly at the far lip**, never a ramp across the void: a ramp
-  aims a boosting player down it instead of returning the 0 that carries the skim.
+- **A chasm's *void* is flat and must stay flat** — zero added slope, steepest terrain still 20.13°.
+  Anything ≥ `floor_max_angle` is a wall and wedges the player (`large_valley`, three weeks).
+  `exit_drop` is a **step exactly at the far lip**, never a ramp across the void: a ramp aims a
+  boosting player down it instead of returning the 0 that carries the skim.
 - **Scaling a hill scales length *and* amplitude together** (`BIG_HILL_SCALES`) — peak slope is
   `atan(π·magnitude/length)` and both hill types already sit at that 20.13° ceiling, so raising
   amplitude alone walks into the same wall-wedge failure.
-- **The opening biome renders at ABSOLUTE cycle index 0 only**, and the session phase advances
-  on every death and survives a restart — so it is the first ~3 min of a *cold launch*, and one
-  death puts it out of reach. **Set `BiomeDirector.debug_pin_intro_biome` before editing
-  `first_light.tres`**, or you are eyeballing a different biome (this happened).
+- **The opening biome renders at ABSOLUTE cycle index 0 only**, and the session phase survives death
+  and restart — so it is the first ~3 min of a *cold launch*, one death out of reach. **Set
+  `BiomeDirector.debug_pin_intro_biome` before editing `first_light.tres`**, or you are eyeballing
+  a different biome (this happened).
 - **Deep ice is hard-capped at `ice_depth × 0.38`** (`ICE_TILE_DEPTH_FLOOR`, matched to the tile
-  builder's `OUTPUT_FLOOR`), so even a pure white tint renders as a 0.38 grey. When ice "looks
-  grey", **check saturation before brightness** — the fix is usually widening `b − r`.
+  builder's `OUTPUT_FLOOR`), so even a pure white tint renders as a 0.38 grey. When ice "looks grey",
+  **check saturation before brightness** — the fix is usually widening `b − r`.
 - **Every `Area2D` has terrain chunks entering it.** Player/chunks/obstacles are layer 1;
-  coins/powerups layer 2; everything masks layer 1. `obstacle.gd`, `coin.gd` and `powerup.gd`
-  each filter with `body.is_in_group("player")` — drop that and a chunk collects/kills.
-- **A pickup's node scale scales its `Area2D`**, so art size *is* hitbox size and the two can
-  never be tuned apart. `AIR_COIN_SCALE` 1.9 and the rare coin's 1.0 are both load-bearing.
+  coins/powerups layer 2; everything masks layer 1. `obstacle.gd`, `coin.gd` and `powerup.gd` each
+  filter with `body.is_in_group("player")` — drop that and a chunk collects or kills.
+- **A pickup's node scale scales its `Area2D`**, so art size *is* hitbox size and the two can never
+  be tuned apart. `AIR_COIN_SCALE` 1.9 and the rare coin's 1.0 are both load-bearing.
 - **The jump upgrade curve may not exceed ×1.0224.** `CHASM_LEAD_IN_LENGTH` (900) bounds
-  max-upgrade × the √2 powerup; above that a boosted jump lands *inside* the void, and
-  `check_upgrade_curve()` fails the build. Same reason **double jump is ruled out** —
-  `physics.md` has why a cooldown doesn't help.
-- **The autoload *node* exists under `--headless --script`** though the global `Services`
-  identifier doesn't. `GameManager.apply_upgrades()` must skip headless, or gates measure
-  whatever jump level is in *your* `save.dat` (measured: 48/48 → 8 failures). Check
-  `DisplayServer` directly, never `services.is_headless`.
+  max-upgrade × the √2 powerup; above that a boosted jump lands *inside* the void and
+  `check_upgrade_curve()` fails the build. Same reason **double jump is ruled out** (`physics.md`).
+- **The autoload *node* exists under `--headless --script`** though the global `Services` identifier
+  doesn't. `GameManager.apply_upgrades()` must skip headless, or gates measure whatever jump level
+  is in *your* `save.dat` (48/48 → 8 failures). Check `DisplayServer`, never `services.is_headless`.
 
 ## Known issues
 
@@ -145,18 +128,17 @@ touching `main.tscn`. The rules that break things silently if you don't know the
   input/movement level. Revisit only on a confirmed-visible complaint (`terrain_jitter.md`).
 - **`mega_drop` shakiness — SEGMENT CUT, not fixed**, `MEGA_DROP_SELECTION_WEIGHT = 0`. Six
   mitigations measured, none worked — read `camera_shake.md` before spending more time here.
-- **FIXED, don't re-investigate:** boost-into-obstacle-cluster death; `is_on_floor()` flicker
-  on rising terrain (`floor_flicker.md`). **Unreproduced:** "view snaps forward/backward for
-  half a second", watchdogs stayed 0.
+- **FIXED, don't re-investigate:** boost-into-obstacle-cluster death; `is_on_floor()` flicker on
+  rising terrain (`floor_flicker.md`). **Unreproduced:** "view snaps forward/backward for half a
+  second", watchdogs stayed 0.
 - **Removed entirely, don't resurrect:** the old *terrain-driven* obstacle placement inside
-  `terrain_generator.gd` (not the same as the live `ObstacleSpawner`) and vertical background
-  parallax. History in `dead_code.md`. Don't touch `project.godot` / `.godot/` / `*.uid` /
-  `icon.svg` unless asked.
+  `terrain_generator.gd` (not the live `ObstacleSpawner`) and vertical background parallax
+  (`dead_code.md`). Don't touch `project.godot` / `.godot/` / `*.uid` / `icon.svg` unless asked.
 
 ## Build order / status
 
-All **working** unless said otherwise. The numbers here are load-bearing; the reasoning
-behind each is in the doc named at the end of its row.
+All **working** unless said otherwise. The numbers are load-bearing; the reasoning is in the doc
+named at the end of each row.
 
 | # | Area | The parts you can't infer from the code |
 |---|---|---|
@@ -173,29 +155,25 @@ behind each is in the doc named at the end of its row.
 | 11 | **Achievements** | `AchievementManager` is the ONLY writer of `SaveStore.achievements` (an open dictionary, so a new one needs no version bump). **Triggers come TO it** — it listens to signals systems already emit, never the reverse — so adding one is a table row plus one `.connect()`, both in that file. **Its ids are save data**: adding is free, renaming un-earns it for everyone. No gallery/rewards yet, and an addon was evaluated and declined. `architecture.md` |
 | 12 | **Aurora borealis** | PLANNED, not started — the feature the game is named after. Rare sky-only spectacle, sibling of the frozen lake but rarer (~60 min cumulative playtime vs. 20) and purely cosmetic, riding its own single blend ramp the same way the lake does. `aurora_borealis.md` |
 
-**Two `.gdshader`s exist, both owned by ice** — `shaders/ice.gdshader` (the band: two-tile
-noise dissolve, per-biome `ice_contrast`, plus a `flatten` and a `gloss` only the lake writes)
-and `shaders/frozen_lake_reflection.gdshader`. Colour itself needs no shader: `Polygon2D`
-already renders `texture * vertex_color`. A third needs a reason.
+**Two `.gdshader`s exist, both owned by ice** — `shaders/ice.gdshader` (the band: two-tile noise
+dissolve, per-biome `ice_contrast`, plus a `flatten` and a `gloss` only the lake writes) and
+`shaders/frozen_lake_reflection.gdshader`. Colour needs no shader — `Polygon2D` already renders
+`texture * vertex_color` — so a third needs a reason.
 
-**Base viewport pinned 1152×648**, `aspect="expand"`, `Camera2D.zoom` 0.8333 → 1382×778 world
-px visible. **Base size and zoom are one decision — only their ratio is field of view**, which
-on an auto-runner is reaction time; never move one alone. `expand` makes the base a *minimum*,
-so a 20:9 phone gets +25% forward view (open: an aspect-compensated zoom would equalise it,
-and needs `camera_shake_probe` + a playtest). **Author raster art at ≈2× its world size** —
-tables and the four art-swap traps in `visuals.md`. Reference art and tool inputs live in
-`art_source/`, never at the repo root: the root is imported into the export, that folder is
-`.gdignore`d.
+**Base viewport pinned 1152×648**, `aspect="expand"`, `Camera2D.zoom` 0.8333 → 1382×778 world px
+visible. **Base size and zoom are one decision — only their ratio is field of view**, which on an
+auto-runner is reaction time; never move one alone. **Author raster art at ≈2× its world size.**
+Both, the +25% a 20:9 phone gets from `expand`, and the four art-swap traps: `visuals.md`. Reference
+art and tool inputs live in `art_source/`, never the repo root — the root is imported into the
+export, that folder is `.gdignore`d.
 
-Debug instrumentation derives from `OS.is_debug_build()` — on under the editor and every
-probe, off in a release export, so it can't ship by forgetting a flag (`physics.md`).
+Debug instrumentation derives from `OS.is_debug_build()` — on under the editor and every probe, off
+in a release export, so it can't ship by forgetting a flag (`physics.md`).
 
 ---
 
-**Keep this file under ~175 lines.** Only the most important things belong here: the
-general direction of the project, and the traps that cost real time when someone doesn't
-know them. Add something only if it's genuinely necessary at this level — otherwise it
-goes in `docs/development/` (how something works) or `docs/research/` (what an
-investigation found).
+**Keep this file under ~175 lines** — the project's direction and the traps that cost real time,
+nothing else. How something works goes in `docs/development/`, what an investigation found in
+`docs/research/`.
 
 one thing i want to say (im the user, so this is important) if something has a lot of potenital to make more bugs or is gonna be exceeslsivey hard when theres another option, then jhsut flag it and let me know. i am prioritixzing this to be clean code. if a big drop is too much terrain changing, then we just add a chasm instead, for exmaple
