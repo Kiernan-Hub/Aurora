@@ -7,9 +7,9 @@ and measured history for why each harness exists: `docs/research/freeze_bug.md`.
 No test suite, no build script. Godot: `/Applications/Godot.app/Contents/MacOS/Godot`
 (play with `--path .`, opens a window and blocks — only when asked).
 
-## The fast four: `./scripts/check.sh`
+## The fast five: `./scripts/check.sh`
 
-One command, ~23s, the tier to run before every commit:
+One command, ~25s, the tier to run before every commit:
 
 ```bash
 ./scripts/check.sh          # quiet on PASS, full gate output on FAIL, exits non-zero
@@ -18,11 +18,35 @@ GODOT=/path/to/Godot ./scripts/check.sh
 ```
 
 It runs `shipping_values_check`, `biome_schedule_check`, `terrain_invariant_check`
-(`--seeds=8 --to=300000`, not tunable — a shortened run FAILs meaninglessly) and
-`lake_suppression_probe`. It runs **all four even after one fails**, so a red run still
-gives you the whole picture. Mutation-tested 2026-08-25 by flipping
-`debug_chasm_disabled`: `shipping_values` and `terrain_invariant` both caught it and the
-runner exited 1.
+(`--seeds=8 --to=300000`, not tunable — a shortened run FAILs meaninglessly),
+`lake_suppression_probe`, and the export-content check below. It runs **all five even
+after one fails**, so a red run still gives you the whole picture. Mutation-tested
+2026-08-25 by flipping `debug_chasm_disabled`: `shipping_values` and `terrain_invariant`
+both caught it and the runner exited 1.
+
+### `export_content` — what actually reaches a device
+
+The fifth entry is not a Godot gate. It exports a pack headless
+(`--export-pack Android`, ~2s) into a temp dir and fails if any of four paths survived
+`export_presets.cfg`'s `exclude_filter`: `scripts/debug`, `scripts/experiments`,
+`scenes/experiments`, `assets/textures/experiments`. Without the filter that is 636 KB of
+probes and 3.8 MB of experiment textures on a player's phone. It reports the pack's
+resource count on PASS (136 today) and deletes the pack either way.
+
+Three things about it worth knowing before editing it:
+
+- **The forbidden list is hardcoded, not read from `exclude_filter`.** Deriving it from
+  the preset would make the check agree with the preset by construction — including when
+  someone deletes a line from it, which is the regression worth catching. Mutation-tested
+  2026-08-25 by blanking `exclude_filter`: 3 of the 4 paths appeared and the run went red
+  (`scenes/experiments` doesn't exist in the repo, so it can't appear; it stays listed
+  because it costs nothing).
+- **The search is an unanchored byte search over the pack**, not a parse of its path
+  table, so a merged `strings` line or a path embedded inside a resource still trips it.
+  It errs toward failing on purpose. No shipping script embeds those literals today; if
+  one ever legitimately needs to, that is the moment to write a real path-table parse.
+- **`--export-pack` does not rewrite `project.godot`** — verified, unlike `--editor`. That
+  is the only reason this can live in a runner at all.
 
 **The other two tiers stay manual, and cannot join this one.** The physics gates
 (freeze-search, freeze-replay, floor-flicker, chasm, camera-shake) take minutes each; the
