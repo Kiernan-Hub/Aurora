@@ -41,6 +41,11 @@ pointer); the full log — measurements, ruled-out approaches — goes in `docs/
 No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/MacOS/Godot`
 (play with `--path .`; opens a window and blocks, so only when asked).
 
+**`./scripts/check.sh` runs the fast four in ~23s** — shipping-values, biome-schedule,
+terrain-shape, lake-suppression — and is the before-every-commit tier. It deliberately does
+*not* import the project: `--editor` strips the pinned physics settings. The physics gates and
+the three windowed visual ones stay manual and can't join it.
+
 **Twelve maintained checks, and only twelve** — everything else in `scripts/debug/` now
 lives in `scripts/debug/archive/`, so the directory answers "is this a gate?". Commands and
 flags: `debugging.md`.

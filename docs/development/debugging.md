@@ -7,6 +7,34 @@ and measured history for why each harness exists: `docs/research/freeze_bug.md`.
 No test suite, no build script. Godot: `/Applications/Godot.app/Contents/MacOS/Godot`
 (play with `--path .`, opens a window and blocks — only when asked).
 
+## The fast four: `./scripts/check.sh`
+
+One command, ~23s, the tier to run before every commit:
+
+```bash
+./scripts/check.sh          # quiet on PASS, full gate output on FAIL, exits non-zero
+./scripts/check.sh -v       # print every gate's output either way
+GODOT=/path/to/Godot ./scripts/check.sh
+```
+
+It runs `shipping_values_check`, `biome_schedule_check`, `terrain_invariant_check`
+(`--seeds=8 --to=300000`, not tunable — a shortened run FAILs meaninglessly) and
+`lake_suppression_probe`. It runs **all four even after one fails**, so a red run still
+gives you the whole picture. Mutation-tested 2026-08-25 by flipping
+`debug_chasm_disabled`: `shipping_values` and `terrain_invariant` both caught it and the
+runner exited 1.
+
+**The other two tiers stay manual, and cannot join this one.** The physics gates
+(freeze-search, freeze-replay, floor-flicker, chasm, camera-shake) take minutes each; the
+three visual gates (`sky_layer_check`, `ice_look_capture`, `biome_contact_sheet`) **must**
+run without `--headless`, so no headless runner can ever include them.
+
+**Project import is deliberately NOT in the runner.** Import means `--headless --editor
+--quit`, and an `--editor` run rewrites `project.godot` and strips the pinned physics
+settings — some terrain constants derive from `physics_ticks_per_second`, so that would
+make the validation script itself change level geometry. Import stays the manual step
+below, needed only after adding a `class_name`.
+
 **No gate covers input, and input has two independent paths.** A change verified on
 one can be completely broken on the other. Desktop mouse and keyboard go through the
 `ui_accept` action, polled in `player.gd._physics_process`; touch bypasses the action
