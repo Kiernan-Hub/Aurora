@@ -10,11 +10,29 @@ As of **2026-08-26**: `origin/main` and local are level, tree clean, `./scripts/
 (five gates, ~25s). The core loop, chasms, coins, powerups, upgrades, achievements, the frozen
 lake and the background are all shipped and working. Gameplay art is still placeholder rects.
 
-**Next three things, in order** — detail in "Next, in order" below:
+> ## ⏸ THE OWNER IS MID-PLAYTEST — DON'T START ANYTHING BIG
+>
+> **As of 2026-08-26 the owner is doing a thorough hands-on testing pass and writing down a
+> list of things to change.** They said "there are a few things off." That list is the next
+> real input to this project and it does not exist in this repo yet.
+>
+> **So: when a session opens and the owner pastes findings, work those first.** They outrank
+> everything in "Next, in order" below — those are review-debt items, this is observed-broken
+> behaviour in the actual game. Expect small, specific, scattered complaints (feel, timing,
+> visuals, a thing that looked wrong once) rather than one clean bug report.
+>
+> **Do not** start the aurora, re-open the review list, or kick off a long gate run until the
+> testing list has been triaged. **Do** ask which items are reproducible if it isn't stated —
+> `FREEZE_REPRO` in `debugging.md` is the standing rule for anything that smells like a stall.
 
-1. **Godot 4.7.2** (review #9), isolated commit. Read the `project.godot` warning first.
-2. **`main.gd` process priorities** (review #8), a behaviour change needing the physics gates.
-3. **The aurora borealis** — the game's namesake, fully planned, not started.
+**After the testing list is handled — next three things:**
+
+1. ~~Godot 4.7.2 (review #9)~~ — **DECLINED 2026-08-26**, see below. Don't re-raise it.
+2. **#8, `main.gd` process priorities** — **downgraded 2026-08-26**, it is close to a no-op.
+   Read the finding below before spending the physics gate suite on it.
+3. **The aurora borealis** — the game's namesake. **Not ready to code**: its own doc's
+   "Sequencing" section says plan it fully first, and three open questions are undecided.
+   The next step there is a *planning pass producing a doc*, not an implementation step.
 
 **Two live hazards, both cost a session if you don't know them:**
 
@@ -36,7 +54,65 @@ before building it. Don't self-verify visuals with screenshots — the owner che
 The sections below run newest first. The older ones are all background work, which is **parked
 in a shippable state, not finished** — read "Where things actually stand" before touching it.
 
-## Last session — 2026-08-25, shipping hygiene: review items #6 and #10 are closed
+## Last session — 2026-08-26, two review items killed, no code changed
+
+Docs only. No gameplay, physics, terrain, scene or shader file was touched, so nothing here
+needs a gate run to trust. `check.sh` was green before and after.
+
+### #9 (Godot 4.7.2) — DECLINED, don't re-raise
+
+4.7.2 is real and safe (released 2026-08-18, 57 fixes, "no known incompatibilities"), and so is
+4.7.1 before it (78 fixes). We are on `4.7.stable`. It was still declined, on the evidence:
+
+- **Nothing in either release touches this project.** 4.7.2 is Linux IME under KDE, Windows
+  high-polling-rate mice, editor UI, PCSS **3D** shadows, 3D nav debug, **multiplayer**
+  replication, mbedTLS. 4.7.1's nearest miss is an Android soft-keyboard backspace fix — Aura
+  has no text input. Aura is single-player, 2D, no networking, no 3D. Zero relevant fixes.
+- **The upgrade changes no file in the repo.** `config/features` stays
+  `PackedStringArray("4.7", "Mobile")` across the whole 4.7.x line, so there is no "isolated
+  commit" to make — the entire task is reinstalling the editor and templates, then re-running
+  the fast five, chasm, lake, the three windowed visual gates and a device build.
+- That is an hour-plus of the owner's time for fixes aimed at KDE and multiplayer.
+
+**Revisit when** something actually breaks and 4.7.x is a suspect, or when 4.8 ships something
+wanted. Do **not** move to the 4.8 development line.
+
+### #8 (`main.gd` process priorities) — DOWNGRADED, the review's premise doesn't hold
+
+The review says a *"scene reorder that looks cosmetic changes rebase and camera timing."*
+Checked against `main.tscn`: **`Player` and `TerrainGenerator` are children of `Main`, not
+siblings of it** (`parent="."`, and `Main` is the root). A parent's `_physics_process` always
+runs before its children's, verified in-engine on 4.7.stable:
+
+```
+DEFAULT (all priorities 0): ["Main(parent)", "Player(child)", "TerrainGen(child)"]
+```
+
+So the ordering `apply_world_rebase()` depends on (`main.gd:219`) is **structural**. Reordering
+`Main`'s children among themselves cannot break `Main`-before-both, which is the failure the
+review was worried about. What is left is a one-line `process_priority` that documents intent
+and provably changes nothing — **not** a behaviour change deserving the full physics gate suite.
+Do it as a comment or a no-op pin if you like, cheaply; don't schedule gates for it.
+
+### The `project.godot` "stripping" hazard was over-stated — corrected in the docs
+
+The standing warning said `--editor` and both APK exports rewrite `project.godot`. **Measured on
+a throwaway copy: they don't.** A cold import with `.godot/` deleted, and a full signed
+`--export-debug` APK, both left `project.godot` byte-identical and touched no tracked file.
+
+The real trigger is **a project-setting save** — which is consistent with both incidents, since
+both happened while the icon/bundle id were being edited. The mechanism is documented Godot
+behaviour: a setting equal to its engine default is never written, and all four pinned keys are
+pinned *at* their defaults. Full write-up, with the reproduction, in `debugging.md`, "Engine
+commands that rewrite `project.godot`". `CLAUDE.md`'s bullet was corrected to match.
+
+**This makes the danger sharper, not smaller:** the four pins are invisible in the file and
+`shipping_values_check` reads them back identically, so if an engine default ever moves, level
+geometry changes silently. **The cheap text-scan hardening (review #9's "not yet done" note) is
+still unbuilt and is the only thing that would ever catch it** — ~15 lines, no behaviour change,
+no gates. Good candidate for a spare slot.
+
+## Earlier — 2026-08-25, shipping hygiene: review items #6 and #10 are closed
 
 Four commits, all pushed (`bfad804`, `1be85a0`, `4604b08`, `bd27aa8`). `origin/main` is level.
 Nothing here touched physics, collision, spawning, terrain or `main.tscn`.
@@ -83,15 +159,24 @@ the aurora. Don't "clean up" that empty-looking file. Full detail: `docs/develop
 
 ### Next, in order
 
-1. **#9, Godot 4.7.2** in an isolated commit — editor plus matching Android export templates,
-   then `check.sh`, the physics gates, the three visual gates, and one device build. Do **not**
-   move to the 4.8 line. **`git status` after every single engine invocation** — see the warning
-   below, which is wider than the review originally said (scene files too, not just
-   `project.godot`) and is the main hazard of this particular task.
-2. **#8, `main.gd`'s process priorities** — `main.gd:221` documents a tree-order requirement for
-   `apply_world_rebase()` with nothing enforcing it. Treat it as a behaviour change: full physics
-   gate suite behind it.
+**Superseded 2026-08-26 — read the top of this file first.** The owner's playtest list outranks
+all of it, and the first two items are closed:
+
+1. ~~**#9, Godot 4.7.2**~~ — **DECLINED**, reasons in the 2026-08-26 section. Don't re-raise.
+2. ~~**#8, `main.gd`'s process priorities**~~ — **DOWNGRADED**; the review's premise doesn't
+   hold (`Player`/`TerrainGenerator` are children of `Main`, so the ordering is structural).
+   No gate suite required.
 3. **The aurora borealis** — the next real feature, `docs/development/aurora_borealis.md`.
+   **Planning pass first, not code**: three open questions are undecided (forced flat segment
+   or not; procedural shader vs. authored sprites — and a third `.gdshader` needs real
+   justification, the budget is exactly two and both are owned by ice; fixed palette vs.
+   biome-reactive). Its doc also names a prerequisite — "ice canyon walls / shard spires, extra
+   sky elements" — which looks **stale**: the background shipped 2026-08-24 as the baked raster
+   panorama and the iceberg-sprite plan was abandoned. **Confirm with the owner** whether that
+   background work is done-enough before planning the ribbons against the current sky stack.
+
+Unbuilt and cheap, good filler: the `shipping_values_check` **text-scan of `project.godot`**
+(see the 2026-08-26 section) — the only thing that would catch a moved engine default.
 
 Also still open from the review, not urgent: #7 (segment caches are never pruned — **read the
 warning there before touching it**, `arm_lake()`'s write-ahead rule and deterministic replay both

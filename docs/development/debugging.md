@@ -54,11 +54,12 @@ Three things about it worth knowing before editing it:
 three visual gates (`sky_layer_check`, `ice_look_capture`, `biome_contact_sheet`) **must**
 run without `--headless`, so no headless runner can ever include them.
 
-**Project import is deliberately NOT in the runner.** Import means `--headless --editor
---quit`, and an `--editor` run rewrites `project.godot` and strips the pinned physics
-settings — some terrain constants derive from `physics_ticks_per_second`, so that would
-make the validation script itself change level geometry. Import stays the manual step
-below, needed only after adding a `class_name`.
+**Project import is deliberately NOT in the runner.** The original reason — that `--editor`
+strips the pinned physics settings — turned out to be wrong (measured 2026-08-26, see the
+corrected table below). The decision stands on its remaining merits: import is slow, it is
+needed only after adding a `class_name`, and keeping the ~25s runner free of any command that
+*can* write to the project is worth more than the convenience. Import stays the manual step
+below.
 
 ## Engine commands that rewrite `project.godot`
 
@@ -68,12 +69,40 @@ below, needed only after adding a `class_name`.
 `physics_interpolation`, along with **every explanatory comment in the file** — the only
 record of why each setting exists.
 
+**Corrected 2026-08-26 — the trigger is a project-setting *save*, not the command.** The table
+below said `--editor` and the APK exports always rewrite the file. Measured on `4.7.stable`,
+against this repo, on a throwaway copy — they do not:
+
 | Command | Rewrites `project.godot`? |
 |---|---|
-| `--headless --editor --quit` (class-cache refresh) | **YES** |
-| `--export-debug` / `--export-release` (build an APK) | **YES** — found 2026-08-25 |
+| `--headless --editor --quit`, `.godot/` deleted first (full cold import) | **no** — byte-identical, measured 2026-08-26 |
+| `--export-debug` (full signed APK) | **no** — byte-identical, measured 2026-08-26 |
 | `--export-pack` (what `check.sh` uses) | no, verified |
 | `--script` (every gate and probe) | no |
+| **Anything that changes a project setting**, then saves | **YES — this is the real trigger** |
+
+Neither run touched *any* tracked file, `main.tscn` and the experiment scenes included. So the
+2026-08-25 and 2026-08-26 incidents were not caused by the commands themselves: both happened
+during sessions that were *editing settings* (the icon and bundle id). Editing a setting through
+the editor — or any `ProjectSettings.save()` — is what rewrites the file.
+
+**The mechanism, confirmed:** Godot never persists a setting whose value equals the engine
+default ([godot#83494](https://github.com/godotengine/godot/issues/83494)), and comments are
+never preserved. All four pinned keys are pinned *at* their defaults, so all four vanish;
+`quit_on_go_back`, `stretch/aspect` and `orientation` differ from theirs and survive. Reproduced
+exactly by setting one unrelated key and calling `ProjectSettings.save()`:
+
+```
+- window/size/viewport_width=1152      - common/physics_ticks_per_second=60
+- window/size/viewport_height=648      - common/physics_interpolation=false
+  ...plus every explanatory comment in the file
+```
+
+**This does not make the pins safe — it makes the danger precise.** The four keys are invisible
+in the file and `shipping_values_check` reads them back identically, so the day an engine default
+moves, level geometry changes silently and nothing reports it. The text-scan hardening below is
+still the only real protection. `git status` after any engine run remains correct advice; it is
+just cheap insurance now rather than an expected event.
 
 **It is not only `project.godot` — these runs re-serialise SCENE files too, and drop authored
 property values doing it.** Observed 2026-08-26: `scenes/experiments/background_pano_test.tscn`

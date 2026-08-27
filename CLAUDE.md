@@ -76,11 +76,11 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
 
 ## Things that break silently
 
-- **`--editor` AND both APK exports rewrite `project.godot` *and scene files*,** deleting the
-  pinned viewport/tick rate/interpolation, every comment, and authored scene properties.
-  **`shipping_values_check` cannot catch it** (measured): the stripped keys fall back to defaults
-  that currently *equal* them. Run `git status` after ANY engine run and revert what you didn't
-  change; `--export-pack` is the one safe form.
+- **Engine runs can rewrite `project.godot` *and scene files*,** dropping the pinned
+  viewport/tick-rate/interpolation, every comment, and authored scene properties — Godot never
+  writes a setting equal to its default, and those four pins all are. **The trigger is a settings
+  *save*, not the command**: a fresh import and a full `--export-debug` both measured clean
+  (2026-08-26). `shipping_values_check` can't see it. `git status` after ANY engine run.
 - **World rebasing must stay on.** `Main.world_rebase_enabled` isn't `@export`ed — exporting it
   once serialised to `false` and reintroduced the freeze for weeks. (`freeze_bug.md`)
 - **Spawners under `TerrainGenerator` must not read `session_seed` in `_ready()`** — children ready

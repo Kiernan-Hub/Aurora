@@ -226,7 +226,14 @@ Probably fine for normal sessions; measure it in the same soak as #6 rather than
 **Do not add pruning casually** — `arm_lake()`'s write-ahead rule and the deterministic
 replay of recorded seeds both depend on cached history staying available.
 
-### 8. `main.gd` depends on tree order with nothing enforcing it
+### 8. `main.gd` depends on tree order with nothing enforcing it — DOWNGRADED 2026-08-26
+
+**The premise below is wrong.** `Player` and `TerrainGenerator` are **children** of `Main`
+(`main.tscn`, `parent="."`), not siblings of it, and a parent's `_physics_process` always runs
+before its children's — verified in-engine on 4.7.stable. Reordering `Main`'s children cannot
+break `Main`-before-both, so the "cosmetic reorder" failure this item describes can't happen.
+What remains is an optional one-line `process_priority` that documents intent and provably
+changes nothing. **Do not spend the physics gate suite on it.** Original text kept below.
 
 `main.gd:221` — *"Runs before Player/TerrainGenerator (tree order)"* — is a correctness
 requirement for `apply_world_rebase()`, with no `process_priority` behind it. A scene reorder
@@ -235,7 +242,14 @@ the `@export`-serialised `world_rebase_enabled` regression the file's own commen
 twice. Encoding it is cheap; treat it as a behaviour change and re-run the camera/freeze/
 floor/chasm gates.
 
-### 9. Engine patch release is behind
+### 9. Engine patch release is behind — DECLINED 2026-08-26
+
+**Not doing this.** Neither 4.7.1 nor 4.7.2 contains a fix that touches a 2D, single-player,
+no-networking, no-3D Android game, the upgrade changes no file in the repo (`config/features`
+stays `"4.7"`), and the cost is the full gate suite plus a device build. Reasons in full in
+`HANDOFF.md`, 2026-08-26. The `project.godot` amendment below is also **over-stated** — measured
+2026-08-26, neither a cold import nor a full `--export-debug` rewrites the file; the trigger is a
+project-setting *save*. See `debugging.md`. The original text is kept below as written.
 
 The project and the installed editor are `4.7.stable`; current stable is
 [Godot 4.7.2](https://godotengine.org/article/maintenance-release-godot-4-7-2/), released
