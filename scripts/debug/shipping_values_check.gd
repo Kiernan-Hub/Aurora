@@ -13,7 +13,7 @@ extends SceneTree
 # as having a "tripwire" that was only ever a printed number -- biome_schedule_check returns
 # PASS at any value, which was verified against a live TEMP value of 7500.0.
 #
-# So this checks the two things that are actually checkable without running the game:
+# So this checks the things that are actually checkable without running the game:
 #
 #   1. THE SOURCE-LEVEL DEFAULTS of each knob, by instantiating the script and reading the
 #      property. Not by parsing the .gd text -- that would be fragile to formatting, and the
@@ -23,6 +23,10 @@ extends SceneTree
 #      catches a property this file has never heard of, which is the whole failure mode (the
 #      freeze bug was `world_rebase_enabled = false` appearing in the scene file on its own).
 #      A property read can only ever confirm the values someone already thought to enumerate.
+#   3. THE PINNED ENGINE SETTINGS, from both sides: their EFFECTIVE value via ProjectSettings,
+#      and that project.godot still DECLARES each one, by scanning it as text. Four of them are
+#      pinned at values equal to the engine default, so a stripped pin reads back identically --
+#      the text scan is the only half that can see one go missing. See both functions below.
 #
 # WHAT IT CANNOT CHECK, and why that is fine: the two PowerupSpawner first-spawn overrides
 # derive from OS.is_debug_build(), so they are legitimately non-shipping values in every
@@ -34,6 +38,21 @@ extends SceneTree
 # point of the flag is that silencing this has to be a thing you typed.
 
 const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
+const PROJECT_FILE_PATH: String = "res://project.godot"
+
+# Every engine setting CLAUDE.md calls load-bearing, written as `section/key` -- which is both the
+# ProjectSettings path and, split at the first "/", exactly how project.godot stores it (`[display]`
+# + `window/size/viewport_width`). One list drives both the runtime check and the text scan.
+const PINNED_SETTINGS: Array = [
+	"display/window/size/viewport_width",
+	"display/window/size/viewport_height",
+	"physics/common/physics_ticks_per_second",
+	"physics/common/physics_interpolation",
+	"display/window/stretch/mode",
+	"display/window/stretch/aspect",
+	"display/window/handheld/orientation",
+	"application/config/quit_on_go_back",
+]
 
 # [label, shipping value, actual value]. Built in check_flag_defaults().
 var findings: Array[Array] = []
@@ -46,6 +65,7 @@ func _init() -> void:
 	check_flag_defaults()
 	check_scene_has_no_debug_overrides()
 	check_project_settings()
+	check_project_godot_declares_pins()
 	report(allow_temp)
 
 
@@ -129,26 +149,16 @@ func check_scene_has_no_debug_overrides() -> void:
 	file.close()
 
 
-# THE PINNED ENGINE SETTINGS, read from ProjectSettings rather than from project.godot's text.
+# THE PINNED ENGINE SETTINGS, half one. The EFFECTIVE value, read from ProjectSettings.
 #
-# WHY THIS IS NOT A TEXT SCAN, unlike check_scene_has_no_debug_overrides() above. Godot only
-# SERIALISES a setting that differs from the engine default, and four of the values CLAUDE.md
-# calls load-bearing are currently equal to their defaults -- 1152x648, 60Hz, interpolation
-# off. So the editor strips those lines (and their comments) from project.godot every time it
-# opens the project, and no amount of `git checkout` makes them stay. Only quit_on_go_back
-# survives, because its default is true and ours is false.
+# Godot only serialises a setting that DIFFERS from the engine default, and four of the values
+# CLAUDE.md calls load-bearing are currently equal to their defaults -- 1152x648, 60Hz,
+# interpolation off. get_setting() returns the effective value either way: the file's, or the
+# engine's when the file is silent. So this half catches the value drifting, whatever the file
+# says, and it is the only half that can see a key whose line is present but edited.
 #
-# That stripping is cosmetic: the engine applies the same values either way, so a text scan
-# would fail constantly while nothing was wrong -- a gate that cries wolf gets disabled.
-#
-# WHAT IS ACTUALLY DANGEROUS is the same fact from the other side: because the file no longer
-# states these values, NOTHING in the repo notices if an engine default MOVES under us. Several
-# terrain constants derive from 1.0/physics_ticks_per_second, so that number is level geometry
-# (CLAUDE.md, "Editing rules"), and base size and Camera2D.zoom are one decision whose ratio is
-# the player's reaction time. A point-release default change would silently alter both, and the
-# 4.7.2 upgrade is an open item. get_setting() returns the EFFECTIVE value -- the file's, or the
-# engine's when the file is silent -- so this fails exactly when the effective value drifts, and
-# stays quiet for the harmless stripping. That is the whole reason it reads settings, not text.
+# It cannot see the pin itself going missing, because a stripped key reads back identically.
+# That is what check_project_godot_declares_pins() is for.
 func check_project_settings() -> void:
 	expect_int("ProjectSettings display/window/size/viewport_width",
 		int(ProjectSettings.get_setting("display/window/size/viewport_width", 0)), 1152)
@@ -166,6 +176,58 @@ func check_project_settings() -> void:
 		str(ProjectSettings.get_setting("display/window/handheld/orientation", "")), "landscape")
 	expect_bool("ProjectSettings application/config/quit_on_go_back",
 		bool(ProjectSettings.get_setting("application/config/quit_on_go_back", true)), false)
+
+
+# THE PINNED ENGINE SETTINGS, half two. That project.godot still DECLARES each one, as text.
+#
+# WHY THIS EXISTS, and why it was argued against for months. The reasoning this file used to
+# carry was: the editor strips the default-equal keys every time it opens the project, so a text
+# scan would fail constantly while nothing was wrong, and a gate that cries wolf gets disabled.
+#
+# THAT PREMISE WAS WRONG, measured 2026-08-26 on a throwaway copy. A cold import with .godot/
+# deleted, and a full signed --export-debug APK, both left project.godot byte-identical. The
+# real trigger is a project-setting SAVE -- editing a setting in the editor, or any
+# ProjectSettings.save(). So the file is stable across ordinary work, this scan sits quiet, and
+# it fires exactly when a pin has actually been dropped. See docs/development/debugging.md,
+# "Engine commands that rewrite `project.godot`".
+#
+# WHAT IT PROTECTS. Four of these keys are pinned AT their engine defaults, so once stripped
+# they are invisible: half one above reads back the identical value and passes, and nothing else
+# in the repo looks. Several terrain constants derive from 1.0/physics_ticks_per_second, so that
+# number is level geometry (CLAUDE.md, "Editing rules"), and base size and Camera2D.zoom are one
+# decision whose ratio is the player's reaction time. If an engine default ever moves under a
+# stripped key, both change silently. This is the only thing that would notice.
+#
+# Presence only, deliberately -- not the value. A pin that is present but edited already fails
+# half one, and parsing typed values here would duplicate that for no extra coverage.
+func check_project_godot_declares_pins() -> void:
+	var file: FileAccess = FileAccess.open(PROJECT_FILE_PATH, FileAccess.READ)
+	if file == null:
+		failures.append("could not open %s to scan for the pinned settings" % PROJECT_FILE_PATH)
+		return
+
+	# project.godot is `[section]` headers over `key=value`, where the ProjectSettings path is
+	# the two joined by "/". Rebuild that path per line so the list above can be matched whole.
+	var declared: PackedStringArray = PackedStringArray()
+	var section: String = ""
+	while not file.eof_reached():
+		var line: String = file.get_line().strip_edges()
+		if line.is_empty() or line.begins_with(";"):
+			continue
+		if line.begins_with("[") and line.ends_with("]"):
+			section = line.substr(1, line.length() - 2)
+			continue
+		var equals: int = line.find("=")
+		if equals > 0:
+			declared.append("%s/%s" % [section, line.substr(0, equals).strip_edges()])
+	file.close()
+
+	for setting: String in PINNED_SETTINGS:
+		var is_declared: bool = declared.has(setting)
+		findings.append(["project.godot declares %s" % setting, "present",
+			"present" if is_declared else "STRIPPED", is_declared])
+		if not is_declared:
+			failures.append("project.godot no longer declares `%s` -- a project-setting save stripped the pin. The engine default currently equals it, so nothing else in the repo can see the difference. Restore it with `git checkout -- project.godot` (the comment above it is the only record of why it exists)" % setting)
 
 
 func expect_bool(label: String, actual: bool, shipping: bool) -> void:
@@ -207,7 +269,7 @@ func report(allow_temp: bool) -> void:
 	print("")
 
 	if failures.is_empty():
-		print("SHIPPING_VALUES_CHECK PASS  ", findings.size(), " knobs at shipping values, scene clean")
+		print("SHIPPING_VALUES_CHECK PASS  ", findings.size(), " knobs at shipping values, scene clean, project.godot pinned")
 		quit(0)
 		return
 

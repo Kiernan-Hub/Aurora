@@ -107,10 +107,23 @@ pinned *at* their defaults. Full write-up, with the reproduction, in `debugging.
 commands that rewrite `project.godot`". `CLAUDE.md`'s bullet was corrected to match.
 
 **This makes the danger sharper, not smaller:** the four pins are invisible in the file and
-`shipping_values_check` reads them back identically, so if an engine default ever moves, level
-geometry changes silently. **The cheap text-scan hardening (review #9's "not yet done" note) is
-still unbuilt and is the only thing that would ever catch it** — ~15 lines, no behaviour change,
-no gates. Good candidate for a spare slot.
+`shipping_values_check` read them back identically, so if an engine default ever moved, level
+geometry would change silently.
+
+### The text-scan hardening is BUILT — 2026-08-27, review #9's last loose end
+
+`shipping_values_check` now has a second half, `check_project_godot_declares_pins()`: it scans
+`project.godot` as text and fails if any of the eight pinned keys is missing. The two halves are
+complementary and the file says so — the runtime read catches a value that *drifted*, the text
+scan catches a pin that *vanished*, and neither can see the other's failure.
+
+**The reason it went unbuilt for months was a wrong premise**, which this file used to carry:
+that the editor strips those keys on every open, so a text scan would cry wolf and get disabled.
+It doesn't (see above), so the scan sits quiet through ordinary work.
+
+Mutation-tested: deleting the four default-equal pins made **the runtime half still pass on all
+four** — exactly the hole — while the text scan caught all four and exited 1. `--allow-temp`
+still downgrades to a warning and exits 0. `check.sh` green, 5/5 in 25s, no timing change.
 
 ## Earlier — 2026-08-25, shipping hygiene: review items #6 and #10 are closed
 
@@ -175,8 +188,8 @@ all of it, and the first two items are closed:
    panorama and the iceberg-sprite plan was abandoned. **Confirm with the owner** whether that
    background work is done-enough before planning the ribbons against the current sky stack.
 
-Unbuilt and cheap, good filler: the `shipping_values_check` **text-scan of `project.godot`**
-(see the 2026-08-26 section) — the only thing that would catch a moved engine default.
+~~Unbuilt and cheap, good filler: the `shipping_values_check` text-scan of `project.godot`~~ —
+**built 2026-08-27**, see the section above. The review list has nothing cheap left on it.
 
 Also still open from the review, not urgent: #7 (segment caches are never pruned — **read the
 warning there before touching it**, `arm_lake()`'s write-ahead rule and deterministic replay both

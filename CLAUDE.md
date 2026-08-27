@@ -53,8 +53,8 @@ need a window (`debugging.md`):
 **Every headless gate is blind to biome code** (`BiomeDirector` returns early under `--headless`) —
 the only reason the visual three exist. And `shipping_values_check` is the only thing watching the
 debug knobs: each is a plain `var` the editor can't serialise, so no other gate sees one left
-flipped. It fails on all of them and on any `debug_*` override reaching `main.tscn`; `--allow-temp`
-downgrades it to a warning. A 13th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing;
+flipped. It fails on all of them, on any `debug_*` override reaching `main.tscn`, and on a pinned
+engine setting going missing from `project.godot`; `--allow-temp` downgrades it to a warning. A 13th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing;
 the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, meaningless numbers
 — never trust one without reviving it (`debugging.md`, which also has the `FREEZE_REPRO` rule).
 
@@ -80,7 +80,8 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
   viewport/tick-rate/interpolation, every comment, and authored scene properties — Godot never
   writes a setting equal to its default, and those four pins all are. **The trigger is a settings
   *save*, not the command**: a fresh import and a full `--export-debug` both measured clean
-  (2026-08-26). `shipping_values_check` can't see it. `git status` after ANY engine run.
+  (2026-08-26). `shipping_values_check` now text-scans for all eight pins, so a stripped one goes
+  red; scene files still have no such cover, so `git status` after ANY engine run.
 - **World rebasing must stay on.** `Main.world_rebase_enabled` isn't `@export`ed — exporting it
   once serialised to `false` and reintroduced the freeze for weeks. (`freeze_bug.md`)
 - **Spawners under `TerrainGenerator` must not read `session_seed` in `_ready()`** — children ready

@@ -99,10 +99,16 @@ exactly by setting one unrelated key and calling `ProjectSettings.save()`:
 ```
 
 **This does not make the pins safe — it makes the danger precise.** The four keys are invisible
-in the file and `shipping_values_check` reads them back identically, so the day an engine default
-moves, level geometry changes silently and nothing reports it. The text-scan hardening below is
-still the only real protection. `git status` after any engine run remains correct advice; it is
-just cheap insurance now rather than an expected event.
+in the file, so a stripped pin reads back identically and the day an engine default moves, level
+geometry changes silently.
+
+**Closed 2026-08-27: `shipping_values_check` now scans `project.godot` as text**
+(`check_project_godot_declares_pins()`) and fails if any of the eight pinned keys is missing —
+so the gate now covers both sides, the effective value *and* the declaration. Mutation-tested by
+deleting the four default-equal pins: the runtime half still passed on all four (which is exactly
+the hole), the text scan caught all four, exit 1; `--allow-temp` still downgrades to a warning.
+`git status` after any engine run remains correct advice, but it is now cheap insurance rather
+than the only line of defence.
 
 **It is not only `project.godot` — these runs re-serialise SCENE files too, and drop authored
 property values doing it.** Observed 2026-08-26: `scenes/experiments/background_pano_test.tscn`
