@@ -110,6 +110,10 @@ func check_flag_defaults() -> void:
 	# sitting -- which is the whole feature, silently gone.
 	var director: BiomeDirector = BiomeDirector.new()
 	expect_bool("BiomeDirector.debug_pin_intro_biome", director.debug_pin_intro_biome, false)
+	# Left set, the day arc races -- one biome every few seconds for the whole run, which is a
+	# review tool and reads as a strobing bug in a shipped build. No headless gate can see it
+	# either: BiomeDirector returns early under --headless, so this is the only cover.
+	expect_float("BiomeDirector.debug_biome_seconds", director.debug_biome_seconds, 0.0)
 	director.free()
 
 	# Left set, the 20-minute set piece fires on whatever the override says instead -- at a

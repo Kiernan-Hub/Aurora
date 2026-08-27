@@ -196,6 +196,37 @@ static var session_cycle_rotation: int = -1
 # serialise into main.tscn and ship silently. shipping_values_check fails on it.
 var debug_pin_intro_biome: bool = false
 
+# TEMP REVIEW KNOB: seconds per biome. 0.0 is off and is the shipping value.
+#
+# Set it to e.g. 10.0 to walk the whole day arc in ~90 seconds instead of ~13.7 minutes, for
+# eyeballing every palette in one sitting. shipping_values_check fails on any non-zero value.
+#
+# COLOUR ONLY, WHICH IS THE POINT. This feeds a SYNTHETIC world_x into the existing pure
+# apply_palette_for_world_x() rather than shrinking BIOME_DISTANCE. Two reasons:
+#
+#   * Nothing else's numbers move. BIOME_DISTANCE is also read by get_persisted_phase() and by
+#     biome_schedule_check's contrast floor; shrinking it would change what those mean, and the
+#     gate would be measuring a schedule the game never ships. Here the constant is untouched
+#     and only this director's *view* of the cycle is accelerated.
+#   * The background does NOT speed up. Player speed, terrain and the parallax scroll all run
+#     off player.global_position.x and never look at this. So the world moves at its normal
+#     rate underneath while the sky, ice, scenery and object colours race -- which is exactly
+#     what you want to review, and is why this cannot be done by just running the game faster.
+#
+# Time-based rather than distance-based deliberately: the speed ramp means a fixed distance is
+# ~75s of biome early in a run and ~10s at cap, so a distance knob would not give a steady
+# interval. Transitions scale with it -- TRANSITION_DISTANCE is 32% of BIOME_DISTANCE, so at
+# 10.0 each biome holds ~6.8s and cross-fades ~3.2s.
+#
+# Starts at 0, so a run opens on the intro biome (absolute cycle index 0) and then walks the
+# rotated cycle -- i.e. you see first_light plus all eight. It deliberately ignores
+# biome_phase_offset, and get_persisted_phase() still uses the real world_x, so a review
+# session cannot write a bogus phase into save.dat.
+var debug_biome_seconds: float = 0.0
+
+# Only advanced while the knob above is on.
+var debug_biome_elapsed: float = 0.0
+
 # This instance's copy, read once in _ready(). Held separately from the static so that
 # apply_palette_for_world_x stays pure in world_x -- see get_persisted_phase().
 var biome_phase_offset: float = 0.0
@@ -257,7 +288,14 @@ func _ready() -> void:
 # _process, not _physics_process: this is presentation only and nothing downstream of it
 # is simulated. Keeping it off the physics tick also means it can never contribute to a
 # stall the freeze gates would have to explain.
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	# Synthetic world_x from elapsed time -- see debug_biome_seconds. Colour only; nothing
+	# downstream of the palette push reads this value.
+	if debug_biome_seconds > 0.0:
+		debug_biome_elapsed += delta
+		apply_palette_for_world_x(debug_biome_elapsed / debug_biome_seconds * BIOME_DISTANCE)
+		return
+
 	apply_palette_for_world_x(player.global_position.x + biome_phase_offset)
 
 
