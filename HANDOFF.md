@@ -62,6 +62,47 @@ before building it. Don't self-verify visuals with screenshots — the owner che
 The sections below run newest first. The older ones are all background work, which is **parked
 in a shippable state, not finished** — read "Where things actually stand" before touching it.
 
+## Open decision — how much night the day arc should have
+
+Raised by the owner 2026-08-27 while playtesting with `debug_biome_seconds`: *"mostly sun, some
+night time, but like 2 night time or 3 isn't really enough."* **Not started — it needs a call.**
+
+Today exactly **one** of the eight palettes is真 night (`starlit_night`, `star_density` 1.0).
+`violet_dusk` (0.3) and `twilight_blue` (0.6) are dusk and twilight, not night. So night is 1/8
+of the arc, ~1.7 min of a ~13.7 min cycle.
+
+Three ways up, cheapest first:
+
+- **A — deepen `twilight_blue` into a real night.** Darken its sky, push `star_density` 0.6 →
+  ~0.85. Night reads as 2/8. **Data only, no new files, no cycle-length change, no doc updates.**
+  It cannot get a second moon (see the disc rule below).
+- **B — add a 9th palette, `deep_night`, after `starlit_night`.** Night becomes 3/9 and the arc
+  keeps its order. Costs: one new `.tres`, a `BIOME_CYCLE` entry, and the cycle grows 8 × 75 000
+  → 9 × 75 000 px (13.7 → 15.4 min). **"Eight" is written into `CLAUDE.md`, `biomes.md` and the
+  build-order table** and would all need updating. `biome_schedule_check` prints `palettes=N` and
+  should pass unchanged.
+- **C — give `SkyCelestial` the two-node cross-dissolve `IceBand` already has.** This is the only
+  thing that unlocks **the moon arcing across the night** (rising left, setting right) instead of
+  sitting in one slot, and it is the real fix for *"the moon pops up all of a sudden"*. Real code
+  in `sky_backdrop.gd` plus relaxing one `biome_schedule_check` rule. Medium risk, and it touches
+  the one visual system whose gates need a window.
+
+**The disc rule, which shapes all three** — `biome_schedule_check` enforces two things that are
+not obvious from the palettes, and it caught an attempt to break both:
+
+1. **No two adjacent biomes may both have a disc**, because `celestial_is_moon` snaps at the
+   transition midpoint while `celestial_strength` lerps — so the texture would swap mid-fade.
+2. **A disc-less biome must copy its disc-having neighbour's `celestial_position`**, or the disc
+   slides across the sky as it fades. *This is why every palette shares one of two positions* —
+   it is not redundancy, it is the rule.
+
+A and B are compatible; C subsumes the moon half of both. **Recommendation: A now** (minutes,
+zero structural cost), then C only if the pop-in still reads wrong once night is longer.
+
+**Still owed: the moon image.** The owner asked to swap the procedural moon for supplied art —
+*"can you use this:"* — but **no image came through with the message**. The procedural moon has
+been fixed to be presentable (`6933860`); swap it when the file arrives.
+
 ## Last sessions — 2026-08-26 → 27: two review items killed, one gate hardened
 
 Two commits, **both unpushed**: `f7e500d` (docs) and `9c91c42` (the gate). Nothing outside
