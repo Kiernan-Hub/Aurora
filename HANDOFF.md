@@ -6,9 +6,15 @@
 Android). `CLAUDE.md` is the map — read it first; it points at everything else. This file is the
 running log of *where the work is*, newest section first.
 
-As of **2026-08-26**: `origin/main` and local are level, tree clean, `./scripts/check.sh` green
-(five gates, ~25s). The core loop, chasms, coins, powerups, upgrades, achievements, the frozen
-lake and the background are all shipped and working. Gameplay art is still placeholder rects.
+As of **2026-08-27**, head `9c91c42`: tree clean, `./scripts/check.sh` green (five gates, ~25s).
+**Local is ahead of `origin/main` by two unpushed commits** (`f7e500d`, `9c91c42`) — both are
+docs plus one gate file, nothing that changes the game. The core loop, chasms, coins, powerups,
+upgrades, achievements, the frozen lake and the background are all shipped and working. Gameplay
+art is still placeholder rects.
+
+**The 2026-08-24 review list is finished except #7.** Two items were killed on evidence rather
+than done (#9, #8 — see below), and the last cheap one is built. What is left on it is #7,
+segment caches never being pruned, which carries a read-this-first warning.
 
 > ## ⏸ THE OWNER IS MID-PLAYTEST — DON'T START ANYTHING BIG
 >
@@ -36,11 +42,13 @@ lake and the background are all shipped and working. Gameplay art is still place
 
 **Two live hazards, both cost a session if you don't know them:**
 
-- **`--editor` and both APK exports silently rewrite `project.godot` AND scene files**, dropping
-  authored values, and `shipping_values_check` cannot see it. Run **`git status`** after any
-  engine run — not just `git diff project.godot` — and revert anything you did not change on
-  purpose. Full table: `docs/development/debugging.md`, "Engine commands that rewrite
-  `project.godot`".
+- **An engine run can silently rewrite `project.godot` AND scene files**, dropping authored
+  values and every comment. **Corrected 2026-08-26:** it is *not* caused by `--editor` or the
+  APK exports (both measured byte-clean) — the trigger is a project-setting **save**. As of
+  2026-08-27 `shipping_values_check` text-scans `project.godot`, so a dropped pin goes red;
+  **scene files still have no such cover**, so run **`git status`** after any engine run and
+  revert what you did not change on purpose. Full table: `docs/development/debugging.md`,
+  "Engine commands that rewrite `project.godot`".
 - **`./aura.apk` at the repo root is from 2026-08-03** — three weeks and ~20 commits stale, kept
   only because it is gitignored. `debugging.md`'s Android instructions say to re-export before
   installing; do that rather than trusting the file sitting there.
@@ -54,10 +62,16 @@ before building it. Don't self-verify visuals with screenshots — the owner che
 The sections below run newest first. The older ones are all background work, which is **parked
 in a shippable state, not finished** — read "Where things actually stand" before touching it.
 
-## Last session — 2026-08-26, two review items killed, no code changed
+## Last sessions — 2026-08-26 → 27: two review items killed, one gate hardened
 
-Docs only. No gameplay, physics, terrain, scene or shader file was touched, so nothing here
-needs a gate run to trust. `check.sh` was green before and after.
+Two commits, **both unpushed**: `f7e500d` (docs) and `9c91c42` (the gate). Nothing outside
+`scripts/debug/shipping_values_check.gd` and docs was touched — no gameplay, physics, terrain,
+scene or shader file — so nothing here needs a gate suite to trust. `check.sh` green throughout,
+5/5 in 25s, unchanged timing.
+
+The through-line of both: **three standing claims turned out to be wrong when measured**, and
+each had been costing something. Details below, but the pattern is worth carrying — this project
+documents its traps well enough that the docs themselves become the thing nobody re-checks.
 
 ### #9 (Godot 4.7.2) — DECLINED, don't re-raise
 
