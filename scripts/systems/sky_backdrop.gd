@@ -84,17 +84,26 @@ const CELESTIAL_FALLOFF_ALPHAS: PackedFloat32Array = [1.0, 1.0, 0.62, 0.18, 0.0]
 # 1/2.6 = 0.385, which is where the alpha shoulder above sits.
 const CELESTIAL_HALO_SCALE: float = 2.6
 const STARTING_CELESTIAL_STRENGTH: float = 0.0
-# The moon is the SAME disc with a bite taken out of it. A sun and a moon that differ only in
-# tint are indistinguishable in play -- both read as "a pale dot" -- and a crescent is the one
-# shape nobody has to think about. Units are fractions of the texture's half-width, so they
-# line up with the gradient offsets above: the solid core ends around 0.39.
-const MOON_CUT_RADIUS: float = 0.36
-const MOON_CUT_OFFSET: Vector2 = Vector2(0.16, -0.05)
-# Not cut to fully transparent: a trace of the dark limb keeps it reading as a sphere rather
-# than as a detached sliver.
-const MOON_CUT_RESIDUAL: float = 0.06
+# The moon is the SAME disc, shaded on one side. A sun and a moon that differ only in tint are
+# indistinguishable in play -- both read as "a pale dot" -- so the moon gets a terminator.
+# Units are fractions of the texture's half-width, matching the gradient offsets above: the
+# solid core ends around 0.39.
+#
+# TUNED 2026-08-27, IT USED TO READ AS AN ECLIPSE. The cut disc was radius 0.36 -- the same as
+# the lit core -- offset by only |(0.16, -0.05)| = 0.17, so it covered nearly the whole disc
+# and left a thin bright rim around a dark centre sitting inside the big soft halo. On screen
+# that is a diamond-ring eclipse, not a moon.
+#
+# The cut is now offset well past the core so it only shades the trailing side, and the
+# shadowed part stays over half lit, which reads as a sphere lit from one side rather than as
+# a bite removed. Softness is much wider for the same reason: a real terminator is a gradient
+# across the body, not an edge.
+const MOON_CUT_RADIUS: float = 0.62
+const MOON_CUT_OFFSET: Vector2 = Vector2(0.72, -0.22)
+# Well above zero on purpose: this is the shaded limb of a lit sphere, not a hole.
+const MOON_CUT_RESIDUAL: float = 0.62
 # Soft edge on the cut, in the same fractional units, so the terminator is not aliased.
-const MOON_CUT_SOFTNESS: float = 0.012
+const MOON_CUT_SOFTNESS: float = 0.14
 
 # --- Stars -------------------------------------------------------------------------------
 # Built in code rather than shipped as a PNG, the same way snow_drift.gd builds its flake dot
