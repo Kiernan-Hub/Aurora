@@ -84,26 +84,23 @@ const CELESTIAL_FALLOFF_ALPHAS: PackedFloat32Array = [1.0, 1.0, 0.62, 0.18, 0.0]
 # 1/2.6 = 0.385, which is where the alpha shoulder above sits.
 const CELESTIAL_HALO_SCALE: float = 2.6
 const STARTING_CELESTIAL_STRENGTH: float = 0.0
-# The moon is the SAME disc, shaded on one side. A sun and a moon that differ only in tint are
-# indistinguishable in play -- both read as "a pale dot" -- so the moon gets a terminator.
-# Units are fractions of the texture's half-width, matching the gradient offsets above: the
-# solid core ends around 0.39.
+# THE MOON IS AUTHORED ART, unlike the sun disc, the glow and the stars above it, which are
+# all built in code. Those are pure gradients that a few constants describe exactly. A moon is
+# not: the thing that makes one read as a moon rather than a pale dot is surface detail, and
+# the procedural version tried to buy that with a terminator cut. It failed badly -- the cut
+# disc was the same radius as the lit core and offset less than that radius, so it covered the
+# centre and left a bright rim around a dark middle. On screen that is a diamond-ring eclipse.
 #
-# TUNED 2026-08-27, IT USED TO READ AS AN ECLIPSE. The cut disc was radius 0.36 -- the same as
-# the lit core -- offset by only |(0.16, -0.05)| = 0.17, so it covered nearly the whole disc
-# and left a thin bright rim around a dark centre sitting inside the big soft halo. On screen
-# that is a diamond-ring eclipse, not a moon.
+# Extracted from art_source/background/moons.png, panel 6 of the 8 the owner supplied. Alpha is
+# GEOMETRIC -- a solid disc with a one-pixel soft edge -- because the moon is a body and its
+# craters must not make it see-through, which is the trap the first extraction fell into. Only
+# the halo outside the body is brightness-derived, taken from the art. Luminance carries the
+# crater shading (0.72..1.0), so palette.celestial_color still tints the whole thing exactly as
+# it tinted the flat white disc.
 #
-# The cut is now offset well past the core so it only shades the trailing side, and the
-# shadowed part stays over half lit, which reads as a sphere lit from one side rather than as
-# a bite removed. Softness is much wider for the same reason: a real terminator is a gradient
-# across the body, not an edge.
-const MOON_CUT_RADIUS: float = 0.62
-const MOON_CUT_OFFSET: Vector2 = Vector2(0.72, -0.22)
-# Well above zero on purpose: this is the shaded limb of a lit sphere, not a hole.
-const MOON_CUT_RESIDUAL: float = 0.62
-# Soft edge on the cut, in the same fractional units, so the terminator is not aliased.
-const MOON_CUT_SOFTNESS: float = 0.14
+# The crop is 2.6x the disc radius, matching CELESTIAL_HALO_SCALE, so every palette's authored
+# celestial_size still means the radius of the disc you actually see.
+const MOON_TEXTURE: Texture2D = preload("res://assets/textures/background/moon_full.png")
 
 # --- Stars -------------------------------------------------------------------------------
 # Built in code rather than shipped as a PNG, the same way snow_drift.gd builds its flake dot
@@ -192,7 +189,7 @@ func _ready() -> void:
 
 	# Added last, so the disc draws over its own halo rather than under it.
 	celestial_sun_texture = build_celestial_texture()
-	celestial_moon_texture = build_moon_texture()
+	celestial_moon_texture = MOON_TEXTURE
 	sky_celestial = TextureRect.new()
 	sky_celestial.name = "SkyCelestial"
 	sky_celestial.texture = celestial_sun_texture
@@ -466,41 +463,3 @@ func build_celestial_texture() -> GradientTexture2D:
 	texture.fill_from = Vector2(0.5, 0.5)
 	texture.fill_to = Vector2(1.0, 0.5)
 	return texture
-
-# The moon: the same disc and halo, with an offset circle subtracted to leave a crescent.
-#
-# Baked into an Image rather than assembled from gradients, because subtracting one circle
-# from another is not something a radial GradientTexture2D can express. Same falloff stops as
-# the sun, so the two still belong to the same sky -- only the SHAPE differs, which is the
-# whole point: a sun and a moon that differ only in tint are indistinguishable in play.
-func build_moon_texture() -> ImageTexture:
-	var falloff: Gradient = Gradient.new()
-	var moon_colors: PackedColorArray = PackedColorArray()
-	for stop_index: int in range(CELESTIAL_FALLOFF_ALPHAS.size()):
-		moon_colors.append(Color(1.0, 1.0, 1.0, CELESTIAL_FALLOFF_ALPHAS[stop_index]))
-	falloff.offsets = CELESTIAL_FALLOFF_OFFSETS
-	falloff.colors = moon_colors
-
-	var image: Image = Image.create(CELESTIAL_TEXTURE_SIZE, CELESTIAL_TEXTURE_SIZE, false, Image.FORMAT_LA8)
-	var half: float = float(CELESTIAL_TEXTURE_SIZE) * 0.5
-	var centre: Vector2 = Vector2(half, half)
-	var cut_centre: Vector2 = centre + (MOON_CUT_OFFSET * half)
-
-	for y: int in range(CELESTIAL_TEXTURE_SIZE):
-		for x: int in range(CELESTIAL_TEXTURE_SIZE):
-			var point: Vector2 = Vector2(float(x) + 0.5, float(y) + 0.5)
-			# Normalised so 1.0 is the edge midpoint -- the same units the gradient offsets and
-			# the MOON_CUT_* constants are written in.
-			var radius: float = point.distance_to(centre) / half
-			var alpha: float = falloff.sample(clampf(radius, 0.0, 1.0)).a
-
-			# 0 well inside the cut, 1 well outside, smooth across the terminator.
-			var outside_cut: float = smoothstep(
-				MOON_CUT_RADIUS - MOON_CUT_SOFTNESS,
-				MOON_CUT_RADIUS + MOON_CUT_SOFTNESS,
-				point.distance_to(cut_centre) / half)
-			alpha *= lerpf(MOON_CUT_RESIDUAL, 1.0, outside_cut)
-
-			image.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
-
-	return ImageTexture.create_from_image(image)
