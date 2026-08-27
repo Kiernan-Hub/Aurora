@@ -1,5 +1,38 @@
 # Handoff
 
+## Start here
+
+**Aura** is an Alto's-Adventure-style endless 2D skater in Godot 4.7 (GDScript, Mobile renderer,
+Android). `CLAUDE.md` is the map — read it first; it points at everything else. This file is the
+running log of *where the work is*, newest section first.
+
+As of **2026-08-26**: `origin/main` and local are level, tree clean, `./scripts/check.sh` green
+(five gates, ~25s). The core loop, chasms, coins, powerups, upgrades, achievements, the frozen
+lake and the background are all shipped and working. Gameplay art is still placeholder rects.
+
+**Next three things, in order** — detail in "Next, in order" below:
+
+1. **Godot 4.7.2** (review #9), isolated commit. Read the `project.godot` warning first.
+2. **`main.gd` process priorities** (review #8), a behaviour change needing the physics gates.
+3. **The aurora borealis** — the game's namesake, fully planned, not started.
+
+**Two live hazards, both cost a session if you don't know them:**
+
+- **`--editor` and both APK exports silently rewrite `project.godot` AND scene files**, dropping
+  authored values, and `shipping_values_check` cannot see it. Run **`git status`** after any
+  engine run — not just `git diff project.godot` — and revert anything you did not change on
+  purpose. Full table: `docs/development/debugging.md`, "Engine commands that rewrite
+  `project.godot`".
+- **`./aura.apk` at the repo root is from 2026-08-03** — three weeks and ~20 commits stale, kept
+  only because it is gitignored. `debugging.md`'s Android instructions say to re-export before
+  installing; do that rather than trusting the file sitting there.
+
+**Working agreement, in force:** one numbered sub-step at a time, commit it alone, stop and wait
+for an explicit "go". Flag anything with real bug potential, or with a much cheaper alternative,
+before building it. Don't self-verify visuals with screenshots — the owner checks in-game faster.
+
+---
+
 The sections below run newest first. The older ones are all background work, which is **parked
 in a shippable state, not finished** — read "Where things actually stand" before touching it.
 
@@ -52,9 +85,9 @@ the aurora. Don't "clean up" that empty-looking file. Full detail: `docs/develop
 
 1. **#9, Godot 4.7.2** in an isolated commit — editor plus matching Android export templates,
    then `check.sh`, the physics gates, the three visual gates, and one device build. Do **not**
-   move to the 4.8 line. **`git diff project.godot` after every single engine invocation** — see
-   the warning directly below, which is wider than the review originally said and is the main
-   hazard of this particular task.
+   move to the 4.8 line. **`git status` after every single engine invocation** — see the warning
+   below, which is wider than the review originally said (scene files too, not just
+   `project.godot`) and is the main hazard of this particular task.
 2. **#8, `main.gd`'s process priorities** — `main.gd:221` documents a tree-order requirement for
    `apply_world_rebase()` with nothing enforcing it. Treat it as a behaviour change: full physics
    gate suite behind it.

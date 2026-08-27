@@ -475,7 +475,7 @@ survives intact — shifts are whole powers of two, so adding one is exact in bi
 > **Since 2026-08-08 these are only the STARTING values, not the palette.**
 > `biome_director.gd` overwrites all of them on the first frame of a run and again through
 > every transition — see `docs/development/biomes.md`. They still describe exactly what is
-> on screen under `--headless` (the director returns early there, so all six gates see the
+> on screen under `--headless` (the director returns early there, so every headless gate sees the
 > pre-biome look), and they are the fallback if the director fails to resolve a consumer.
 > The eight live palettes are `resources/biomes/*.tres`. **Editing a constant below changes
 > the gates and the fallback, not the game.**

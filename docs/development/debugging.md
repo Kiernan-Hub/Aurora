@@ -45,8 +45,9 @@ Three things about it worth knowing before editing it:
   table, so a merged `strings` line or a path embedded inside a resource still trips it.
   It errs toward failing on purpose. No shipping script embeds those literals today; if
   one ever legitimately needs to, that is the moment to write a real path-table parse.
-- **`--export-pack` does not rewrite `project.godot`** — verified, unlike `--editor`. That
-  is the only reason this can live in a runner at all.
+- **`--export-pack` does not rewrite `project.godot`** — verified, and it is the only
+  export form that doesn't. That is the only reason this can live in a runner at all.
+  See "Engine commands that rewrite `project.godot`" below before running any other.
 
 **The other two tiers stay manual, and cannot join this one.** The physics gates
 (freeze-search, freeze-replay, floor-flicker, chasm, camera-shake) take minutes each; the
@@ -58,6 +59,45 @@ run without `--headless`, so no headless runner can ever include them.
 settings — some terrain constants derive from `physics_ticks_per_second`, so that would
 make the validation script itself change level geometry. Import stays the manual step
 below, needed only after adding a `class_name`.
+
+## Engine commands that rewrite `project.godot`
+
+**This is wider than "the editor does it", which is how it was documented until
+2026-08-25 and how it then bit a session.** These commands delete the pinned
+`viewport_width`/`viewport_height`, `physics_ticks_per_second` and
+`physics_interpolation`, along with **every explanatory comment in the file** — the only
+record of why each setting exists.
+
+| Command | Rewrites `project.godot`? |
+|---|---|
+| `--headless --editor --quit` (class-cache refresh) | **YES** |
+| `--export-debug` / `--export-release` (build an APK) | **YES** — found 2026-08-25 |
+| `--export-pack` (what `check.sh` uses) | no, verified |
+| `--script` (every gate and probe) | no |
+
+**It is not only `project.godot` — these runs re-serialise SCENE files too, and drop authored
+property values doing it.** Observed 2026-08-26: `scenes/experiments/background_pano_test.tscn`
+came back rewritten with `uid=` fields added and **two authored values silently gone**
+(`cycle_seconds = 20.0`, `current = true`). It was only an experiment scene, so nothing broke.
+**`main.tscn` was untouched that time, and it is the one that matters** — it carries the manual
+player-spawn invariant, the four layers' `depth_t`, and every `base_y_fraction`. So the check
+is `git status`, not `git diff project.godot` alone: **look at every dirty file after an editor
+or export run**, and revert anything you did not deliberately change. This is the same failure
+class as the `@export`-serialised `world_rebase_enabled` regression that cost weeks.
+
+**`shipping_values_check` does not catch this. Measured: it PASSES on the stripped file.**
+It reads `ProjectSettings` at runtime, and the stripped keys fall back to engine defaults
+that *currently equal* the pinned values — so a stripped file looks identical to a pinned
+one until an engine default moves. That is exactly what a version upgrade can do, which
+makes this most dangerous during the one task where you run the editor most.
+
+So: **`git diff project.godot` after any editor or export run**, and
+`git checkout -- project.godot` if it moved. A green `check.sh` is no evidence here.
+
+The cheap fix, written up but deliberately not built: have `shipping_values_check` scan
+`project.godot` as *text* for the pinned keys, exactly the way it already text-scans
+`main.tscn` rather than reading properties, and for the same reason it gives there — a
+text scan catches what a property read structurally cannot.
 
 **No gate covers input, and input has two independent paths.** A change verified on
 one can be completely broken on the other. Desktop mouse and keyboard go through the
@@ -98,7 +138,8 @@ naming its type fails with `Could not find type "X"` — same cascade as above. 
 /Applications/Godot.app/Contents/MacOS/Godot --headless --editor --quit --path .
 ```
 
-Run that after adding any new `class_name`, before running any gate.
+Run that after adding any new `class_name`, before running any gate — then **`git diff
+project.godot` immediately**, because that command strips it (see the table above).
 
 ## Harness opt-outs — set these before `add_child(main)`
 
@@ -488,7 +529,7 @@ without a human having to play the game and screenshot it.
 
 It exists because the ice pass shipped a visibly broken frame twice in one session — a
 funnel-warped texture and a washed-out palette — both of which were obvious in one
-screenshot and invisible to all seven headless checks. **Run it before handing a visual
+screenshot and invisible to every headless check. **Run it before handing a visual
 change over.** It re-asserts `State.PLAYING` every frame (the capture window loses focus
 immediately, and `GameManager` pauses on `NOTIFICATION_APPLICATION_FOCUS_OUT`) and hides the
 UI `CanvasLayer`.

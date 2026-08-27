@@ -815,7 +815,7 @@ across in a varying. Full log: `docs/research/ice_shader_color_semantics.md`.
 godot --headless --path . --script res://scripts/debug/biome_schedule_check.gd
 ```
 
-**It exists because the other six gates are blind to all of this by construction.** They all
+**It exists because every headless gate is blind to all of this by construction.** They all
 instantiate `main.tscn` under `--headless`, and `BiomeDirector` deliberately returns early
 under `--headless` having applied nothing — which is what makes it impossible for this pass
 to move a gate result, and equally what makes those gates unable to see any of it. Same gap
@@ -872,7 +872,7 @@ they measured and, more usefully, **how to build one that is actually sound**:
 
 ## Traps
 
-- **A parse error in `biome_director.gd` hangs the six gates rather than failing them**
+- **A parse error in `biome_director.gd` hangs the headless gates rather than failing them**
   (`visuals.md` trap 3). Run one gate as soon as the file first parses, not at the end.
 - **A parse error in a *palette consumer* does the opposite, and it is worse: the gate runs
   to completion and prints a normal-looking PASS.** Measured 2026-08-10 with a broken

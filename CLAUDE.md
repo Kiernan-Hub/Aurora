@@ -27,8 +27,7 @@ log — measurements, ruled-out approaches — goes in `docs/research/`.
 | `development/biomes.md` | Any colour that changes over a run — palettes, the director, a transition, `shaders/ice.gdshader` |
 | `development/ice_panels.md` | Making a new ice tile — panel requirements, prompts, the `--check` validator |
 | `development/debugging.md` | Running a gate, or reviving an archived probe |
-| `review/*.md` | Point-in-time audits — the running list of known-but-unfixed debt. Read the newest before a cleanup pass |
-| `research/*.md` | Closed investigations. **Not required reading** — open one only when something here points at it |
+| `review/*.md` | Point-in-time audits, the running list of known debt — read the newest before a cleanup pass. `research/*.md` is closed investigations, **not required reading**: open one only when something here points at it |
 
 ## Run / debug / test
 
@@ -38,11 +37,11 @@ No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/Ma
 **`./scripts/check.sh` runs the fast five in ~25s** — shipping-values, biome-schedule,
 terrain-shape, lake-suppression, and an export-content check that fails if `scripts/debug` or
 either `experiments/` reaches a real pack. Run it before every commit. It deliberately does *not*
-import the project: `--editor` strips the pinned physics settings (`--export-pack` doesn't).
+import the project, for the reason in the `project.godot` bullet below.
 
 **Twelve maintained checks, and only twelve** — everything else lives in `scripts/debug/archive/`,
-so the directory answers "is this a gate?". `check.sh` runs four; the other eight take minutes each
-or need a window (commands: `debugging.md`):
+so the directory answers "is this a gate?". `check.sh` runs four; the other eight take minutes or
+need a window (`debugging.md`):
 
 | Check | Run after |
 |---|---|
@@ -55,30 +54,33 @@ or need a window (commands: `debugging.md`):
 the only reason the visual three exist. And `shipping_values_check` is the only thing watching the
 debug knobs: each is a plain `var` the editor can't serialise, so no other gate sees one left
 flipped. It fails on all of them and on any `debug_*` override reaching `main.tscn`; `--allow-temp`
-downgrades it to a warning.
-
-A 13th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing; the 18 files in
-`scripts/debug/archive/` measure a *paused* game and print confident, meaningless numbers, so never
-trust one without reviving it (`debugging.md`, which also has the `FREEZE_REPRO` seed log rule).
+downgrades it to a warning. A 13th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing;
+the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, meaningless numbers
+— never trust one without reviving it (`debugging.md`, which also has the `FREEZE_REPRO` rule).
 
 ## Scene wiring
 
 **The annotated scene graph is the first section of `architecture.md`** — open it before touching
-`main.tscn`. The rules that break things silently if you don't know them:
+`main.tscn`. The rules that break things silently:
 
 - Nodes find each other **by sibling path** (`NodePath("../Player")`), resolved with
   `get_node_or_null` and null-guarded. There is no service locator.
 - **Exactly one autoload**, `Services` (`class_name GameServices`); a new global needs a real
   justification. **Never write `Services.x` in gameplay code** — use `GameServices.resolve(self)`
   and null-guard it, or you break every headless probe.
-- `GameManager.set_state()` is the **only** place allowed to touch `get_tree().paused` or a screen's
-  visibility.
+- `GameManager.set_state()` is the **only** place allowed to touch `get_tree().paused` or a
+  screen's visibility.
 - **Draw order is tree order plus `CanvasLayer.layer`; no `z_index` anywhere.** Reordering siblings
   reorders rendering.
 - **The six spawners live under `TerrainGenerator`** so world rebasing carries them for free.
 
 ## Things that break silently
 
+- **`--editor` AND both APK exports rewrite `project.godot` *and scene files*,** deleting the
+  pinned viewport/tick rate/interpolation, every comment, and authored scene properties.
+  **`shipping_values_check` cannot catch it** (measured): the stripped keys fall back to defaults
+  that currently *equal* them. Run `git status` after ANY engine run and revert what you didn't
+  change; `--export-pack` is the one safe form.
 - **World rebasing must stay on.** `Main.world_rebase_enabled` isn't `@export`ed — exporting it
   once serialised to `false` and reintroduced the freeze for weeks. (`freeze_bug.md`)
 - **Spawners under `TerrainGenerator` must not read `session_seed` in `_ready()`** — children ready
@@ -111,10 +113,10 @@ trust one without reviving it (`debugging.md`, which also has the `FREEZE_REPRO`
   builder's `OUTPUT_FLOOR`), so even a pure white tint renders as a 0.38 grey. When ice "looks grey",
   **check saturation before brightness** — the fix is usually widening `b − r`.
 - **Every `Area2D` has terrain chunks entering it.** Player/chunks/obstacles are layer 1;
-  coins/powerups layer 2; everything masks layer 1. `obstacle.gd`, `coin.gd` and `powerup.gd` each
-  filter with `body.is_in_group("player")` — drop that and a chunk collects or kills.
-- **A pickup's node scale scales its `Area2D`**, so art size *is* hitbox size and the two can never
-  be tuned apart. `AIR_COIN_SCALE` 1.9 and the rare coin's 1.0 are both load-bearing.
+  coins/powerups layer 2; all mask layer 1. `obstacle.gd`, `coin.gd`, `powerup.gd` each filter with
+  `body.is_in_group("player")` — drop it and a chunk collects or kills.
+- **A pickup's node scale scales its `Area2D`**: art size *is* hitbox size, never tunable apart.
+  `AIR_COIN_SCALE` 1.9 and the rare coin's 1.0 are both load-bearing.
 - **The jump upgrade curve may not exceed ×1.0224.** `CHASM_LEAD_IN_LENGTH` (900) bounds
   max-upgrade × the √2 powerup; above that a boosted jump lands *inside* the void and
   `check_upgrade_curve()` fails the build. Same reason **double jump is ruled out** (`physics.md`).
@@ -124,13 +126,12 @@ trust one without reviving it (`debugging.md`, which also has the `FREEZE_REPRO`
 
 ## Known issues
 
-- **Residual sub-pixel bounce on curved terrain — open, deferred**, not fixable at the
-  input/movement level. Revisit only on a confirmed-visible complaint (`terrain_jitter.md`).
+- **Residual sub-pixel bounce on curved terrain — open, deferred**, not fixable at the input or
+  movement level. Revisit only on a confirmed-visible complaint (`terrain_jitter.md`).
 - **`mega_drop` shakiness — SEGMENT CUT, not fixed**, `MEGA_DROP_SELECTION_WEIGHT = 0`. Six
   mitigations measured, none worked — read `camera_shake.md` before spending more time here.
 - **FIXED, don't re-investigate:** boost-into-obstacle-cluster death; `is_on_floor()` flicker on
-  rising terrain (`floor_flicker.md`). **Unreproduced:** "view snaps forward/backward for half a
-  second", watchdogs stayed 0.
+  rising terrain (`floor_flicker.md`). **Unreproduced:** "view snaps forward/back", watchdogs 0.
 - **Removed entirely, don't resurrect:** the old *terrain-driven* obstacle placement inside
   `terrain_generator.gd` (not the live `ObstacleSpawner`) and vertical background parallax
   (`dead_code.md`). Don't touch `project.godot` / `.godot/` / `*.uid` / `icon.svg` unless asked.
@@ -176,4 +177,4 @@ in a release export, so it can't ship by forgetting a flag (`physics.md`).
 nothing else. How something works goes in `docs/development/`, what an investigation found in
 `docs/research/`.
 
-one thing i want to say (im the user, so this is important) if something has a lot of potenital to make more bugs or is gonna be exceeslsivey hard when theres another option, then jhsut flag it and let me know. i am prioritixzing this to be clean code. if a big drop is too much terrain changing, then we just add a chasm instead, for exmaple
+one thing i want to say (im the user, so this is important) if something has a lot of potenital to make more bugs or is gonna be exceeslsivey hard when theres another option, then jhsut flag it and let me know. i am prioritixzing this to be clean and lean code. if a big drop is too much terrain changing, then we just add a chasm instead, for exmaple
