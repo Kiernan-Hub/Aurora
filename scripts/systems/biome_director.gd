@@ -218,14 +218,23 @@ var debug_pin_intro_biome: bool = false
 # interval. Transitions scale with it -- TRANSITION_DISTANCE is 32% of BIOME_DISTANCE, so at
 # 10.0 each biome holds ~6.8s and cross-fades ~3.2s.
 #
-# Starts at 0, so a run opens on the intro biome (absolute cycle index 0) and then walks the
-# rotated cycle -- i.e. you see first_light plus all eight. It deliberately ignores
-# biome_phase_offset, and get_persisted_phase() still uses the real world_x, so a review
-# session cannot write a bogus phase into save.dat.
+# IT MUST STILL RESUME AFTER A DEATH, like the real phase does. The first version of this knob
+# drove straight off a per-instance elapsed timer, which reset to 0 on every
+# reload_current_scene() and so sent every restart back to first_light -- i.e. it silently broke
+# the resume-in-the-biome-you-died-in behaviour while it was on, which reads exactly like a
+# regression in the shipping feature. It isn't a debug knob's job to change that semantic.
+# debug_biome_elapsed is therefore STATIC, the same device session_biome_phase and
+# session_cycle_rotation use and for the same reason: it carries across a death and a restart
+# and dies with the process. So the accelerated arc resumes where you died, and only relaunching
+# the app returns you to the intro -- identical semantics to shipping, just faster.
+#
+# get_persisted_phase() still uses the real world_x, so a review session cannot write a bogus
+# phase into the shipping path either.
 var debug_biome_seconds: float = 0.0
 
-# Only advanced while the knob above is on.
-var debug_biome_elapsed: float = 0.0
+# Static, so a restart resumes the accelerated arc instead of snapping back to the intro biome.
+# See the note above -- this mirrors session_biome_phase deliberately.
+static var debug_biome_elapsed: float = 0.0
 
 # This instance's copy, read once in _ready(). Held separately from the static so that
 # apply_palette_for_world_x stays pure in world_x -- see get_persisted_phase().
@@ -282,21 +291,27 @@ func _ready() -> void:
 
 	# Push frame one, so the run opens already inside its first biome instead of spending
 	# the first seconds on whatever the constants happen to be.
-	apply_palette_for_world_x(player.global_position.x + biome_phase_offset)
+	apply_palette_for_world_x(get_cycle_world_x())
 
 
 # _process, not _physics_process: this is presentation only and nothing downstream of it
 # is simulated. Keeping it off the physics tick also means it can never contribute to a
 # stall the freeze gates would have to explain.
 func _process(delta: float) -> void:
-	# Synthetic world_x from elapsed time -- see debug_biome_seconds. Colour only; nothing
-	# downstream of the palette push reads this value.
 	if debug_biome_seconds > 0.0:
 		debug_biome_elapsed += delta
-		apply_palette_for_world_x(debug_biome_elapsed / debug_biome_seconds * BIOME_DISTANCE)
-		return
+	apply_palette_for_world_x(get_cycle_world_x())
 
-	apply_palette_for_world_x(player.global_position.x + biome_phase_offset)
+
+# The world_x the palette cycle is driven from: normally the player's position plus the phase
+# this session carried in, and with the review knob on, a synthetic position from accelerated
+# time. One function so _ready()'s frame-one push and _process() can never disagree -- driving
+# them separately meant a restart rendered one frame of the real biome before the accelerated
+# one took over. Colour only; nothing downstream of the palette push reads this value.
+func get_cycle_world_x() -> float:
+	if debug_biome_seconds > 0.0:
+		return debug_biome_elapsed / debug_biome_seconds * BIOME_DISTANCE
+	return player.global_position.x + biome_phase_offset
 
 
 # Pure in world_x, which is the whole point -- see the header. Split out from _process so
