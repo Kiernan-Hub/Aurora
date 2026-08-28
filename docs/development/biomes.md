@@ -268,8 +268,10 @@ by `biome_schedule_check.gd` rather than left to authoring care.
 **1. A disc-less biome must copy its disc-having neighbour's `celestial_position`.**
 Position interpolates on the same channel as strength, so if the neighbour disagrees the disc
 *flies across the sky while fading in*. `twilight_blue` parked it at (0.82, 0.26) while the
-moon lives at (0.30, 0.09), and the moon visibly travelled from the bottom-right to the
-top-left as night fell. `check_disc_positions_are_stationary()`.
+moon lived at (0.30, 0.09), and the moon visibly travelled from the bottom-right to the
+top-left as night fell. `check_disc_positions_are_stationary()`. **The moon now sits at
+(0.62, 0.09)** — see "Where the moon sits" below — so `twilight_blue` and `arctic_dawn` both
+copy that.
 
 **2. No two adjacent biomes may both have a disc.** `celestial_is_moon` is a bool, so it
 cannot be interpolated — `sky_backdrop` swaps the texture outright instead of dissolving
@@ -278,6 +280,32 @@ strength is 0 at one end of any transition that changes it. `check_no_adjacent_d
 This is what cost `arctic_dawn` its sun: it sat next to `starlit_night` in the authored wrap,
 and a sun→moon swap mid-fade with both visible would pop.
 
+### Where the moon sits, and why it moved (2026-08-27)
+
+The sun's glow arcs left to right across the day — `arctic_dawn` 0.16, `glacier_teal` 0.46,
+`sunset_rose` 0.70, `violet_dusk` 0.78 — which is correct and was never the problem. The moon
+was the problem: it sat at **x 0.30, left**, on the last biome before `arctic_dawn` glows at
+**0.16, also left**. Two lights on the same side back to back, and it read as the sun rising
+immediately behind the moon.
+
+A moon rises opposite the sun and sets where the sun rises, so on the last biome before dawn it
+belongs on the **right**, on its way down, leaving the left clear for the sunrise.
+`starlit_night`'s disc and glow both moved **0.30 → 0.62**, and rule 1 above forces its two
+neighbours (`twilight_blue`, `arctic_dawn`) to copy the new `celestial_position`.
+
+**`celestial_is_moon` must also agree across a fading disc.** It is the one celestial field
+that does not interpolate — it snaps at the halfway point while `celestial_strength` lerps the
+whole way. `twilight_blue` and `arctic_dawn` were both `false` with the moon between them, so
+for the first half of each transition the disc was visible and still wearing the **sun**
+texture. Both are now `true`; their strength is 0 so nothing renders either way, and the flag
+only decides which texture the fade uses. This is invisible until you look for it, and no gate
+covers it — the two rules below are about position and adjacency, not about which texture a
+strength-0 palette names.
+
+**A moon that arcs across several night biomes is NOT possible today**, and that is rule 2:
+two adjacent discs need the two-node cross-dissolve the ice band has, which `SkyCelestial` does
+not have. See `HANDOFF.md`, option C of the night-length decision.
+
 > **Both rules stay properties of `BIOME_CYCLE`, and that is why the session rotates the arc
 > rather than reordering it** (see below). Rotation preserves adjacency, so walking the
 > authored array still tests every pair the game can show. The single exception is the opening
@@ -285,14 +313,32 @@ and a sun→moon swap mid-fade with both visible would pop.
 > `BiomeDirector.get_allowed_rotations()` plus `check_opening_seam()` cover exactly that.
 
 **Sun and moon must not look the same.** They differ only in tint otherwise, and in play both
-read as "a pale dot" — which is exactly what happened. The moon is a **crescent**: the same
-disc and halo with an offset circle subtracted, baked into an `Image` because subtracting one
-circle from another is not something a radial `GradientTexture2D` can express. Same falloff
-stops as the sun, so they still belong to the same sky; only the shape differs.
+read as "a pale dot" — which is exactly what happened.
+
+**The moon is authored art; the sun, the glow and the stars stay procedural** (2026-08-27).
+`MOON_TEXTURE` in `sky_backdrop.gd` preloads
+`assets/textures/background/moon_full.png`, extracted from panel 6 of
+`art_source/background/moons.png`. The procedural crescent it replaced was the one thing in
+this file that a few constants could not describe: it cut an offset circle out of the disc, the
+cut had the same radius as the lit core and was offset less than that radius, so it covered the
+centre and left a bright rim around a dark middle — a diamond-ring eclipse, shipped and visible.
+
+Two properties of the PNG are load-bearing, and both were got wrong once:
+
+- **Alpha is geometric — a solid disc, soft shoulder, zero by 1.20× the radius.** Deriving
+  alpha from the art's luminance made the craters *see-through* (the body measured 0.77 opaque).
+- **No baked halo.** `SkyGlow` already draws the bloom at the moon's own position, so a baked
+  one doubles it — and because the source panel's sky is not uniform, subtracting a sky floor
+  left a ~5% white veil to the rect edge that ended in a hard circular arc. It rendered as a
+  grey disc under the moon.
+
+Luminance carries the crater shading (0.72–1.0), so `celestial_color` tints it exactly as it
+tinted the flat disc. The crop is 2.6× the disc radius, matching `CELESTIAL_HALO_SCALE`, so
+every palette's authored `celestial_size` still means the radius you see.
 
 **Only two of the eight biomes have a disc, deliberately.** A disc in all eight reads as a
 decal rather than as weather. Two, now: a clear midday sun (`glacier_teal`) and the
-crescent moon (`starlit_night`). The other six have a reason not to — cloud in the two
+full moon (`starlit_night`). The other six have a reason not to — cloud in the two
 overcast/hazy biomes, the sun at or below the horizon in the three evening ones, and
 `arctic_dawn` giving up its risen sun to satisfy the no-adjacent-discs rule above. `celestial_strength = 0` skips the draw, and
 `sky_layer_check.gd` reports those as `--` rather than failing them.
@@ -534,7 +580,7 @@ violet_dusk → twilight_blue → starlit_night → arctic_dawn → …` and the
 * **Seven entry points, not eight.** The one pair a rotation can get wrong is the seam the arc
   does not contain — `first_light →` whatever lands at index 1. `get_allowed_rotations()`
   enumerates the rotations whose opening pair is disc-safe; `starlit_night` is excluded as an
-  opener because its moon sits at (0.30, 0.09) while `first_light` parks `celestial_position`
+  opener because its moon sits at (0.62, 0.09) while `first_light` parks `celestial_position`
   at (0.46, 0.08), so the moon would slide across the sky as it faded in. Enumerated rather
   than sampled-and-retried: eight candidates is cheaper to build than a rejection loop is to
   reason about. `check_opening_seam()` asserts that list is honest and that it holds more than

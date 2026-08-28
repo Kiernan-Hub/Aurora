@@ -207,6 +207,11 @@ items 4/6/7 on `HANDOFF.md`'s list.
 
 ### `sky_backdrop.build_moon_texture()` runs a 65,536-iteration GDScript loop in `_ready()`
 
+**RESOLVED 2026-08-27 — the function is gone.** The moon is authored art now
+(`MOON_TEXTURE`, a `preload`), so this loop is not paid on any scene load. It was removed for
+appearance rather than for speed — the procedural crescent rendered as an eclipse — but it
+closes this item outright. The starfield and sky bakes below still stand.
+
 Per pixel: two `Vector2.distance_to`, a `Gradient.sample`, a `smoothstep`, a `lerpf` and an
 `Image.set_pixel`. Plus the starfield image (1024×576 alloc) and the sky bake (2048 px).
 

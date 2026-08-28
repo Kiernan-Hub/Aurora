@@ -6,32 +6,54 @@
 Android). `CLAUDE.md` is the map — read it first; it points at everything else. This file is the
 running log of *where the work is*, newest section first.
 
-As of **2026-08-27**, head `9c91c42`: tree clean, `./scripts/check.sh` green (five gates, ~25s).
-**Local is ahead of `origin/main` by two unpushed commits** (`f7e500d`, `9c91c42`) — both are
-docs plus one gate file, nothing that changes the game. The core loop, chasms, coins, powerups,
-upgrades, achievements, the frozen lake and the background are all shipped and working. Gameplay
-art is still placeholder rects.
+As of **2026-08-27**, head `c5bcfe0`. The core loop, chasms, coins, powerups, upgrades,
+achievements, the frozen lake and the background are all shipped and working. Gameplay art is
+still placeholder rects.
 
 **The 2026-08-24 review list is finished except #7.** Two items were killed on evidence rather
 than done (#9, #8 — see below), and the last cheap one is built. What is left on it is #7,
 segment caches never being pruned, which carries a read-this-first warning.
 
-> ## ⏸ THE OWNER IS MID-PLAYTEST — DON'T START ANYTHING BIG
+> ## ✅ FINISH THIS FIRST — cleanup left open on purpose
 >
-> **As of 2026-08-26 the owner is doing a thorough hands-on testing pass and writing down a
-> list of things to change.** They said "there are a few things off." That list is the next
-> real input to this project and it does not exist in this repo yet.
+> Nothing here is broken. These are the four loose ends from the 2026-08-27 visual session,
+> ordered. **`check.sh` is red until item 1 is done, and that is intentional.**
 >
-> **So: when a session opens and the owner pastes findings, work those first.** They outrank
-> everything in "Next, in order" below — those are review-debt items, this is observed-broken
-> behaviour in the actual game. Expect small, specific, scattered complaints (feel, timing,
-> visuals, a thing that looked wrong once) rather than one clean bug report.
+> 1. **`BiomeDirector.debug_biome_seconds` is set to `10.0` in the working tree, uncommitted.**
+>    It is the palette fast-forward the owner reviewed with — one biome every 10s. It **cannot
+>    ship** (it is uncommitted, and `shipping_values_check` fails on it every run), but it must
+>    go back before anything else is committed from that file:
+>    `git checkout -- scripts/systems/biome_director.gd`. Only do this once the owner is done
+>    eyeballing biomes; ask, don't assume.
+> 2. **The three windowed visual gates are OWED.** This session changed biome palette colours
+>    *and* the sky, which is exactly what they exist for. They **must run without `--headless`**
+>    (`debugging.md`): `sky_layer_check.gd`, `ice_look_capture.gd`, `biome_contact_sheet.gd`.
+>    None has been run since the changes. This is the real outstanding risk — every headless
+>    gate is blind to biome code.
+> 3. **Nine commits are unpushed** (`c52761b` … `c5bcfe0`). Push once 1 and 2 are settled.
+> 4. **Then the open decision below** — how much night the arc should have (A/B/C). Not started.
 >
-> **Do not** start the aurora, re-open the review list, or kick off a long gate run until the
-> testing list has been triaged. **Do** ask which items are reproducible if it isn't stated —
-> `FREEZE_REPRO` in `debugging.md` is the standing rule for anything that smells like a stall.
+> After those four, the project is genuinely clean and the next real feature is the aurora,
+> which needs a planning pass before any code.
 
-**After the testing list is handled — next three things:**
+> ## ⏸ THE PLAYTEST IS STILL RUNNING — owner-reported findings outrank everything
+>
+> The owner is working through the game hands-on and reporting what looks wrong, usually with
+> screenshots. **Four visual findings came in on 2026-08-27 and are fixed** (see the session
+> section below); more are expected. When findings arrive, work those before anything in the
+> "next three things" list — that is review debt, this is observed-broken behaviour.
+>
+> **What that session taught, and it held every time:** these read as taste complaints and were
+> all *measurable causes*. Sample the colours, profile the texture, print the radial falloff —
+> do not tune by eye. Twice the obvious reading of the symptom was wrong ("the green looks bad"
+> was **not** a hue problem; the disc under the moon was **not** the sky). Twice the first fix
+> had to be redone as a result.
+>
+> **Do not** start the aurora, re-open the review list, or kick off a long gate run mid-playtest.
+> **Do** ask which items are reproducible if it isn't stated — `FREEZE_REPRO` in `debugging.md`
+> is the standing rule for anything that smells like a stall.
+
+**After the playtest and the cleanup above — next three things:**
 
 1. ~~Godot 4.7.2 (review #9)~~ — **DECLINED 2026-08-26**, see below. Don't re-raise it.
 2. **#8, `main.gd` process priorities** — **downgraded 2026-08-26**, it is close to a no-op.
@@ -61,6 +83,78 @@ before building it. Don't self-verify visuals with screenshots — the owner che
 
 The sections below run newest first. The older ones are all background work, which is **parked
 in a shippable state, not finished** — read "Where things actually stand" before touching it.
+
+## Last session — 2026-08-27 visual pass: the green, the moon, the night sky
+
+Seven commits, all data or one script, **no gameplay/physics/terrain/collision file touched**.
+Driven by the owner playtesting with `debug_biome_seconds` and screenshotting what looked wrong.
+The pattern worth carrying: **every one of these was a measurable cause, not a matter of taste**,
+and in two cases the first fix was wrong because the symptom was misread.
+
+### `glacier_teal`'s ice — "ugly green" → emerald (`65628dc`, `4855eb8`, `c5bcfe0`)
+
+Three commits because the first two misread the request. **The owner wants it GREEN** — there is
+already plenty of blue in the arc — just a better green. `65628dc` turned it cyan and was wrong.
+
+**The murk was never the hue, it was red.** The original depth colour `(0.44, 0.87, 0.78)` had a
+fine green-teal hue but `r/g = 0.51`, and red that high desaturates a green toward olive. Deep
+ice is capped at `ice_depth × 0.38` (`ICE_TILE_DEPTH_FLOOR`) and that multiply **preserves the
+ratio**, so the bottom of every hill rendered `(0.17, 0.33, 0.30)` at saturation 0.33 — mud. No
+hue change fixes that while r stays up.
+
+Final values came from **sampling the owner's National Geographic emerald-iceberg reference**,
+not from taste. Masking to genuinely green pixels needs `g` above **both** `r` and `b` — a first
+pass matching only `g > r` returned hue 193–204, which was the blue sky. Three candidates
+measured; took the hero berg's jade-emerald at ~145°.
+
+**Saturation is pushed well past the photograph on purpose.** Photos of ice carry atmospheric
+light (all three references sit at r/g 0.6–0.8, saturation 0.15–0.35); reproducing that
+faithfully reproduces the mud, because of the ×0.38 floor. Match the hue, roughly double the
+saturation.
+
+| | original | now |
+|---|---|---|
+| `ice_surface` | 0.72, 0.98, 0.91 — hue 164, sat 0.87 | **0.54, 0.93, 0.70** — hue 145 |
+| `ice_depth` | 0.44, 0.87, 0.78 — r/g 0.51 | **0.14, 0.72, 0.34** — hue 141, r/g 0.19 |
+| at ×0.38 floor | 0.17, 0.33, 0.30 — **sat 0.33** | 0.05, 0.27, 0.13 — **sat 0.67** |
+
+**Both ends now sit at 141–145°**, so the band stays green top to bottom and the variation comes
+from luminance (0.83 → 0.57) and saturation. Earlier attempts left the depth at 166° — teal — so
+it read green at the crest and teal in the troughs, which is what kept looking wrong.
+`ice_hue_variance` 0.13 → 0.17. If it needs to go greener, **push the hue toward 135, not the
+saturation** — there is little headroom left before `MIN_GAMEPLAY_CONTRAST` starts fighting.
+
+### The moon — three separate bugs (`6933860`, `f11db01`, `4508d90`)
+
+1. **It rendered as an eclipse.** `MOON_CUT_RADIUS` was 0.36, the same as the lit core, offset by
+   only `|(0.16, −0.05)| = 0.17`. Since 0.17 < 0.36 the cut **contained the disc's centre**, so
+   the middle was multiplied to the 6% residual and only the rim stayed bright.
+2. **Replaced with authored art** from `art_source/background/moons.png`, panel 6 of 8. The
+   procedural builder is deleted — which also closed a real perf item, the 65,536-iteration
+   `build_moon_texture()` loop paid on every scene load (both review docs updated).
+3. **A grey disc appeared under it.** I had baked the art's halo in by subtracting a sky floor —
+   but the source panel's sky brightens toward the horizon, so it left a ~5% white veil to the
+   rect edge, cut to zero by a hard clamp at 2.55×. That clamp was the visible arc. Alpha is now
+   the disc and nothing else, zero by 1.20×. **`SkyGlow` already draws the bloom** at the moon's
+   own position, so a baked one was doubling it.
+
+Full write-up, including the two properties of the PNG that were each got wrong once, is in
+`biomes.md`, "The sun / moon disc".
+
+### The night sky order (`a375388`)
+
+The sun's glow arcs correctly left→right across the day. The **moon** was at x 0.30, left,
+immediately before `arctic_dawn` glows at 0.16, also left — two lights on the same side, which
+read as the sun rising right behind the moon. Moved to **0.62**, so it sets on the right and
+leaves the left clear for dawn; rule 1 forces its two neighbours to copy the position.
+
+Also fixed: **the moon was fading in wearing the sun's texture.** `celestial_is_moon` is the one
+celestial field that does not interpolate — it snaps at the halfway point while
+`celestial_strength` lerps the whole way. Both neighbours are now `is_moon = true` (strength 0,
+so nothing renders; the flag only picks the texture the fade uses).
+
+An attempt to make the moon *arc* across two night biomes was **rejected by
+`biome_schedule_check`** and reverted — that is option C below.
 
 ## Open decision — how much night the day arc should have
 
@@ -99,9 +193,11 @@ not obvious from the palettes, and it caught an attempt to break both:
 A and B are compatible; C subsumes the moon half of both. **Recommendation: A now** (minutes,
 zero structural cost), then C only if the pop-in still reads wrong once night is longer.
 
-**Still owed: the moon image.** The owner asked to swap the procedural moon for supplied art —
-*"can you use this:"* — but **no image came through with the message**. The procedural moon has
-been fixed to be presentable (`6933860`); swap it when the file arrives.
+**The moon image arrived and is in** — `art_source/background/moons.png`, eight variants; panel
+6 ("FULL MOON") is the one wired up. The other seven are still there if the crescent is ever
+wanted: swapping is a one-line change to `MOON_TEXTURE`, though a crescent needs a larger
+`celestial_size` to stay legible at this scale, and the extraction has two traps in it — see
+`biomes.md`, "The sun / moon disc".
 
 ## Last sessions — 2026-08-26 → 27: two review items killed, one gate hardened
 

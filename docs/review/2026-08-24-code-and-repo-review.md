@@ -395,9 +395,10 @@ move investigation history to `docs/research/`.
 ## Watch list — measure before changing
 
 - **Segment caches are never pruned** — see #7. Measure in a soak; do not prune casually.
-- **`SkyBackdrop` rebuilds its generated textures on every scene reload** — a 256×256 moon and
-  a 1024×576 star texture (`sky_backdrop.gd:415`, `:467`). Profile restart time on the target
-  phone; cache across reloads only if the measurement says to.
+- **`SkyBackdrop` rebuilds its generated textures on every scene reload** — ~~a 256×256 moon
+  and~~ a 1024×576 star texture. **The moon half is closed 2026-08-27**: it is authored art
+  behind a `preload` now, so no per-load loop runs for it. The starfield remains — profile
+  restart time on the target phone; cache across reloads only if the measurement says to.
 - **Two run clocks.** `Main.elapsed_time` (`main.gd:90`) and
   `Player.speed_manager.elapsed_time` (`speed_manager.gd:17`) are duplicates read by different
   systems. They advance together today, but one authoritative clock would remove a future
