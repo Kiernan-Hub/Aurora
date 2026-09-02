@@ -110,6 +110,41 @@ const BONUS_SURFACE_CLEARANCE: float = 130.0
 # (unlike CoinSpawner's chunk-indexed groups) -- this is what frees it instead.
 const DESPAWN_BEHIND_DISTANCE: float = 700.0
 
+# SEEDED PLACEMENT, added 2026-09-02. Until then this file was the ONE scoring spawner drawing
+# from Godot's global RNG (three bare randf_range calls), which cost two things worth having:
+#
+#   * debug_replay_session_seed could not reproduce a run containing a glide, and seed replay
+#     is the tool this project leans on hardest for anything that smells like a stall
+#     (FREEZE_REPRO, debugging.md). A field of 30 coins landing somewhere new on every replay
+#     is 30 chances for the run to diverge.
+#   * 30 coins plus a 15-value diamond is a real score contribution, so two players on the same
+#     seed did not score the same.
+#
+# Distinct multiplier pair from every other spawner, for the reason CoinSpawner's block gives:
+# a shared pair correlates two systems' draws at the same index. Same xor-shift-multiply shape
+# as PowerupSpawner.get_powerup_hash, which this is modelled on.
+const HASH_MASK: int = 0x7fffffff
+const HASH_INDEX_MULTIPLIER: int = 1103515245
+const HASH_MIX_MULTIPLIER: int = 1013904223
+
+# One coin needs up to 13 independent draws (one spawn time, plus an edge margin and a
+# clearance for each of MAX_PLACEMENT_ATTEMPTS retries), so the hash index is
+# (coin counter * HASH_CHANNEL_COUNT + channel). 16 leaves headroom without making the channel
+# arithmetic a puzzle.
+const HASH_CHANNEL_COUNT: int = 16
+const HASH_CHANNEL_SPAWN_TIME: int = 0
+# Attempt N reads HASH_CHANNEL_EDGE_MARGIN + N and HASH_CHANNEL_CLEARANCE + N, so the two draws
+# for one attempt never collide and a retry never re-rolls the same candidate.
+#
+# THE THREE CONSTANTS ARE ONE DECISION. The edge block runs 1..MAX_PLACEMENT_ATTEMPTS and the
+# clearance block starts at 8, so MAX_PLACEMENT_ATTEMPTS may not exceed 7 without the two
+# blocks overlapping, and the clearance block's top may not exceed HASH_CHANNEL_COUNT - 1.
+# At the shipping 6 the blocks are 1-6 and 8-13, both clear. Raising the attempt count means
+# moving the bases and the count, not just the count -- and a silent overlap would show up
+# only as two draws for one coin becoming correlated, which nothing would catch.
+const HASH_CHANNEL_EDGE_MARGIN: int = 1
+const HASH_CHANNEL_CLEARANCE: int = 8
+
 var terrain_generator: TerrainGenerator
 var player: CharacterBody2D
 var camera: Camera2D
@@ -117,6 +152,11 @@ var was_glide_active: bool = false
 var spawn_timer: float = 0.0
 var pending_spawn_times: Array[float] = []
 var active_coins: Array[Coin] = []
+# Counts every coin SLOT this run has reached, across all glides, and is the hash's index. It
+# advances once per start_coin_field() slot and once per spawn_trail_coin() call, so a second
+# glide never replays the first one's field -- the same job next_powerup_index does in
+# PowerupSpawner. Never reset; a run's fields are a single sequence.
+var field_coin_index: int = 0
 
 # The current biome's coin colour, pushed by BiomeDirector.push_palette(). Same contract and
 # same reasoning as CoinSpawner's pair -- see the comment there.
@@ -167,24 +207,36 @@ func _physics_process(delta: float) -> void:
 	despawn_trailing_coins()
 
 
+# Draws the whole field's spawn TIMES up front, one hash index per coin. The indices are
+# consumed here and the matching POSITION draws happen later in spawn_trail_coin(), which walks
+# the same counter forward again -- so a coin's time and its position come from different
+# indices, not different channels of one. That is deliberate: it keeps each function's use of
+# field_coin_index a plain "take the next index" with no shared bookkeeping between them.
 func start_coin_field() -> void:
 	spawn_timer = 0.0
 	pending_spawn_times.clear()
 	for _coin_index: int in range(COIN_FIELD_COUNT):
-		pending_spawn_times.append(randf_range(0.0, FIELD_SPAWN_DURATION))
+		pending_spawn_times.append(get_field_hash(next_field_coin_index(), HASH_CHANNEL_SPAWN_TIME) * FIELD_SPAWN_DURATION)
 	pending_spawn_times.sort()
 
 
 func spawn_trail_coin() -> void:
 	var right_edge_x: float = get_visible_right_edge_x()
+	# ONE index for this coin, read across every attempt below -- not one per attempt. A retry
+	# is meant to be a different candidate for the SAME coin, and taking the index once is what
+	# makes the retry sequence itself a function of the seed rather than of how many attempts
+	# happened to be needed.
+	var coin_index: int = next_field_coin_index()
 	# Last candidate that was on real ground but too close to an existing coin -- the fallback
 	# below. A candidate that failed the VOID check is deliberately never eligible: it is not a
 	# crowding problem and placing it anyway is the one outcome this function must never have.
 	var fallback_position: Vector2 = Vector2.ZERO
 	var has_fallback: bool = false
 
-	for _attempt: int in range(MAX_PLACEMENT_ATTEMPTS):
-		var world_x: float = right_edge_x + randf_range(EDGE_SPAWN_MARGIN_MIN, EDGE_SPAWN_MARGIN_MAX)
+	for attempt: int in range(MAX_PLACEMENT_ATTEMPTS):
+		var edge_margin: float = get_field_hash(coin_index, HASH_CHANNEL_EDGE_MARGIN + attempt) \
+				* (EDGE_SPAWN_MARGIN_MAX - EDGE_SPAWN_MARGIN_MIN)
+		var world_x: float = right_edge_x + EDGE_SPAWN_MARGIN_MIN + edge_margin
 		# A coin over a chasm void has no ground to hover above: get_terrain_height() only
 		# returns the lip height there, and baiting the player toward a fatal void is
 		# exactly what this mechanic should not do.
@@ -196,7 +248,8 @@ func spawn_trail_coin() -> void:
 		# player crosses it. Guarded for that, and for symmetry with the other five.
 		if terrain_generator.is_lake_world_x(world_x):
 			continue
-		var clearance: float = randf_range(TRAIL_CLEARANCE_MIN, TRAIL_CLEARANCE_MAX)
+		var clearance: float = TRAIL_CLEARANCE_MIN + (get_field_hash(coin_index, HASH_CHANNEL_CLEARANCE + attempt) \
+				* (TRAIL_CLEARANCE_MAX - TRAIL_CLEARANCE_MIN))
 		var local_y: float = terrain_generator.get_terrain_height(world_x) - clearance
 		if is_far_enough_from_active_coins(world_x, local_y):
 			spawn_coin(world_x, local_y, TRAIL_COIN_VALUE, AIR_COIN_SCALE, null)
@@ -293,6 +346,31 @@ func despawn_trailing_coins() -> void:
 			continue
 		still_active.append(coin)
 	active_coins = still_active
+
+
+# Takes the next index off the run's coin sequence. Split out rather than inlined so the two
+# call sites read as "take an index" and it is impossible to consume one twice by accident.
+func next_field_coin_index() -> int:
+	var index: int = field_coin_index
+	field_coin_index += 1
+	return index
+
+
+# 0..1 from (session_seed, coin index, channel). Pure, so a replayed seed lays out an identical
+# field.
+#
+# session_seed is read through the generator on every call rather than cached in _ready(): this
+# node is a child of TerrainGenerator, children ready before parents, and the seed is still 0
+# there -- the trap CLAUDE.md records and PowerupSpawner shipped for real. Every other draw in
+# this file reaches the generator the same way for the same reason.
+func get_field_hash(coin_index: int, channel: int) -> float:
+	var session_seed: int = terrain_generator.get_session_seed()
+	var index: int = ((coin_index * HASH_CHANNEL_COUNT) + channel) + 1
+	var mixed_value: int = (session_seed ^ (index * HASH_INDEX_MULTIPLIER)) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 13)) & HASH_MASK
+	mixed_value = (mixed_value * HASH_MIX_MULTIPLIER) & HASH_MASK
+	mixed_value = (mixed_value ^ (mixed_value >> 15)) & HASH_MASK
+	return float(mixed_value) / float(HASH_MASK)
 
 
 func _on_coin_collected(value: int) -> void:
