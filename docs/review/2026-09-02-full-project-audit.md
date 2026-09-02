@@ -5,15 +5,20 @@ the only addition. Every claim below was checked against the files as they stand
 
 ## What was and was NOT run
 
-**No gate was run.** This session is a Linux container; `check.sh` points at
-`/Applications/Godot.app/...` and no Godot binary is reachable here (a download was attempted
-and the proxy returned 403). So this is a **static** audit: reasoning over the source, not
-measurement. Anything below phrased as "measured" is arithmetic over constants in the repo,
-not an engine run.
+**No gate was run during the audit itself.** That session was a Linux container; `check.sh`
+points at `/Applications/Godot.app/...` and no Godot binary was reachable (a download was
+attempted, the proxy returned 403). So the findings below are **static**: reasoning over the
+source, not measurement. Anything phrased as "measured" is arithmetic over constants in the
+repo.
 
-Consequence, and it matters for how to read finding #1: the finding is a coordinate-space
-mismatch that is fully determined by the source, but it has **not** been confirmed on screen.
-The first step on it should be to look at a rare coin in game, which costs a minute.
+**Closed the same day, on the owner's machine.** `./scripts/check.sh` came back 5/5 in 26s and
+finding #1 was confirmed in game before the fix and after it. So the static reasoning held, but
+that is a fact about this instance, not a licence to skip the gates next time.
+
+One thing the check run turned up that no audit could: the first attempt FAILED on
+`shipping_values` because an engine settings save had stripped all four pinned settings out of
+`project.godot`. `git checkout -- project.godot` restored them. That is the text-scan half of
+the gate — built 2026-08-27, and this is the first time it has caught the thing it exists for.
 
 ## Status of the 2026-08-24 list
 
@@ -38,6 +43,10 @@ Re-verified, not taken on trust:
 ## P0 — real defect
 
 ### 1. `RareCoinSpawner` and `GlideCoinSpawner` place every coin `ground_y` (192px) too high
+
+> **FIXED 2026-09-02** (`06b6b24`). Both spawners now take the offset on the node itself in
+> `_ready()`, matching `CoinSpawner`'s group convention. Gated 5/5 and confirmed in game. The
+> gate this finding asks for is still unbuilt — see "Suggested order" #2.
 
 `rare_coin_spawner.gd:183`, `glide_coin_spawner.gd:186`, `glide_coin_spawner.gd:230`
 
@@ -112,6 +121,9 @@ have caught this, and it would cover all six spawners at once.
 
 ### 2. `GlideCoinSpawner` is the only scoring spawner that is not seeded
 
+> **FIXED 2026-09-02** (`322e9cd`). `get_field_hash(coin_index, channel)`, same shape as
+> `PowerupSpawner`'s, with a multiplier pair distinct from all seven existing ones.
+
 `glide_coin_spawner.gd:160`, `:173`, `:185` use bare `randf_range()` — Godot's global RNG,
 seeded at process start. Every other spawner in the project derives its draws from a hash of
 `(session_seed, index)` with its own multiplier pair. Checked exhaustively: the only other
@@ -152,6 +164,11 @@ cached history staying available, and the review already says not to prune casua
 here changes that; it just puts a bound on the thing being deferred.
 
 ### 4. Biome phase is banked on death but not on a restart
+
+> **FIXED 2026-09-02** (`ea66d3d`). Moved into `set_state()`'s leaving-PLAYING block as
+> `bank_biome_phase()`, beside the playtime, which is exactly the "same shape" this finding
+> proposed. It needs no `banked_run_seconds` equivalent because the phase is an absolute
+> position, not a `+=`.
 
 `game_manager.gd:528` sets `BiomeDirector.session_biome_phase` inside `_on_player_died()` only.
 `_on_quick_restart_pressed()` and `_on_restart_pressed()` reload the scene without banking it.
@@ -219,13 +236,17 @@ shape: bank the phase where the playtime is banked, rather than at one specific 
 - The 13 files in `scripts/debug/` are the documented 12 gates plus `ice_seam_probe.gd`; the
   directory still answers "is this a gate?" correctly.
 
-## Suggested order
+## Suggested order — state as of end of 2026-09-02
 
-1. **Look at a rare coin in game** (one minute), then fix #1 if it reads as described. It is
-   two one-line changes and it restores the payoff of the whole upgrade track.
-2. Add the spawned-position gate alongside that fix — it is what makes #1 not happen again,
-   and it covers all six spawners.
-3. #2 (seed the glide field) whenever the glide is next touched. Not urgent on its own, but it
-   is the one hole in seed replay and that tool is load-bearing here.
-4. The P2 sweep — Music slider label, `HANDOFF.md`'s git line — as a single small commit.
-5. #3 and #4 stay parked. Neither is urgent and #3 explicitly wants a measurement first.
+1. ~~Fix #1, #2 and #4~~ — **all three done, gated and confirmed in game the same day.**
+2. **The spawned-position gate is still unbuilt, and it is the real remaining item here.**
+   Nothing in the project compares a spawned node's position against `get_surface_world_y()`,
+   which is the only reason #1 survived from the day the file was written. One check covering
+   all six spawners would close the class. **It is a 13th gate, so it is an architecture
+   decision** — `CLAUDE.md` says "twelve maintained checks, and only twelve". Either it joins
+   the fast five, or it replaces the constant-only halves of `check_rare_coin_height` and
+   `check_coin_line_height`, which is arguably the cleaner shape since those two would then
+   guard the thing rather than the arithmetic about it.
+3. The P2 sweep — the Music slider and `mist_strength` — as one small commit. `HANDOFF.md`'s
+   git line is already done.
+4. #3 (segment caches) stays parked and explicitly wants a measurement first.

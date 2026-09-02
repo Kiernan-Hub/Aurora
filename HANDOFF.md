@@ -14,18 +14,15 @@ background are all shipped and working. Gameplay art is still placeholder rects.
 unpushed commits that were long since pushed. `git status` is free and authoritative; a stale
 claim in the first thing a session reads is worse than no claim.
 
-**`./scripts/check.sh` has NOT been run since 2026-08-27.** The 2026-09-02 session was a cloud
-container with no Godot binary reachable, so the three fixes below were written and reasoned
-about but never gated. **Run the fast five before trusting them**, and see "What is owed" below
-for the rest.
+**`./scripts/check.sh` is green — 5/5 in 26s on 2026-09-02**, and all three fixes below were
+confirmed in game by the owner the same day. Nothing is owed on them.
 
-## What is being worked on right now — 2026-09-02
+## Last session — 2026-09-02: full audit, three fixes, all verified
 
-The full audit (`docs/review/2026-09-02-full-project-audit.md`) and the three fixes that came out
-of it. Read that file before the sections underneath this one; it supersedes the 2026-08-24
-list, which is finished except #7.
+The audit is `docs/review/2026-09-02-full-project-audit.md`. Read it before the sections
+underneath this one; it supersedes the 2026-08-24 list, which is finished except #7.
 
-**Fixed, all three unverified in engine:**
+**Fixed, gated and confirmed in game:**
 
 1. **The rare coin was uncollectable, and had always been** (`06b6b24`). `get_terrain_height()`
    returns an offset measured from `ground_y`, not a TerrainGenerator-local y — every other
@@ -46,22 +43,25 @@ list, which is finished except #7.
    because the phase is an ABSOLUTE position, not a `+=` — banking twice lands where banking
    once does. Pausing is untouched, and the intro still shows on a cold launch only.
 
-**What is owed on those three, in order:**
+**How they were verified, 2026-09-02:**
 
-- **Look at a rare coin and a glide field in game.** That is the whole verification for fix 1
-  and the cheapest half of fix 2. A diamond that now reads as *reachable but hard* is the
-  intended result; if it reads as easy, `RARE_COIN_CLEARANCE` is the knob, not the offset.
-- **Restart from the pause screen twice and watch the sky.** Fix 3's whole verification: the
-  colours should carry over rather than resetting, and a full app relaunch should still open on
-  the intro. Dying and restarting should behave exactly as it did before.
-- **`./scripts/check.sh`** — five gates, ~25s. None of the three should move any of them:
-  `check_rare_coin_height` and `check_coin_line_height` assert constants, the coin-density gate
-  walks `CoinSpawner` (untouched), and `check_phase_offset` builds a bare `BiomeDirector` and
-  asserts the phase static starts at 0 — which fix 3's headless guard is there to keep true. A
-  failure means something unexpected.
-- **No physics gate is needed.** None of the three touches the player, collision, segments or
-  the scene. Two are pickup placement and one is a state-transition hook; neither has a physics
-  surface.
+- `./scripts/check.sh` **5/5 in 26s.** Real compile coverage for all three, not just a formality:
+  `terrain_invariant_check` reads `RareCoinSpawner.RARE_COIN_CLEARANCE` and instantiates the rare
+  coin scene, `shipping_values_check` parses every shipping script including both spawners, and
+  `lake_suppression_probe` builds the scene that loads `GameManager`.
+- **In game:** the rare coin and the glide field read correctly, and restarting from the pause
+  screen carries the sky colours over while a cold launch still opens on the intro.
+- **No physics gate was needed or run.** None of the three touches the player, collision,
+  segments or the scene — two are pickup placement and one is a state-transition hook.
+
+**The `project.godot` strip fired for real during that check run, and the gate caught it.** The
+first `check.sh` attempt FAILED on `shipping_values`: an engine settings save had stripped
+`viewport_width`, `viewport_height`, `physics_ticks_per_second` and `physics_interpolation`, plus
+every explanatory comment. `git checkout -- project.godot` restored them, no scene file was
+touched, and the re-run was clean. **This is the text-scan half of the gate (built 2026-08-27)
+earning its keep on its first real outing** — all four pins equal the engine default, so the
+runtime half read them back as correct and could not have seen it. The hazard note below is not
+theoretical; treat `git status` after any engine run as mandatory.
 
 **Next, in order:**
 
