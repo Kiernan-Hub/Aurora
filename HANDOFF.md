@@ -6,39 +6,99 @@
 Android). `CLAUDE.md` is the map — read it first; it points at everything else. This file is the
 running log of *where the work is*, newest section first.
 
-As of **2026-08-27**, head `9c91c42`: tree clean, `./scripts/check.sh` green (five gates, ~25s).
-**Local is ahead of `origin/main` by two unpushed commits** (`f7e500d`, `9c91c42`) — both are
-docs plus one gate file, nothing that changes the game. The core loop, chasms, coins, powerups,
-upgrades, achievements, the frozen lake and the background are all shipped and working. Gameplay
-art is still placeholder rects.
+As of **2026-09-02**, head on `claude/project-audit-p1ld8g`: tree clean, everything pushed.
+The core loop, chasms, coins, powerups, upgrades, achievements, the frozen lake and the
+background are all shipped and working. Gameplay art is still placeholder rects.
 
-**The 2026-08-24 review list is finished except #7.** Two items were killed on evidence rather
-than done (#9, #8 — see below), and the last cheap one is built. What is left on it is #7,
-segment caches never being pruned, which carries a read-this-first warning.
+**Do not record the git sync state here.** Two audits in a row found this paragraph claiming
+unpushed commits that were long since pushed. `git status` is free and authoritative; a stale
+claim in the first thing a session reads is worse than no claim.
 
-> ## ⏸ THE OWNER IS MID-PLAYTEST — DON'T START ANYTHING BIG
+**`./scripts/check.sh` has NOT been run since 2026-08-27.** The 2026-09-02 session was a cloud
+container with no Godot binary reachable, so the two fixes below were written and reasoned
+about but never gated. **Run the fast five before trusting them**, and see "What is owed" below
+for the rest.
+
+## What is being worked on right now — 2026-09-02
+
+The full audit (`docs/review/2026-09-02-full-project-audit.md`) and the two fixes that came out
+of it. Read that file before the sections underneath this one; it supersedes the 2026-08-24
+list, which is finished except #7.
+
+**Fixed, both unverified in engine:**
+
+1. **The rare coin was uncollectable, and had always been** (`06b6b24`). `get_terrain_height()`
+   returns an offset measured from `ground_y`, not a TerrainGenerator-local y — every other
+   consumer adds `ground_y` back, and `RareCoinSpawner`/`GlideCoinSpawner` did not. Every coin
+   they placed hung 192px high: the diamond at 366 against the 186px a max-upgrade jump reaches
+   and the 314px it reaches holding the √2 powerup. The owner confirmed it in game before the
+   fix. Both spawners now take the offset on the node itself in `_ready()`, which is
+   `CoinSpawner`'s convention. Glide coins moved too — bonus diamond 322 → 130, trail floor
+   252 → 60.
+2. **The glide coin field is now seeded** (`322e9cd`). It was the one scoring spawner drawing
+   from Godot's global RNG, so `debug_replay_session_seed` could not reproduce a run containing
+   a glide and two players on one seed did not score the same. Distributions are unchanged;
+   only the source of the numbers moved.
+
+**What is owed on those two, in order:**
+
+- **Look at a rare coin and a glide field in game.** That is the whole verification for fix 1
+  and the cheapest half of fix 2. A diamond that now reads as *reachable but hard* is the
+  intended result; if it reads as easy, `RARE_COIN_CLEARANCE` is the knob, not the offset.
+- **`./scripts/check.sh`** — five gates, ~25s. Neither fix should move any of them
+  (`check_rare_coin_height` and `check_coin_line_height` assert constants, and the coin-density
+  gate walks `CoinSpawner`, which was not touched), so a failure means something unexpected.
+- **No physics gate is needed.** Neither commit touches the player, collision, segments or the
+  scene. Both are pickup placement, which has no physics surface.
+
+**Next, in order:**
+
+1. **A gate that catches this class.** Nothing in the project compares a *spawned node's*
+   position against `get_surface_world_y()` — the two height gates assert constants and the
+   density gate never reads a y, which is why a 192px error survived from the day the file was
+   written. One check that instantiates each spawner and asserts every coin, obstacle and
+   powerup sits its authored clearance above the real surface would cover all six at once.
+   **This is a 13th gate, so it is an architecture decision** — `CLAUDE.md` says "twelve
+   maintained checks, and only twelve". Decide whether it joins the fast five or replaces the
+   constant-only halves of the two existing coin gates.
+2. **Bank the biome phase on restart, not only on death.** `game_manager.gd:528` sets
+   `BiomeDirector.session_biome_phase` inside `_on_player_died()` only, so a player who
+   restarts from the pause screen — the normal reaction to a bad opening — never advances the
+   biome and replays the same colours indefinitely. `bank_playtime()` already gets this right:
+   it fires on *every* `PLAYING → not-PLAYING` transition. The fix is to move the phase bank to
+   the same place, and it is the same drift class as the playtime double-count that was review
+   #1. **The owner believes this worked at some point**, so `git log -S session_biome_phase`
+   is worth a look first — if it regressed, the commit that did it will say why, and that
+   matters more than the fix.
+3. **The P2 sweep** from the audit, as one small commit: the Music slider still does nothing
+   audible (no `.stream` is ever assigned anywhere), and `BiomePalette.mist_strength` is
+   authored in all eight palettes and read by nothing.
+4. **The aurora borealis** — the game's namesake. **Not ready to code**: its own doc's
+   "Sequencing" section says plan it fully first, and three open questions are undecided. The
+   next step is a *planning pass producing a doc*, not an implementation step.
+
+**Parked, with reasons — do not re-open without new evidence:**
+
+- **Review #7, segment caches never pruned.** Sized in the 2026-09-02 audit: ~1 segment/second
+  at cap speed, ~3,700 entries an hour, a couple of MB. Not a phone-killer, and six 36–55
+  minute soaks finished at a steady 75 fps. `arm_lake()`'s write-ahead rule and deterministic
+  seed replay both depend on cached history staying available, so **do not prune casually** —
+  measure memory on the target phone first.
+- **Godot 4.7.2 (review #9)** — DECLINED 2026-08-26, see below. Don't re-raise it.
+- **#8, `main.gd` process priorities** — downgraded 2026-08-26, close to a no-op. Read the
+  finding below before spending the physics gate suite on it.
+
+> ## ⏸ THE PLAYTEST LIST OUTRANKS EVERYTHING BELOW
 >
-> **As of 2026-08-26 the owner is doing a thorough hands-on testing pass and writing down a
-> list of things to change.** They said "there are a few things off." That list is the next
-> real input to this project and it does not exist in this repo yet.
+> **When a session opens and the owner pastes findings from playing, work those first.** They
+> outrank the numbered list above — those are review debt, this is observed-broken behaviour in
+> the actual game. Expect small, specific, scattered complaints (feel, timing, visuals, a thing
+> that looked wrong once) rather than one clean bug report.
 >
-> **So: when a session opens and the owner pastes findings, work those first.** They outrank
-> everything in "Next, in order" below — those are review-debt items, this is observed-broken
-> behaviour in the actual game. Expect small, specific, scattered complaints (feel, timing,
-> visuals, a thing that looked wrong once) rather than one clean bug report.
->
-> **Do not** start the aurora, re-open the review list, or kick off a long gate run until the
-> testing list has been triaged. **Do** ask which items are reproducible if it isn't stated —
-> `FREEZE_REPRO` in `debugging.md` is the standing rule for anything that smells like a stall.
-
-**After the testing list is handled — next three things:**
-
-1. ~~Godot 4.7.2 (review #9)~~ — **DECLINED 2026-08-26**, see below. Don't re-raise it.
-2. **#8, `main.gd` process priorities** — **downgraded 2026-08-26**, it is close to a no-op.
-   Read the finding below before spending the physics gate suite on it.
-3. **The aurora borealis** — the game's namesake. **Not ready to code**: its own doc's
-   "Sequencing" section says plan it fully first, and three open questions are undecided.
-   The next step there is a *planning pass producing a doc*, not an implementation step.
+> The 2026-08-26 pass produced one so far, and it was the rare coin reading as unreachable —
+> which the audit then traced to the `ground_y` slip above. **Ask which items are reproducible
+> if it isn't stated**; `FREEZE_REPRO` in `debugging.md` is the standing rule for anything that
+> smells like a stall.
 
 **Two live hazards, both cost a session if you don't know them:**
 
@@ -49,9 +109,9 @@ segment caches never being pruned, which carries a read-this-first warning.
   **scene files still have no such cover**, so run **`git status`** after any engine run and
   revert what you did not change on purpose. Full table: `docs/development/debugging.md`,
   "Engine commands that rewrite `project.godot`".
-- **`./aura.apk` at the repo root is from 2026-08-03** — three weeks and ~20 commits stale, kept
-  only because it is gitignored. `debugging.md`'s Android instructions say to re-export before
-  installing; do that rather than trusting the file sitting there.
+- **There is no APK at the repo root any more** (the stale 2026-08-03 one is gone). Anything
+  installed on a device has to come from a fresh `--export-debug`; `debugging.md`'s Android
+  instructions are the procedure.
 
 **Working agreement, in force:** one numbered sub-step at a time, commit it alone, stop and wait
 for an explicit "go". Flag anything with real bug potential, or with a much cheaper alternative,
