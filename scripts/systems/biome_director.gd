@@ -143,10 +143,14 @@ var channel_weights: PackedFloat32Array = PackedFloat32Array()
 var applied_biome_index: int = -1
 var applied_progress: float = -1.0
 
-# Where the previous run in THIS SESSION left off, in world px. GameManager banks it on
-# death; the next run adds it to world_x before the cycle maths and so resumes the colour
-# scheme it died in. One full cycle is ~13.7 minutes at shipping values, which nobody plays
-# in a sitting, so without this most of the eight palettes are unreachable in practice.
+# Where the previous run in THIS SESSION left off, in world px. GameManager banks it on every
+# exit from PLAYING (GameManager.bank_biome_phase); the next run adds it to world_x before the
+# cycle maths and so resumes the colour scheme the last one ended in. One full cycle is ~13.7
+# minutes at shipping values, which nobody plays in a sitting, so without this most of the
+# eight palettes are unreachable in practice.
+#
+# ON EVERY EXIT, not on death, since 2026-09-02: both restart buttons that matter sit on the
+# pause screen, so a death-only hook meant restarting a bad opening never advanced the phase.
 #
 # Orthogonal to session_cycle_rotation below: the phase says HOW FAR ALONG the session is, the
 # rotation says WHERE IN THE ARC it started. Both are static and both die with the process, so
@@ -292,9 +296,13 @@ func apply_palette_for_world_x(world_x: float) -> void:
 	push_palette(blended, from_palette.ice_texture, to_palette.ice_texture, channel_weights[BiomePalette.CHANNEL_ICE])
 
 
-# What GameManager banks into session_biome_phase on death, so the next run resumes this
-# run's colour scheme. Takes the player's world_x rather than reading it, so the caller
-# owns the "when".
+# What GameManager banks into session_biome_phase when a run stops being PLAYING, so the next
+# run resumes this run's colour scheme. Takes the player's world_x rather than reading it, so
+# the caller owns the "when" -- which is what let that "when" widen from death alone to every
+# exit without touching this function.
+#
+# Being an ABSOLUTE position rather than an increment is what makes banking it repeatedly safe,
+# and therefore what made that widening a one-line change. See GameManager.bank_biome_phase.
 #
 # MONOTONIC ON PURPOSE, and this is what makes the opening biome a one-shot. An earlier
 # version folded this into one cycle with fposmod, which is the obvious thing to do with a

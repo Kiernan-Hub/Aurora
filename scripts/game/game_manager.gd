@@ -385,6 +385,7 @@ func set_state(new_state: State) -> void:
 	if previous_state == State.PLAYING and new_state != State.PLAYING:
 		if bank_playtime() and services != null:
 			services.save_store.save_to_disk()
+		bank_biome_phase()
 	state_changed.emit(new_state)
 
 
@@ -416,6 +417,38 @@ func bank_playtime() -> bool:
 	services.save_store.total_playtime_seconds += unbanked_seconds
 	banked_run_seconds = main.elapsed_time
 	return true
+
+
+# Records where this run reached in the day arc, so the NEXT run in this sitting opens on the
+# same biome instead of starting the cycle over. Session state, never save state -- see
+# BiomeDirector.session_biome_phase for why a fresh launch must still open on the intro.
+#
+# BANKED ON EVERY EXIT FROM PLAYING, not on death. Death was the only hook until 2026-09-02,
+# and both restart buttons that matter sit on the PAUSE screen -- so a player who restarted a
+# bad opening (the normal thing to do) never advanced the phase and replayed the same colours
+# for the whole sitting. Pause covers those, the DEAD transition covers the death screen's, and
+# the Android focus-out handler routes through set_state() so backgrounding is covered too.
+#
+# UNLIKE bank_playtime() THIS CANNOT DOUBLE-COUNT, and that is why it needs no equivalent of
+# banked_run_seconds. get_persisted_phase() returns an ABSOLUTE position (world_x plus this
+# run's starting offset), not an increment, and world_x only grows -- so banking twice, or ten
+# times, lands on the same answer as banking once, and a later bank always supersedes an
+# earlier one. The playtime beside it is a `+=`, which is exactly why it needs the machinery
+# this does not.
+#
+# Skips headless for bank_playtime()'s reason, one step milder: nothing here reaches disk, but a
+# harness driving state transitions would still leave a non-zero phase in the static that
+# biome_schedule_check asserts starts at 0. BiomeDirector returns early under --headless and
+# never reads the phase anyway, so there is nothing to lose by not writing it.
+#
+# Guards `player` as well as `biome_director`: a failed wire_scene() leaves both null and still
+# reaches PLAYING, and the Android focus-out handler can transition out of it from there.
+func bank_biome_phase() -> void:
+	if biome_director == null or player == null:
+		return
+	if DisplayServer.get_name() == "headless":
+		return
+	BiomeDirector.session_biome_phase = biome_director.get_persisted_phase(player.global_position.x)
 
 
 # The part of THIS run that bank_playtime() has not folded into
@@ -521,11 +554,10 @@ func _on_player_died() -> void:
 	var is_new_best: bool = false
 	var best_score: int = 0
 	var wallet: int = 0
-	# Session state, not save state, and so deliberately outside the services block below:
-	# where this run ended is where the next one picks the day arc up, but only until the
-	# process exits. See BiomeDirector.session_biome_phase for why it is not persisted.
-	if biome_director != null:
-		BiomeDirector.session_biome_phase = biome_director.get_persisted_phase(player.global_position.x)
+	# The biome phase used to be banked HERE, on death only, which is why restarting from the
+	# pause screen replayed the same colours forever. It now rides set_state()'s leaving-PLAYING
+	# block alongside the playtime, so the DEAD transition four lines below covers this path --
+	# see bank_biome_phase().
 	if services != null:
 		# BEFORE record_run, so this run's seconds ride record_run's single disk write
 		# rather than costing a second one from set_state(DEAD) a few lines below.
