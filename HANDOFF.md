@@ -15,17 +15,17 @@ unpushed commits that were long since pushed. `git status` is free and authorita
 claim in the first thing a session reads is worse than no claim.
 
 **`./scripts/check.sh` has NOT been run since 2026-08-27.** The 2026-09-02 session was a cloud
-container with no Godot binary reachable, so the two fixes below were written and reasoned
+container with no Godot binary reachable, so the three fixes below were written and reasoned
 about but never gated. **Run the fast five before trusting them**, and see "What is owed" below
 for the rest.
 
 ## What is being worked on right now — 2026-09-02
 
-The full audit (`docs/review/2026-09-02-full-project-audit.md`) and the two fixes that came out
+The full audit (`docs/review/2026-09-02-full-project-audit.md`) and the three fixes that came out
 of it. Read that file before the sections underneath this one; it supersedes the 2026-08-24
 list, which is finished except #7.
 
-**Fixed, both unverified in engine:**
+**Fixed, all three unverified in engine:**
 
 1. **The rare coin was uncollectable, and had always been** (`06b6b24`). `get_terrain_height()`
    returns an offset measured from `ground_y`, not a TerrainGenerator-local y — every other
@@ -39,17 +39,29 @@ list, which is finished except #7.
    from Godot's global RNG, so `debug_replay_session_seed` could not reproduce a run containing
    a glide and two players on one seed did not score the same. Distributions are unchanged;
    only the source of the numbers moved.
+3. **The biome phase banks on every exit from PLAYING, not only on death** (`ea66d3d`).
+   Restarting from the pause screen never advanced it, so a player who restarted a bad opening
+   replayed the same colours all sitting. Moved into `set_state()`'s leaving-PLAYING block as
+   `bank_biome_phase()`, beside the playtime. It needs no `banked_run_seconds` equivalent
+   because the phase is an ABSOLUTE position, not a `+=` — banking twice lands where banking
+   once does. Pausing is untouched, and the intro still shows on a cold launch only.
 
-**What is owed on those two, in order:**
+**What is owed on those three, in order:**
 
 - **Look at a rare coin and a glide field in game.** That is the whole verification for fix 1
   and the cheapest half of fix 2. A diamond that now reads as *reachable but hard* is the
   intended result; if it reads as easy, `RARE_COIN_CLEARANCE` is the knob, not the offset.
-- **`./scripts/check.sh`** — five gates, ~25s. Neither fix should move any of them
-  (`check_rare_coin_height` and `check_coin_line_height` assert constants, and the coin-density
-  gate walks `CoinSpawner`, which was not touched), so a failure means something unexpected.
-- **No physics gate is needed.** Neither commit touches the player, collision, segments or the
-  scene. Both are pickup placement, which has no physics surface.
+- **Restart from the pause screen twice and watch the sky.** Fix 3's whole verification: the
+  colours should carry over rather than resetting, and a full app relaunch should still open on
+  the intro. Dying and restarting should behave exactly as it did before.
+- **`./scripts/check.sh`** — five gates, ~25s. None of the three should move any of them:
+  `check_rare_coin_height` and `check_coin_line_height` assert constants, the coin-density gate
+  walks `CoinSpawner` (untouched), and `check_phase_offset` builds a bare `BiomeDirector` and
+  asserts the phase static starts at 0 — which fix 3's headless guard is there to keep true. A
+  failure means something unexpected.
+- **No physics gate is needed.** None of the three touches the player, collision, segments or
+  the scene. Two are pickup placement and one is a state-transition hook; neither has a physics
+  surface.
 
 **Next, in order:**
 
@@ -61,19 +73,10 @@ list, which is finished except #7.
    **This is a 13th gate, so it is an architecture decision** — `CLAUDE.md` says "twelve
    maintained checks, and only twelve". Decide whether it joins the fast five or replaces the
    constant-only halves of the two existing coin gates.
-2. **Bank the biome phase on restart, not only on death.** `game_manager.gd:528` sets
-   `BiomeDirector.session_biome_phase` inside `_on_player_died()` only, so a player who
-   restarts from the pause screen — the normal reaction to a bad opening — never advances the
-   biome and replays the same colours indefinitely. `bank_playtime()` already gets this right:
-   it fires on *every* `PLAYING → not-PLAYING` transition. The fix is to move the phase bank to
-   the same place, and it is the same drift class as the playtime double-count that was review
-   #1. **The owner believes this worked at some point**, so `git log -S session_biome_phase`
-   is worth a look first — if it regressed, the commit that did it will say why, and that
-   matters more than the fix.
-3. **The P2 sweep** from the audit, as one small commit: the Music slider still does nothing
+2. **The P2 sweep** from the audit, as one small commit: the Music slider still does nothing
    audible (no `.stream` is ever assigned anywhere), and `BiomePalette.mist_strength` is
    authored in all eight palettes and read by nothing.
-4. **The aurora borealis** — the game's namesake. **Not ready to code**: its own doc's
+3. **The aurora borealis** — the game's namesake. **Not ready to code**: its own doc's
    "Sequencing" section says plan it fully first, and three open questions are undecided. The
    next step is a *planning pass producing a doc*, not an implementation step.
 
