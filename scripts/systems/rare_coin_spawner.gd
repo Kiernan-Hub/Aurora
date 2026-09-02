@@ -8,9 +8,22 @@ class_name RareCoinSpawner
 #
 # A child of TerrainGenerator for the same reason as CoinSpawner and GlideCoinSpawner --
 # world rebasing shifts TerrainGenerator.position.y directly (main.gd, ~every 26s) and every
-# descendant inherits that shift for free. As with GlideCoinSpawner, this node sits directly
-# under TerrainGenerator with no offset of its own, so a coin's local position IS already in
-# the same space get_terrain_height() returns.
+# descendant inherits that shift for free.
+#
+# THE FRAME, and this file got it wrong from the day it was written (fixed 2026-09-02).
+# get_terrain_height() does NOT return a TerrainGenerator-local y: it returns an offset
+# measured from ground_y, and EVERY other consumer adds ground_y back -- the chunk builder and
+# CoinSpawner/GroundTreeSpawner through a group node placed at y = ground_y, ObstacleSpawner
+# and PowerupSpawner spelling it out at the call site, and get_surface_world_y() in its
+# formula. This node used to do neither, so every diamond hung at clearance + 192 instead of
+# clearance: 366px rather than the derived 174, which is past the 186px a MAX-upgrade jump
+# reaches and past the 314px it reaches holding the sqrt(2) powerup. The coin the whole
+# upgrade track exists to sell was uncollectable at every level.
+#
+# _ready() now takes the offset on this node, so a coin's local position IS finally in the
+# frame the comment above always claimed. No gate caught it -- terrain_invariant_check's
+# check_rare_coin_height() asserts the CONSTANT against the jump table and never looks at a
+# spawned node's y.
 #
 # WHY A SEPARATE NODE AND NOT A THIRD MODE INSIDE CoinSpawner. Two different lifetimes:
 # CoinSpawner's coins belong to a CHUNK and die with it, these are timed and despawn behind
@@ -125,6 +138,16 @@ func _ready() -> void:
 	if terrain_generator == null or player == null:
 		push_error("RareCoinSpawner requires a valid terrain_generator_path and player_path.")
 		set_physics_process(false)
+		return
+
+	# THE ground_y OFFSET, and it is not optional -- see the frame note in the header.
+	# get_terrain_height() is measured from ground_y, so a child placed at that raw value sits
+	# ground_y (192px) too HIGH. Taking it on this node rather than adding it at the call site
+	# is exactly CoinSpawner's technique (its per-chunk group node carries the same offset), and
+	# it keeps position.x untouched -- every .x comparison in this file still reads world x.
+	# World rebasing is unaffected: this offset is relative to TerrainGenerator, which is the
+	# node main.gd shifts.
+	position.y = terrain_generator.ground_y
 
 
 # NOT in _ready(): this node is a child of TerrainGenerator, children ready before parents,

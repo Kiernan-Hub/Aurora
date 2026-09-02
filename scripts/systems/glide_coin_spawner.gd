@@ -30,10 +30,17 @@ class_name GlideCoinSpawner
 #
 # A child of TerrainGenerator, same reasoning as coin_spawner.gd's header comment: world
 # rebasing (main.gd, ~every 26s) shifts TerrainGenerator.position.y directly, and every
-# descendant inherits that shift for free -- and since this node sits directly under
-# TerrainGenerator with no offset of its own, a coin's local (position.x, position.y) IS
-# already TerrainGenerator-local, the same frame get_terrain_height()'s return value is
-# expressed in. No global_position conversion needed.
+# descendant inherits that shift for free.
+#
+# THE FRAME, wrong here from the day it was written (fixed 2026-09-02, alongside the identical
+# slip in rare_coin_spawner.gd). get_terrain_height() returns an offset measured from ground_y,
+# NOT a TerrainGenerator-local y -- CoinSpawner, whose technique this file says it copies, adds
+# it back through a group node at y = ground_y, and this file used to skip that step. Every
+# coin therefore hung 192px high: the bonus diamond at 322 instead of 130, and the trail
+# field's floor at 252 instead of 60, so the low coins meant to be catchable straight off the
+# launch were out of reach. _ready() now takes the offset on this node, which is what makes
+# "a coin's local position is already in get_terrain_height()'s frame" true rather than
+# aspirational. position.x is untouched and is still world x.
 @export var terrain_generator_path: NodePath = NodePath("..")
 @export var player_path: NodePath = NodePath("../../Player")
 @export var camera_path: NodePath = NodePath("../../Camera2D")
@@ -124,6 +131,13 @@ func _ready() -> void:
 	if terrain_generator == null or player == null or camera == null:
 		push_error("GlideCoinSpawner requires a valid terrain_generator_path, player_path and camera_path.")
 		set_physics_process(false)
+		return
+
+	# THE ground_y OFFSET -- see the frame note in the header for why this node needs it and
+	# what it cost while it was missing. Same technique CoinSpawner's per-chunk group uses, and
+	# it leaves position.x alone, so despawn_trailing_coins()'s comparison against
+	# player.global_position.x still holds with no conversion.
+	position.y = terrain_generator.ground_y
 
 
 func _physics_process(delta: float) -> void:
