@@ -124,7 +124,14 @@ func _process(delta: float) -> void:
 		if time_remaining <= 0.0:
 			if can_end_effect(effect):
 				end_effect(effect)
-			continue
+				continue
+			# Held open over a void: can_end_effect() refused, so the effect is still
+			# carrying the player across and must still be labelled. Falling through to
+			# the label instead of `continue`-ing is the whole point -- skipping it used
+			# to blank the HUD for exactly the frames the boost was doing its job.
+			# Clamped because time_remaining is negative by now and goes further negative
+			# every frame the guard holds.
+			time_remaining = 0.0
 		if EFFECT_LABEL_FORMATS.has(effect):
 			label_lines.append(EFFECT_LABEL_FORMATS[effect] % time_remaining)
 

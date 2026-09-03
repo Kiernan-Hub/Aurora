@@ -426,7 +426,19 @@ static var session_variant_salt: int = -1
 # Resolved variants, keyed by the base palette's instance id. At most one entry per palette
 # that has a variant, built on first use. Duplicating per call instead would allocate a
 # Resource inside the transition loop, which is the one thing blend_into exists to avoid.
+#
+# NEVER CLEARED, and it does not need to be. Every key comes from one of the PALETTE_*
+# preloaded consts above, which live for the whole process -- so an instance id here can
+# never be freed and reused by a different resource, which is the only way a stale entry
+# could be returned. It survives a run restart on purpose, for the same reason
+# session_variant_salt does: a variant is a property of the session, not of the run.
 static var variant_cache: Dictionary = {}
+
+# Reused rather than constructed per call: resolve_variant() runs twice a frame for the
+# ~32s of a transition on the three palettes that have a variant, and the header above
+# claims nothing is allocated per frame. Assigning .seed fully resets the generator's
+# state, so reuse is bit-identical to a fresh instance.
+static var variant_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
 static func get_session_variant_salt() -> int:
@@ -440,9 +452,8 @@ static func get_session_variant_salt() -> int:
 static func resolve_variant(base: BiomePalette, cycle_index: int) -> BiomePalette:
 	if base.variant_chance <= 0.0:
 		return base
-	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
-	rng.seed = hash(Vector2i(cycle_index, get_session_variant_salt()))
-	if rng.randf() >= base.variant_chance:
+	variant_rng.seed = hash(Vector2i(cycle_index, get_session_variant_salt()))
+	if variant_rng.randf() >= base.variant_chance:
 		return base
 	var key: int = base.get_instance_id()
 	if not variant_cache.has(key):

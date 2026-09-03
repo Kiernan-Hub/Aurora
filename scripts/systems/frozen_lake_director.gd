@@ -82,6 +82,12 @@ var debug_lake_min_run_time_override: float = 0.0
 @export var player_path: NodePath = NodePath("../Player")
 @export var terrain_generator_path: NodePath = NodePath("../TerrainGenerator")
 
+# ONE LAKE PER RUN, MAXIMUM, and that is intended rather than a missed reset: DONE is
+# terminal, so a 45-minute run that crosses two 20-minute thresholds still gets one lake.
+# It is self-correcting -- the cumulative counter only advances on completion, so the
+# unspent threshold is still owed and the next run is immediately due. Making it repeat
+# would mean re-entering IDLE here, which is a deliberate design change (two set pieces in
+# one run), not a bug fix.
 enum Phase { IDLE, ARMED, ACTIVE, DONE }
 
 signal lake_started
