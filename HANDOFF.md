@@ -30,7 +30,15 @@ segment caches never being pruned, which carries a read-this-first warning.
 >
 > **What remains, in order:**
 >
-> 1. **`sky_layer_check.gd` is OWED, and it is the only real risk on this list.** It is a gate
+> 1. ~~**`sky_layer_check.gd` is OWED**~~ — **SETTLED 2026-09-02 by the owner in-game.** They
+>    played the arc and called the visuals good: night reads as night, the two night biomes stay
+>    distinct, the emerald ice is green at depth, the moon is a clean full disc on the right, and
+>    the silhouettes followed the sky down. **That is the project's accepted verification for
+>    visuals** — the owner judges in-game faster than any capture, and the gate's own doc says the
+>    owner judges the final look. Re-run the gate only if a sky/palette change lands that the
+>    owner has *not* seen. The original entry, and what to suspect if it ever goes red, follows.
+>
+>    It is a gate
 >    (exits non-zero), it **must run without `--headless`** (`debugging.md`), and it has not run
 >    since 2026-08-26. Five commits landed after that run — `glacier_teal`'s emerald ice, three
 >    moon fixes, and `twilight_blue`'s night rewrite — and **every headless gate is blind to
