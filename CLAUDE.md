@@ -6,16 +6,14 @@ over time, on infinite seeded procedural terrain. Gameplay art is still placehol
 **Priority order:** terrain stability > physics/collision correctness > game feel. Missions,
 upgrades and visual polish stay deprioritized until the core loop is stable.
 
-**Editing rules.** Find the root cause in the connected files before changing anything; prefer
-targeted changes, and propose before altering existing architecture. `project.godot` pins `4.7` +
-`Mobile`, physics **60 Hz**, interpolation **OFF** — some terrain constants derive from
-`1.0/physics_ticks_per_second`, so changing the tick rate silently changes level geometry.
+**Editing rules.** Find the root cause in the connected files before changing anything; prefer targeted
+changes, and propose before altering existing architecture. `project.godot` pins `4.7` + `Mobile`, physics
+**60 Hz**, interpolation **OFF** — some terrain constants derive from `1.0/physics_ticks_per_second`, so changing the tick rate silently changes level geometry.
 
 ## Where things are documented
 
-This file is the map. Everything else is one level down under `docs/`, read on demand. **Finishing
-an investigation?** The conclusion goes here (what's true, what to avoid, one pointer); the full
-log — measurements, ruled-out approaches — goes in `docs/research/`.
+This file is the map; everything else is one level down under `docs/`, read on demand. **Finishing an investigation?**
+The conclusion goes here (what's true, what to avoid, one pointer); the full log — measurements, ruled-out approaches — goes in `docs/research/`.
 
 | Doc | Open it when |
 |---|---|
@@ -31,18 +29,15 @@ log — measurements, ruled-out approaches — goes in `docs/research/`.
 
 ## Run / debug / test
 
-No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/MacOS/Godot`
-(play with `--path .`; opens a window and blocks, so only when asked).
+No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/MacOS/Godot` (play with `--path .`; opens a window and blocks, so only when asked).
 
-**`./scripts/check.sh` runs the fast five in ~25s** — shipping-values, biome-schedule,
-terrain-shape, lake-suppression, and an export-content check that fails if `scripts/debug` reaches
-a real pack (the three `experiments/` paths it also guards were deleted 2026-09-03 and stay listed
-as a rule about where throwaway work goes). Run it before every commit. It deliberately does *not*
-import the project, for the reason in the `project.godot` bullet below.
+**`./scripts/check.sh` runs the fast five in ~25s** — shipping-values, biome-schedule, terrain-shape,
+lake-suppression, and an export-content check that fails if `scripts/debug` reaches a real pack (its three
+`experiments/` paths went on 2026-09-03; still listed, as a rule about where throwaway work goes). Run it
+before every commit. It deliberately does *not* import the project, for the reason in the `project.godot` bullet below.
 
-**Twelve maintained checks, and only twelve** — everything else lives in `scripts/debug/archive/`,
-so the directory answers "is this a gate?". `check.sh` runs four; the other eight take minutes or
-need a window (`debugging.md`):
+**Twelve maintained checks, and only twelve** — everything else lives in `scripts/debug/archive/`, so the
+directory answers "is this a gate?". `check.sh` runs four; the other eight take minutes or need a window (`debugging.md`):
 
 | Check | Run after |
 |---|---|
@@ -51,18 +46,16 @@ need a window (`debugging.md`):
 | chasm | anything touching voids, fall death or the boost velocity model |
 | `sky_layer_check.gd`, `ice_look_capture.gd`, `biome_contact_sheet.gd` | any visual change. **These three must run WITHOUT `--headless`** — they diff or save rendered frames |
 
-**Every headless gate is blind to biome code** (`BiomeDirector` returns early under `--headless`) —
-the only reason the visual three exist. And `shipping_values_check` is the only thing watching the
-debug knobs: each is a plain `var` the editor can't serialise, so no other gate sees one left
-flipped. It fails on all of them, on any `debug_*` override reaching `main.tscn`, and on a pinned
-engine setting going missing from `project.godot`; `--allow-temp` downgrades it to a warning. A 13th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing;
-the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, meaningless numbers
-— never trust one without reviving it (`debugging.md`, which also has the `FREEZE_REPRO` rule).
+**Every headless gate is blind to biome code** (`BiomeDirector` returns early under `--headless`) — the only
+reason the visual three exist. And `shipping_values_check` is the only thing watching the debug knobs: each is
+a plain `var` the editor can't serialise, so no other gate sees one left flipped. It fails on all of them, on any
+`debug_*` override reaching `main.tscn`, and on a pinned engine setting going missing from `project.godot`;
+`--allow-temp` downgrades it to a warning. A 13th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing;
+the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, meaningless numbers — never trust one without reviving it (`debugging.md`, which also has the `FREEZE_REPRO` rule).
 
 ## Scene wiring
 
-**The annotated scene graph is the first section of `architecture.md`** — open it before touching
-`main.tscn`. The rules that break things silently:
+**The annotated scene graph is the first section of `architecture.md`** — open it before touching `main.tscn`. The rules that break things silently:
 
 - Nodes find each other **by sibling path** (`NodePath("../Player")`), resolved with
   `get_node_or_null` and null-guarded. There is no service locator.
@@ -92,11 +85,10 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
   player tilt and the debug HUD all sample it independently. **One runtime input is allowed**,
   `lake_segment_index`, **write-once and write-ahead**: `arm_lake()` is its only writer and may only
   set it *above* `highest_cached_segment_index`, so arming can only **extend** the height field.
-- **`get_terrain_height` returns an offset FROM `ground_y`**, not a TerrainGenerator-local y — place
-  nodes at `ground_y + get_terrain_height(x) − clearance`, or put a per-chunk spawner's GROUP at
-  `y = ground_y`. Both coin spawners omitted it and hung every diamond 192px too high, unreachable at
-  every jump level, for months while the constant-only gate passed. **A clearance constant proves
-  nothing about where the object lands** — `check_spawn_placement()` measures a really-placed node.
+- **`get_terrain_height` returns an offset FROM `ground_y`**, not a TerrainGenerator-local y — place nodes at
+  `ground_y + get_terrain_height(x) − clearance`, or a per-chunk spawner's GROUP at `y = ground_y`. Both coin
+  spawners omitted it and hung every diamond 192px too high, unreachable at every jump level, for months while
+  constant-only gates passed. **A clearance constant proves nothing about where the object lands** — `check_spawn_placement()` measures a really-placed node.
 - **Always `ensure_segment_cache_for_world_x(x)` before `find_segment_index_at_x(x)`**, or the
   binary search silently clamps and returns the wrong segment.
 - **Player spawn `(64,136)` is a manual invariant**: `ground_y(192) + surface_y_offset(-32) −
@@ -145,8 +137,7 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
 
 ## Build order / status
 
-All **working** unless said otherwise. The numbers are load-bearing; the reasoning is in the doc
-named at the end of each row.
+All **working** unless said otherwise. The numbers are load-bearing; the reasoning is in the doc named at the end of each row.
 
 | # | Area | The parts you can't infer from the code |
 |---|---|---|
@@ -163,25 +154,22 @@ named at the end of each row.
 | 11 | **Achievements** | `AchievementManager` is the ONLY writer of `SaveStore.achievements` (an open dictionary, so a new one needs no version bump). **Triggers come TO it** — it listens to signals systems already emit, never the reverse — so adding one is a table row plus one `.connect()`, both in that file. **Its ids are save data**: adding is free, renaming un-earns it for everyone. No gallery/rewards yet, and an addon was evaluated and declined. `architecture.md` |
 | 12 | **Aurora borealis** | PLANNED, not started — the feature the game is named after. Rare sky-only spectacle, sibling of the frozen lake but rarer (~60 min cumulative playtime vs. 20) and purely cosmetic, riding its own single blend ramp the same way the lake does. `aurora_borealis.md` |
 
-**Two `.gdshader`s exist, both owned by ice** — `shaders/ice.gdshader` (the band: two-tile noise
-dissolve, per-biome `ice_contrast`, plus a `flatten` and a `gloss` only the lake writes) and
-`shaders/frozen_lake_reflection.gdshader`. Colour needs no shader — `Polygon2D` already renders
-`texture * vertex_color` — so a third needs a reason.
+**Two `.gdshader`s exist, both owned by ice** — `shaders/ice.gdshader` (the band: two-tile noise dissolve,
+per-biome `ice_contrast`, plus a `flatten` and a `gloss` only the lake writes) and `shaders/frozen_lake_reflection.gdshader`.
+Colour needs no shader — `Polygon2D` already renders `texture * vertex_color` — so a third needs a reason.
 
-**Base viewport pinned 1152×648**, `aspect="expand"`, `Camera2D.zoom` 0.8333 → 1382×778 world px
-visible. **Base size and zoom are one decision — only their ratio is field of view**, which on an
-auto-runner is reaction time; never move one alone. **Author raster art at ≈2× its world size.**
-Both, the +25% a 20:9 phone gets from `expand`, and the four art-swap traps: `visuals.md`. Reference
-art and tool inputs live in `art_source/`, never the repo root — the root is imported into the
-export, that folder is `.gdignore`d.
+**Base viewport pinned 1152×648**, `aspect="expand"`, `Camera2D.zoom` 0.8333 → 1382×778 world px visible.
+**Base size and zoom are one decision — only their ratio is field of view**, which on an auto-runner is reaction
+time; never move one alone. **Author raster art at ≈2× its world size.** Both, the +25% a 20:9 phone gets from
+`expand`, and the four art-swap traps: `visuals.md`. Reference art and tool inputs live in `art_source/`, never
+the repo root — the root is imported into the export, that folder is `.gdignore`d.
 
 Debug instrumentation derives from `OS.is_debug_build()` — on under the editor and every probe, off
 in a release export, so it can't ship by forgetting a flag (`physics.md`).
 
 ---
 
-**Keep this file under ~175 lines** — the project's direction and the traps that cost real time,
-nothing else. How something works goes in `docs/development/`, what an investigation found in
-`docs/research/`.
+**Keep this file under ~175 lines** — the project's direction and the traps that cost real time, nothing else.
+How something works goes in `docs/development/`, what an investigation found in `docs/research/`.
 
 one thing i want to say (im the user, so this is important) if something has a lot of potenital to make more bugs or is gonna be exceeslsivey hard when theres another option, then jhsut flag it and let me know. i am prioritixzing this to be clean and lean code. if a big drop is too much terrain changing, then we just add a chasm instead, for exmaple

@@ -145,11 +145,11 @@ passed the entire time, because 174 was still 174. `check_spawn_placement()` is 
 instantiates the scene, calls all six spawners' real placement functions, and measures the node
 that actually appeared. Mutation-tested both ways.
 
-**The glide field wants one look in play.** Its vertical *spread* was not touched — only the
-anchor moved — so `TRAIL_CLEARANCE_MIN/MAX` still describe the same 1840px band. But the whole
-field now sits 192px lower than anything ever seen on screen, and it was originally eyeballed at
-the wrong offset. Nothing is known to be wrong with it; it has simply never been looked at where
-it now is.
+**The glide field is owner-verified in play and needs no retune.** Its vertical *spread* was not
+touched — only the anchor moved — so `TRAIL_CLEARANCE_MIN/MAX` still describe the same 1840px
+band, and the owner confirmed on 2026-09-03 that the field reads correctly 192px lower. The
+original eyeball-tuning happened at the wrong offset and turned out to survive the correction.
+**Nothing from the audit is left open except #11–#14, which were deferred on purpose.**
 
 Also closed: seven unwatched debug knobs added to `shipping_values_check` (40 now, was 33),
 including one whose "derives from `is_debug_build()`" comment was false and which therefore
@@ -158,9 +158,9 @@ the abandoned `experiments/` background line deleted (3.8MB); a dead remote bran
 five pieces of documentation that were not stale but *wrong* — most notably `build_pano_strip.py`
 calibrating from a `depth_t` the layer has never had.
 
-**`CLAUDE.md` is 187 lines against its own ~175 cap** (it was 181 before this session). Every
-line in it is a live trap, so nothing was cut to hit the number — flagging rather than trimming
-a warning.
+**`CLAUDE.md` is back at exactly 175**, its own cap, after a compression pass. No trap was
+removed to get there — the 12 lines came out of wrapping and one duplicated sentence in the
+footer, and every constant, file name and rule was checked as still present afterwards.
 
 ## Earlier — 2026-08-28: night got longer, and the review knob learned to survive death
 
