@@ -147,6 +147,19 @@ const COIN_LINE_SLOWEST_SPEED: float = SpeedManager.PHASE1_TARGET_SPEED
 const COIN_DENSITY_TARGET: float = 0.34
 const COIN_DENSITY_TOLERANCE: float = 0.05
 
+# --- check_spawn_placement --------------------------------------------------------------
+# Tight: the placed y and the surface y come out of the SAME get_terrain_height() call, so the
+# only difference either side of an exact match is float round-off. A real frame mistake is a
+# whole ground_y (192px), not a fraction.
+const PLACEMENT_EPSILON: float = 0.01
+# Far enough in that the opening flat and CoinSpawner's run_start_world_x suppression are both
+# behind us, near enough that the segment cache is cheap to walk out to.
+const PLACEMENT_PROBE_START_X: float = 4000.0
+const RARE_COIN_PROBE_ATTEMPTS: int = 400
+const RARE_COIN_PROBE_STEP: float = 50.0
+const GROUP_PROBE_FIRST_CHUNK: int = 8
+const GROUP_PROBE_CHUNKS: int = 60
+
 
 func _init() -> void:
 	var explicit_seed: int = get_int_argument("--seed", -1)
@@ -205,6 +218,15 @@ func _init() -> void:
 	# arm_lake's arithmetic, not of any seed. It takes the FIRST seed for the same reason.
 	var arming_violations: Array[String] = await check_lake_arming(session_seeds[0])
 	variant_violations.append_array(arming_violations)
+
+	# Also scene-needing, also seed-independent in what it asserts: which x a spawner accepts
+	# varies by seed, the frame it places into does not.
+	var placement_violations: Array[String] = await check_spawn_placement(session_seeds[0])
+	print("TERRAIN_INVARIANT_SPAWN_PLACEMENT spawners=6",
+		" status=", "PASS" if placement_violations.is_empty() else "FAIL")
+	for violation: String in placement_violations:
+		print("    ", violation)
+	variant_violations.append_array(placement_violations)
 
 	var failed_seed_count: int = 0
 	for session_seed: int in session_seeds:
@@ -629,6 +651,163 @@ func sample_height_field(terrain_generator: TerrainGenerator, start_world_x: flo
 	report["worst_slope_world_x"] = worst_slope_world_x
 	report["sample_count"] = sample_index + 1
 	return report
+
+
+# THE ONLY CHECK IN THIS FILE THAT MEASURES A PLACED NODE, and the only shape that can catch a
+# parent-frame mistake.
+#
+# Every other item-height check here asserts a relationship BETWEEN CONSTANTS -- that 174 sits in
+# the gap between the top two jump levels, that an air line clears every ceiling. A constant is
+# still perfectly correct when the code consuming it puts the object somewhere else entirely, so
+# none of them can see the frame the object actually lands in.
+#
+# That gap was not hypothetical. RareCoinSpawner and GlideCoinSpawner both omitted the ground_y
+# term -- get_terrain_height() returns an offset FROM ground_y, not a TerrainGenerator-local y --
+# so every diamond hung a flat ground_y (192px) above where its own derived constant said, out of
+# reach at every jump level with or without the powerup, while check_rare_coin_height() passed the
+# entire time because 174 was still 174. Audit 2026-09-02, fixed 2026-09-03.
+#
+# So this one instantiates the scene, calls each spawner's OWN placement function, and measures the
+# node that actually appeared against the surface it claims to be anchored to. A new spawner is one
+# row. Ranges rather than single values because three of the six randomise their own clearance;
+# the band is still ~150px narrower than the 192px slip this exists to catch.
+func check_spawn_placement(session_seed: int) -> Array[String]:
+	var violations: Array[String] = []
+
+	var main: Node = MAIN_SCENE.instantiate()
+	var terrain_generator: TerrainGenerator = main.get_node("TerrainGenerator") as TerrainGenerator
+	var player: Player = main.get_node("Player") as Player
+	terrain_generator.debug_replay_session_seed = session_seed
+	player.DEBUG_LOG_FREEZE_REPRO = false
+	player.DEBUG_SHOW_PLAYER_STATE = false
+	root.add_child(main)
+	await physics_frame
+
+	var coin_spawner: CoinSpawner = main.get_node("TerrainGenerator/CoinSpawner") as CoinSpawner
+	var obstacle_spawner: ObstacleSpawner = main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner
+	var powerup_spawner: PowerupSpawner = main.get_node("TerrainGenerator/PowerupSpawner") as PowerupSpawner
+	var tree_spawner: GroundTreeSpawner = main.get_node("TerrainGenerator/GroundTreeSpawner") as GroundTreeSpawner
+	var glide_spawner: GlideCoinSpawner = main.get_node("TerrainGenerator/GlideCoinSpawner") as GlideCoinSpawner
+	var rare_spawner: RareCoinSpawner = main.get_node("TerrainGenerator/RareCoinSpawner") as RareCoinSpawner
+
+	# ObstacleSpawner and PowerupSpawner place at a caller-chosen x with no rejection of their own
+	# (their guards live in the callers), so a plain flat-ish x serves. PowerupSpawner may still
+	# walk world_x forward past a void, which is why every measurement below reads the placed
+	# node's OWN x rather than the requested one.
+	var probe_x: float = find_placement_probe_x(terrain_generator)
+
+	obstacle_spawner.spawn_obstacle(probe_x)
+	if obstacle_spawner.active_obstacles.is_empty():
+		violations.append("SPAWN_PLACEMENT ObstacleSpawner placed nothing at world_x=%.1f" % probe_x)
+	else:
+		violations.append_array(assert_clearance(terrain_generator, "ObstacleSpawner",
+			obstacle_spawner.active_obstacles[-1],
+			ObstacleSpawner.OBSTACLE_HALF_HEIGHT, ObstacleSpawner.OBSTACLE_HALF_HEIGHT))
+
+	var powerup_row: Dictionary = PowerupSpawner.POWERUP_TABLE[0]
+	powerup_spawner.spawn_powerup(powerup_row["scene"], probe_x, powerup_row["effect"])
+	if powerup_spawner.active_powerups.is_empty():
+		violations.append("SPAWN_PLACEMENT PowerupSpawner placed nothing at world_x=%.1f" % probe_x)
+	else:
+		violations.append_array(assert_clearance(terrain_generator, "PowerupSpawner",
+			powerup_spawner.active_powerups[-1],
+			PowerupSpawner.POWERUP_SURFACE_CLEARANCE, PowerupSpawner.POWERUP_SURFACE_CLEARANCE))
+
+	# The rare coin refuses most slots (slope, a non-flat take-off run, a void inside the jump's
+	# reach), so this walks forward for one it accepts -- the same scan its own schedule performs.
+	var rare_x: float = probe_x
+	var rare_placed: bool = false
+	for _attempt: int in range(RARE_COIN_PROBE_ATTEMPTS):
+		terrain_generator.ensure_segment_cache_for_world_x(rare_x)
+		if rare_spawner.try_spawn_rare_coin(rare_x):
+			rare_placed = true
+			break
+		rare_x += RARE_COIN_PROBE_STEP
+	if not rare_placed:
+		violations.append("SPAWN_PLACEMENT RareCoinSpawner accepted no slot in %d tries from world_x=%.1f" % [
+			RARE_COIN_PROBE_ATTEMPTS, probe_x,
+		])
+	else:
+		violations.append_array(assert_clearance(terrain_generator, "RareCoinSpawner",
+			rare_spawner.active_coins[-1],
+			RareCoinSpawner.RARE_COIN_CLEARANCE, RareCoinSpawner.RARE_COIN_CLEARANCE))
+
+	glide_spawner.spawn_bonus_coin(probe_x)
+	if glide_spawner.active_coins.is_empty():
+		violations.append("SPAWN_PLACEMENT GlideCoinSpawner placed no bonus coin at world_x=%.1f" % probe_x)
+	else:
+		violations.append_array(assert_clearance(terrain_generator, "GlideCoinSpawner.bonus",
+			glide_spawner.active_coins[-1],
+			GlideCoinSpawner.BONUS_SURFACE_CLEARANCE, GlideCoinSpawner.BONUS_SURFACE_CLEARANCE))
+
+	# The trail coin picks its own x off the camera's right edge and its own clearance out of
+	# TRAIL_CLEARANCE_MIN/MAX, so it is asserted as a band. It is still the real function.
+	var coins_before_trail: int = glide_spawner.active_coins.size()
+	glide_spawner.spawn_trail_coin()
+	if glide_spawner.active_coins.size() > coins_before_trail:
+		violations.append_array(assert_clearance(terrain_generator, "GlideCoinSpawner.trail",
+			glide_spawner.active_coins[-1],
+			GlideCoinSpawner.TRAIL_CLEARANCE_MIN, GlideCoinSpawner.TRAIL_CLEARANCE_MAX))
+
+	# CoinSpawner and GroundTreeSpawner build one group per CHUNK and gate every slot on a hash,
+	# so a given chunk can legitimately yield nothing -- scan forward for the first that does.
+	# Their group node sitting at y = ground_y IS how they supply the term the two coin spawners
+	# were missing, which is exactly why they belong in this table rather than being assumed fine.
+	var coin_node: Node2D = first_group_child(coin_spawner, coin_spawner.spawn_coin_group, coin_spawner.active_coin_groups)
+	if coin_node == null:
+		violations.append("SPAWN_PLACEMENT CoinSpawner produced no coin in %d chunks" % GROUP_PROBE_CHUNKS)
+	else:
+		violations.append_array(assert_clearance(terrain_generator, "CoinSpawner",
+			coin_node, CoinSpawner.COIN_SURFACE_CLEARANCE, CoinSpawner.COIN_LINE_CLEARANCE))
+
+	var tree_node: Node2D = first_group_child(tree_spawner, tree_spawner.spawn_tree_group, tree_spawner.active_tree_groups)
+	if tree_node == null:
+		violations.append("SPAWN_PLACEMENT GroundTreeSpawner produced no tree in %d chunks" % GROUP_PROBE_CHUNKS)
+	else:
+		# A tree is planted ON the surface -- its origin IS the contact point, clearance 0.
+		violations.append_array(assert_clearance(terrain_generator, "GroundTreeSpawner", tree_node, 0.0, 0.0))
+
+	main.queue_free()
+	return violations
+
+
+# Measures one placed node against the surface it is anchored to, at the node's OWN world x, and
+# reports in the units the spawner declares its constant in.
+func assert_clearance(terrain_generator: TerrainGenerator, spawner_name: String, node: Node2D, min_clearance: float, max_clearance: float) -> Array[String]:
+	var violations: Array[String] = []
+	var world_x: float = node.global_position.x
+	terrain_generator.ensure_segment_cache_for_world_x(world_x)
+	var clearance: float = terrain_generator.get_surface_world_y(world_x) - node.global_position.y
+	if clearance < min_clearance - PLACEMENT_EPSILON or clearance > max_clearance + PLACEMENT_EPSILON:
+		var expected: String = "%.1f" % min_clearance if is_equal_approx(min_clearance, max_clearance) else "[%.1f, %.1f]" % [min_clearance, max_clearance]
+		violations.append("SPAWN_PLACEMENT %s placed %.1fpx above the surface, expected %s (off by %.1f) -- wrong parent frame, most likely a missing ground_y term" % [
+			spawner_name, clearance, expected, clearance - clampf(clearance, min_clearance, max_clearance),
+		])
+	return violations
+
+
+# Walks chunk indices until one of the per-chunk spawners actually builds a child, and returns it.
+# Starts past chunk 0 because CoinSpawner suppresses coins behind run_start_world_x.
+func first_group_child(spawner: Node2D, build_group: Callable, active_groups: Dictionary) -> Node2D:
+	for chunk_index: int in range(GROUP_PROBE_FIRST_CHUNK, GROUP_PROBE_FIRST_CHUNK + GROUP_PROBE_CHUNKS):
+		build_group.call(chunk_index)
+		var group: Node2D = active_groups.get(chunk_index) as Node2D
+		if group != null and group.get_child_count() > 0:
+			return group.get_child(0) as Node2D
+	return null
+
+
+# A world x with real ground under it and no lake on it, for the two spawners that place wherever
+# they are told. Walks forward rather than trusting a literal, so a seed whose opening happens to
+# carry a void here does not fail the gate for the wrong reason.
+func find_placement_probe_x(terrain_generator: TerrainGenerator) -> float:
+	var world_x: float = PLACEMENT_PROBE_START_X
+	for _attempt: int in range(RARE_COIN_PROBE_ATTEMPTS):
+		terrain_generator.ensure_segment_cache_for_world_x(world_x)
+		if terrain_generator.has_ground_at_world_x(world_x) and not terrain_generator.is_lake_world_x(world_x):
+			return world_x
+		world_x += RARE_COIN_PROBE_STEP
+	return PLACEMENT_PROBE_START_X
 
 
 # Validates TerrainGenerator's chasm CONSTANTS against the real SpeedManager ramp and the real

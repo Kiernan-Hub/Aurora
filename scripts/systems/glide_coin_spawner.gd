@@ -30,10 +30,18 @@ class_name GlideCoinSpawner
 #
 # A child of TerrainGenerator, same reasoning as coin_spawner.gd's header comment: world
 # rebasing (main.gd, ~every 26s) shifts TerrainGenerator.position.y directly, and every
-# descendant inherits that shift for free -- and since this node sits directly under
-# TerrainGenerator with no offset of its own, a coin's local (position.x, position.y) IS
-# already TerrainGenerator-local, the same frame get_terrain_height()'s return value is
-# expressed in. No global_position conversion needed.
+# descendant inherits that shift for free.
+#
+# THE ground_y TERM IS NOT OPTIONAL. get_terrain_height() returns an offset FROM ground_y, not
+# a TerrainGenerator-local y, so a coin's local y is
+# ground_y + get_terrain_height(x) - clearance -- the same expression ObstacleSpawner and
+# PowerupSpawner already use. This node having no offset of its own is true and does not make
+# the term unnecessary: CoinSpawner and GroundTreeSpawner sit directly under TerrainGenerator
+# too and supply it by putting their GROUP node at y = ground_y, which this file has no
+# equivalent of. Omitting it hung the whole field, and the bonus diamond, ground_y (192px) too
+# high from this file's first commit until 2026-09-03 -- so TRAIL_CLEARANCE_MIN's "skims the
+# surface" never skimmed anything. terrain_invariant_check's check_spawn_placement() now
+# measures a really-placed node, which is the only gate shape that catches this.
 @export var terrain_generator_path: NodePath = NodePath("..")
 @export var player_path: NodePath = NodePath("../../Player")
 @export var camera_path: NodePath = NodePath("../../Camera2D")
@@ -183,7 +191,7 @@ func spawn_trail_coin() -> void:
 		if terrain_generator.is_lake_world_x(world_x):
 			continue
 		var clearance: float = randf_range(TRAIL_CLEARANCE_MIN, TRAIL_CLEARANCE_MAX)
-		var local_y: float = terrain_generator.get_terrain_height(world_x) - clearance
+		var local_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - clearance
 		if is_far_enough_from_active_coins(world_x, local_y):
 			spawn_coin(world_x, local_y, TRAIL_COIN_VALUE, AIR_COIN_SCALE, null)
 			return
@@ -227,7 +235,7 @@ func spawn_bonus_coin(world_x: float) -> void:
 	# perfectly good ground, so a nudge would walk the coin onto the ice rather than past it.
 	if terrain_generator.is_lake_world_x(world_x):
 		return
-	var local_y: float = terrain_generator.get_terrain_height(world_x) - BONUS_SURFACE_CLEARANCE
+	var local_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - BONUS_SURFACE_CLEARANCE
 	spawn_coin(world_x, local_y, BONUS_COIN_VALUE, BONUS_DIAMOND_SCALE, null, BONUS_COIN_SCENE)
 
 

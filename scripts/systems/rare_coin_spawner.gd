@@ -8,9 +8,18 @@ class_name RareCoinSpawner
 #
 # A child of TerrainGenerator for the same reason as CoinSpawner and GlideCoinSpawner --
 # world rebasing shifts TerrainGenerator.position.y directly (main.gd, ~every 26s) and every
-# descendant inherits that shift for free. As with GlideCoinSpawner, this node sits directly
-# under TerrainGenerator with no offset of its own, so a coin's local position IS already in
-# the same space get_terrain_height() returns.
+# descendant inherits that shift for free.
+#
+# THE ground_y TERM IS NOT OPTIONAL. get_terrain_height() returns an offset FROM ground_y, not
+# a TerrainGenerator-local y, so a coin's local y is
+# ground_y + get_terrain_height(x) - clearance -- the same expression ObstacleSpawner and
+# PowerupSpawner already use. This node having no offset of its own is true and does not make
+# the term unnecessary: CoinSpawner and GroundTreeSpawner sit directly under TerrainGenerator
+# too and supply it by putting their GROUP node at y = ground_y, which this file has no
+# equivalent of. Omitting it hung every diamond ground_y (192px) too high -- unreachable at
+# every jump level, with or without the powerup -- from this file's first commit until
+# 2026-09-03. terrain_invariant_check's check_spawn_placement() now measures a really-placed
+# node, which is the only gate shape that catches this.
 #
 # WHY A SEPARATE NODE AND NOT A THIRD MODE INSIDE CoinSpawner. Two different lifetimes:
 # CoinSpawner's coins belong to a CHUNK and die with it, these are timed and despawn behind
@@ -180,7 +189,7 @@ func try_spawn_rare_coin(world_x: float) -> bool:
 	if terrain_generator.is_lake_world_x(world_x):
 		return false
 
-	var local_y: float = terrain_generator.get_terrain_height(world_x) - RARE_COIN_CLEARANCE
+	var local_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - RARE_COIN_CLEARANCE
 	var coin: Coin = RARE_COIN_SCENE.instantiate() as Coin
 	coin.position = Vector2(world_x, local_y)
 	coin.collected.connect(_on_coin_collected)
