@@ -219,7 +219,6 @@ var capsule_half_height: float = 24.0
 var stalled_frame_count: int = 0
 var debug_stall_recovery_count: int = 0
 var stuck_motion_x_window: Array[float] = []
-var stuck_event_reported: bool = false
 var debug_stuck_event_count: int = 0
 # Which of the two velocity models ran this frame. Stored rather than re-derived:
 # apply_grounded_floor_snap() needs it after move_and_slide(), and an external probe
@@ -677,22 +676,20 @@ func update_stuck_detection(delta: float) -> void:
 		net_progress += windowed_motion_x
 
 	if not (is_on_floor() and net_progress < STUCK_NET_PROGRESS_THRESHOLD):
-		stuck_event_reported = false
 		return
 
-	if stuck_event_reported:
-		return
-
-	stuck_event_reported = true
 	debug_stuck_event_count += 1
 	print("STUCK_DETECTED seed=", get_terrain_session_seed(), " world_x=%.3f" % global_position.x, " event=", debug_stuck_event_count, " net_progress_over_%d_frames=%.3f" % [STUCK_WINDOW_FRAME_COUNT, net_progress])
 	debug_stuck_detected.emit(get_terrain_session_seed(), global_position.x)
 	recover_from_stall(delta)
 	# Clearing the window both resets the measurement against fresh post-recovery
 	# data and acts as a ~1s cooldown, so a location that re-sticks gets rescued
-	# repeatedly rather than once.
+	# repeatedly rather than once. It is the ONLY thing preventing a re-report on the
+	# next frame -- a `stuck_event_reported` latch used to sit alongside it and was
+	# provably dead (set and cleared inside this one call, so its guard could never
+	# fire and its reset never had anything to reset). Removed 2026-09-03. If this
+	# clear is ever dropped, the latch has to come back with it.
 	stuck_motion_x_window.clear()
-	stuck_event_reported = false
 
 
 func setup_debug_state_label() -> void:

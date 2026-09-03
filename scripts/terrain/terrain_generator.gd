@@ -656,9 +656,11 @@ func _physics_process(_delta: float) -> void:
 
 func initialize_chunks() -> void:
 	var player_chunk_index: int = int(floor(player.global_position.x / chunk_width))
-	next_chunk_index = player_chunk_index - chunk_count_behind
 	for chunk_index: int in range(player_chunk_index - chunk_count_behind, player_chunk_index + chunk_count_ahead + 1):
 		spawn_chunk(chunk_index)
+	# Set once, AFTER the loop. spawn_chunk() never reads next_chunk_index -- it keys off
+	# active_chunks -- so the write this used to make before the loop was overwritten here
+	# without ever being read.
 	next_chunk_index = player_chunk_index + chunk_count_ahead + 1
 
 

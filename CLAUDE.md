@@ -93,6 +93,14 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
   set it *above* `highest_cached_segment_index`, so arming can only **extend** the height field.
 - **Always `ensure_segment_cache_for_world_x(x)` before `find_segment_index_at_x(x)`**, or the
   binary search silently clamps and returns the wrong segment.
+- **`get_terrain_height` is measured from `ground_y`, not from `TerrainGenerator`'s origin**, so
+  anything placed under that node at the raw value sits 192px too high. Take the offset on a
+  group node (`CoinSpawner`, `GroundTreeSpawner`, and now both air-coin spawners) or add it at
+  the call site (`ObstacleSpawner`, `PowerupSpawner`) — never neither. `RareCoinSpawner` and
+  `GlideCoinSpawner` did neither from the day they were written, hanging the rare coin out of
+  reach at every upgrade level, and **no gate saw it for months**: `check_rare_coin_height` and
+  `check_coin_line_height` assert the *constants* against the jump table, and nothing anywhere
+  compares a spawned node's y against `get_surface_world_y()`.
 - **Player spawn `(64,136)` is a manual invariant**: `ground_y(192) + surface_y_offset(-32) −
   capsule half-height(24)`. Change one without updating `Player` in `main.tscn` and it starts
   embedded in, or dropping toward, the terrain.
