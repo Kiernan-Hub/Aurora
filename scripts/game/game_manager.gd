@@ -263,6 +263,12 @@ func wire_scene() -> bool:
 	pause_restart_button.pressed.connect(_on_quick_restart_pressed)
 	pause_home_button.pressed.connect(_on_restart_pressed)
 
+	# MusicSlider and MusicLabel are authored visible = false in main.tscn, because no
+	# stream is ever assigned to GameServices.music_player -- SfxPlayer is the only thing
+	# in the project that sets .stream. A slider that moves and changes nothing audible
+	# reads as a bug to a player. Everything below stays wired: the node still exists, so
+	# the null-guard above still passes, the saved volume still loads and persists, and
+	# shipping music is deleting the two visible = false lines. Do NOT delete the nodes.
 	if services != null:
 		music_slider.value = services.save_store.music_volume
 		sfx_slider.value = services.save_store.sfx_volume
