@@ -64,10 +64,10 @@ shipped defect — both coin spawners placing 192px too high — and the gate ga
 >    contact sheet's job better. Run them to catch gross breakage before handing over a visual
 >    change — not as a gate.
 >
-> 3. **Three commits are unpushed** (the 2026-09-03 audit sweep). Push once 1 is settled.
->    Check this line with `git rev-list --left-right --count origin/main...main` rather than
->    trusting it — it has now gone stale twice, and it is the one claim here a fresh session
->    acts on immediately.
+> 3. **Nothing is unpushed** as of 2026-09-03 — `origin/main` and `main` are level at `07b9060`.
+>    **Never trust this line; run `git rev-list --left-right --count origin/main...main`.** It has
+>    gone stale three times now, because it is the one claim here that a fresh session acts on
+>    immediately and the one that expires the moment anybody pushes.
 >
 > After those, the project is genuinely clean. The next real feature is the aurora, which needs
 > a planning pass before any code — see "Still in view".
