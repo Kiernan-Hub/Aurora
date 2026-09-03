@@ -6,7 +6,7 @@
 Android). `CLAUDE.md` is the map — read it first; it points at everything else. This file is the
 running log of *where the work is*, newest section first.
 
-As of **2026-09-02**, head `e3beb3a`. The core loop, chasms, coins, powerups, upgrades,
+As of **2026-09-03**, head `13d89b6`. The core loop, chasms, coins, powerups, upgrades,
 achievements, the frozen lake and the background are all shipped and working. Gameplay art is
 still placeholder rects.
 
@@ -16,6 +16,10 @@ still placeholder rects.
 **The 2026-08-24 review list is finished except #7.** Two items were killed on evidence rather
 than done (#9, #8 — see below), and the last cheap one is built. What is left on it is #7,
 segment caches never being pruned, which carries a read-this-first warning.
+
+**The 2026-09-02 audit is worked through: #1–#10 closed on 2026-09-03**, #11–#14 deliberately
+left (see the status block at the top of `docs/review/2026-09-02-audit.md`). It found one real
+shipped defect — both coin spawners placing 192px too high — and the gate gap that hid it.
 
 > ## ✅ FINISH THIS FIRST — what is actually left
 >
@@ -60,7 +64,10 @@ segment caches never being pruned, which carries a read-this-first warning.
 >    contact sheet's job better. Run them to catch gross breakage before handing over a visual
 >    change — not as a gate.
 >
-> 3. **Twelve commits are unpushed** (`c52761b` … `e3beb3a`). Push once 1 is settled.
+> 3. **Three commits are unpushed** (the 2026-09-03 audit sweep). Push once 1 is settled.
+>    Check this line with `git rev-list --left-right --count origin/main...main` rather than
+>    trusting it — it has now gone stale twice, and it is the one claim here a fresh session
+>    acts on immediately.
 >
 > After those, the project is genuinely clean. The next real feature is the aurora, which needs
 > a planning pass before any code — see "Still in view".
@@ -113,7 +120,49 @@ before building it. Don't self-verify visuals with screenshots — the owner che
 The sections below run newest first. The older ones are all background work, which is **parked
 in a shippable state, not finished** — read "Where things actually stand" before touching it.
 
-## Last session — 2026-08-28: night got longer, and the review knob learned to survive death
+## Last session — 2026-09-03: the audit's one real bug, and the gate shape that missed it
+
+Six commits, working through the 2026-09-02 audit end to end. `check.sh` green at every step.
+
+**The headline: rare coins and glide coins have been placed 192px too high since each file's
+first commit.** `get_terrain_height()` returns an offset *from* `ground_y`, not a
+TerrainGenerator-local y, and both spawners left the `ground_y` term out — while their own header
+comments argued at length that it was unnecessary. The rare coin's whole reason to exist is that
+its 174px clearance sits in the ~24px gap between the top two jump levels; it was actually at
+366px, out of reach at every level, powerup included. The glide field's "skims the surface" 60px
+floor was really 252px.
+
+**Verified by measurement, not by reading.** A throwaway probe instantiated `main.tscn`, called
+each spawner's own placement function and compared against `get_surface_world_y()` — 366.0 and
+322.0 before, 174.0 and 130.0 after. The owner had believed this was already fixed in an earlier
+session; it was not, and reflog/all-branches/stash confirmed no such fix ever existed. **Measure
+before trusting a "we already did that", including your own.**
+
+**Why nothing caught it, which is the more useful half.** Every item-height check in
+`terrain_invariant_check` asserts a relationship *between constants* — and a constant stays
+perfectly correct while the code consuming it puts the object somewhere else. `check_rare_coin_height()`
+passed the entire time, because 174 was still 174. `check_spawn_placement()` is the fix: it
+instantiates the scene, calls all six spawners' real placement functions, and measures the node
+that actually appeared. Mutation-tested both ways.
+
+**The glide field wants one look in play.** Its vertical *spread* was not touched — only the
+anchor moved — so `TRAIL_CLEARANCE_MIN/MAX` still describe the same 1840px band. But the whole
+field now sits 192px lower than anything ever seen on screen, and it was originally eyeballed at
+the wrong offset. Nothing is known to be wrong with it; it has simply never been looked at where
+it now is.
+
+Also closed: seven unwatched debug knobs added to `shipping_values_check` (40 now, was 33),
+including one whose "derives from `is_debug_build()`" comment was false and which therefore
+shipped whatever it held; `mist_strength` deleted after confirming no fog layer exists anywhere;
+the abandoned `experiments/` background line deleted (3.8MB); a dead remote branch deleted; and
+five pieces of documentation that were not stale but *wrong* — most notably `build_pano_strip.py`
+calibrating from a `depth_t` the layer has never had.
+
+**`CLAUDE.md` is 187 lines against its own ~175 cap** (it was 181 before this session). Every
+line in it is a live trap, so nothing was cut to hit the number — flagging rather than trimming
+a warning.
+
+## Earlier — 2026-08-28: night got longer, and the review knob learned to survive death
 
 Two commits, both data or one script. No gameplay, physics, terrain or collision file touched.
 
@@ -262,7 +311,7 @@ wanted: swapping is a one-line change to `MOON_TEXTURE`, though a crescent needs
 
 ## Last sessions — 2026-08-26 → 27: two review items killed, one gate hardened
 
-Two commits, **both unpushed**: `f7e500d` (docs) and `9c91c42` (the gate). Nothing outside
+Two commits, `f7e500d` (docs) and `9c91c42` (the gate), both since pushed. Nothing outside
 `scripts/debug/shipping_values_check.gd` and docs was touched — no gameplay, physics, terrain,
 scene or shader file — so nothing here needs a gate suite to trust. `check.sh` green throughout,
 5/5 in 25s, unchanged timing.

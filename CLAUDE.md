@@ -35,8 +35,9 @@ No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/Ma
 (play with `--path .`; opens a window and blocks, so only when asked).
 
 **`./scripts/check.sh` runs the fast five in ~25s** — shipping-values, biome-schedule,
-terrain-shape, lake-suppression, and an export-content check that fails if `scripts/debug` or
-either `experiments/` reaches a real pack. Run it before every commit. It deliberately does *not*
+terrain-shape, lake-suppression, and an export-content check that fails if `scripts/debug` reaches
+a real pack (the three `experiments/` paths it also guards were deleted 2026-09-03 and stay listed
+as a rule about where throwaway work goes). Run it before every commit. It deliberately does *not*
 import the project, for the reason in the `project.godot` bullet below.
 
 **Twelve maintained checks, and only twelve** — everything else lives in `scripts/debug/archive/`,
@@ -91,6 +92,11 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
   player tilt and the debug HUD all sample it independently. **One runtime input is allowed**,
   `lake_segment_index`, **write-once and write-ahead**: `arm_lake()` is its only writer and may only
   set it *above* `highest_cached_segment_index`, so arming can only **extend** the height field.
+- **`get_terrain_height` returns an offset FROM `ground_y`**, not a TerrainGenerator-local y — place
+  nodes at `ground_y + get_terrain_height(x) − clearance`, or put a per-chunk spawner's GROUP at
+  `y = ground_y`. Both coin spawners omitted it and hung every diamond 192px too high, unreachable at
+  every jump level, for months while the constant-only gate passed. **A clearance constant proves
+  nothing about where the object lands** — `check_spawn_placement()` measures a really-placed node.
 - **Always `ensure_segment_cache_for_world_x(x)` before `find_segment_index_at_x(x)`**, or the
   binary search silently clamps and returns the wrong segment.
 - **Player spawn `(64,136)` is a manual invariant**: `ground_y(192) + surface_y_offset(-32) −
