@@ -6,35 +6,56 @@
 Android). `CLAUDE.md` is the map — read it first; it points at everything else. This file is the
 running log of *where the work is*, newest section first.
 
-As of **2026-08-27**, head `c5bcfe0`. The core loop, chasms, coins, powerups, upgrades,
+As of **2026-09-02**, head `e3beb3a`. The core loop, chasms, coins, powerups, upgrades,
 achievements, the frozen lake and the background are all shipped and working. Gameplay art is
 still placeholder rects.
+
+**The working tree is clean and `./scripts/check.sh` passes all five gates in 25s** (verified
+2026-09-02). Everything below is a loose end, not a break.
 
 **The 2026-08-24 review list is finished except #7.** Two items were killed on evidence rather
 than done (#9, #8 — see below), and the last cheap one is built. What is left on it is #7,
 segment caches never being pruned, which carries a read-this-first warning.
 
-> ## ✅ FINISH THIS FIRST — cleanup left open on purpose
+> ## ✅ FINISH THIS FIRST — what is actually left
 >
-> Nothing here is broken. These are the four loose ends from the 2026-08-27 visual session,
-> ordered. **`check.sh` is red until item 1 is done, and that is intentional.**
+> Nothing here is broken; `check.sh` is green. Two of the four loose ends from the 2026-08-27
+> visual session are **done** and are recorded that way so nobody redoes them:
 >
-> 1. **`BiomeDirector.debug_biome_seconds` is set to `10.0` in the working tree, uncommitted.**
->    It is the palette fast-forward the owner reviewed with — one biome every 10s. It **cannot
->    ship** (it is uncommitted, and `shipping_values_check` fails on it every run), but it must
->    go back before anything else is committed from that file:
->    `git checkout -- scripts/systems/biome_director.gd`. Only do this once the owner is done
->    eyeballing biomes; ask, don't assume.
-> 2. **The three windowed visual gates are OWED.** This session changed biome palette colours
->    *and* the sky, which is exactly what they exist for. They **must run without `--headless`**
->    (`debugging.md`): `sky_layer_check.gd`, `ice_look_capture.gd`, `biome_contact_sheet.gd`.
->    None has been run since the changes. This is the real outstanding risk — every headless
->    gate is blind to biome code.
-> 3. **Nine commits are unpushed** (`c52761b` … `c5bcfe0`). Push once 1 and 2 are settled.
-> 4. **Then the open decision below** — how much night the arc should have (A/B/C). Not started.
+> - ~~1. `debug_biome_seconds` left at `10.0` in the working tree~~ — **DONE.** It is back at
+>   `0.0`, the tree is clean, and `shipping_values_check` passes.
+> - ~~4. The open night-length decision (A/B/C)~~ — **DONE, option A shipped** in `e3beb3a`.
+>   Night is 2/8 of the arc. See "CLOSED decision — how much night", below, which is kept for
+>   its reasoning and its disc rule, not as an open item.
 >
-> After those four, the project is genuinely clean and the next real feature is the aurora,
-> which needs a planning pass before any code.
+> **What remains, in order:**
+>
+> 1. **`sky_layer_check.gd` is OWED, and it is the only real risk on this list.** It is a gate
+>    (exits non-zero), it **must run without `--headless`** (`debugging.md`), and it has not run
+>    since 2026-08-26. Five commits landed after that run — `glacier_teal`'s emerald ice, three
+>    moon fixes, and `twilight_blue`'s night rewrite — and **every headless gate is blind to
+>    biome code**, because `BiomeDirector` returns early under `--headless`. `check.sh` being
+>    green says nothing here.
+>
+>    ```
+>    /Applications/Godot.app/Contents/MacOS/Godot --path . --script res://scripts/debug/sky_layer_check.gd
+>    ```
+>
+>    **What to suspect if it fails:** `twilight_blue` walked straight at this gate's documented
+>    failure mode. Option A turned the glow into *cool moonlight* and darkened the sky it sits
+>    on, in the same commit. If those two colours converged, the glow now contributes under
+>    24/255 and is invisible — which is exactly the defect (11/255) this gate was built for.
+>
+> 2. **`ice_look_capture.gd` and `biome_contact_sheet.gd` are NOT owed in the same sense.**
+>    Neither asserts anything; both just save PNGs for a human to look at. The owner judges the
+>    final look in-game and has `debug_biome_seconds` for the whole-cycle view, which does the
+>    contact sheet's job better. Run them to catch gross breakage before handing over a visual
+>    change — not as a gate.
+>
+> 3. **Twelve commits are unpushed** (`c52761b` … `e3beb3a`). Push once 1 is settled.
+>
+> After those, the project is genuinely clean. The next real feature is the aurora, which needs
+> a planning pass before any code — see "Still in view".
 
 > ## ⏸ THE PLAYTEST IS STILL RUNNING — owner-reported findings outrank everything
 >
@@ -84,7 +105,24 @@ before building it. Don't self-verify visuals with screenshots — the owner che
 The sections below run newest first. The older ones are all background work, which is **parked
 in a shippable state, not finished** — read "Where things actually stand" before touching it.
 
-## Last session — 2026-08-27 visual pass: the green, the moon, the night sky
+## Last session — 2026-08-28: night got longer, and the review knob learned to survive death
+
+Two commits, both data or one script. No gameplay, physics, terrain or collision file touched.
+
+- **`e3beb3a` — `twilight_blue` deepened into a real night.** This is option A of the open
+  decision below, which is now closed. Night went from 1/8 of the day arc to 2/8. Full values
+  and reasoning are in that section.
+- **`10aeb66` — `BiomeDirector`'s review knob now resumes after a death**, the way the real
+  session phase already did. Reviewing palettes with `debug_biome_seconds` used to restart the
+  colour clock on every death, which made the fast-forward useless for exactly the long
+  eyeballing sessions it exists for.
+
+**Nothing visual has been verified since.** `sky_layer_check` last ran 2026-08-26, before both
+of these and before the four commits of the 08-27 pass. See the top of this file.
+
+---
+
+## Earlier — 2026-08-27 visual pass: the green, the moon, the night sky
 
 Seven commits, all data or one script, **no gameplay/physics/terrain/collision file touched**.
 Driven by the owner playtesting with `debug_biome_seconds` and screenshotting what looked wrong.
@@ -156,10 +194,24 @@ so nothing renders; the flag only picks the texture the fade uses).
 An attempt to make the moon *arc* across two night biomes was **rejected by
 `biome_schedule_check`** and reverted — that is option C below.
 
-## Open decision — how much night the day arc should have
+## CLOSED decision — how much night the day arc should have (option A, `e3beb3a`)
+
+> **DECIDED AND SHIPPED 2026-08-28: option A.** `twilight_blue` was deepened into a real night —
+> gradient darkened to roughly a third of the way down to `starlit_night`, horizontal tint
+> dropped to white (no warm band), the glow turned into cool moonlight at the moon's own slot,
+> `star_density` 0.6 → 0.85, and scenery/haze/tree/bird tints followed the sky down so the
+> silhouettes would not read as dusk against a night sky. **Night is now 2/8 of the arc.** The
+> two night biomes stay distinct: `twilight_blue` is violet-leaning with no disc,
+> `starlit_night` is deeper neutral navy with the moon and full stars.
+>
+> **B and C were not done and are still available** if night still reads short. C in particular
+> is the only fix for *"the moon pops up all of a sudden"* — option A cannot address that.
+> **`sky_layer_check` has not run since this shipped** (see the top of this file). The rest of
+> this section is kept for its reasoning and, above all, for the disc rule at the end, which
+> constrains anything anyone does to the sky next.
 
 Raised by the owner 2026-08-27 while playtesting with `debug_biome_seconds`: *"mostly sun, some
-night time, but like 2 night time or 3 isn't really enough."* **Not started — it needs a call.**
+night time, but like 2 night time or 3 isn't really enough."*
 
 Today exactly **one** of the eight palettes is真 night (`starlit_night`, `star_density` 1.0).
 `violet_dusk` (0.3) and `twilight_blue` (0.6) are dusk and twilight, not night. So night is 1/8
@@ -190,8 +242,9 @@ not obvious from the palettes, and it caught an attempt to break both:
    slides across the sky as it fades. *This is why every palette shares one of two positions* —
    it is not redundancy, it is the rule.
 
-A and B are compatible; C subsumes the moon half of both. **Recommendation: A now** (minutes,
-zero structural cost), then C only if the pop-in still reads wrong once night is longer.
+A and B are compatible; C subsumes the moon half of both. **Recommendation was: A now** (minutes,
+zero structural cost), then C only if the pop-in still reads wrong once night is longer. **A was
+taken.** C remains the open follow-up, gated on whether the pop-in still reads wrong.
 
 **The moon image arrived and is in** — `art_source/background/moons.png`, eight variants; panel
 6 ("FULL MOON") is the one wired up. The other seven are still there if the crescent is ever
