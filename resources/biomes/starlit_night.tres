@@ -35,7 +35,6 @@ snow_cap_color = Color(0.9, 0.94, 1, 1)
 snow_cap_strength = 0.48
 snow_tint = Color(0.92, 0.96, 1, 0.5)
 snow_density_scale = 0.8
-mist_strength = 0.2
 star_density = 1.0
 coin_color = Color(1, 0.9, 0.38, 1)
 obstacle_color = Color(1, 0.3, 0.26, 1)

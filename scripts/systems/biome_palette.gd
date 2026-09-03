@@ -216,16 +216,20 @@ const UNSET_COLOR: Color = Color(0.0, 0.0, 0.0, 0.0)
 @export_range(0.0, 1.0) var snow_density_scale: float = 1.0
 
 @export_group("Optional layers")
-# Authored now, inert until each layer's own phase ships. A palette is complete data from
-# day one; the renderers arrive one at a time. See docs/development/biomes.md.
+# One field, and it has a renderer: SkyBackdrop.apply_stars() reads star_density.
 #
-# `reflection_strength` used to sit here and was DELETED on 2026-08-15, after the frozen
-# lake's reflection shipped without it. The lake is a set piece, not a biome layer: it looks
-# the same in every biome by the owner's decision, and what ties it to the world is that the
-# mirror reflects the biome's own sky and ridges -- so there was never a per-palette number
-# for it to read. Do not re-add one speculatively; the two fields left here are inert because
-# their renderer has not been built yet, which is a different thing from inert by design.
-@export_range(0.0, 1.0) var mist_strength: float = 0.0
+# TWO SPECULATIVE FIELDS HAVE NOW BEEN DELETED FROM THIS GROUP, which is the whole lesson of
+# it. `reflection_strength` went on 2026-08-15, after the frozen lake's reflection shipped
+# without ever wanting a per-palette number -- the lake is a set piece that looks the same in
+# every biome by the owner's decision. `mist_strength` went on 2026-09-03: it was authored in
+# all nine palettes and blended on every transition for a fog layer that was never built, so
+# the blend computed a number nothing read. Both had been flagged by three consecutive audits.
+#
+# So: DO NOT author a field here ahead of its renderer. "A palette is complete data from day
+# one" sounds right and has now cost two rounds of cleanup -- the values get guessed against an
+# imagined layer, and when the layer finally arrives it either disagrees with them or never
+# comes. Add the field in the same change that reads it, and let the .tres files gain a value
+# then; a palette value no gate covers is how a palette goes quietly wrong.
 @export_range(0.0, 1.0) var star_density: float = 0.0
 
 @export_group("Rare variant")
@@ -327,7 +331,6 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	var atmosphere: float = weights[CHANNEL_ATMOSPHERE]
 	out.snow_tint = from.snow_tint.lerp(to.snow_tint, atmosphere)
 	out.snow_density_scale = lerpf(from.snow_density_scale, to.snow_density_scale, atmosphere)
-	out.mist_strength = lerpf(from.mist_strength, to.mist_strength, atmosphere)
 	out.star_density = lerpf(from.star_density, to.star_density, atmosphere)
 
 	var gameplay: float = weights[CHANNEL_GAMEPLAY]

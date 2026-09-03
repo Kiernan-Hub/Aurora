@@ -958,22 +958,30 @@ they measured and, more usefully, **how to build one that is actually sound**:
 
 ## Not built yet
 
-`mist_strength` and `star_density` are **authored in all eight palettes and read by nothing**.
-That is deliberate: the palettes are complete data from day one, and each renderer arrives in
-its own phase so it can be judged and reverted alone.
+**Nothing in `BiomePalette` is inert any more, and the "complete data from day one" policy that
+made things inert is retired.** Both fields that had no renderer have been deleted rather than
+left waiting for one:
 
-**`reflection_strength` was the third of these and is gone** (2026-08-15). The frozen lake's
-reflection shipped without ever reading it, and by design: the lake is a set piece that looks
-the same in every biome, tied to the world only by what its mirror happens to reflect. The
-field was speculative authoring for a renderer that turned out not to want it — which is the
-risk this "complete data from day one" policy runs, and the reason to delete rather than wire
-up when a phase lands and disagrees with its own placeholder.
+- **`reflection_strength`** (gone 2026-08-15). The frozen lake's reflection shipped without ever
+  reading it, and by design: the lake is a set piece that looks the same in every biome, tied to
+  the world only by what its mirror happens to reflect.
+- **`mist_strength`** (gone 2026-09-03). Authored in all nine palettes at 0.2–0.8 and blended on
+  every transition, for a fog layer that was never built — so `blend()` computed a number no
+  consumer read. Three consecutive audits flagged it before it went.
+
+The lesson both taught: authoring a palette field ahead of its renderer means guessing values
+against an imagined layer, and the layer then either disagrees with them or never arrives. **Add
+the field in the same change that reads it.** Phase 3 below will bring its own numbers.
 
 - **Phase 2** — gameplay contrast. **Done 2026-08-13, see "Gameplay contrast" below.**
-- **Phase 3** — mist/fog layer.
-- **Phase 4** — reflection. The only one with real risk: it is the one layer that is not
-  automatically rebase-safe, and must parent under a rebased node or use `motion_scale = 0`.
-- **Phase 5** — stars, and silhouette *shape* variants.
+- **Phase 3** — mist/fog layer. **The only one still unbuilt**, and it now starts from nothing:
+  its per-palette field went with the cleanup above, so the change that builds the layer adds
+  the field and authors the nine values against what it actually renders.
+- **Phase 4** — reflection. **Done 2026-08-15**, as the frozen lake's `LakeReflection` rather
+  than a biome layer — which is why it reads no palette field. The rebase hazard called out here
+  was real and is handled: it follows the camera.
+- **Phase 5** — stars **done 2026-08-10** (`SkyStars`, driven by `star_density`). Silhouette
+  *shape* variants remain unbuilt and are not planned — see the note directly below.
 
 **Hill silhouette shape cannot crossfade** and is not planned. A ridge is a single
 `Polygon2D`; changing its shape means rebuilding it, which pops. Doing it properly means two
