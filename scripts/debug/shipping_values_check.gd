@@ -85,6 +85,21 @@ func check_flag_defaults() -> void:
 	# reintroduces the one feature with a known unfixed visible shake.
 	expect_int("TerrainGenerator.debug_weight_mega_drop", terrain.debug_weight_mega_drop,
 		TerrainGenerator.MEGA_DROP_SELECTION_WEIGHT)
+	# The other five in the same ladder. They are @export, so the text scan catches a SCENE
+	# override -- but an edited source default reaches a build with nothing watching it, and
+	# these are the knobs a terrain-shape investigation reaches for first ("flat only" is one
+	# line away from a game with no hills in it). Asserted against the DEFAULT_WEIGHT_*
+	# constants rather than literals, so retuning the mix stays a one-line change.
+	expect_int("TerrainGenerator.debug_weight_flat", terrain.debug_weight_flat,
+		TerrainGenerator.DEFAULT_WEIGHT_FLAT)
+	expect_int("TerrainGenerator.debug_weight_small_hill", terrain.debug_weight_small_hill,
+		TerrainGenerator.DEFAULT_WEIGHT_SMALL_HILL)
+	expect_int("TerrainGenerator.debug_weight_medium_hill_valley_mix", terrain.debug_weight_medium_hill_valley_mix,
+		TerrainGenerator.DEFAULT_WEIGHT_MEDIUM_HILL_VALLEY_MIX)
+	expect_int("TerrainGenerator.debug_weight_big_downhill", terrain.debug_weight_big_downhill,
+		TerrainGenerator.DEFAULT_WEIGHT_BIG_DOWNHILL)
+	expect_int("TerrainGenerator.debug_weight_gentle_uphill", terrain.debug_weight_gentle_uphill,
+		TerrainGenerator.DEFAULT_WEIGHT_GENTLE_UPHILL)
 	terrain.free()
 
 	var obstacles: ObstacleSpawner = ObstacleSpawner.new()
@@ -94,7 +109,18 @@ func check_flag_defaults() -> void:
 	var powerups: PowerupSpawner = PowerupSpawner.new()
 	expect_bool("PowerupSpawner.debug_spawning_disabled", powerups.debug_spawning_disabled, false)
 	expect_string("PowerupSpawner.debug_forced_effect", String(powerups.debug_forced_effect), "")
+	# NOT an is_debug_build() knob, unlike the time override it pairs with -- it is a plain &"",
+	# so whatever it is left holding ships. Left set, the first powerup of every run in a
+	# RELEASE build is pinned to one kind.
+	expect_string("PowerupSpawner.debug_first_powerup_effect_override", String(powerups.debug_first_powerup_effect_override), "")
 	powerups.free()
+
+	# Same class of knob as ObstacleSpawner's and PowerupSpawner's above. No gate sets it and,
+	# until now, none checked it -- so left true and committed it silently deletes the game's
+	# only 25-value pickup.
+	var rare_coins: RareCoinSpawner = RareCoinSpawner.new()
+	expect_bool("RareCoinSpawner.debug_spawning_disabled", rare_coins.debug_spawning_disabled, false)
+	rare_coins.free()
 
 	var main: Main = Main.new()
 	expect_bool("Main.world_rebase_enabled", main.world_rebase_enabled, true)
@@ -261,14 +287,18 @@ func report(allow_temp: bool) -> void:
 	for finding: Array in findings:
 		print("  %-48s %-10s %s" % [finding[0], finding[2], "" if finding[3] else "!= %s" % finding[1]])
 
-	# Reported, never failed on: both derive from OS.is_debug_build(), so a gate (which runs on
-	# the editor binary) always sees the debug value. They are the reason an editor playtest
-	# never exercises the real first-spawn draw -- worth seeing, not worth blocking on.
+	# Reported, never failed on: it derives from OS.is_debug_build(), so a gate (which runs on the
+	# editor binary) always sees the debug value and asserting one would be asserting the binary.
+	# It is the reason an editor playtest never exercises the real first-spawn timing -- worth
+	# seeing, not worth blocking on.
+	#
+	# ONLY the time override belongs here. This block used to carry the effect override too,
+	# under a comment claiming "both derive from is_debug_build()" -- false of the effect
+	# override, which is a plain &"" that ships whatever it holds. It is checked above now.
 	var powerups: PowerupSpawner = PowerupSpawner.new()
 	print("")
 	print("  editor-only (is_debug_build, not checked):")
 	print("    first powerup time override    %.1f" % powerups.debug_first_powerup_time_override)
-	print("    first powerup effect override  \"%s\"" % powerups.debug_first_powerup_effect_override)
 	powerups.free()
 	print("")
 
