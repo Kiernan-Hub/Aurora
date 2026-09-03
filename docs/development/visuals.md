@@ -9,7 +9,7 @@ project. Draw order is scene-tree order plus `CanvasLayer.layer`, and that is de
 
 Art direction: layered minimalist winter, in the Alto's-Adventure tradition — large open
 landscape, smooth silhouettes, soft gradients, heavy negative space. The palette is a
-*daylight reading* of `art_source/ChatGPT Image Aug 6, 2026, 07_13_24 PM.png` (that reference is a
+*daylight reading* of `art_source/art_direction_reference_night.png` (that reference is a
 night scene; its composition, layering and colour family carried over, its darkness did
 not — see "Why daylight" below).
 

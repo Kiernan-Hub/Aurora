@@ -52,8 +52,9 @@ level, and older docs and tool examples may still show the flat paths.
   icon fails silently, are in `docs/development/visuals.md`, "The app icon".
 - `coin_source.png`, `rare_coin_source.png` — the raw coin exports, before the transparent
   re-crops in `assets/sprites/`.
-- `ChatGPT Image Aug 6, 2026, 07_13_24 PM.png` — the original art-direction reference the
-  whole palette is a daylight reading of (`docs/development/visuals.md`). Deserves a real name.
+- `art_direction_reference_night.png` — the original art-direction reference the whole palette
+  is a daylight reading of (`docs/development/visuals.md`). It is a *night* scene; the name says
+  so because the palette deliberately is not. Renamed 2026-09-02 from a ChatGPT export filename.
 
 `glacier_teal_faceted_depth_panel.png` was a stale 2026-08-08 build output kept as a
 before/after reference for an unmatched depth ramp; it was deleted on 2026-08-24.
