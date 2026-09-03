@@ -220,7 +220,12 @@ reason the measurement lives in `docs/research/` as a procedure rather than in t
 If a fix is ever needed, raising `Player.safe_margin` is a one-number lever that buys a full
 band — untested, and it needs the full physics gate suite.
 
-### 7. Segment caches grow for the whole run and are never pruned
+### 7. Segment caches grow for the whole run and are never pruned — MEASURED AND CLOSED 2026-09-03
+
+> **CLOSED, won't fix.** The measurement this item asked for was finally taken, and the growth
+> is too small to be worth the risk of pruning. Numbers and the risk argument are at the end of
+> this section; the original finding is preserved below it.
+
 
 `segment_start_x_cache`, `segment_length_cache`, `segment_baseline_cache` and
 `segment_spec_cache` (`terrain_generator.gd:110-113`) only ever gain entries.
@@ -231,6 +236,39 @@ four are not. At ~1.3 segments/s that is ~4,700 dictionary entries per hour plus
 Probably fine for normal sessions; measure it in the same soak as #6 rather than guessing.
 **Do not add pruning casually** — `arm_lake()`'s write-ahead rule and the deterministic
 replay of recorded seeds both depend on cached history staying available.
+
+#### The measurement, 2026-09-03
+
+A throwaway probe instantiated `main.tscn`, walked `ensure_segment_cache_for_world_x()` out to
+each run length at `MAX_SPEED` (750 px/s), touched every spec the way play does, and read
+`OS.get_static_memory_usage()`:
+
+| run length | world_x | segments | avg segment | cache cost |
+|---|---|---|---|---|
+| 1 min | 45,000 | 59 | 762.7 px | 0.06 MB |
+| 10 min | 450,000 | 600 | 750.0 px | 0.63 MB |
+| 20 min | 900,000 | 1,206 | 746.3 px | 1.28 MB |
+| 60 min | 2,700,000 | 3,605 | 749.0 px | **3.68 MB** |
+
+**~1.06 KB per segment, ~3.7 MB per hour, and it is bounded by the RUN, not the session** —
+restart goes through `reload_current_scene()`, so `TerrainGenerator._ready()` runs again and
+`initialize_segment_cache()` (`:1627`) clears all four. The review's own estimate of ~4,700
+entries/hour was close; what it was missing is that each entry is small and the whole thing is
+freed on every death.
+
+**Why pruning is the worse trade, beyond the memory not mattering.** The four caches are built
+forward by *addition* — `cache_next_segment()` does
+`baseline[i] = baseline[i-1] + delta(i-1)` — and re-derived backward by *subtraction* in
+`cache_previous_segment()`. Float addition is not associative, so a baseline that was pruned and
+re-derived is not guaranteed to be the bit-identical value the chunk built from it used. That is
+a direct violation of the purity invariant in `CLAUDE.md` (`get_terrain_height` must stay pure in
+`(session_seed, world_x)`; chunk visuals, collision, player tilt and the debug HUD all sample it
+independently and must agree). Spending that on 3.7 MB an hour is not a trade worth making.
+
+**Revisit only if** a real out-of-memory or a real long-session complaint appears — and then
+prune `segment_spec_cache` alone, which is the bulk of the bytes and is rebuilt by a pure
+function of `(session_seed, segment_index)` with no accumulating arithmetic. The three float
+caches are the ones that cannot be safely re-derived.
 
 ### 8. `main.gd` depends on tree order with nothing enforcing it — DOWNGRADED 2026-08-26
 
