@@ -6,16 +6,25 @@
 Android). `CLAUDE.md` is the map — read it first; it points at everything else. This file is the
 running log of *where the work is*, newest section first.
 
-As of **2026-09-02**, head on `claude/project-audit-p1ld8g`: tree clean, everything pushed.
-The core loop, chasms, coins, powerups, upgrades, achievements, the frozen lake and the
-background are all shipped and working. Gameplay art is still placeholder rects.
+As of **2026-09-03**, head on `claude/project-audit-p1ld8g`: tree clean, everything pushed,
+**not merged to `main`** — see "The one open decision" below. The core loop, chasms, coins,
+powerups, upgrades, achievements, the frozen lake and the background are all shipped and
+working. Gameplay art is still placeholder rects.
 
 **Do not record the git sync state here.** Two audits in a row found this paragraph claiming
 unpushed commits that were long since pushed. `git status` is free and authoritative; a stale
 claim in the first thing a session reads is worse than no claim.
 
-**`./scripts/check.sh` is green — 5/5 in 26s on 2026-09-02**, and all three fixes below were
-confirmed in game by the owner the same day. Nothing is owed on them.
+**`./scripts/check.sh` was green — 5/5 in 26s on 2026-09-02**, and the three fixes below were
+confirmed in game by the owner the same day. **One cleanup commit (`419a66a`) landed AFTER that
+run and has not been gated**, because the 2026-09-03 session was again a cloud container with no
+Godot. It removes two provably-dead statements and adds a `CLAUDE.md` bullet — no executed code
+path changes — so `check.sh` alone should close it; the physics suite is not needed.
+
+## The one open decision — merge
+
+The branch carries 8 commits and `main` has none of them. Everything on it is verified except
+`419a66a`. **One `check.sh` run is all that stands between here and merging.** Green → merge.
 
 ## Last session — 2026-09-02: full audit, three fixes, all verified
 
@@ -54,6 +63,17 @@ underneath this one; it supersedes the 2026-08-24 list, which is finished except
 - **No physics gate was needed or run.** None of the three touches the player, collision,
   segments or the scene — two are pickup placement and one is a state-transition hook.
 
+**Cleanup, 2026-09-03 (`419a66a`), ungated.** Two provably-dead statements removed and one
+`CLAUDE.md` bullet added. `initialize_chunks()` wrote `next_chunk_index` before its spawn loop
+and again after; `spawn_chunk()` never reads that field, so the first write was never observed.
+`Player.stuck_event_reported` was dead as a whole variable: its only `= true` is followed five
+statements later, with no early return between, by `= false`, so it was false at entry to every
+call and its guard could never fire — the real cooldown is `stuck_motion_x_window.clear()`, and
+the comment there now says the latch has to come back if that clear ever goes. `CLAUDE.md` gains
+the `ground_y` frame trap; every other claim in that file was checked against the code and none
+was stale, so nothing was cut to pay for it and it now sits at 189 lines against its own ~175
+target. **That target is the thing to relax, not the traps.**
+
 **The `project.godot` strip fired for real during that check run, and the gate caught it.** The
 first `check.sh` attempt FAILED on `shipping_values`: an engine settings save had stripped
 `viewport_width`, `viewport_height`, `physics_ticks_per_second` and `physics_interpolation`, plus
@@ -65,20 +85,47 @@ theoretical; treat `git status` after any engine run as mandatory.
 
 **Next, in order:**
 
-1. **A gate that catches this class.** Nothing in the project compares a *spawned node's*
-   position against `get_surface_world_y()` — the two height gates assert constants and the
-   density gate never reads a y, which is why a 192px error survived from the day the file was
-   written. One check that instantiates each spawner and asserts every coin, obstacle and
-   powerup sits its authored clearance above the real surface would cover all six at once.
-   **This is a 13th gate, so it is an architecture decision** — `CLAUDE.md` says "twelve
-   maintained checks, and only twelve". Decide whether it joins the fast five or replaces the
-   constant-only halves of the two existing coin gates.
-2. **The P2 sweep** from the audit, as one small commit: the Music slider still does nothing
-   audible (no `.stream` is ever assigned anywhere), and `BiomePalette.mist_strength` is
-   authored in all eight palettes and read by nothing.
+1. **Merge the branch**, once `check.sh` covers `419a66a`. See above.
+2. **A gate that catches the `ground_y` class.** Nothing in the project compares a *spawned
+   node's* position against `get_surface_world_y()` — the two coin-height gates assert constants
+   and the density gate never reads a y, which is why a 192px error survived from the day the
+   file was written. One check that instantiates each spawner and asserts every coin, obstacle
+   and powerup sits its authored clearance above the real surface would cover all six at once.
+   Realistically ~150–200 lines: it has to build a scene, run it far enough for six spawners to
+   place things, and decide what "the surface" means over a chasm void and the lake.
+   **It is a 13th gate, so it is an architecture decision** — `CLAUDE.md` says "twelve
+   maintained checks, and only twelve". Either it joins the fast five, or it replaces the
+   constant-only halves of `check_rare_coin_height` and `check_coin_line_height`, which is
+   arguably the cleaner shape: those two would then guard the thing rather than the arithmetic
+   about it. **The owner has not decided. Ask before building it.**
 3. **The aurora borealis** — the game's namesake. **Not ready to code**: its own doc's
    "Sequencing" section says plan it fully first, and three open questions are undecided. The
    next step is a *planning pass producing a doc*, not an implementation step.
+
+**Declined or deferred on 2026-09-03 — the owner heard the case and said no. Do not redo these
+without asking.**
+
+- **The Music slider does nothing audible** — no `.stream` is assigned anywhere, so dragging it
+  is silent and reads as a bug. **The owner does not care right now.** It is the only remaining
+  item a *player* can encounter; raise it again when music is actually scheduled.
+- **`BiomePalette.mist_strength` has no renderer** — authored 0.2–0.8 in all eight palettes,
+  blended every frame at `biome_palette.gd:330`, read by nothing. **Deliberately NOT deleted.**
+  It blends on the ATMOSPHERE channel and the next feature in the build order is the aurora,
+  which is atmosphere work; deleting eight authored values immediately before the feature most
+  likely to want them is the definition of a change you go back on. Decide it during the aurora
+  planning pass, not before.
+- **The rare coin has no contrast guarantee.** `biome_schedule_check`'s floor covers
+  `coin_color` and `obstacle_color`, both palette fields. The diamond keeps its authored gold
+  (`modulate` WHITE, deliberate — see `coin.gd`), so its colour lives in a 45×62 PNG, not in the
+  palette. Asserting it means sampling that image: ~30 lines, not one assertion, though
+  `sample_row_brightness()` in the same file is the pattern to copy. **Not built because it
+  could not be run** — a check that might go red against an unmeasured floor is worse than no
+  check. Build it in a session that can run the gate, and measure the actual distance first.
+- **Repo weight** — `art_source/` is 72 MB tracked (20.7 MB of it `.xcf`), `.git` is 71 MB, and
+  `assets/textures/experiments/` (3.8 MB) is still tracked though correctly excluded from the
+  export. **Nothing was done and nothing should be.** Shrinking `.git` needs a history rewrite,
+  which breaks every existing clone; `git rm --cached` leaves the weight in history anyway *and*
+  deletes the files from any other checkout on pull. It costs clone time and nothing else.
 
 **Parked, with reasons — do not re-open without new evidence:**
 
