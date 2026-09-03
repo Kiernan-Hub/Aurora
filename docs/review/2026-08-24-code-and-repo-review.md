@@ -314,7 +314,10 @@ GitHub has none of the background work. The tree also holds 15 tracked art delet
 byte-identical copies are untracked in `art_source/terrain/` and `art_source/background/` —
 a `git add -u` alone would record the deletions and lose the new locations. `origin` also
 still carries `terrain/disable-mega-drop-camera-shake`, pointing at the same commit as
-`main`; it is dead and can go.
+`main`; it is dead and can go. **Still open 2026-09-02** — verified fully contained in
+`origin/main`, so the delete is safe:
+`git push origin --delete terrain/disable-mega-drop-camera-shake`. The unpushed/art half of
+this paragraph is closed; everything is pushed.
 
 **`assets/textures/experiments/` (3.8 MB) and `scripts/debug/` (636 KB, 31 files) ship.**
 `export_filter="all_resources"` packages every imported resource, including all 18 archived
@@ -347,12 +350,18 @@ it or move it under a clearly-superseded heading.
 **Small cruft.** Orphaned `art_source/peep.png.import` and
 `art_source/transition4peep.png.import` (their PNGs are gone, and `art_source/.gdignore`
 means Godot should not be generating them there).
-`art_source/ChatGPT Image Aug 6, 2026, 07_13_24 PM.png` needs a real name.
+`art_source/ChatGPT Image Aug 6, 2026, 07_13_24 PM.png` needs a real name — **DONE 2026-09-02**,
+it is `art_source/art_direction_reference_night.png`.
 `project.godot` carries `3d/physics_engine="Jolt Physics"` and
 `rendering_device/driver.windows="d3d12"` in a 2D mobile game — harmless, but noise in a file
 that is otherwise deliberately curated.
 
-**The pause screen's Music slider does nothing audible.** The `Music` bus exists
+**The pause screen's Music slider does nothing audible — CLOSED 2026-09-02, hidden.**
+`visible = false` on `MusicLabel` and `MusicSlider` in `main.tscn`; the nodes stay so
+`GameManager`'s all-or-nothing pause-screen null-guard still passes and the saved volume still
+loads and persists. Shipping music is deleting the two lines. Original finding follows.
+
+The `Music` bus exists
 (`audio/default_bus_layout.tres`) and `GameServices` creates a `music_player`, but no stream
 is ever assigned anywhere in the project — `SfxPlayer` is the only thing that sets `.stream`.
 A player will drag it, hear no change, and read it as a bug. Either hide it until music
@@ -381,8 +390,10 @@ Fix: separate development and release presets (or explicit include/exclude filte
 debug/archive/experiment material from release, set the real application ID and versioning,
 configure final icons and signing outside Git, and only then produce a fresh artifact.
 
-**`README.md` is one line.** Add a short real one — setup, run, gate commands, release steps —
-and keep `CLAUDE.md` a map rather than a second implementation manual.
+**`README.md` is one line — CLOSED 2026-09-02.** It now carries what the game is and what is
+shipped, run and editor commands, the three gate tiers with `check.sh`'s command, the release
+command and its deliberate deviations, and a doc map. `CLAUDE.md` stays the map; the README
+points at it rather than restating it.
 
 **Comment ratio.** 10,767 shipping GDScript lines, 4,541 of them comments (**42%**). The
 comments are unusually high quality and mostly record measurements — but items #3, #4 and the
