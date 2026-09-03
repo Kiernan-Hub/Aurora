@@ -13,10 +13,10 @@ level, and older docs and tool examples may still show the flat paths.
 
 ### `terrain/` — inputs to `build_ice_texture.py`
 
-- `one.png` … `fifteen.png` — the ice panel generations, live inputs to
+- `one.png` … `sixteen.png` — the ice panel generations, live inputs to
   `build_ice_texture.py`. The numbering is chronological, not meaningful; which panel built
   which shipped tile is the table in `docs/development/biomes.md`, "Per-biome ice textures".
-- `raster_wall_1.png`, `raster_wall_2.png` — unused by any scene; safe to delete.
+  `sixteen.png` is the source of the shipped `ice_bubbled_depth.png`.
 - `Glossy Frozen Lake.png`, `glossy biome trail.png` — the frozen lake's look targets.
 
 ### `background/` — inputs to `build_pano_strip.py`
@@ -24,8 +24,9 @@ level, and older docs and tool examples may still show the flat paths.
 - `pano.png` — **the current source of the shipped `assets/textures/background/ice_pano.png`**,
   as of 2026-08-25. It supersedes `arch_spike_massif.png` as the direct build input: it's
   `arch_spike_massif.png`'s art with a fourth panel (`sharp.png`) stitched onto it, widening the
-  panorama from 3548px to 5220px — a step toward the repeat-cadence item in `HANDOFF.md`, though
-  the new cycle time hasn't been re-measured against `MAX_SPEED`. `pano.xcf` is the GIMP working
+  panorama from 3548px to 5220px — a step toward the repeat-cadence item in `HANDOFF.md`. The
+  new cycle time HAS since been measured against `MAX_SPEED`: **106.1s**
+  (`docs/review/2026-08-24-code-and-repo-review.md`, #4). `pano.xcf` is the GIMP working
   file (layered, not flattened — reopen it, don't restart from the PNG, if the seam needs more
   work). Rebuild with `python3 scripts/tools/build_pano_strip.py art_source/background/pano.png
   assets/textures/background/ice_pano.png`, and update `main.tscn`'s `IceStrip.source_skyline_y`
@@ -36,7 +37,6 @@ level, and older docs and tool examples may still show the flat paths.
 - `sharp.png`, `pano2.png` — the panel stitched onto `arch_spike_massif.png` to build `pano.png`.
   `pano2.png` is an earlier, too-short (725px) generation of the same panel; `sharp.png` (842px)
   is what actually got used, then scaled to 887px inside `pano.xcf` to match.
-- `next.png` — unlabeled reference art, not used by any build step.
 - `example.png` — the load-bearing target-look reference, cited throughout
   `docs/research/background_differentiation.md`.
 - `archtower.png`, `spikefield.png`, `massif.png` — the three hand-picked panels that were

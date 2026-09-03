@@ -4,11 +4,17 @@ Read-only pass over the whole tree. Nothing was changed. Everything below was ve
 against the files as they stand, not inferred from docs or commit messages; where a number
 is quoted, the measurement command is named so it can be re-run.
 
-**This is the single 2026-08-24 review.** A second audit, `2026-08-24-project-audit.md`, was
-written earlier the same day and covered repo hygiene and release readiness; its findings were
+**This is the single 2026-08-24 INTERNAL review.** A second audit, `2026-08-24-project-audit.md`,
+was written earlier the same day and covered repo hygiene and release readiness; its findings were
 re-verified and folded into this file (Android export in P2, engine patch as #9, the validation
 runner as #10, and the watch list below), and that file was deleted. Do not re-create it — one
-file per review date, or the two drift apart the way the background docs did.
+internal file per review date, or the two drift apart the way the background docs did.
+
+**The rule covers internal audits only, and `2026-08-24-opus5-external-review.md` is deliberately
+exempt** (amended 2026-09-03, after the 2026-09-02 audit flagged the directory as contradicting
+its own convention). That file was written to be handed to an outside reader and is self-contained
+by design — folding it into this one would destroy the thing it is. An external document keeps its
+own file and its own date; it is not a second audit competing to describe the same tree.
 
 ## Gates run during this review
 

@@ -59,6 +59,12 @@ GATES=(
 # read out of export_presets.cfg's exclude_filter: deriving them from the preset
 # would make the check agree with the preset by construction, including when
 # someone deletes a line from it, which is the exact regression worth catching.
+#
+# THE THREE experiments/ PATHS NO LONGER EXIST (deleted 2026-09-03 with the abandoned
+# procedural-background line), so today only res://scripts/debug can actually trip this.
+# They stay listed, and stay in the preset's exclude_filter, as a standing rule about
+# where throwaway work goes: recreate any of them and it is excluded and checked from
+# the first commit, rather than needing someone to remember both files.
 FORBIDDEN=(
 	"res://scripts/debug"
 	"res://scripts/experiments"

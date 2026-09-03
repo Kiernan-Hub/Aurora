@@ -113,7 +113,9 @@ than the only line of defence.
 **It is not only `project.godot` — these runs re-serialise SCENE files too, and drop authored
 property values doing it.** Observed 2026-08-26: `scenes/experiments/background_pano_test.tscn`
 came back rewritten with `uid=` fields added and **two authored values silently gone**
-(`cycle_seconds = 20.0`, `current = true`). It was only an experiment scene, so nothing broke.
+(`cycle_seconds = 20.0`, `current = true`). It was only an experiment scene, so nothing broke
+— and that scene has since been deleted (2026-09-03, with the rest of the abandoned procedural
+background line), so this is the record of the observation, not a file to go and look at.
 **`main.tscn` was untouched that time, and it is the one that matters** — it carries the manual
 player-spawn invariant, the four layers' `depth_t`, and every `base_y_fraction`. So the check
 is `git status`, not `git diff project.godot` alone: **look at every dirty file after an editor

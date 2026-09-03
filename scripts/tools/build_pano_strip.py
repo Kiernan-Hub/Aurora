@@ -140,11 +140,17 @@ SUBJECT_ALPHA = 0.5
 #   colour, i.e. always darker than a flat layer at the same palette entry.
 #
 #   visuals.md's depth read depends on far = lighter, with FarRidge the lightest
-#   scenery and PineLine the darkest. This layer sits at depth_t 0.0 and so already
-#   gets scenery_far, the lightest colour a palette offers; there is no lighter
-#   entry to reach for, and a texture can only multiply DOWN. So if the band is
-#   low, the FURTHEST layer renders darker than the near ones and the whole depth
-#   ordering inverts.
+#   scenery and the nearest the darkest. This layer sits at depth_t 0.45
+#   (main.tscn, IceStrip) -- mid-depth, so it is handed a mid scenery colour, and
+#   a texture can only multiply DOWN from there. That is the whole hazard: the
+#   layer's rendered lightness is its palette entry TIMES the band's median, so a
+#   low band drops it below the layers that are supposed to sit in FRONT of it and
+#   the depth ordering inverts.
+#
+#   (This block used to argue from depth_t 0.0 and "the lightest colour a palette
+#   offers, no lighter entry to reach for". That was never this layer's depth. The
+#   measurements below are unaffected -- they were taken in game, at the real
+#   depth -- and so is OUTPUT_FLOOR; only the reasoning above them was wrong.)
 #
 #   Measured in game on the [0.70, 1.00] band, first attempt: sky 0.771, ice 0.623,
 #   MidRidge 0.704, PineLine 0.735 (PineLine, the then-near layer, no longer exists)

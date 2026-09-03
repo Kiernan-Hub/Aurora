@@ -31,7 +31,6 @@ class_name UpgradeStore
 # level happens here, in get_level).
 
 const JUMP_UPGRADE_ID: String = "jump"
-const UPGRADE_IDS: Array[String] = [JUMP_UPGRADE_ID]
 
 # Jump velocity multiplier per level, applied on top of Player.JUMP_VELOCITY.
 #
