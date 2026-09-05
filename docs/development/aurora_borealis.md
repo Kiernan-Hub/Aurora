@@ -195,10 +195,23 @@ the first launch after the update, for the game's headline feature.
 So the aurora stores its own deadline and pushes it forward on completion:
 
 ```
-on v3 → v4 migration:   next_aurora_due = total_playtime_seconds + AURORA_INTERVAL_SECONDS
-on completion:          next_aurora_due = total_playtime_seconds + AURORA_INTERVAL_SECONDS
+on v3 → v4 migration:   next_aurora_due = total_playtime_seconds        + AURORA_INTERVAL_SECONDS
+on completion:          next_aurora_due = get_total_playtime_seconds()  + AURORA_INTERVAL_SECONDS
 on reset_progress():    next_aurora_due = AURORA_INTERVAL_SECONDS
 ```
+
+**The two clocks in those lines are different on purpose, and getting it wrong re-creates the
+backlog inside a single run.** `total_playtime_seconds` is the *banked* total, and
+`bank_playtime()` only fires on a `PLAYING → not-PLAYING` transition — so during a long
+uninterrupted run it is stale by the entire run so far. Setting the completion deadline from the
+bare saved field after a 40-minute unbroken session writes a deadline that is already 10 minutes in
+the past, and the next aurora fires as soon as the sky is dark again.
+
+Completion must therefore use the same `get_total_playtime_seconds()` (saved **plus** unbanked)
+that `is_due` compares against — the shared helper phase 1 extracts. Migration is the one place the
+bare field is correct, because it runs at load with nothing unbanked yet.
+
+**Test the completion path on a run with no pause in it**, which is the only case that exposes this.
 
 This makes "every 30 minutes" mean **30 minutes between sightings**, which is what was actually
 decided, rather than 30 minutes of lifetime credit that can be spent in a burst. An existing
@@ -242,10 +255,18 @@ Arming additionally requires, all on the same frame:
   to collide than the nominal 20/30-minute coincidence suggests, because an overdue aurora can sit
   waiting for darkness for minutes.
 
-  **Whoever holds a reservation keeps it; the other one waits.** If both are due and neither has
-  reserved, the lake goes first — it is the shorter event and the older feature. `arm_lake()` gains
-  a check against the aurora's reserved range exactly as `try_arm()` gains one against
-  `FrozenLakeDirector.phase`. Two explicit checks, no event framework.
+  **Whoever holds a *pending or running event* keeps it; the other one waits.** If both are due and
+  neither has one, the lake goes first — it is the shorter event and the older feature.
+  `arm_lake()` gains a check against the aurora's live phase exactly as `try_arm()` gains one
+  against `FrozenLakeDirector.phase`. Two explicit checks, no event framework.
+
+  **The claim is on the EVENT, not on the stored terrain range.** The aurora's committed indices
+  are never cleared — they cannot be, for the same reason `finish_lake()` leaves
+  `lake_segment_index` set. So a rule phrased as "the lake waits while the aurora holds a
+  reservation" would lock the lake out for the rest of the scene after a single aurora. Once the
+  aurora reaches DONE the range is just terrain history, and a lake may arm anywhere past the
+  watermark including inside it — harmlessly, since calm terrain is flat-to-rolling with no chasms,
+  which is exactly the neighbourhood `arm_lake()` already hunts for.
 - **Past a minimum run time**, so a restart taken just before a due aurora doesn't drop one four
   seconds into the next run. The lake's `LAKE_MIN_RUN_TIME` exists for this and for a second
   reason that does *not* apply here (its 10 s crossing is only deterministic past the speed cap),
@@ -263,10 +284,26 @@ So the two are separated:
 
 1. **Reserve** the terrain band, ahead of the cache watermark, as early as the schedule allows.
 2. **Start the visual timer** only on a frame where the player is **inside** the band, **grounded**
-   (`is_on_floor()`), and **not jump-ascending** — the same three conditions `FrozenLakeDirector.try_arm()`
-   already uses, for the same reason.
+   (`is_on_floor()`), **not jump-ascending** — the same three conditions
+   `FrozenLakeDirector.try_arm()` already uses — **and with enough band left in front of them:**
+
+   ```
+   remaining_band_distance  ≥  worst_case_speed × EVENT_DURATION  +  RECOVERY_MARGIN
+   ```
+
+   **Grounded-inside-the-band is not sufficient on its own.** A player can hold a glide well into
+   the reservation before landing; starting a full minute at that point runs the event out past the
+   far edge and into live terrain, which is the failure the whole reservation exists to prevent.
+   Re-check the dark-window deadline at the same moment, for the same reason — arming eligibility
+   was computed for a start that has now moved.
 3. The band must cover the whole timed event **plus a recovery margin** past the fade, so the first
-   hazard after the aurora is not sitting immediately behind a player who is still looking up.
+   hazard after the aurora is not sitting immediately behind a player who is still looking up, and
+   so the camera has settled out of its smoothing lag before anything can hurt them.
+4. **If the player never qualifies** — never lands, or lands past the latest legal start — the
+   reservation is simply spent. No event, the deadline stays crossed, arm again later. The terrain
+   stays as committed, which costs nothing: an unused calm band is a stretch with no chasms in it,
+   which is a shape the generator produces anyway. Do **not** stretch the band to chase a late
+   start; that is a second write to a range whose whole safety argument is that it is written once.
 
 On death or cancellation: reset the presentation, **keep the terrain reservation**. Clearing it
 would make every cached chunk and collision sample behind the player disagree with a fresh sample
@@ -295,12 +332,12 @@ event footprint       60,000 px
 recovery margin       + one screen and change, so the first hazard is not on the fade
 ```
 
-**This bound is deliberately loose, not derived.** A boost lasts 3 s, so sixty seconds of
-continuous boost is impossible and the real footprint is nearer 47,000 px. Reserving the full
-60,000 over-reserves by about a third — and the cost of over-reserving is *more calm*, which is
-harmless, where the cost of under-reserving is a death during the game's centrepiece. Take the
-loose bound. Tightening it means formally accounting for powerup scheduling, which is a lot of
-reasoning to buy back twenty seconds of hills.
+**This is a derived upper bound, not a prediction.** It is the supremum of distance over the
+interval — the player cannot exceed it, whatever they pick up. It is not tight: a boost lasts 3 s,
+so sixty seconds of continuous boost is impossible and the typical footprint is nearer 47,000 px.
+That slack is the point. The cost of over-reserving is *more calm*, which is harmless; the cost of
+under-reserving is a death during the game's centrepiece. Tightening it means formally accounting
+for powerup scheduling, which is a lot of reasoning to buy back twenty seconds of hills — don't.
 
 ### What that actually costs in terrain
 
@@ -365,10 +402,19 @@ deadlock. Suppressing a chasm does not merely disable a void, it changes that se
 including its length, so the band's end index is not knowable from pre-existing terrain anyway.
 
 Use a **conservative bound from the minimum legal segment length** (480 px) instead:
-`ceil(60,000 / 480)` = 125 segments, validated and committed atomically. That deliberately
-over-reserves — the mean segment is longer than the minimum — and over-reserving costs nothing but
-extra calm. Validate the whole range, then commit; a rejected arm must leave every cache exactly
-as it found it and simply retry next frame.
+
+```
+segments = ceil( (worst_case_footprint + RECOVERY_MARGIN) / SMALL_SEGMENT_LENGTH )
+```
+
+**The recovery margin goes inside that division, not into a sentence next to it.** The prose above
+promises footprint *plus* recovery and an earlier draft of this file then reserved
+`ceil(60,000 / 480)` — the footprint alone. The margin the real segment mix happens to add on top
+(most segments are 640 or 960, not 480) is incidental slack, not a guarantee, and a safety margin
+that only exists when the dice cooperate is not a margin.
+
+Validate the whole range, then commit; a rejected arm must leave every cache exactly as it found it
+and simply retry next frame.
 
 `mega_drop` is already at selection weight 0, so chasms are the only hazard type to suppress — the
 terrain under an aurora is hills, valleys and flats, which is what it mostly is anyway. It keeps
@@ -619,11 +665,29 @@ The claims this feature makes that nothing else can check:
 5. A knob left on does not ship.
 
 **One new probe covers 1–4:** `aurora_calm_probe.gd`, headless, modelled directly on
-`lake_suppression_probe.gd` — which exists for the identical reason and pins its set piece the
-same way. It arms a forced band, snapshots heights and specs before and after, walks the spawners,
-and drives a no-input traversal at `SPEED_BOOST_SPEED` from before the near boundary to past the
-far one. **Removing the calm guard must make it fail**; a probe that passes with the feature
-deleted is measuring nothing, which is the standing lesson from the eighteen archived probes.
+`lake_suppression_probe.gd` — which exists for the identical reason and pins its set piece the same
+way. It arms a forced band, snapshots heights and specs before and after, walks the spawners, and
+drives no-input traversals from before the near boundary to past the far one.
+
+> **A BOOSTED TRAVERSAL PROVES NOTHING ON ITS OWN, AND THIS IS THE TRAP THIS FILE ALMOST SHIPPED.**
+> An earlier draft named "survives a no-input crossing at `SPEED_BOOST_SPEED`" as *the* safety test.
+> It is not a safety test. A boosting player is already immune to both hazards the calm removes:
+> `obstacle.gd:36` returns early on `player.is_boosting`, so obstacles do not touch them, and
+> `player.gd:355`/`540` keep the grounded gravity-free model on over a void, so they skim straight
+> across a chasm. **That test passes on a band with every chasm and every obstacle still in it** —
+> the exact "passes with the feature deleted" failure the eighteen archived probes are a monument
+> to.
+>
+> So the traversal runs **twice**, as two cases in the one probe:
+>
+> - **Ordinary, unshielded, no boost, no input.** This is the case that actually asserts the terrain
+>   is safe, because this player dies to anything the band failed to remove.
+> - **Boosted.** This one asserts something different and still worth asserting: that the band is
+>   *long enough* for the fastest the player can move.
+>
+> And the direct assertions stay regardless of either traversal: no chasm segment in the range, and
+> no obstacle **body** actually spawned in it. Assert on the spawned node, never on the predicate —
+> a predicate test proves the guard returns true, not that the guard is wired to anything.
 
 Claim 5 is `shipping_values_check`, and the row lands **in the same commit as the knob** — phase 2,
 not later. A plain `var` is invisible to every other gate, so between introducing a force-on knob
@@ -657,15 +721,21 @@ which a scheduled aurora could fire over ordinary terrain.
 | 1 | `GameManager.get_total_playtime_seconds()` extracted; `FrozenLakeDirector` calls it | `check.sh` |
 | 2 | `aurora.gdshader` + `AuroraSky` + wash + camera override, all behind one `debug_force_aurora` knob **registered in `shipping_values_check` in this commit**. No scheduling, no terrain. Owner judges the whole composition in motion; early Android cost measured | `check.sh`, `sky_layer_check`, **owner look**, **device frame times** |
 | 3 | The calm: `arm_calm()` + `is_calm_world_x()` + one line in `ObstacleSpawner` + `aurora_calm_probe.gd` **in the same commit** | **`check.sh`, `aurora_calm_probe`, freeze-search, freeze-replay, floor-flicker, chasm, `lake_suppression_probe`** |
-| 4 | `AuroraDirector`: clock, phases, the ramp, entry/exit contract, dark-window eligibility, two-way lake exclusion, headless skip. **Production scheduling switches on here, with the hazards already gone** | `check.sh`, `camera_shake_probe` |
-| 5 | `SaveStore` v4 + next-due migration + the achievement. Integration tested against a **copy** of a real save | `check.sh` |
-| 6 | Full-event validation: no-input boosted survival end to end, restart/pause/death lifecycle, final contrast with every layer present, device frame times over repeated events | everything, plus the three windowed gates |
-| 7 | `CLAUDE.md` row 12, `visuals.md`, this file | all fast gates |
+| 4 | `SaveStore` v4: `next_aurora_due_seconds`, `aurora_count`, the migration, `reset_progress()`. Verified against a **copy** of a real save, including a large-playtime v3 file | `check.sh` |
+| 5 | `AuroraDirector`: clock, phases, the ramp, entry/exit contract, dark-window eligibility, two-way lake exclusion, headless skip. **Production scheduling switches on here** — the hazards are already gone and the deadline it schedules against already exists | `check.sh`, `camera_shake_probe` |
+| 6 | The achievement: one `ACHIEVEMENTS` row, one `.connect()` | `check.sh` |
+| 7 | Full-event validation: ordinary unshielded no-input survival end to end, restart/pause/death lifecycle, completion deadline after an unbroken run, final contrast with every layer present, device frame times over repeated events | everything, plus the three windowed gates |
+| 8 | `CLAUDE.md` row 12, `visuals.md`, this file | all fast gates |
+
+**Phases 4 and 5 are in that order deliberately.** An earlier draft had the director switch
+production scheduling on in phase 4 and introduce `next_aurora_due_seconds` in phase 5 — scheduling
+against a field that did not exist yet. Every dependency now lands before its consumer: the shared
+clock (1), the hazards (3), the deadline (4), then the thing that schedules (5).
 
 Phase 3 is the only one that touches anything a physics gate can see, which is why it is alone in
 its commit, carries the whole physics tier, and ships its probe with the code rather than after it.
 
-Phase 6 is not a formality. Phases 2–5 each prove one piece; only phase 6 asks the question the
+Phase 7 is not a formality. Phases 2–6 each prove one piece; only phase 7 asks the question the
 feature actually promises — *can the player look away for a minute and live* — with the shader, the
 wash, the camera, the calm, the powerups and the real device all present at once.
 
@@ -675,7 +745,7 @@ wash, the camera, the calm, the powerups and the real device all present at once
   than merely look wrong, and it cannot be answered from a desktop. Budget: no screen-texture read,
   ≤3 noise octaves, no loop above 8 iterations, curtain rect confined to the sky band. **Measure
   on the owner's Android device during phase 2** — before the feature has anything else built on
-  top of it, and **again in phase 6 with the complete event**: curtains, wash, snow, pickups and a
+  top of it, and **again in phase 7 with the complete event**: curtains, wash, snow, pickups and a
   moving camera together, over repeated events, at real device resolution. The four-layer overdraw
   convention is a useful rule of thumb and **not a frame-time measurement**; treat it as a budget
   to check against, not as evidence. If it misses, the fallbacks in order are fewer curtains, then
