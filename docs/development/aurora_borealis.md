@@ -45,6 +45,23 @@ them without the owner.
 | Forced flat segment | **No.** Terrain keeps rolling; only the hazards are removed |
 | Ribbon rendering | **Procedural shader.** The project's third, and it is justified below |
 | Colour identity | **Fixed aurora palette**, not recoloured per biome — same call as the lake |
+| Dark-biome transitions | **Allowed between dark palettes**, forbidden into a bright one. Forced by arithmetic — see below |
+
+### Revised 2026-09-05 after external review
+
+The first version of this plan was reviewed against the code and **three of its numbers were
+wrong**. They are corrected in place below; they are called out here because each one was load
+bearing, and because a reader who saw the first version should know what moved.
+
+| Was | Is | Where it bit |
+|---|---|---|
+| Safe distance sized at `MAX_SPEED` 750 px/s | `SPEED_BOOST_SPEED` is **1000** (`powerup_manager.gd:26`), and powerups keep spawning | The calm could end while the aurora was still on screen |
+| "45,000 px is 20–30 segments, at most one chasm" | Segment lengths are **480 / 640 / 960** (`terrain_generator.gd:295–299`), so it is ~63–75 segments and **1–2 chasms** | The reassurance was arithmetic on the wrong constant — `CHASM_SEGMENT_LENGTH` (1600) is not a typical segment |
+| "A framing lift shows more sky" | Every `motion_scale` in `main.tscn` is `(x, 0)`, so **the ridges are vertically screen-locked and a camera lift does not lower them** | The stated reason for the camera move was simply not true. The move itself still works — the lake ships it — but for a different reason, and only zoom changes the ridge composition |
+
+Two more findings from the same review are folded in below: the lake exclusion was written in one
+direction only, and adding `aurora_count` to a save that already holds a large playtime creates a
+backlog of overdue events on the first launch. Both are real; both now have rules.
 
 ### Why it only fires in the dark biomes
 
@@ -56,6 +73,35 @@ near-white sky moves almost no pixels — which is not a guess, it is exactly th
 So the aurora waits. It becomes *due* on the clock and then arms on the first frame that the
 active biome is one of the three dark ones. That is the same shape as the lake being due and then
 retrying `try_arm()` until it gets a clean frame, and it costs nothing but patience.
+
+**Eligible: `violet_dusk`, `twilight_blue`, `starlit_night`.** They are `BIOME_CYCLE` indices 5, 6
+and 7 — already adjacent, because the eight are authored as a day passing and only the entry point
+rotates. `sky_top` runs 0.46 → 0.26 → 0.20 across them against `pale_morning`'s 0.72, and
+`star_density` 0.30 → 0.85 → 1.00, so they are the dark end of the arc by the data and not by
+taste.
+
+**A transition between two of those three is allowed. A transition toward a bright one is the
+deadline.** This is not a preference, it is forced:
+
+```
+biome span            75,000 px
+transition            24,000 px
+stable per biome      51,000 px  =  68.0 s at MAX_SPEED
+worst-case event      60,000 px  (60 s at SPEED_BOOST_SPEED — see "How long the calm must be")
+```
+
+A worst-case event **does not fit inside one biome**, and a nominal one fits with eight seconds
+left for the approach. Confining the aurora to a single stable biome window therefore either fails
+outright or waits forever for an interval that cannot exist. Across the three adjacent dark
+palettes the stable span is 201,000 px — 268 s — which is ample.
+
+The two dark→dark crossfades are visible under the aurora and that is fine: the curtains carry a
+fixed palette of their own (see "Colour identity"), and the sky moving from dusk to night beneath
+them is the day arc doing exactly what it was authored to do.
+
+Eligibility must be computed from the **candidate event's start and worst-case end**, in real
+cycle coordinates including `biome_phase_offset` — not from `applied_progress`, which
+`BiomeDirector` updates in `_process` while arming runs in `_physics_process`.
 
 **The alternative was considered and rejected for now:** having the aurora pull the sky toward a
 fixed night on its own ramp, so it could fire anywhere. That works, and the clean way to do it is
@@ -136,8 +182,34 @@ default `process_mode` (INHERIT), same as `FrozenLakeDirector`.
 ## The trigger
 
 ```
-due  ⟺  saved_playtime + unbanked_this_run  ≥  (aurora_count + 1) × AURORA_INTERVAL_SECONDS
+due  ⟺  saved_playtime + unbanked_this_run  ≥  next_aurora_due_seconds
 ```
+
+**A stored next-due timestamp, NOT `(aurora_count + 1) × INTERVAL`.** The lake's multiple works
+because `total_playtime_seconds` and `frozen_lake_count` were both born at 0 in the same save
+version, so a lake was never retroactively owed. `aurora_count` is being added to saves that
+**already hold hours of playtime**, and `(0 + 1) × 1800` against a ten-hour save is twenty overdue
+auroras that would fire back to back until the backlog cleared. That is the rarity destroyed on
+the first launch after the update, for the game's headline feature.
+
+So the aurora stores its own deadline and pushes it forward on completion:
+
+```
+on v3 → v4 migration:   next_aurora_due = total_playtime_seconds + AURORA_INTERVAL_SECONDS
+on completion:          next_aurora_due = total_playtime_seconds + AURORA_INTERVAL_SECONDS
+on reset_progress():    next_aurora_due = AURORA_INTERVAL_SECONDS
+```
+
+This makes "every 30 minutes" mean **30 minutes between sightings**, which is what was actually
+decided, rather than 30 minutes of lifetime credit that can be spent in a burst. An existing
+player's clock starts now — the same honest reading `save_store.gd` already applies to the v2 → v3
+playtime field. `aurora_count` is still stored, but only as a statistic and for the achievement;
+it is not the schedule.
+
+**One aurora per run maximum**, so the terrain reservation stays write-once for the life of a
+scene. The phase machine ends in a terminal DONE, exactly as the lake's does. A second aurora in
+one sitting arrives after a death, which is also when the reservation is disposed of with the
+scene.
 
 **`get_unbanked_seconds()`, never `Main.elapsed_time`.** `GameManager.bank_playtime()` fires on
 every `PLAYING → not-PLAYING` transition, which on Android includes every notification and app
@@ -159,23 +231,93 @@ Arming additionally requires, all on the same frame:
   rare-variant *duplicate* that fails an identity comparison against `BIOME_CYCLE`. That
   distinction is why `get_cycle_base_palette` exists at all; `biome_schedule_check` learned it
   the hard way.
-- **Not mid-transition.** Arming at 0.5 through a crossfade means the sky is halfway to a bright
-  biome by the hold. Require the biome's blend progress to be ~0 and to have enough distance left.
-- **No lake armed or active.** At 20 and 30 minutes the two set pieces collide every hour of
-  cumulative playtime, and a lake inside an aurora is two "holy crap" moments cancelling each
-  other out — plus the lake locks jumping while the aurora deliberately does not. **The aurora
-  yields**; it stays due and arms after. One check against `FrozenLakeDirector.phase`.
+- **A dark window wide enough for the worst case.** Not "blend progress ~0", which was hand-waving
+  in the first version of this plan and is not an algorithm. The real test: project the reserved
+  band's end at worst-case speed, convert it to a cycle coordinate, and require every biome the
+  event touches to be one of the three eligible palettes. See "Why it only fires in the dark
+  biomes" for why one biome is not enough room.
+- **Mutual exclusion with the lake, in BOTH directions.** The first version of this plan only made
+  the aurora look at the lake. That is half a rule: a lake becoming due *after* the aurora has
+  armed will happily reserve its own terrain inside the aurora's, and the two are much more likely
+  to collide than the nominal 20/30-minute coincidence suggests, because an overdue aurora can sit
+  waiting for darkness for minutes.
+
+  **Whoever holds a reservation keeps it; the other one waits.** If both are due and neither has
+  reserved, the lake goes first — it is the shorter event and the older feature. `arm_lake()` gains
+  a check against the aurora's reserved range exactly as `try_arm()` gains one against
+  `FrozenLakeDirector.phase`. Two explicit checks, no event framework.
 - **Past a minimum run time**, so a restart taken just before a due aurora doesn't drop one four
   seconds into the next run. The lake's `LAKE_MIN_RUN_TIME` exists for this and for a second
   reason that does *not* apply here (its 10 s crossing is only deterministic past the speed cap),
   so the aurora's minimum can be lower — 60 s is a starting value, not a derived one.
 
-A rejected frame simply retries on the next one. The threshold stays crossed.
+A rejected frame simply retries on the next one. The deadline stays crossed.
+
+### Reservation and presentation are two different boundaries
+
+**Arming ahead does not make the approach safe, and entering a safe x interval does not prove the
+player is safe** — a fall begun at a chasm before the band carries into it, and `update_fall_death`
+does not care which segment the body is over.
+
+So the two are separated:
+
+1. **Reserve** the terrain band, ahead of the cache watermark, as early as the schedule allows.
+2. **Start the visual timer** only on a frame where the player is **inside** the band, **grounded**
+   (`is_on_floor()`), and **not jump-ascending** — the same three conditions `FrozenLakeDirector.try_arm()`
+   already uses, for the same reason.
+3. The band must cover the whole timed event **plus a recovery margin** past the fade, so the first
+   hazard after the aurora is not sitting immediately behind a player who is still looking up.
+
+On death or cancellation: reset the presentation, **keep the terrain reservation**. Clearing it
+would make every cached chunk and collision sample behind the player disagree with a fresh sample
+of the same x — which is precisely why `finish_lake()` deliberately leaves `lake_segment_index`
+set. The reservation dies with the scene, not with the event.
 
 ## The calm
 
 This is the only part of the aurora that touches anything outside presentation, so it gets its own
 commit and its own gate run.
+
+### How long the calm must be
+
+**Not 45,000 px. That number came from `MAX_SPEED` (750) and the first version of this plan was
+wrong to use it** — powerups keep spawning during an aurora, and `SPEED_BOOST_SPEED` is **1000
+px/s** (`powerup_manager.gd:26`). A player who picks up a boost late in the hold outruns a band
+sized at 750 and can reach the first live chasm while the curtains are still on screen.
+
+The band is therefore sized from the **fastest speed the player can be moving**, not the fastest
+they usually are:
+
+```
+event duration        60 s
+worst-case speed      1000 px/s   (SPEED_BOOST_SPEED, not MAX_SPEED)
+event footprint       60,000 px
+recovery margin       + one screen and change, so the first hazard is not on the fade
+```
+
+**This bound is deliberately loose, not derived.** A boost lasts 3 s, so sixty seconds of
+continuous boost is impossible and the real footprint is nearer 47,000 px. Reserving the full
+60,000 over-reserves by about a third — and the cost of over-reserving is *more calm*, which is
+harmless, where the cost of under-reserving is a death during the game's centrepiece. Take the
+loose bound. Tightening it means formally accounting for powerup scheduling, which is a lot of
+reasoning to buy back twenty seconds of hills.
+
+### What that actually costs in terrain
+
+**Corrected.** The first version of this plan claimed 45,000 px was "20–30 segments, at most one
+chasm". That was arithmetic on the wrong constant — `CHASM_SEGMENT_LENGTH` (1600) is the length of
+a *chasm*, not of a typical segment. The real lengths are `SMALL_SEGMENT_LENGTH` 480,
+`MEDIUM_SEGMENT_LENGTH` 640 and `SUSTAINED_DOWNHILL_LENGTH`/`GENTLE_UPHILL_LENGTH` 960
+(`terrain_generator.gd:295–299`).
+
+So a 45,000 px band is **~63–75 segments**, and at one chasm per `CHASM_WINDOW_SEGMENT_COUNT` (56)
+that is **one to two chasms**, measured at two in five sampled stretches. A 60,000 px band is
+proportionally more — call it **two to three**.
+
+That is still fine, and it does not change the design: removing two or three chasms from a run is
+exactly the intended effect. What it changes is that **the size of the band must be derived, never
+estimated.** The old number was reassurance rather than measurement, and reassurance is how this
+kind of feature ships a death.
 
 ### No obstacles
 
@@ -202,6 +344,11 @@ field and never contradict a sample already taken. The calm band takes the ident
 - `arm_calm(start_index, end_index)` is the **only** writer of the range.
 - It may only commit indices **strictly greater than `highest_cached_segment_index`**, and it
   refuses otherwise, exactly as `arm_lake()` does.
+- **Every index in the range must also be absent from `segment_spec_cache`**, not just past the
+  watermark. `arm_lake()` already checks `segment_spec_cache.has(candidate)` and its own comment
+  calls that check "defensive… the watermark rule already guarantees this is false" — but
+  `get_segment_spec()` can populate the cache beyond the watermark without advancing it, so for a
+  *range* the check is load-bearing rather than defensive. Check all of it.
 - Once committed the range never moves, so `get_terrain_height(x)` is still the same value for the
   same x forever, for every one of the four systems that sample it independently.
 
@@ -211,12 +358,21 @@ and the debug HUD all sample it separately — they would disagree with each oth
 This is the cardinal terrain rule in `CLAUDE.md` and it is the single easiest way to break this
 game.
 
-Scale check, so nobody imagines this is a large intervention: 60 s at `MAX_SPEED` is 45,000 px,
-roughly 20–30 segments against a 56-segment chasm window. **A calm band suppresses at most one
-chasm and often zero.** `mega_drop` is already at selection weight 0, so there is nothing else to
-suppress — the terrain under an aurora is hills, valleys and flats, which is what it mostly is
-anyway. It keeps rolling, and it should: a second dead-flat set piece would just read as a long
-pale lake.
+**Choosing the range must not cache the terrain it is about to change.** Walking the ordinary
+segment getters forward to find where 60,000 px ends would populate the spec cache for exactly the
+indices the arm then wants to alter, and the arm would correctly refuse — a self-inflicted
+deadlock. Suppressing a chasm does not merely disable a void, it changes that segment's *spec*,
+including its length, so the band's end index is not knowable from pre-existing terrain anyway.
+
+Use a **conservative bound from the minimum legal segment length** (480 px) instead:
+`ceil(60,000 / 480)` = 125 segments, validated and committed atomically. That deliberately
+over-reserves — the mean segment is longer than the minimum — and over-reserving costs nothing but
+extra calm. Validate the whole range, then commit; a rejected arm must leave every cache exactly
+as it found it and simply retry next frame.
+
+`mega_drop` is already at selection weight 0, so chasms are the only hazard type to suppress — the
+terrain under an aurora is hills, valleys and flats, which is what it mostly is anyway. It keeps
+rolling, and it should: a second dead-flat set piece would just read as a long pale lake.
 
 ### Death is never disabled, the hazards are removed
 
@@ -239,23 +395,52 @@ The stall watchdogs stay live throughout. They catch bugs, not gameplay.
 toward a framing where the shore sits at `LAKE_HORIZON_FRACTION` (0.56), by however much lake the
 player is currently on. `Camera2D.zoom` is untouched anywhere in the project.
 
-The aurora wants both, in the same shape — one function, blended by `get_aurora_blend()`:
+The aurora wants both a framing lift and a modest zoom-out, in the same shape — one function,
+blended by `get_aurora_blend()`. But the reason given for the lift in the first version of this
+plan was **wrong**, and the correction matters because it decides which of the two actually does
+the work.
 
-- **A framing lift**, so the horizon drops and more sky is on screen. Cheap, proven, and the exact
-  mechanism already in the file.
-- **A modest zoom-out**, so the world opens up. Normally this would be the risky one — base size
-  and zoom are one decision and only their ratio is field of view, which on an auto-runner is
-  reaction time. **During an aurora that objection does not apply**, because there is nothing left
-  to react to. Verified: the three live readers of `camera.zoom` (`main.gd:340`,
-  `lake_reflection.gd:149`, `glide_coin_spawner.gd:218`) all re-read it per frame rather than
-  caching it at `_ready()`, so an animated zoom needs no invalidation anywhere.
+**A framing lift does not lower the mountains.** Every `motion_scale` in `main.tscn` is `(x, 0)` —
+vertical parallax was tried and reverted, and `motion_scale.y = 0` is precisely what makes the
+whole backdrop immune to `main.gd`'s world rebase (`visuals.md`, Traps). So the ridges are
+**vertically screen-locked**: moving the camera's target y slides the *terrain* down the screen and
+leaves the ridgeline exactly where it was. It does not reveal more sky.
 
-Both must return to exactly their authored values, which the ramp gives for free at blend 0.
+That does not make the lift useless — the lake ships one, and `main.gd` calls it the single
+biggest visual difference of that set piece. It changes the relationship between the terrain and
+the ridgeline, which is a composition effect worth having. It just is not the "more sky" lever.
+
+**Zoom is the lever that moves the sky.** `ParallaxBackground.ignore_camera_zoom` defaults to
+false, so zoom scales the ridges and the panorama along with everything else. Normally that makes
+zoom the riskier of the two — base size and zoom are one decision and only their ratio is field of
+view, which on an auto-runner is reaction time. **During an aurora that objection does not apply**,
+because there is nothing left to react to. And it is cheaper than expected: the three live readers
+of `camera.zoom` (`main.gd:340`, `lake_reflection.gd:149`, `glide_coin_spawner.gd:218`) all re-read
+it per frame rather than caching it at `_ready()`, so an animated zoom needs no invalidation
+anywhere.
+
+Three things this section must not forget:
+
+- **Glide already owns the camera.** `main.gd`'s `is_glide_vertical_follow_active` deliberately
+  follows a gliding player upward until they land. An aurora framing override anchored to the
+  terrain will fight it and can pull a gliding player off screen. **Glide takes precedence**;
+  define that explicitly rather than discovering it.
+- **Capture and restore the authored zoom explicitly.** The ramp returns to 0, but read the
+  authored value once rather than assuming the literal in `main.tscn` — that is how a knob left
+  half-applied ships.
+- **The camera follow has smoothing lag.** Blend 0 means the *target* is back, not that the camera
+  has arrived. The protected band must outlast the settle, not just the fade.
+
 `camera_shake_probe` is owed on this commit — it is the gate that exists for changes to the camera
-follow in `main.gd`.
+follow in `main.gd`. Note it measures camera *position*, so it does not by itself see screen motion
+caused by a zoom change; that half is an owner look.
 
 Keep the zoom-out modest. It is the difference between "the world opened up" and "the player got
 small", and only the owner can judge which side a given number lands on.
+
+**Prototype the camera with the curtains, not after them.** Approving a static sky and then
+discovering the final composition is how this gets rebuilt twice — and since zoom rescales the
+ridges, the sky the curtains sit in is not the sky they were judged against.
 
 ## The look
 
@@ -319,10 +504,38 @@ now.
 
 ### The rect is not full-screen
 
-`visuals.md`: *size a rect to its content, not to the screen.* The ridges are opaque and their tops
-never go above y≈0.21, so anchor `Curtain` to the sky band rather than `PRESET_FULL_RECT`. That is
-close to half the fragments for free, and fill rate is this feature's one real performance
-question. The wash at −45 does need to be full-rect, since it is washing the mountains.
+`visuals.md`: *size a rect to its content, not to the screen.* Anchoring `Curtain` to the sky band
+rather than `PRESET_FULL_RECT` is close to half the fragments for free, and fill rate is this
+feature's one real performance question.
+
+**But the boundary is the LOWEST exposed sky, not the highest peak, and the first version of this
+plan got that backwards.** Peaks topping out at y≈0.21 says where sky *starts*; sky remains visible
+much further down, in every valley between peaks and wherever the ridgelines dip. Clipping at the
+highest peak would cut a hard horizontal line straight across the sky visible through those
+valleys. The bottom of the quad has to sit below the lowest point of the whole silhouette across
+all four layers, at every supported zoom — and zoom rescales the ridges, so the aurora's own
+zoom-out moves this boundary. Derive it with margin, or measure it and leave room; do not read it
+off the peak table.
+
+### The wash
+
+The wash at −45 is full-rect, since it is washing the mountains — but "below gameplay" only
+protects the *objects'* colours, and three things still need deciding rather than defaulting:
+
+- **`mouse_filter = MOUSE_FILTER_IGNORE`.** `ColorRect` is a `Control` and defaults to
+  `MOUSE_FILTER_STOP`. A full-screen one left at the default is an input eater sitting under the
+  pause button — a standing trap in `visuals.md` that every other full-screen Control in this
+  project already obeys.
+- **Blend mode, vertical profile and an opacity cap.** A flat full-screen veil at uniform alpha
+  will wash the ridge separation flat and desaturate the curtains it is drawn over. Prefer a
+  restrained spill that varies vertically — strongest near the horizon where light would pool,
+  fading upward — with a hard cap, so mountain-to-mountain separation and the curtain's own colour
+  structure both survive.
+- **Contrast is no longer proven by the palette gates.** `biome_schedule_check` reasons about
+  palette data, and the wash changes the *background* behind a coin and behind an airborne player
+  without touching either object's colour. So the readability claim has to be re-checked on final
+  pixels with every layer present, including a player at glide height. This is not a gate failure
+  waiting to happen — it is a gate that will keep passing while saying nothing about the case.
 
 ### Overdraw budget
 
@@ -335,16 +548,27 @@ full-screen `TextureRect` still rasterises every pixel it covers, which is why
 
 ## Save and achievement
 
-`SaveStore` gains **`aurora_count`**, which doubles as the index of the next 30-minute threshold —
-same device as `frozen_lake_count`, and for the same reason: a plain multiple cannot drift or be
-lost the way a running deadline can.
+`SaveStore` gains two fields: **`next_aurora_due_seconds`**, the schedule (see "The trigger" for
+why it is a stored deadline and not `count × interval`), and **`aurora_count`**, kept as a
+statistic only.
 
-**Bump `CURRENT_VERSION` to 4.** Functionally the field could be read out of a v3 file with a
-default of 0 and nothing would break — but that would make "version 3" mean two different payload
-shapes, which is the ambiguity the version field exists to remove. The migration is the same
-idiom v0→v1, v1→v2 and v2→v3 all used: *reading the fields that exist is the migration.* A v3 file
-has never seen an aurora, so 0 is the correct state for it. Keep `reset_progress()` clearing it,
-alongside `frozen_lake_count`.
+**Bump `CURRENT_VERSION` to 4**, and unlike every previous bump in this file **the migration is not
+"read the fields that exist".** That idiom worked for v0→v1, v1→v2 and v2→v3 because each new field
+was born alongside the clock that drives it — when v3 landed, `total_playtime_seconds` also started
+at 0, so no lake was ever retroactively owed. A v3 save already holds hours of playtime, so a
+defaulted deadline of 0 is *immediately overdue*, by as many intervals as the player has hours.
+
+```
+v3 → v4:   next_aurora_due_seconds = total_playtime_seconds + AURORA_INTERVAL_SECONDS
+           aurora_count            = 0
+```
+
+The existing player's first aurora is therefore 30 minutes of play away, which is the same honest
+reading v2→v3 applied to playtime itself: *the clock starts now rather than being back-dated.*
+`reset_progress()` clears the count and sets the deadline to one interval, not to 0.
+
+Fixtures worth testing once, on a **copy** of the real save: a v3 file with a large playtime (the
+case above), a v3 file with almost none, a v4 round-trip, and a reset.
 
 The achievement is a row in `ACHIEVEMENTS` and one `.connect()` on the `aurora_finished` signal —
 the two-edit shape `achievement_manager.gd`'s header promises, and that file already names this
@@ -377,39 +601,73 @@ Because the director hard-skips headless, the calm band is never armed in a gate
 gate can move. That is the same guarantee the lake has, and it is why the terrain change is
 survivable at all.
 
+**Read that as regression isolation and nothing more.** It means the aurora cannot break the
+existing gates. It is emphatically *not* evidence that the aurora works: a green `freeze-search`
+run with no band armed has not exercised one line of this feature. The lake draws exactly this
+distinction — `lake_suppression_probe` pins a lake with `debug_force_lake_segment_index` because
+the director would never arm one in a probe, and `check_lake_arming` covers the other half
+separately. The aurora owes the same, and it is the next section.
+
+## Proving it, without adding six gates
+
+The claims this feature makes that nothing else can check:
+
+1. Arming does not change terrain that was already sampled.
+2. No obstacle **body** exists inside the band — not merely that a predicate returns true.
+3. No chasm segment exists inside the band, at either boundary.
+4. A player crossing the whole band, at boosted speed and with no input, **survives**.
+5. A knob left on does not ship.
+
+**One new probe covers 1–4:** `aurora_calm_probe.gd`, headless, modelled directly on
+`lake_suppression_probe.gd` — which exists for the identical reason and pins its set piece the
+same way. It arms a forced band, snapshots heights and specs before and after, walks the spawners,
+and drives a no-input traversal at `SPEED_BOOST_SPEED` from before the near boundary to past the
+far one. **Removing the calm guard must make it fail**; a probe that passes with the feature
+deleted is measuring nothing, which is the standing lesson from the eighteen archived probes.
+
+Claim 5 is `shipping_values_check`, and the row lands **in the same commit as the knob** — phase 2,
+not later. A plain `var` is invisible to every other gate, so between introducing a force-on knob
+and registering it there is a window where a forced-on aurora ships silently.
+
+**This is deliberately one probe and not the full matrix.** An exhaustive reading would want
+separate coverage of every session rotation, restart phase, biome boundary, glide combination,
+pause/resume timing, save migration, death cleanup and camera transform — realistically five to
+eight new files. `CLAUDE.md` says *"Twelve maintained checks, and only twelve"* and archives
+everything else on purpose, and eighteen archived probes are already there as evidence of what
+happens to gates nobody maintains. The scheduling and save cases are better as **assertions inside
+gates that already exist** (`biome_schedule_check` for dark-window eligibility across every legal
+rotation; `shipping_values_check` for the interval constants) plus one manual pass over a **copy**
+of a real save. If the calm probe ever catches something the matrix would have caught earlier, that
+is the moment to add the second file — not before.
+
 ## Phases
 
 One numbered step at a time, each its own commit, stop for a "go" between them — the standing
 working agreement. The order is deliberate: the look is where the iteration is, and it is the part
 with no consequences, so it goes first and alone.
 
+**Reordered after review.** The hazards now come out *before* production scheduling is switched on,
+and the camera and wash are prototyped alongside the curtains rather than approved after them. The
+old order introduced a live spectacle in phase 3 and removed the hazards in phase 4 — a window in
+which a scheduled aurora could fire over ordinary terrain.
+
 | # | Commit | Gates owed |
 |---|---|---|
 | 0 | This document | — |
 | 1 | `GameManager.get_total_playtime_seconds()` extracted; `FrozenLakeDirector` calls it | `check.sh` |
-| 2 | `aurora.gdshader` + `AuroraSky` + a `debug_force_aurora` knob. **No scheduling, no gameplay.** Look at it, iterate, land it when the owner likes it | `check.sh`, then `sky_layer_check` |
-| 3 | `AuroraDirector`: clock, phases, the ramp, dark-biome gate, lake exclusion, headless skip, `shipping_values_check` rows for every new knob | `check.sh` |
-| 4 | The calm: `arm_calm()` + `is_calm_world_x()` + the one line in `ObstacleSpawner` | **`check.sh`, freeze-search, freeze-replay, floor-flicker, chasm, `lake_suppression_probe`** |
-| 5 | Camera: framing lift + zoom-out | `check.sh`, **`camera_shake_probe`** |
-| 6 | The wash layer | `check.sh`, `sky_layer_check` |
-| 7 | `SaveStore` v4 + the achievement | `check.sh` |
-| 8 | Gate coverage for the aurora, `CLAUDE.md` row 12, `visuals.md`, this file | all fast gates |
+| 2 | `aurora.gdshader` + `AuroraSky` + wash + camera override, all behind one `debug_force_aurora` knob **registered in `shipping_values_check` in this commit**. No scheduling, no terrain. Owner judges the whole composition in motion; early Android cost measured | `check.sh`, `sky_layer_check`, **owner look**, **device frame times** |
+| 3 | The calm: `arm_calm()` + `is_calm_world_x()` + one line in `ObstacleSpawner` + `aurora_calm_probe.gd` **in the same commit** | **`check.sh`, `aurora_calm_probe`, freeze-search, freeze-replay, floor-flicker, chasm, `lake_suppression_probe`** |
+| 4 | `AuroraDirector`: clock, phases, the ramp, entry/exit contract, dark-window eligibility, two-way lake exclusion, headless skip. **Production scheduling switches on here, with the hazards already gone** | `check.sh`, `camera_shake_probe` |
+| 5 | `SaveStore` v4 + next-due migration + the achievement. Integration tested against a **copy** of a real save | `check.sh` |
+| 6 | Full-event validation: no-input boosted survival end to end, restart/pause/death lifecycle, final contrast with every layer present, device frame times over repeated events | everything, plus the three windowed gates |
+| 7 | `CLAUDE.md` row 12, `visuals.md`, this file | all fast gates |
 
-Phase 4 is the only one that touches anything a physics gate can see, which is exactly why it is
-alone in its commit and carries the whole physics tier.
+Phase 3 is the only one that touches anything a physics gate can see, which is why it is alone in
+its commit, carries the whole physics tier, and ships its probe with the code rather than after it.
 
-### What phase 8 has to add
-
-`shipping_values_check` covers the knobs from phase 3 onward — every debug knob in this project is
-a plain `var` precisely so the editor cannot serialise it, which also means **nothing else in the
-project can see one left flipped**. A forced-on aurora that ships is a permanent aurora.
-
-The visual side needs a claim nothing currently makes: **that the curtain and the wash actually
-move pixels.** `sky_layer_check` proves exactly this for every other optional sky layer and exists
-because the glow once shipped passing every data check while contributing 11/255. The aurora
-cannot slot into its per-palette `LAYERS` table — it is not a `BiomePalette` field — so this is
-either a small extra pass in that file with the aurora forced on, or a sibling windowed check.
-Either way it must run **without `--headless`**; it diffs rendered frames.
+Phase 6 is not a formality. Phases 2–5 each prove one piece; only phase 6 asks the question the
+feature actually promises — *can the player look away for a minute and live* — with the shader, the
+wash, the camera, the calm, the powerups and the real device all present at once.
 
 ## Open, and deliberately not decided yet
 
@@ -417,7 +675,20 @@ Either way it must run **without `--headless`**; it diffs rendered frames.
   than merely look wrong, and it cannot be answered from a desktop. Budget: no screen-texture read,
   ≤3 noise octaves, no loop above 8 iterations, curtain rect confined to the sky band. **Measure
   on the owner's Android device during phase 2** — before the feature has anything else built on
-  top of it.
+  top of it, and **again in phase 6 with the complete event**: curtains, wash, snow, pickups and a
+  moving camera together, over repeated events, at real device resolution. The four-layer overdraw
+  convention is a useful rule of thumb and **not a frame-time measurement**; treat it as a budget
+  to check against, not as evidence. If it misses, the fallbacks in order are fewer curtains, then
+  coarser detail, then a lower-resolution effect buffer.
+- **Whether the curtains want a shader at all.** The case for one is in "Why a third shader" and it
+  is the right first choice — but it is a prototype decision, not a proof. If phase 2 measures
+  badly on device, authored ribbon layers are a real alternative and the reasoning against them
+  (`flight_trail.gd`'s discrete elements reading as tally marks) is evidence about *trails*, not a
+  law about sprites. Revisit rather than defend.
+- **Judging the look needs motion, not a screenshot.** Ray shimmer, fold coherence and any temporal
+  discontinuity are invisible in a still frame, and "moves pixels" is a floor, not a verdict. Watch
+  a complete minute: soft-but-distinct lower edges, folds that read as one surface, smooth rays,
+  multiple hues with no white clipping, and an entry and exit that feel intended.
 - **Ambient audio.** There is no lake sound either, and the SFX pool is five one-shots on a 6-voice
   pool with no music bed. An aurora is the strongest argument the project has for ambience, and it
   needs an asset that does not exist. Out of scope; worth raising after the visual lands.
