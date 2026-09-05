@@ -10,6 +10,57 @@ As of **2026-09-03**, head `13d89b6`. The core loop, chasms, coins, powerups, up
 achievements, the frozen lake and the background are all shipped and working. Gameplay art is
 still placeholder rects.
 
+> ## 🌌 IN PROGRESS — THE AURORA BOREALIS. Read this before anything else on this page.
+>
+> **Branch: `claude/aurora-borealis-design-1rpnt8`.** Everything below this block predates the
+> aurora and is background; none of it is blocking.
+>
+> **The plan is `docs/development/aurora_borealis.md` (~770 lines) and it is finished.** Read it
+> in full before touching aurora code. It is not a sketch — every open question the old stub
+> carried is closed by owner decision, and it has been through **three rounds of external review
+> that found real errors**, each corrected in place with the evidence. Do not re-litigate its
+> decisions; do not re-derive its numbers.
+>
+> ### Where we are
+>
+> | Phase | State |
+> |---|---|
+> | 0 — the plan | **DONE.** `432acf9`, revised `c68e947`, `a1989d6`, `f62ff1f` |
+> | 1 — `GameManager.get_total_playtime_seconds()` extracted, lake calls it | **DONE, `02964b2`. GATES NOT RUN** — see below |
+> | 2 — shader + `AuroraSky` + wash + camera, behind one debug knob | **NEXT** |
+> | 3–8 | see the plan's Phases table |
+>
+> ### What to do next
+>
+> 1. **Run `./scripts/check.sh` against `02964b2`.** It has never been run on this change. The
+>    sessions doing this work run in a Linux container with **no Godot binary** — the project's
+>    Godot is a macOS app bundle — so *every* gate in this feature is owed on the owner's machine.
+>    Never write "gates pass" for aurora work without having actually run them.
+> 2. Then phase 2, which is deliberately look-only: no scheduling, no terrain, nothing gameplay
+>    can see. Its debug knob gets its `shipping_values_check` row **in the same commit**.
+>
+> ### How this work is running
+>
+> - **One numbered phase at a time, committed alone, then stop for an explicit "go."** The
+>   standing working agreement, and it is being followed literally here.
+> - **An external reviewer (the owner's other assistant) reads each commit on the branch and
+>   sends findings back through the owner.** It has caught genuine bugs three rounds running,
+>   including two introduced by a previous round's fix. Treat its findings as real and verify
+>   them against the code rather than accepting or dismissing them on tone.
+> - **Verify claims, don't inherit them.** Every number in the plan that turned out to be wrong
+>   was wrong because someone reasoned from a plausible constant instead of reading it
+>   (`CHASM_SEGMENT_LENGTH` is not a typical segment length; `MAX_SPEED` is not the fastest the
+>   player moves; a camera lift does not lower a screen-locked ridge).
+>
+> ### Live hazard for whoever picks this up
+>
+> **`origin/main` and the owner's local `main` have diverged.** As of 2026-09-05 origin is at
+> `122bf4b` while the owner's machine carried unpushed work — an RNG-reuse change in
+> `biome_director.gd`, a void-expiry HUD fix in `powerup_manager.gd`, and lake docs. The aurora's
+> dark-window rule reads `biome_director.gd`. **Run
+> `git rev-list --left-right --count origin/main...main` before trusting any reading of it** —
+> this page has gone stale on exactly that claim three times.
+
 **The working tree is clean and `./scripts/check.sh` passes all five gates in 25s** (verified
 2026-09-02). Everything below is a loose end, not a break.
 
