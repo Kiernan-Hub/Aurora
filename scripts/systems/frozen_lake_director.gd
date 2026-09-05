@@ -169,22 +169,27 @@ func get_lake_blend() -> float:
 
 # Total playtime including the part of this run that has not been banked yet.
 #
-# The unbanked part comes from GameManager rather than being computed here, and it is NOT
-# main_node.elapsed_time: GameManager.bank_playtime() has usually already folded part of this
-# run into save_store.total_playtime_seconds -- it fires on every PLAYING -> not-PLAYING
-# transition, so on Android every notification and app switch banks. Adding the whole run on
-# top of that double-counted the banked part and armed lakes early; get_unbanked_seconds()
-# carries the reasoning and owns banked_run_seconds. Asking GameManager does not bank, so this
-# is still free to call every physics frame.
+# THE ARITHMETIC MOVED TO GameManager ON 2026-09-05 and this is now a wrapper. It used to be
+# computed here, and the aurora (docs/development/aurora_borealis.md) needs the same number --
+# two copies of a sum whose wrong version (the saved total alone, stale by the whole unbanked
+# run) silently reschedules a set piece is exactly the duplication worth removing before there
+# are two of them. GameManager.get_total_playtime_seconds() carries the full reasoning, and
+# get_unbanked_seconds() next to it carries why the unbanked part cannot be main.elapsed_time:
+# bank_playtime() fires on every PLAYING -> not-PLAYING transition, which on Android is every
+# notification and app switch, so adding the whole run double-counts the banked part. That
+# shipped once and armed lakes early.
 #
-# The fallback when GameManager is missing is the full elapsed time, which is right for the
-# same reason: with nothing banking, none of the run is banked.
+# WHAT STAYS HERE IS THE MISSING-GameManager CASE, because an absent node cannot answer for
+# itself. The fallback is the full elapsed time, which is right for the same reason the sum is:
+# with nothing banking, none of the run is banked. Null-guarded rather than fatal, like every
+# other dependency in this file.
+#
+# Still free to call every physics frame -- asking GameManager reads two floats and banks nothing.
 func get_total_playtime_seconds() -> float:
 	var game_manager: GameManager = main_node.game_manager
-	var unbanked_seconds: float = main_node.elapsed_time
 	if game_manager != null:
-		unbanked_seconds = game_manager.get_unbanked_seconds()
-	return services.save_store.total_playtime_seconds + unbanked_seconds
+		return game_manager.get_total_playtime_seconds()
+	return services.save_store.total_playtime_seconds + main_node.elapsed_time
 
 
 func is_lake_due() -> bool:

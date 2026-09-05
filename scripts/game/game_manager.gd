@@ -443,6 +443,30 @@ func get_unbanked_seconds() -> float:
 	return maxf(main.elapsed_time - banked_run_seconds, 0.0)
 
 
+# CUMULATIVE playtime across every run and every launch, including the part of this run
+# get_unbanked_seconds() above says is not on disk yet. This is the clock every playtime-gated
+# set piece schedules against, and it lives here because this node owns both halves of it --
+# the banking, and the save store the banked half is read from.
+#
+# IT WAS FrozenLakeDirector'S, and it moved here on 2026-09-05 because the aurora
+# (docs/development/aurora_borealis.md) needs the identical number and a second copy of this
+# arithmetic is a second chance to get it wrong. That is not hypothetical: the WRONG version of
+# this sum is `save_store.total_playtime_seconds` alone, which is stale by the whole unbanked run
+# and reads minutes low in the middle of an uninterrupted session. A scheduler that sets its next
+# deadline from that number hands out its set piece again almost immediately. One owner, so there
+# is one place for that to be right.
+#
+# Callers must still handle a MISSING GameManager themselves -- an absent node cannot answer for
+# itself. FrozenLakeDirector.get_total_playtime_seconds() shows the shape and carries the reason
+# the fallback is what it is.
+#
+# Free to call every physics frame: it reads two floats and banks nothing.
+func get_total_playtime_seconds() -> float:
+	if services == null:
+		return 0.0
+	return services.save_store.total_playtime_seconds + get_unbanked_seconds()
+
+
 # Android lifecycle. There was no _notification anywhere in the project before
 # 2026-08-03, which meant three device-only failures that desktop testing cannot show:
 # the back button quit the app mid-run, a notification/call/app-switch left the game in
