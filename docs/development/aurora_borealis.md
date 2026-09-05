@@ -300,10 +300,15 @@ So the two are separated:
    hazard after the aurora is not sitting immediately behind a player who is still looking up, and
    so the camera has settled out of its smoothing lag before anything can hurt them.
 4. **If the player never qualifies** — never lands, or lands past the latest legal start — the
-   reservation is simply spent. No event, the deadline stays crossed, arm again later. The terrain
-   stays as committed, which costs nothing: an unused calm band is a stretch with no chasms in it,
-   which is a shape the generator produces anyway. Do **not** stretch the band to chase a late
-   start; that is a second write to a range whose whole safety argument is that it is written once.
+   reservation is spent and **the aurora is over for this run.** The phase goes to DONE, the
+   deadline stays crossed, and the next attempt is **the next run**, when a fresh scene brings a
+   fresh write-once range.
+
+   Say that explicitly, because the two obvious readings are both bugs. "Arm again later" *in this
+   run* means either a second reservation — destroying the write-once property the whole terrain
+   argument rests on — or an endless re-arm loop retrying a condition that has already passed.
+   Neither. One reservation per scene, one outcome, and a missed one costs nothing: an unused calm
+   band is a stretch with no chasms in it, which the generator produces on its own anyway.
 
 On death or cancellation: reset the presentation, **keep the terrain reservation**. Clearing it
 would make every cached chunk and collision sample behind the player disagree with a fresh sample
@@ -682,8 +687,12 @@ drives no-input traversals from before the near boundary to past the far one.
 >
 > - **Ordinary, unshielded, no boost, no input.** This is the case that actually asserts the terrain
 >   is safe, because this player dies to anything the band failed to remove.
-> - **Boosted.** This one asserts something different and still worth asserting: that the band is
->   *long enough* for the fastest the player can move.
+> - **Boosted.** This one asserts something different: that the band is *long enough* for the
+>   fastest the player can move. **Assert duration coverage, not arrival.** Reaching the far edge
+>   only proves the player crossed the band; what has to hold is that at `t = EVENT_DURATION` the
+>   player is **still inside it with `RECOVERY_MARGIN` left in front of them**. Run the event clock
+>   alongside the traversal and assert against the position at that instant — a probe that only
+>   checks "got to the end alive" passes on a band half the length it should be.
 >
 > And the direct assertions stay regardless of either traversal: no chasm segment in the range, and
 > no obstacle **body** actually spawned in it. Assert on the spawned node, never on the predicate —
