@@ -6,16 +6,16 @@
 Android). `CLAUDE.md` is the map — read it first; it points at everything else. This file is the
 running log of *where the work is*, newest section first.
 
-As of **2026-09-03**. The core loop, chasms, coins, powerups, upgrades, achievements, the
-frozen lake and the background are all shipped and working. Gameplay art is still placeholder
-rects.
+As of **2026-09-06**, branch head `245ad80` — the merge of `main` into this branch. The core
+loop, chasms, coins, powerups, upgrades, achievements, the frozen lake and the background are all
+shipped and working. Gameplay art is still placeholder rects.
 
 > ## 🌌 IN PROGRESS — THE AURORA BOREALIS. Read this before anything else on this page.
 >
 > **Branch: `claude/aurora-borealis-design-1rpnt8`.** Everything below this block predates the
 > aurora and is background; none of it is blocking.
 >
-> **The plan is `docs/development/aurora_borealis.md` (~770 lines) and it is finished.** Read it
+> **The plan is `docs/development/aurora_borealis.md` (779 lines) and it is finished.** Read it
 > in full before touching aurora code. It is not a sketch — every open question the old stub
 > carried is closed by owner decision, and it has been through **three rounds of external review
 > that found real errors**, each corrected in place with the evidence. Do not re-litigate its
@@ -26,18 +26,27 @@ rects.
 > | Phase | State |
 > |---|---|
 > | 0 — the plan | **DONE.** `432acf9`, revised `c68e947`, `a1989d6`, `f62ff1f` |
-> | 1 — `GameManager.get_total_playtime_seconds()` extracted, lake calls it | **DONE, `02964b2`. GATES NOT RUN** — see below |
+> | 1 — `GameManager.get_total_playtime_seconds()` extracted, lake calls it | **DONE, `02964b2`. GATES RUN AND GREEN 2026-09-06** — see below |
 > | 2 — shader + `AuroraSky` + wash + camera, behind one debug knob | **NEXT** |
 > | 3–8 | see the plan's Phases table |
 >
 > ### What to do next
 >
-> 1. **Run `./scripts/check.sh` against `02964b2`.** It has never been run on this change. The
+> 1. ~~**Run `./scripts/check.sh` against `02964b2`**~~ — **DONE 2026-09-06 on the owner's Mac,
+>    5/5 PASS in 25s.** Run twice: once on `02964b2` alone, then again on `245ad80` after `main`
+>    merged in. `git status` clean and `project.godot` / the scenes verified untouched after each
+>    run. Phase 1 is the plumbing refactor only — it touches no physics, collision, spawning or
+>    visual code — so **the fast five is its entire gate debt**; the freeze/floor-flicker/chasm
+>    tier and the three windowed visual gates are *not* owed for it. `lake_suppression` is the
+>    meaningful pass, since phase 1 rewired how the lake asks for playtime.
+>
+>    **The rule that produced this item still stands, and phase 2 will owe gates again.** The
 >    sessions doing this work run in a Linux container with **no Godot binary** — the project's
 >    Godot is a macOS app bundle — so *every* gate in this feature is owed on the owner's machine.
 >    Never write "gates pass" for aurora work without having actually run them.
-> 2. Then phase 2, which is deliberately look-only: no scheduling, no terrain, nothing gameplay
->    can see. Its debug knob gets its `shipping_values_check` row **in the same commit**.
+> 2. **Phase 2 is the live step now.** Deliberately look-only: no scheduling, no terrain, nothing
+>    gameplay can see. Its debug knob gets its `shipping_values_check` row **in the same commit**.
+>    Not started, and it needs an explicit "go" like every other phase.
 >
 > ### How this work is running
 >
@@ -52,17 +61,23 @@ rects.
 >   (`CHASM_SEGMENT_LENGTH` is not a typical segment length; `MAX_SPEED` is not the fastest the
 >   player moves; a camera lift does not lower a screen-locked ridge).
 >
-> ### Live hazard for whoever picks this up
+> ### The divergence hazard — RESOLVED 2026-09-06, but keep running the check
 >
-> **`origin/main` and the owner's local `main` have diverged.** As of 2026-09-05 origin is at
-> `122bf4b` while the owner's machine carried unpushed work — an RNG-reuse change in
-> `biome_director.gd`, a void-expiry HUD fix in `powerup_manager.gd`, and lake docs. The aurora's
-> dark-window rule reads `biome_director.gd`. **Run
-> `git rev-list --left-right --count origin/main...main` before trusting any reading of it** —
-> this page has gone stale on exactly that claim three times.
+> **It is gone.** The owner's two unpushed commits went up (`122bf4b..60007f4`), and `main` was
+> then merged into this branch as `245ad80`. Conflict-free, and **both sides were verified to
+> survive rather than trusted to**: `frozen_lake_director.gd` carries the ONE-LAKE-PER-RUN note on
+> the `Phase` enum *and* the `get_total_playtime_seconds()` wrapper (the two hunks are ~85 lines
+> apart), and `biome_director.gd` / `powerup_manager.gd` came through byte-identical to `main`.
+> That last check is the one that mattered — the aurora's dark-window rule reads
+> `biome_director.gd`, and `main` had hoisted an RNG in it.
+>
+> **This branch and `origin/main` are both pushed and level as of 2026-09-06.** Run
+> `git rev-list --left-right --count origin/main...main` anyway before trusting any reading of the
+> push state — this page has gone stale on exactly that claim four times now, and the claim
+> expires the moment anybody commits.
 
 **The working tree is clean and `./scripts/check.sh` passes all five gates in 25s** (verified
-2026-09-03). Everything below is a loose end, not a break.
+2026-09-06 on `245ad80`). Everything below is a loose end, not a break.
 
 > ## THE REVIEW LISTS ARE CLOSED — 2026-09-03
 >
