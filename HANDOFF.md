@@ -6,9 +6,9 @@
 Android). `CLAUDE.md` is the map — read it first; it points at everything else. This file is the
 running log of *where the work is*, newest section first.
 
-As of **2026-09-03**, head `13d89b6`. The core loop, chasms, coins, powerups, upgrades,
-achievements, the frozen lake and the background are all shipped and working. Gameplay art is
-still placeholder rects.
+As of **2026-09-03**. The core loop, chasms, coins, powerups, upgrades, achievements, the
+frozen lake and the background are all shipped and working. Gameplay art is still placeholder
+rects.
 
 > ## 🌌 IN PROGRESS — THE AURORA BOREALIS. Read this before anything else on this page.
 >
@@ -62,15 +62,32 @@ still placeholder rects.
 > this page has gone stale on exactly that claim three times.
 
 **The working tree is clean and `./scripts/check.sh` passes all five gates in 25s** (verified
-2026-09-02). Everything below is a loose end, not a break.
+2026-09-03). Everything below is a loose end, not a break.
 
-**The 2026-08-24 review list is finished except #7.** Two items were killed on evidence rather
-than done (#9, #8 — see below), and the last cheap one is built. What is left on it is #7,
-segment caches never being pruned, which carries a read-this-first warning.
-
-**The 2026-09-02 audit is worked through: #1–#10 closed on 2026-09-03**, #11–#14 deliberately
-left (see the status block at the top of `docs/review/2026-09-02-audit.md`). It found one real
-shipped defect — both coin spawners placing 192px too high — and the gate gap that hid it.
+> ## THE REVIEW LISTS ARE CLOSED — 2026-09-03
+>
+> **Both of them.** There is no outstanding review debt, and the next session should pick a
+> feature rather than go looking for one here.
+>
+> - **The 2026-08-24 review is finished.** Two items were killed on evidence rather than done
+>   (#9 Godot 4.7.2, #8 process priorities), and the last one, **#7 segment-cache pruning, is
+>   closed won't-fix on a measurement**: ~1.06 KB per segment, ~3.7 MB per hour, and bounded by
+>   the *run* rather than the session because restart reloads the scene and clears all four
+>   caches. Pruning would re-derive baselines by backward subtraction, which is not bit-identical
+>   to the forward addition that built them — a `get_terrain_height` purity violation traded for
+>   3.7 MB/hr. The table and the one safe future option are in that review under #7.
+> - **The 2026-09-02 audit is finished.** #1–#10 closed on 2026-09-03, **#12's four minor items
+>   closed** the same day, and **#13/#14 are recommended to stay open permanently** — they are
+>   size observations with no defect behind them, and both put a load-bearing file
+>   (`terrain_generator.gd`, `main.tscn`) in the blast radius of a pure tidying change. Do them
+>   bundled with work that already touches those files, never as a cleanup pass. Reasoning is
+>   under "Why 13 and 14 should stay open" in the audit.
+> - **Still genuinely open, and tiny:** two run clocks, `Main.elapsed_time` and
+>   `SpeedManager.elapsed_time` (audit #11's other half).
+>
+> The audit found one real shipped defect — both coin spawners placing 192px too high — and the
+> gate shape that hid it. That is written up below and is the most useful thing either list
+> produced.
 
 > ## ✅ FINISH THIS FIRST — what is actually left
 >
@@ -123,31 +140,38 @@ shipped defect — both coin spawners placing 192px too high — and the gate ga
 > After those, the project is genuinely clean. The next real feature is the aurora, which needs
 > a planning pass before any code — see "Still in view".
 
-> ## ⏸ THE PLAYTEST IS STILL RUNNING — owner-reported findings outrank everything
+> ## ✅ THE PLAYTEST PHASE IS CLOSED — 2026-09-03
 >
-> The owner is working through the game hands-on and reporting what looks wrong, usually with
-> screenshots. **Four visual findings came in on 2026-08-27 and are fixed** (see the session
-> section below); more are expected. When findings arrive, work those before anything in the
-> "next three things" list — that is review debt, this is observed-broken behaviour.
+> It ran from 2026-08-26 and every finding it produced is fixed: four visual ones on 08-27 (the
+> green, the moon, the night sky) and the coin-height defect on 09-03, all owner-verified in
+> play. **It is no longer a standing phase that outranks other work** — the project is back to
+> "pick something and do it".
 >
-> **What that session taught, and it held every time:** these read as taste complaints and were
-> all *measurable causes*. Sample the colours, profile the texture, print the radial falloff —
-> do not tune by eye. Twice the obvious reading of the symptom was wrong ("the green looks bad"
-> was **not** a hue problem; the disc under the moon was **not** the sky). Twice the first fix
-> had to be redone as a result.
+> **What it taught is the part to keep, and it held every single time:** these arrive sounding
+> like taste complaints and were *all* measurable causes. Sample the colours, profile the
+> texture, print the radial falloff, measure where the node actually lands — do not tune by eye
+> and do not reason from the constant. Twice the obvious reading of the symptom was wrong ("the
+> green looks bad" was **not** a hue problem; the disc under the moon was **not** the sky), and
+> both times the first fix had to be redone.
 >
-> **Do not** start the aurora, re-open the review list, or kick off a long gate run mid-playtest.
-> **Do** ask which items are reproducible if it isn't stated — `FREEZE_REPRO` in `debugging.md`
-> is the standing rule for anything that smells like a stall.
+> **If the owner starts reporting findings again, that outranks everything here again** — it is
+> observed-broken behaviour and the rest of this file is review debt. Ask which items are
+> reproducible if it isn't stated; `FREEZE_REPRO` in `debugging.md` is the standing rule for
+> anything that smells like a stall.
 
-**After the playtest and the cleanup above — next three things:**
+**What is actually next — the list is one item long now:**
 
 1. ~~Godot 4.7.2 (review #9)~~ — **DECLINED 2026-08-26**, see below. Don't re-raise it.
-2. **#8, `main.gd` process priorities** — **downgraded 2026-08-26**, it is close to a no-op.
+2. ~~**#8, `main.gd` process priorities**~~ — **downgraded 2026-08-26**, close to a no-op.
    Read the finding below before spending the physics gate suite on it.
-3. **The aurora borealis** — the game's namesake. **Not ready to code**: its own doc's
-   "Sequencing" section says plan it fully first, and three open questions are undecided.
-   The next step there is a *planning pass producing a doc*, not an implementation step.
+3. **The aurora borealis** — the game's namesake, and with both review lists closed it is the
+   only thing left in view. **Not ready to code**: its own doc's "Sequencing" section says plan
+   it fully first, and three open questions are undecided. The next step is a *planning pass
+   producing a doc*, not an implementation step. Its doc also names a prerequisite — "ice canyon
+   walls / shard spires, extra sky elements" — which **looks stale**: the background shipped
+   2026-08-24 as the baked raster panorama and the iceberg-sprite plan was abandoned. **Confirm
+   with the owner** whether that prerequisite is satisfied before planning ribbons against the
+   current sky stack.
 
 **Two live hazards, both cost a session if you don't know them:**
 
@@ -503,9 +527,9 @@ all of it, and the first two items are closed:
 ~~Unbuilt and cheap, good filler: the `shipping_values_check` text-scan of `project.godot`~~ —
 **built 2026-08-27**, see the section above. The review list has nothing cheap left on it.
 
-Also still open from the review, not urgent: #7 (segment caches are never pruned — **read the
-warning there before touching it**, `arm_lake()`'s write-ahead rule and deterministic replay both
-depend on cached history staying available).
+~~Also still open from the review, not urgent: #7 (segment caches are never pruned)~~ —
+**CLOSED won't-fix 2026-09-03 on a measurement**, ~3.7 MB per hour and freed on every restart.
+See the review's own #7 for the table and the risk argument.
 
 ### The three visual gates are no longer owed — run 2026-08-26, all clean
 
