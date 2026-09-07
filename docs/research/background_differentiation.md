@@ -151,7 +151,8 @@ heights are bound by, and it is invisible from the code.
 ## The alternative the owner should keep in view
 
 The **aurora borealis** — `docs/development/aurora_borealis.md`, CLAUDE.md build-order row
-#12 — is fully planned, not started, and is the feature the game is named after. It is
+#12 — is planned to a phased order (2026-09-07; it was called "fully planned" here before
+that date, which was wrong), not started, and is the feature the game is named after. It is
 sky-only, purely cosmetic, rides its own single blend ramp like the frozen lake, and would
 differentiate the look far more than reshaping mountains will. It was deliberately sequenced
 *after* the background settles the sky/silhouette composition its ribbons sit against —

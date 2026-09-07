@@ -13,6 +13,46 @@ rects.
 **The working tree is clean and `./scripts/check.sh` passes all five gates in 25s** (verified
 2026-09-03). Everything below is a loose end, not a break.
 
+## Latest session — 2026-09-07, aurora planning pass
+
+**No code changed. Docs only.** `docs/development/aurora_borealis.md` was rewritten from a
+sketch with three open questions into a four-phase implementation order. What the audit found,
+shortest first:
+
+- **The record was wrong in three places.** This file and `background_differentiation.md` both
+  called the aurora "fully planned"; its own doc ended on three unresolved questions and a
+  sequencing note. Both claims are corrected.
+- **The sequencing prerequisite is stale and is now closed on evidence.** It said the "ice
+  canyon walls / shard spires" background work had to land first. The background shipped
+  2026-08-24 as the baked panorama, the iceberg line was deleted the same day, the raster route
+  failed three times, and the only live remaining option (procedural ridge reshaping) changes
+  the **silhouette**, not the sky. `SkyBackdrop` is layer -200 and `ParallaxBackground` is -100,
+  so the ribbons sit behind every silhouette by construction. **The two are independent and can
+  be done in either order.** Worth one line of owner confirmation, not a blocker.
+- **One question the old plan missed, and it is the important one: night-only or not.** The
+  trigger is cumulative playtime; sky colour is a function of distance. They are independent, so
+  as designed the first aurora can fire over `pale_morning` — which reads as a rendering bug,
+  not a spectacle. The recommended gate needs no new data: `star_density` is already authored
+  per palette and already blended every frame, and a threshold of >= 0.8 on the blended value is
+  exactly the two night biomes.
+- **The "forced flat segment like the lake's" question is settled by architecture, not taste.**
+  `CLAUDE.md` makes `arm_lake()` the sole writer of `get_terrain_height`'s one permitted runtime
+  input. A second terrain-arming set piece puts a second writer on that invariant. Sky-only
+  means `terrain_generator.gd` is not in the diff at all, which is what makes this the cheapest
+  major feature left.
+- **Recommended against starting with a third shader.** `SkyBackdrop` already builds three of
+  its four layers in code as `Gradient`/`Image` bakes; ribbons are the same class of object as
+  the glow. Try code-built LA8 bands moved by anchor first — no new shader, no imported asset,
+  no art pipeline. If the owner says it reads flat, shader #3 then has a real justification and
+  a reference to beat.
+
+**Gates: none run, and none could be.** This container has no Godot binary
+(`/Applications/Godot.app/...` is a macOS path), so `./scripts/check.sh` was not executed this
+session. No code changed, so nothing is owed — but do not read "docs only" as "verified".
+
+**Four decisions are waiting on the owner** in that doc's Phase 0. Nothing should be coded
+until they are answered; they change what gets built, not just how.
+
 > ## THE REVIEW LISTS ARE CLOSED — 2026-09-03
 >
 > **Both of them.** There is no outstanding review debt, and the next session should pick a
@@ -114,13 +154,11 @@ rects.
 2. ~~**#8, `main.gd` process priorities**~~ — **downgraded 2026-08-26**, close to a no-op.
    Read the finding below before spending the physics gate suite on it.
 3. **The aurora borealis** — the game's namesake, and with both review lists closed it is the
-   only thing left in view. **Not ready to code**: its own doc's "Sequencing" section says plan
-   it fully first, and three open questions are undecided. The next step is a *planning pass
-   producing a doc*, not an implementation step. Its doc also names a prerequisite — "ice canyon
-   walls / shard spires, extra sky elements" — which **looks stale**: the background shipped
-   2026-08-24 as the baked raster panorama and the iceberg-sprite plan was abandoned. **Confirm
-   with the owner** whether that prerequisite is satisfied before planning ribbons against the
-   current sky stack.
+   only thing left in view. **The planning pass is DONE (2026-09-07)** —
+   `docs/development/aurora_borealis.md` is now a phased implementation order, and its stale
+   background prerequisite was checked and closed on evidence (see the 2026-09-07 section at the
+   top of this file). **It is still not ready to code**: four decisions in that doc's "Phase 0"
+   are the owner's and they change what gets built. Get those four answered, then Phase 1.
 
 **Two live hazards, both cost a session if you don't know them:**
 
@@ -734,7 +772,9 @@ which **must run without `--headless`** and so can never join the runner.
 ## Still in view
 
 The **aurora borealis** (`docs/development/aurora_borealis.md`, CLAUDE.md build-order #12) is
-fully planned, not started, and is the feature the game is named after. Sky-only, purely
+planned to a phased implementation order as of 2026-09-07 (it was described here as "fully
+planned" before that, which was wrong -- its doc ended on three unresolved questions). Not
+started, and the feature the game is named after. Sky-only, purely
 cosmetic, rides its own blend ramp like the frozen lake. It was deliberately sequenced *after*
 the background settles the composition its ribbons sit against — which, with the panorama
 shipped, is closer to true than it was.
