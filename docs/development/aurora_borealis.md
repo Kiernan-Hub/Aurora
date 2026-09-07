@@ -5,9 +5,9 @@ not visual polish — but it is also the *cheapest* major feature left, because 
 terrain, no collision and no gameplay state. That is the property to protect: every idea below
 that would have made it touch terrain was rejected on an architectural reason, not on taste.
 
-**Status as of 2026-09-07:** Phase 0 is decided by the owner, **Phase 1 is written** (the
-director, the save field, the night accessor, the scene node and the gate — no visuals). Phase 2
-onward is not started.
+**Status as of 2026-09-07:** Phase 0 decided, **Phase 1 and Phase 2a written** — the director,
+its bookkeeping, and three code-built curtains in `SkyBackdrop`. Phase 2b (a shader) and Phase 3
+(the achievement) are not started.
 
 **Phase 1 has NOT been run.** It was written in an environment with no Godot binary, so
 `./scripts/check.sh` did not execute and nothing has been parsed by the engine. Two things are
@@ -255,7 +255,54 @@ set-piece counts is not a new concept. `reset_progress()` clears it alongside `f
 **Verify Phase 1 with `./scripts/check.sh` alone.** Nothing here touches physics, collision or
 spawning, so the physics tier is not owed.
 
-## Phase 2 — the ribbons
+## Phase 2a — the ribbons — **WRITTEN 2026-09-07, NOT YET RUN IN THE ENGINE**
+
+Three curtains as `TextureRect`s in `SkyBackdrop`, built between `SkyStars` and `SkyGlow`,
+driven only by `apply_aurora(blend, elapsed)`.
+
+**The shape was validated before it was written**, by porting the bake to Python and rendering
+it against the two night palettes' real gradients. That is not a substitute for the engine — it
+cannot see draw order, the additive material, or `expand` on a real device — but it caught two
+defects that would otherwise have needed a play session each:
+
+1. **The rays were invisible.** The first draft averaged three sines drawn from one 9–34 range.
+   An average of similar frequencies converges on a constant: the term sat near 0.81 across the
+   whole width, so there was no striation at all — a smooth ribbon, which reads as fog. A
+   *product* of them fails the other way, collapsing the mean toward the floor and going muddy.
+   What works is **four octaves with amplitude falling as frequency rises** (`AURORA_RAY_BANDS`,
+   `AURORA_RAY_AMPLITUDES`): broad bright and dim regions with fine rays laid over them, mean
+   unchanged.
+2. **It blew out to white.** Measured against a *guessed* dark sky the band weights looked fine.
+   Against the palettes as authored — `twilight_blue`'s `sky_top` is `(0.26, 0.28, 0.50)`, far
+   brighter than assumed — **4.6% of the screen clipped to flat white**. The shipped weights
+   `[0.70, 0.28, 0.24]` measure peak 1.03 / 0.02% clipped, and that remainder is the hem's own
+   core, where a white-hot centre is correct.
+
+**A third finding, and it is a ceiling rather than a bug:** under additive blending a band's
+channel values land on the sky's directly, and **no additive layer can reduce the sky's blue**.
+Over these two palettes (blue 0.42–0.54 in the upper sky) a fully saturated green is unreachable
+by construction. Pulling blue almost out of the green's own colour moved the hem from G/B 1.26 to
+1.53, which is as far as it goes; making it brighter does not help, it clips. If a greener aurora
+is ever wanted, the lever is the *palette's* blue, not this file — and that is a biome change.
+
+**Why additive at all, and why it is not shader #3.** An aurora emits. Alpha-blended it can only
+darken toward its own colour, so a green curtain over the sky comes out as flat paint. A
+`CanvasItemMaterial` with `BLEND_MODE_ADD` is a **built-in**, not a `.gdshader` — the two-shader
+budget is untouched. The trap it introduces is exactly why the night gate exists: additive over
+a bright sky blows out, so `debug_aurora_ignore_night` shows a composition the game never ships.
+
+**One cost fix worth knowing about.** The bake is ~295,000 pixels across three bands, against the
+starfield's 300. Two changes keep that off the gates and off scene load: the whole construction is
+**skipped under `--headless`** (gate output is byte-identical either way, since the bands are built
+`visible = false` and the director hard-skips headless anyway), and the image is filled as a
+**`PackedByteArray` handed to `create_from_data()`** rather than through per-pixel `set_pixel()`.
+
+**What is owed:** the project import and `check.sh` from Phase 1, and then — because this is a sky
+change the owner has not seen — **`sky_layer_check.gd`, which must run WITHOUT `--headless`.**
+
+### The spec it was built to
+
+#### Phase 2 — the ribbons
 
 `sky_backdrop.gd` gains a `SkyAurora` child and an `apply_aurora(blend: float)` called by the
 director each frame it is active.

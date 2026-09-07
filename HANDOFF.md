@@ -13,6 +13,57 @@ rects.
 **The working tree is clean and `./scripts/check.sh` passes all five gates in 25s** (verified
 2026-09-03). Everything below is a loose end, not a break.
 
+## Latest session — 2026-09-07, aurora Phase 2a (the ribbons)
+
+> ### ⚠️ STILL NOT RUN IN THE ENGINE
+>
+> Same as Phase 1 below: no Godot binary here. Owed, in order —
+> **project import** (new `class_name`), **`./scripts/check.sh`**, then
+> **`sky_layer_check.gd` WITHOUT `--headless`**, because this is a sky change the owner has not
+> seen and that gate is the one built for a new soft layer in this exact stack (it caught a glow
+> contributing 11/255 and being invisible). `git status` after the import.
+
+Three curtains as `TextureRect`s in `SkyBackdrop`, between `SkyStars` and `SkyGlow`, driven only
+by `apply_aurora(blend, elapsed)` — the seam Phase 1 left. `AuroraDirector` passes both values;
+**`sky_backdrop.gd` still has no `_process`**, which is what keeps it free inside the six
+headless gates.
+
+**The shape was measured before it was written.** The bake was ported to Python and rendered
+against the two night palettes' real gradients. Not a substitute for the engine — it cannot see
+draw order, the material, or `expand` on a device — but it caught two defects that would each
+have cost a play session:
+
+- **The rays were invisible.** Averaging three sines from one narrow frequency range converges
+  on a constant (~0.81 flat), so there was no striation at all — a smooth ribbon, which reads as
+  fog. A product of them fails the other way and goes muddy. Four octaves with amplitude falling
+  as frequency rises is what works.
+- **It blew out to white.** The first weights looked right against a *guessed* dark sky. Against
+  the palettes as authored — `twilight_blue`'s `sky_top` is `(0.26, 0.28, 0.50)`, much brighter
+  than assumed — **4.6% of the screen clipped**. Shipped values measure peak 1.03, 0.02% clipped,
+  and that remainder is the hem's own core.
+
+**A ceiling worth knowing before anyone tries to make it greener:** additive light cannot reduce
+the sky's blue, and the upper night sky is blue 0.42–0.54. A fully saturated green is unreachable
+over these palettes by construction. Pulling blue out of the green's own colour got the hem from
+G/B 1.26 to 1.53; brightness does not help, it clips. The only remaining lever is the palette,
+which is a biome change, not a sky one.
+
+**Additive is a `CanvasItemMaterial`, NOT a third `.gdshader`** — the two-shader budget is
+untouched. It is also why the night gate is load-bearing rather than cosmetic: additive over a
+bright sky blows out, so `debug_aurora_ignore_night` shows a composition the game never ships.
+
+**One cost fix:** the bake is ~295,000 pixels against the starfield's 300, so the whole
+construction is **skipped under `--headless`** (gate output is byte-identical either way — the
+bands are built `visible = false` and the director hard-skips headless) and the image is filled as
+a `PackedByteArray` through `create_from_data()` rather than per-pixel `set_pixel()`.
+
+**Phase 2b (a shader) is expected, not avoided** — the owner said so explicitly. 2a is a first
+draft whose job is to be judged. `aurora_borealis.md` records the three rules that keep 2b a
+drop-in: timing stays in the director, `apply_aurora()` stays the only seam, and the layout stays
+data on the node rather than baked into the texture.
+
+**Phase 3 (the achievement) is next and is two edits**, both in `achievement_manager.gd`.
+
 ## Latest session — 2026-09-07, aurora Phase 1 (no visuals)
 
 > ### ⚠️ NOTHING HERE HAS BEEN RUN

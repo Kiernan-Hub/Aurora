@@ -3,8 +3,8 @@ extends Node
 class_name AuroraDirector
 
 # Schedules and runs the aurora borealis: roughly every 60 minutes of CUMULATIVE playtime,
-# and only once the sky is actually night, ribbons of colour fade up across SkyBackdrop for
-# ~45 seconds and fade back out. The first one earns an achievement.
+# and only once the sky is actually night, three curtains of colour fade up across SkyBackdrop
+# for ~45 seconds and fade back out. The first one earns an achievement (not wired yet).
 #
 # THE SIBLING OF FrozenLakeDirector, and read the two together -- this file is deliberately
 # shaped like that one so the pair can be reasoned about at once. The differences are all
@@ -259,18 +259,24 @@ func finish_aurora() -> void:
 	aurora_finished.emit(services.save_store.aurora_count)
 
 
-# Phase 1 has no visuals, so this is the one seam the ribbons will arrive through: SkyBackdrop
-# gains apply_aurora(blend) and this starts finding it. has_method rather than a typed call
-# because sky_backdrop.gd carries no class_name -- the same reason BiomeDirector routes its two
-# unchecked consumers through resolve_palette_consumer().
+# THE ONE SEAM THE LOOK ARRIVES THROUGH. SkyBackdrop.apply_aurora() is the only thing this
+# feature draws with, so a Phase 2b that replaces the curtains with a shader replaces what is
+# behind this call and nothing else.
 #
-# Checked per call rather than once in _ready() on purpose: this is only reached during an
-# aurora, which is seconds per hour, and it keeps Phase 1 landing with no edit to sky_backdrop.gd
-# at all -- so a Phase 1 regression cannot be hiding in the sky stack.
+# has_method rather than a typed call because sky_backdrop.gd carries no class_name -- the same
+# reason BiomeDirector routes its two unchecked consumers through resolve_palette_consumer().
+# Checked per call rather than cached in _ready(): this is only reached during an aurora, which
+# is about a minute per hour of play.
+#
+# BOTH ARGUMENTS COME FROM HERE, and neither may be recomputed on the far side. `blend` is this
+# director's single cosmetic ramp; `elapsed` is the clock the ramp cannot be, since it rises and
+# falls. Keeping the clock here is what lets sky_backdrop.gd keep its promise of having no
+# _process at all -- which is what makes it free inside the six headless gates, every one of
+# which instantiates main.tscn. Handing it a timer to advance would spend that.
 func push_blend(blend: float) -> void:
 	if sky_backdrop == null or not sky_backdrop.has_method("apply_aurora"):
 		return
-	sky_backdrop.call("apply_aurora", blend)
+	sky_backdrop.call("apply_aurora", blend, active_elapsed)
 
 
 # If the stall watchdog or anything else ends the run mid-aurora, the sky must not keep it.
