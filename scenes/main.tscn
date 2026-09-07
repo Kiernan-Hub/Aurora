@@ -25,6 +25,7 @@
 [ext_resource type="Script" path="res://scripts/systems/achievement_toast.gd" id="24_achievement_toast"]
 [ext_resource type="Script" path="res://scripts/systems/background_strip.gd" id="25_strip"]
 [ext_resource type="Texture2D" uid="uid://csplkncwj3uke" path="res://assets/textures/background/ice_pano.png" id="26_pano"]
+[ext_resource type="Script" path="res://scripts/systems/aurora_director.gd" id="27_aurora"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -156,6 +157,9 @@ script = ExtResource("9_powerup")
 
 [node name="FrozenLakeDirector" type="Node" parent="."]
 script = ExtResource("19_frozen_lake")
+
+[node name="AuroraDirector" type="Node" parent="."]
+script = ExtResource("27_aurora")
 
 [node name="AchievementManager" type="Node" parent="."]
 script = ExtResource("23_achievements")

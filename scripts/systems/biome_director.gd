@@ -372,6 +372,29 @@ func get_persisted_phase(world_x: float) -> float:
 	return maxf(world_x + biome_phase_offset, 0.0)
 
 
+# HOW MUCH NIGHT IS ON SCREEN RIGHT NOW, 0..1. The only thing AuroraDirector reads from this
+# file, and it exists so that nothing outside this file has to reach into `blended` or reason
+# about which palettes are the night ones.
+#
+# star_density is the right field rather than a new one: it is authored on all eight palettes
+# (starlit_night 1.00, twilight_blue 0.85, violet_dusk 0.30, arctic_dawn 0.28, the rest 0.00),
+# it already rides CHANNEL_ATMOSPHERE, and it already means exactly "how dark is this". A
+# separate is_night flag would be a second thing to keep in sync with the palettes for no
+# information the existing one does not carry.
+#
+# THE BLENDED VALUE, NOT THE PALETTE'S. That is the point of reading it here: mid-crossfade it
+# is genuinely between the two, so a caller thresholding on it cannot fire while the sky is
+# still on its way into or out of night. Reading get_cycle_base_palette(applied_biome_index)
+# instead would snap at the biome boundary and get that wrong.
+#
+# UNDER --headless THIS IS MEANINGLESS. This director returns early having applied nothing, so
+# `blended` holds BiomePalette.new()'s defaults rather than any authored sky. That is safe only
+# because its one caller hard-skips headless itself; do not let a headless-running system start
+# gating on this.
+func get_night_amount() -> float:
+	return blended.star_density
+
+
 func resolve_palette_consumer(consumer_path: NodePath) -> Node:
 	var consumer: Node = get_node_or_null(consumer_path)
 	if consumer == null:

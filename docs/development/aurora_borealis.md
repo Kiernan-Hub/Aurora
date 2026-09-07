@@ -5,9 +5,15 @@ not visual polish — but it is also the *cheapest* major feature left, because 
 terrain, no collision and no gameplay state. That is the property to protect: every idea below
 that would have made it touch terrain was rejected on an architectural reason, not on taste.
 
-**Status as of 2026-09-07:** planned to the point of an implementation order. Four decisions
-are the owner's and are listed in "Phase 0" — three are the questions the earlier draft left
-open, and the fourth is new and is the important one. Nothing is coded.
+**Status as of 2026-09-07:** Phase 0 is decided by the owner, **Phase 1 is written** (the
+director, the save field, the night accessor, the scene node and the gate — no visuals). Phase 2
+onward is not started.
+
+**Phase 1 has NOT been run.** It was written in an environment with no Godot binary, so
+`./scripts/check.sh` did not execute and nothing has been parsed by the engine. Two things are
+owed before it can be trusted: a **project import** (`class_name AuroraDirector` is new, and
+`shipping_values_check` now instantiates it — CLAUDE.md keeps import as the manual step for
+exactly this), and then `./scripts/check.sh`.
 
 > **Correction to the record, 2026-09-07.** `HANDOFF.md` and
 > `docs/research/background_differentiation.md` both described this feature as "fully planned".
@@ -49,12 +55,18 @@ independently.
 That single fact settles the biggest open question below, and it is why this feature is cheap:
 sky-only means `terrain_generator.gd` is not in the diff at all.
 
-## Phase 0 — four decisions, the owner's call
+## Phase 0 — four decisions, DECIDED BY THE OWNER 2026-09-07
 
-Nothing should be coded until these four are answered. The first three were the original open
-questions; each now has a recommendation with the evidence behind it. The fourth is new.
+All four answered. The reasoning is kept because it is what the code's comments point back at.
 
-### 1. Does it force its own flat terrain segment, like the lake's 7500px? — **Recommend NO**
+| # | Question | Decision |
+|---|---|---|
+| 1 | Forced flat segment? | **No** — sky only, terrain untouched |
+| 2 | Ribbon rendering | **Code-built textures first**, shader expected later as Phase 2b — see the note under 2 |
+| 3 | Colour identity | **Fixed** green/violet, never per-biome |
+| 4 | Night only? | **Yes** — blended `star_density` >= 0.8 |
+
+### 1. Does it force its own flat terrain segment, like the lake's 7500px? — **DECIDED: NO**
 
 Not a taste call. Three reasons, in order of weight:
 
@@ -71,7 +83,7 @@ starts, and will not look up. Mitigation costs nothing: `try_arm()` retries ever
 the lake's does, so it can decline any frame the player is airborne or a chasm is within the
 lead-in — the threshold stays crossed and it arms on the first calm frame instead.
 
-### 2. Shader, or authored sprite layers? — **Recommend NEITHER as framed: code-built textures first**
+### 2. Shader, or authored sprite layers? — **DECIDED: code-built first, shader NOT ruled out**
 
 The project's shader budget is two, both owned by ice, and `visuals.md` requires a third to
 justify itself. Neither option in the original draft is the cheapest thing available.
@@ -96,7 +108,26 @@ one lerp, and is resolution-independent for free.
   renderer to verify on) and there is a materially cheaper option to try first. Do not start
   with the shader.
 
-### 3. Fixed aurora colours, or recoloured by the active biome? — **Recommend FIXED**
+**THE OWNER'S ANSWER, AND IT CHANGES HOW PHASE 2 SHOULD BE BUILT (2026-09-07):** code-built
+first, but **the shader is expected to be wanted later and is explicitly not being ruled out on
+difficulty** — this is the part of the game the owner cares most about and is willing to spend
+time and iterations on. So treat the code-built version as **Phase 2a, a deliberate first draft
+whose job is to be judged**, not as the intended end state, and build it so a shader can replace
+the ribbon rendering without touching anything else:
+
+- `get_aurora_blend()` stays the only timing input. A shader version reads the same float as a
+  uniform; it must never grow its own clock off `TIME`, which keeps running while the tree is
+  paused — that is exactly why `frozen_lake_reflection.gdshader` takes a `wobble_time` uniform
+  instead, and the same rule applies here.
+- `apply_aurora(blend)` on `SkyBackdrop` stays the only seam. Phase 2b swaps what is behind it.
+- Keep the ribbon *layout* (where bands sit, how many, how they drift) as data on the node, not
+  baked into the texture, so the shader version can inherit the composition the owner approved
+  rather than restarting the art direction.
+
+The order is "let the cheap version establish the composition, then spend the shader on making
+it move properly" — not "avoid the shader".
+
+### 3. Fixed aurora colours, or recoloured by the active biome? — **DECIDED: FIXED**
 
 Settled by precedent already in the codebase. `lake_reflection.gd`'s header records the owner's
 2026-08-14 call for the lake: the same set piece every time, "recognisable on sight rather than
@@ -107,7 +138,7 @@ makes it stop being a set piece.
 Same argument, same answer: a fixed green/violet identity. The biome still reaches it, and only
 this way — through the sky gradient the ribbons are drawn *over*.
 
-### 4. NEW, AND THE IMPORTANT ONE: does it only happen at night?
+### 4. NEW, AND THE IMPORTANT ONE: does it only happen at night? — **DECIDED: YES**
 
 The earlier draft missed this entirely, and it is the question with a wrong answer available.
 The trigger is cumulative playtime; the sky colour is a function of world distance. **They are
@@ -144,7 +175,44 @@ the composition the whole thing wants anyway.
 defaults to in a gate. The director hard-skips headless too (Phase 1), so this can never be
 reached there — but the guard has to be the director's, not this comparison's.
 
-## Phase 1 — the director, no visuals
+## Phase 1 — the director, no visuals — **WRITTEN 2026-09-07, NOT YET RUN**
+
+**What landed**, and it matches the spec below except where noted:
+
+| File | Change |
+|---|---|
+| `scripts/systems/aurora_director.gd` | New. `class_name AuroraDirector`, ~250 lines, modelled on `frozen_lake_director.gd` |
+| `scripts/systems/save_store.gd` | `aurora_count`, read/written/reset. **No version bump** — reasoning is on the field |
+| `scripts/systems/biome_director.gd` | `get_night_amount()` — returns `blended.star_density`, its only new public surface |
+| `scenes/main.tscn` | `AuroraDirector` node under `Main`, between `FrozenLakeDirector` and `AchievementManager` |
+| `scripts/debug/shipping_values_check.gd` | Both new debug knobs, same commit as the knobs themselves |
+
+**Two deviations from the spec below, both deliberate and both simplifications:**
+
+1. **No chasm-proximity check in the arm condition.** The spec proposed declining a frame if a
+   chasm was close. On reflection that is scope the feature does not need: the lake's floor and
+   jump checks exist because it commits geometry *and* locks input, so a bad entry is a real
+   state problem. Nothing here locks anything — an aurora starting over a void just means the
+   player looks up a second later, and the 8-second fade-in is far longer than a chasm takes to
+   clear. A proximity check would mean new `TerrainGenerator` API for a problem that does not
+   exist. **The airborne check went too, for the same reason.**
+2. **`debug_aurora_ignore_night` replaced the proposed second knob.** The interval override
+   alone cannot reach an aurora during the ~10 of every 13.7 minutes that are not night, so this
+   is the one that actually shortens an iteration loop. Its own comment says what it costs (you
+   are then judging the ribbons against a sky they were not authored for).
+
+**`push_blend()` is the seam Phase 2 arrives through.** It calls `apply_aurora(blend)` on
+`SkyBackdrop` if that method exists, and does nothing if it does not — so Phase 1 landed with
+**no edit to `sky_backdrop.gd` at all**, and a Phase 1 regression cannot be hiding in the sky
+stack. `has_method` rather than a typed call because `sky_backdrop.gd` carries no `class_name`,
+the same reason `BiomeDirector` routes its two unchecked consumers through
+`resolve_palette_consumer()`.
+
+**What is owed before trusting any of it:** a project import (new `class_name`), then
+`./scripts/check.sh`. The physics tier is **not** owed — nothing here touches physics, collision
+or spawning. The visual tier is not owed either, because Phase 1 draws nothing.
+
+### The spec it was built to
 
 One new file, `scripts/systems/AuroraDirector` (`scripts/systems/aurora_director.gd`), and one
 new node under `Main` in `main.tscn`, placed beside `FrozenLakeDirector`. Model it on

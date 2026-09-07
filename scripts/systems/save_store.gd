@@ -62,6 +62,22 @@ var total_playtime_seconds: float = 0.0
 var frozen_lake_count: int = 0
 var achievements: Dictionary[String, bool] = {}
 
+# The aurora's counter, and the same counter-as-threshold-index device frozen_lake_count is:
+# the next aurora is due at (aurora_count + 1) * AURORA_INTERVAL_SECONDS, so a threshold that
+# is crossed but not spent stays owed rather than being skipped.
+#
+# NO VERSION BUMP, DELIBERATELY, and this file's own idiom is the argument. A v3 file written
+# before the aurora existed simply has no "aurora_count" key, so .get(..., 0) yields 0 -- which
+# IS the correct state for a save that has never seen one. "Reading the fields that exist is
+# the migration" is what v0->v1, v1->v2 and v2->v3 above all say; a bump is earned by a new
+# top-level CONCEPT arriving, and cumulative-playtime-gated set-piece counts arrived at v3.
+#
+# The direction that matters is the other one, and it holds: a v3 file written by THIS build
+# carries the key, and an older build reading it ignores an unknown key and preserves nothing
+# -- so a player who downgrades loses their aurora count. Same exposure frozen_lake_count has
+# and the same one a bump would not fix.
+var aurora_count: int = 0
+
 
 # Not named load(): that would shadow GDScript's global load() inside this class.
 func load_from_disk() -> void:
@@ -114,6 +130,9 @@ func load_from_disk() -> void:
 		# unreachably far away.
 		total_playtime_seconds = maxf(float(data.get("total_playtime_seconds", 0.0)), 0.0)
 		frozen_lake_count = maxi(int(data.get("frozen_lake_count", 0)), 0)
+		# Read inside `version >= 3` rather than under a version of its own -- see the field's
+		# note. Absent in a pre-aurora v3 file, where the 0 default is correct.
+		aurora_count = maxi(int(data.get("aurora_count", 0)), 0)
 		# Copied key by key for the same reason upgrade_levels above is -- JSON hands back
 		# an UNTYPED Dictionary, which cannot be assigned into a Dictionary[String, bool].
 		var stored_achievements: Dictionary = data.get("achievements", {}) as Dictionary
@@ -150,6 +169,7 @@ func save_to_disk() -> void:
 		"upgrades": upgrade_levels,
 		"total_playtime_seconds": total_playtime_seconds,
 		"frozen_lake_count": frozen_lake_count,
+		"aurora_count": aurora_count,
 		"achievements": achievements,
 		"settings": {
 			"music_volume": music_volume,
@@ -200,5 +220,6 @@ func reset_progress() -> void:
 	# deliberate: the 20-minute clock restarts and the achievement can be earned again.
 	total_playtime_seconds = 0.0
 	frozen_lake_count = 0
+	aurora_count = 0
 	achievements.clear()
 	save_to_disk()
