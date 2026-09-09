@@ -6,19 +6,122 @@
 Android). `CLAUDE.md` is the map — read it first; it points at everything else. This file is the
 running log of *where the work is*, newest section first.
 
-As of **2026-09-03**. The core loop, chasms, coins, powerups, upgrades, achievements, the
-frozen lake and the background are all shipped and working. Gameplay art is still placeholder
-rects.
+As of **2026-09-06**, branch head `245ad80` — the merge of `main` into this branch. The core
+loop, chasms, coins, powerups, upgrades, achievements, the frozen lake and the background are all
+shipped and working. Gameplay art is still placeholder rects.
 
-**The working tree is clean and `./scripts/check.sh` passes all five gates in 25s** (verified
-2026-09-03). Everything below is a loose end, not a break.
+> ## 🌌 THE AURORA BOREALIS — TWO BRANCHES RECONCILED 2026-09-09. Read this first.
+>
+> **Branch: `claude/aurora-reconcile`**, cut from `claude/aurora-borealis-audit-fqbpzh` with
+> `claude/aurora-borealis-design-1rpnt8` merged into it. Both of those had independently planned
+> AND part-built the aurora, with different plans, different phase numbering and two different
+> "phase 1"s. **Neither is the trunk any more. Do not commit to either.**
+>
+> **The plan is `docs/development/aurora_borealis.md` (464 lines), rewritten as one document.**
+> Read it before touching aurora code. Any older copy that reasons about a third `.gdshader`, an
+> `AuroraSky` CanvasLayer at −190, or eligibility by *palette identity across cycle slots 5–7* is
+> superseded — those were real designs on one branch and the other branch built something better.
+>
+> ### What is built, and what it does
+>
+> | | State |
+> |---|---|
+> | `AuroraDirector` — clock, phase machine, one ramp | **BUILT** |
+> | Three code-built curtains in `SkyBackdrop`, additive `CanvasItemMaterial` | **BUILT.** Nobody has seen them in the engine |
+> | Schedule — stored deadline, 30 min, night gate | **BUILT**, reconciled today |
+> | The calm — no obstacles, no chasms | **IN SCOPE, NOT BUILT.** The live work |
+> | Wash + ground catching the light | **IN SCOPE, NOT BUILT** |
+> | Camera, achievement | Planned, not built |
+>
+> ### The owner decisions that settled the merge, 2026-09-09
+>
+> - **30 minutes**, not 60. The other branch's "three times the lake's twenty" reasoning is gone.
+> - **The hazards stand down** during an aurora — obstacles and chasms both. One branch had built
+>   the feature around *"the aurora must never arm terrain"*; that rule is real but narrower than
+>   it was written, and the plan now splits the calm into its two very different halves.
+> - **The light should reach the whole frame** — "everything bright and beautiful". Sky, then the
+>   mountains via a wash at `CanvasLayer −45`, then the ground via the `set_lake_ice_blend()`
+>   precedent. **Never coins, obstacles or the player**, and the wash never rises above layer 0.
+>
+> ### Two real defects were fixed in the merge, not carried
+>
+> 1. **The schedule would have paid out a backlog.** `(aurora_count + 1) × INTERVAL` is safe for
+>    the lake only because `frozen_lake_count` and `total_playtime_seconds` were born together at
+>    v3. The aurora lands in saves that **already hold hours**, so every threshold up to the
+>    player's lifetime total was already crossed — roughly one aurora per run, back to back, until
+>    the count caught up. Replaced by a stored deadline, `SaveStore.next_aurora_due_seconds`, with
+>    `-1.0` as an explicit UNSCHEDULED sentinel because `0.0` reads as "due now". **No version bump
+>    needed** — absence resolves correctly.
+> 2. **The playtime sum had been written twice.** `AuroraDirector` carried a verbatim copy of the
+>    lake's old function. Both now call `GameManager.get_total_playtime_seconds()`.
+>
+> Also fixed while merging: the interval override used to be consulted by the code that WRITES the
+> deadline, which would have persisted a playtest cadence into a real save — and would not even
+> have worked, since an already-scheduled save ignores a shortened interval. It is a read-side
+> bypass now.
+>
+> ### Gates — RUN, 2026-09-09, on this Mac
+>
+> **The project import their branch owed is done**, and `project.godot` came back
+> **byte-identical** (consistent with the 2026-08-26 measurement that import is not the stripping
+> trigger). The new `aurora_director.gd.uid` is committed — the repo tracks all 67 of them, and
+> that branch shipped a `.gd` without one because it had no Godot.
+>
+> **`./scripts/check.sh` — 5/5 PASS**, including `shipping_values` now instantiating
+> `AuroraDirector` for its two knobs.
+>
+> **Godot IS available to a session running on the owner's Mac** (`/Applications/Godot.app/...`).
+> The older note here saying every gate is owed to the owner because the session has no binary is
+> true of a *container* session only — **check before assuming**, and discharge in-session.
+>
+> ### What to do next
+>
+> 1. **Look at the ribbons in the engine, and run `sky_layer_check.gd` WITHOUT `--headless`.**
+>    This is the one owed thing, it is cheap, and everything later is composed against it. The
+>    curtains were validated by a Python render of the real palettes — good enough to catch two
+>    real defects, not good enough to judge a sky.
+> 2. **Measure the chasm-gap question** before building the calm's second half. It decides between
+>    a second write-once terrain range (Route A) and simply not starting unless the stretch ahead
+>    is already chasm-free (Route B, which touches the height field not at all). The plan has the
+>    arithmetic sketch; **do not pick by argument.**
+> 3. Then the calm's free half (obstacles), then the wash, then the ground.
+>
+> ### How this work runs
+>
+> - **One numbered step at a time, committed alone, then stop for an explicit "go."**
+> - **No headless gate reaches the aurora's schedule at all** — the director hard-skips headless,
+>   so `get_total_playtime_seconds()`, the deadline and the night gate are invisible to the fast
+>   five. Green proves the feature broke nothing; it proves nothing about the feature.
+> - **Verify claims, don't inherit them.** Every number that turned out wrong across both branches
+>   was wrong because someone reasoned from a plausible constant instead of reading it.
+
+**The working tree is clean and `./scripts/check.sh` passes all five gates** (re-verified
+2026-09-09, 5/5, on the commit that carries this note). Everything below is a loose end, not a break.
+
+> ### `project.godot` was stripped again between 2026-09-06 and 2026-09-08 — caught, restored
+>
+> Found by an audit of the aurora step. Something saved project settings after the 09-06 green
+> run and dropped all four pins that equal an engine default — `viewport_width`,
+> `viewport_height`, `physics_ticks_per_second`, `physics_interpolation` — plus **every comment
+> in the file**. Nothing observable changed, which is exactly what makes it dangerous:
+> `physics_ticks_per_second` is level geometry, and the comments were the only record of why any
+> of it is pinned.
+>
+> **`shipping_values_check` failed on all four, by name, with the fix in its own output.** The
+> text-scan gate built on 2026-08-27 did precisely the job it was built for. `git checkout --
+> project.godot` restored it and the fast five went green.
+>
+> **Scene files still have no such cover.** `git status` showed `project.godot` as the only
+> modified file this time, so nothing else was touched — but that was verified, not assumed, and
+> the standing rule is unchanged: **`git status` after ANY engine run.**
 
 ## Latest session — 2026-09-07, aurora Phase 2a (the ribbons)
 
-> ### ⚠️ STILL NOT RUN IN THE ENGINE
+> ### ✅ RUN 2026-09-09 — import and the fast five are done; the windowed gate is not
 >
-> Same as Phase 1 below: no Godot binary here. Owed, in order —
-> **project import** (new `class_name`), **`./scripts/check.sh`**, then
+> Written without a Godot binary, then discharged on the owner's Mac during the branch
+> reconciliation: **project import done** (`project.godot` byte-identical afterwards),
+> **`check.sh` 5/5 PASS**. **Still genuinely owed:**
 > **`sky_layer_check.gd` WITHOUT `--headless`**, because this is a sky change the owner has not
 > seen and that gate is the one built for a new soft layer in this exact stack (it caught a glow
 > contributing 11/255 and being invisible). `git status` after the import.
@@ -66,10 +169,12 @@ data on the node rather than baked into the texture.
 
 ## Latest session — 2026-09-07, aurora Phase 1 (no visuals)
 
-> ### ⚠️ NOTHING HERE HAS BEEN RUN
+> ### ⚠️ NOTHING HERE HAD BEEN RUN — **discharged 2026-09-09, see the top of this page**
 >
-> This container has no Godot binary, so **`./scripts/check.sh` did not execute and the engine
-> has never parsed any of it.** Two steps are owed before trusting a line of it:
+> Kept as the record of how it shipped. The container this was written in had no Godot binary, so
+> **`./scripts/check.sh` did not execute and the engine had never parsed any of it.** Both steps
+> below were done during the branch reconciliation: import clean, `check.sh` 5/5. The two steps
+> were:
 >
 > 1. **A project import.** `class_name AuroraDirector` is new, and `shipping_values_check.gd`
 >    now does `AuroraDirector.new()` — which cannot resolve until the class is registered.
@@ -151,9 +256,10 @@ shortest first:
   no art pipeline. If the owner says it reads flat, shader #3 then has a real justification and
   a reference to beat.
 
-**Gates: none run, and none could be.** This container has no Godot binary
-(`/Applications/Godot.app/...` is a macOS path), so `./scripts/check.sh` was not executed this
-session. No code changed, so nothing is owed — but do not read "docs only" as "verified".
+**Gates: none run this session, and none could be** — this container had no Godot binary
+(`/Applications/Godot.app/...` is a macOS path). No code changed here, so nothing was owed, but do
+not read "docs only" as "verified". **A desktop session CAN run them; the fast five were run on
+2026-09-09** — see the top of this page.
 
 **All four Phase 0 decisions were answered the same day, and Phase 1 was written** — see the
 section directly below.

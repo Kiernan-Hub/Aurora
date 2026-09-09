@@ -2,7 +2,7 @@ extends Node
 
 class_name AuroraDirector
 
-# Schedules and runs the aurora borealis: roughly every 60 minutes of CUMULATIVE playtime,
+# Schedules and runs the aurora borealis: every 30 minutes of CUMULATIVE playtime,
 # and only once the sky is actually night, three curtains of colour fade up across SkyBackdrop
 # for ~45 seconds and fade back out. The first one earns an achievement (not wired yet).
 #
@@ -16,16 +16,31 @@ class_name AuroraDirector
 #     7500px, so its DURATION depends on how fast the player is moving -- 10.0s at MAX_SPEED,
 #     nearly a minute during the ramp. This is measured in seconds, so it lasts what it says
 #     at any speed, in any run, and needs no minimum-run gate at all.
-#   * Nothing is suppressed and nothing is locked. Jumping, spawning, coins, obstacles and
-#     chasms all carry on exactly as they were. The player can ignore it entirely.
+#   * Nothing is suppressed and nothing is locked YET. Jumping, spawning, coins, obstacles and
+#     chasms all carry on exactly as they were, and the player can ignore it entirely. THE CALM
+#     BAND CHANGES THE LAST TWO OF THOSE and is not built -- see below.
 #
-# WHY IT MUST NEVER ARM TERRAIN, and this is the load-bearing constraint on the whole feature.
+# THE CALM BAND IS IN SCOPE, OWNER DECISION 2026-09-09, AND IT IS NOT BUILT. For the duration of
+# an aurora the plan is that obstacles stop spawning and chasms are removed, so the player can
+# look up without dying -- docs/development/aurora_borealis.md, "The calm". Until that phase
+# lands, every line above stays literally true and this file touches no terrain at all.
+#
+# WHAT THAT PHASE MUST OBEY, and it is the load-bearing constraint on the whole feature.
 # CLAUDE.md: get_terrain_height must stay pure in (session_seed, world_x), with EXACTLY ONE
-# permitted runtime input -- lake_segment_index -- and `arm_lake()` is its only writer, write-
-# once and write-ahead so arming can only extend the height field. Chunk visuals, collision,
-# player tilt and the debug HUD all sample that field independently. A second set piece that
-# shaped ground would be a second writer on that invariant. Sky-only is what keeps
-# terrain_generator.gd out of this feature's diff entirely, and it is not a preference.
+# permitted runtime input today -- lake_segment_index -- and `arm_lake()` is its only writer,
+# write-once and write-ahead so arming can only ever EXTEND the height field. Chunk visuals,
+# collision, player tilt and the debug HUD all sample that field independently, so a range that
+# moved after a sample would make them disagree inside one frame.
+#
+# The two halves of the calm are therefore NOT equally risky, and the plan splits them:
+#
+#   * NO OBSTACLES is free. Obstacles are spawned NODES, not terrain -- ObstacleSpawner already
+#     skips a slot on is_lake_world_x, and the calm adds one more term to that same line. It
+#     touches get_terrain_height not at all.
+#   * NO CHASMS is terrain, and it is the part that needs care. A second write-once/write-ahead
+#     range is one way; only starting over a stretch that is ALREADY chasm-free -- which is
+#     queryable, since is_chasm_segment_index() is a pure function -- is the other, and it adds
+#     no writer whatsoever. That choice is open and is recorded in the plan, not here.
 #
 # Division of labour, matching the lake exactly. This file owns WHEN and the state machine;
 # SkyBackdrop owns the look; BiomeDirector owns what time of day it is; SaveStore owns the
@@ -39,14 +54,18 @@ class_name AuroraDirector
 # Default process_mode (INHERIT), so this freezes on every menu for free -- the aurora cannot
 # advance while the game is paused, and the playtime clock it reads stops for the same reason.
 
-# Cumulative playtime between auroras. The count of completed auroras doubles as the index of
-# the next threshold, so this is a plain multiple rather than a running deadline that could
-# drift or be lost -- the same trick LAKE_INTERVAL_SECONDS uses, and it is what makes an
-# unspent threshold stay owed rather than being skipped.
+# Cumulative playtime BETWEEN SIGHTINGS. Owner decision 2026-09-09: 30 minutes, half the 60
+# this file first shipped with. The lake is 20, so the aurora is not "three times the lake" --
+# it is the next step up from it, and rarity here comes from the night gate as much as the
+# clock, since a due aurora waits for a dark sky before it can start.
 #
-# Three times the lake's twenty minutes, and that ratio is the design: the lake is a set piece
-# you learn the cadence of, this is meant to be a thing players mention seeing.
-const AURORA_INTERVAL_SECONDS: float = 3600.0
+# NOT `(aurora_count + 1) * INTERVAL`, which is what LAKE_INTERVAL_SECONDS does and what this
+# file did until the branches were reconciled. That device is safe for the lake only because
+# frozen_lake_count and total_playtime_seconds were born together at v3; the aurora lands in
+# saves that already hold hours, so a multiple is retroactively owed many times over and pays
+# out back to back until the count catches up. The schedule is a stored deadline instead --
+# SaveStore.next_aurora_due_seconds carries the full reasoning.
+const AURORA_INTERVAL_SECONDS: float = 1800.0
 
 # How long the ribbons hold at full strength, and how long they take to arrive and leave.
 #
@@ -78,14 +97,14 @@ const AURORA_FADE_SECONDS: float = 8.0
 # shoulders for free: the aurora cannot begin while the sky is still on its way down.
 #
 # WHAT IT COSTS, and it is the same shape of cost LAKE_MIN_RUN_TIME already buys: the cadence
-# is really "the first night biome after 60 minutes of playtime", not strictly every 60
+# is really "the first night biome after 30 minutes of playtime", not strictly every 30
 # minutes. The arc is ~13.7 minutes, so night comes around within one cycle of the threshold
 # being crossed. It also makes the event rarer, which is the goal, and it guarantees the
 # starfield is up underneath the ribbons, which is the composition they were designed for.
 const NIGHT_THRESHOLD: float = 0.8
 
 # Playtest override for AURORA_INTERVAL_SECONDS. Any value > 0 replaces it, so an aurora can be
-# reached in seconds instead of an hour.
+# reached in seconds instead of half an hour.
 #
 # Plain var, not @export, like every other knob in this project: an exported float serialises
 # into main.tscn and ships silently, which is the world_rebase_enabled regression exactly
@@ -108,10 +127,11 @@ var debug_aurora_ignore_night: bool = false
 @export var biome_director_path: NodePath = NodePath("../BiomeDirector")
 @export var sky_backdrop_path: NodePath = NodePath("../SkyBackdrop")
 
-# ONE AURORA PER RUN, MAXIMUM. DONE is terminal, exactly as the lake's is, and for the same
-# reason: the cumulative counter only advances on completion, so a threshold crossed but not
-# spent is still owed and the next run is immediately due. Making it repeat would mean
-# re-entering IDLE, which is a design change, not a bug fix.
+# ONE AURORA PER RUN, MAXIMUM. DONE is terminal, exactly as the lake's is, and nothing is lost
+# by it: the deadline only moves in finish_aurora(), so a deadline crossed in a run that ended
+# early is still crossed, and the next run is immediately due. Making it repeat within a run
+# would mean re-entering IDLE, which is a design change, not a bug fix -- and it is also what
+# keeps a future calm band's terrain reservation write-once for the life of a scene.
 enum Phase { IDLE, ACTIVE, DONE }
 
 signal aurora_started
@@ -161,6 +181,7 @@ func _ready() -> void:
 		return
 
 	player.died.connect(_on_player_died)
+	schedule_if_unscheduled()
 
 
 func _physics_process(delta: float) -> void:
@@ -177,8 +198,11 @@ func _physics_process(delta: float) -> void:
 			pass
 
 
+# DELIBERATELY IGNORES debug_aurora_interval_override. Both callers WRITE a deadline to disk, and
+# a playtest value must never land in a real save. The override is a read-side bypass instead --
+# see is_aurora_due().
 func get_interval_seconds() -> float:
-	return debug_aurora_interval_override if debug_aurora_interval_override > 0.0 else AURORA_INTERVAL_SECONDS
+	return AURORA_INTERVAL_SECONDS
 
 
 # Fade in, hold, fade out. One ramp, and EVERY cosmetic piece of this feature reads it -- ribbon
@@ -203,26 +227,61 @@ func get_total_seconds() -> float:
 
 # Total playtime including the part of this run that has not been banked yet.
 #
-# NOT main_node.elapsed_time, and the 2026-08-24 review names this file's future self as the
-# reason get_unbanked_seconds() exists. GameManager.bank_playtime() fires on every PLAYING ->
-# not-PLAYING transition, which on Android includes every notification and app switch -- so
-# adding the whole run on top of the saved total double-counts the banked part and compounds
-# once per pause. The lake shipped that way: three pauses at 3/6/9 minutes credited +18
-# phantom minutes. Asking GameManager does not bank, so this is free to call every frame.
+# THE ARITHMETIC LIVES IN GameManager and this is a wrapper, identical in shape to
+# FrozenLakeDirector's. It was computed here until the branches were reconciled, which made two
+# copies of a sum whose wrong version -- the saved total alone, stale by the whole unbanked run
+# -- silently reschedules a set piece. GameManager.get_total_playtime_seconds() carries the full
+# reasoning, and get_unbanked_seconds() next to it carries why the unbanked part cannot be
+# main_node.elapsed_time: bank_playtime() fires on every PLAYING -> not-PLAYING transition,
+# which on Android is every notification and app switch, so adding the whole run double-counts
+# the banked part. The lake shipped that way -- three pauses at 3/6/9 minutes credited +18
+# phantom minutes.
 #
-# The fallback when GameManager is missing is the full elapsed time, which is right for the
-# same reason: with nothing banking, none of the run is banked.
+# WHAT STAYS HERE IS THE MISSING-GameManager CASE, because an absent node cannot answer for
+# itself. The fallback is the full elapsed time, which is right for the same reason the sum is:
+# with nothing banking, none of the run is banked.
+#
+# Still free to call every physics frame -- asking GameManager reads two floats and banks nothing.
 func get_total_playtime_seconds() -> float:
 	var game_manager: GameManager = main_node.game_manager
-	var unbanked_seconds: float = main_node.elapsed_time
 	if game_manager != null:
-		unbanked_seconds = game_manager.get_unbanked_seconds()
-	return services.save_store.total_playtime_seconds + unbanked_seconds
+		return game_manager.get_total_playtime_seconds()
+	return services.save_store.total_playtime_seconds + main_node.elapsed_time
 
 
+# Sets the deadline if the save has never carried one. THE ONLY WRITER of
+# next_aurora_due_seconds besides finish_aurora(), and it runs at _ready() for a reason: at
+# scene load nothing of this run is banked yet, so the saved total IS the cumulative total, and
+# scheduling from it needs no unbanked term. It is also after the headless skip, so no gate ever
+# writes a deadline into the developer's save.dat.
+#
+# Persisted immediately rather than left in memory. Without the write, every launch would
+# re-derive a LATER deadline from a larger playtime and the aurora would recede forever.
+func schedule_if_unscheduled() -> void:
+	if services.save_store.next_aurora_due_seconds >= 0.0:
+		return
+	services.save_store.next_aurora_due_seconds = \
+		services.save_store.total_playtime_seconds + get_interval_seconds()
+	services.save_store.save_to_disk()
+
+
+# A NEGATIVE DEADLINE IS NOT DUE. That is the unscheduled sentinel, and answering true on it
+# would fire an aurora on the first frame of a save that has never been scheduled -- exactly the
+# backlog this design removes. schedule_if_unscheduled() normally makes this unreachable; it
+# stays because reset_progress() can set the sentinel mid-run, after _ready() has already gone.
 func is_aurora_due() -> bool:
-	var next_threshold: float = float(services.save_store.aurora_count + 1) * get_interval_seconds()
-	return get_total_playtime_seconds() >= next_threshold
+	# THE OVERRIDE BYPASSES THE STORED DEADLINE RATHER THAN REWRITING IT, for two reasons that
+	# both arrived with the deadline. Rewriting would persist a playtest cadence into a real
+	# save; and it would not even work, because a save scheduled hours of playtime ago is still
+	# waiting on that number, so shortening the interval changes nothing. Measured from the start
+	# of THIS run instead, so an aurora arrives <override> seconds into every run and nothing
+	# reaches disk. One per run still applies -- the phase machine ends in DONE either way.
+	if debug_aurora_interval_override > 0.0:
+		return main_node.elapsed_time >= debug_aurora_interval_override
+	var due_seconds: float = services.save_store.next_aurora_due_seconds
+	if due_seconds < 0.0:
+		return false
+	return get_total_playtime_seconds() >= due_seconds
 
 
 # Whether the sky is somewhere it is sane to start from. A rejected frame simply retries on the
@@ -255,6 +314,15 @@ func finish_aurora() -> void:
 	# finish_lake()'s set_lake_ice_blend(0.0).
 	push_blend(0.0)
 	services.save_store.aurora_count += 1
+	# PUSHED FORWARD FROM get_total_playtime_seconds(), NEVER FROM THE BARE SAVED FIELD, and
+	# this is the one line where that distinction bites hardest. total_playtime_seconds is the
+	# BANKED total, and bank_playtime() only fires on a PLAYING -> not-PLAYING transition -- so
+	# in a long uninterrupted session it is stale by the entire run. Scheduling from it after a
+	# 40-minute unbroken run writes a deadline already 10 minutes in the PAST, and the next
+	# aurora fires as soon as the sky is dark again. Test this path on a run with no pause in it;
+	# that is the only case that exposes it.
+	services.save_store.next_aurora_due_seconds = \
+		get_total_playtime_seconds() + get_interval_seconds()
 	services.save_store.save_to_disk()
 	aurora_finished.emit(services.save_store.aurora_count)
 
