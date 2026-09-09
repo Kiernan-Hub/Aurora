@@ -460,6 +460,18 @@ func get_unbanked_seconds() -> float:
 # itself. FrozenLakeDirector.get_total_playtime_seconds() shows the shape and carries the reason
 # the fallback is what it is.
 #
+# NO HEADLESS GUARD HERE, DELIBERATELY -- IT BELONGS IN THE CALLER. `services` resolves fine under
+# `--headless --script` (only bank_playtime() early-returns), so this answers a gate with however
+# many hours are in the DEVELOPER'S OWN save.dat. That is the apply_upgrades() failure (48/48 -> 8)
+# with a different field.
+#
+# Guarding here would not actually fix it, which is why it is not done: a director that reached
+# this call has already built its state machine and connected its signals inside a gate, and the
+# lake's skip exists to stop it injecting terrain, not to stop it reading a number. So every
+# playtime-gated consumer hard-skips headless as the FIRST statement in its _ready(), the way
+# FrozenLakeDirector does. AuroraDirector owes the same -- docs/development/aurora_borealis.md,
+# "The headless contract". This helper is now shared, so that rule travels with each new caller.
+#
 # Free to call every physics frame: it reads two floats and banks nothing.
 func get_total_playtime_seconds() -> float:
 	if services == null:

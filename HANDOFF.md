@@ -15,7 +15,7 @@ shipped and working. Gameplay art is still placeholder rects.
 > **Branch: `claude/aurora-borealis-design-1rpnt8`.** Everything below this block predates the
 > aurora and is background; none of it is blocking.
 >
-> **The plan is `docs/development/aurora_borealis.md` (779 lines) and it is finished.** Read it
+> **The plan is `docs/development/aurora_borealis.md` (800 lines) and it is finished.** Read it
 > in full before touching aurora code. It is not a sketch — every open question the old stub
 > carried is closed by owner decision, and it has been through **three rounds of external review
 > that found real errors**, each corrected in place with the evidence. Do not re-litigate its
@@ -30,6 +30,29 @@ shipped and working. Gameplay art is still placeholder rects.
 > | 2 — shader + `AuroraSky` + wash + camera, behind one debug knob | **NEXT** |
 > | 3–8 | see the plan's Phases table |
 >
+> ### Audited 2026-09-09 — phase 1 and the plan both hold
+>
+> A read-only pass over phase 1 and every load-bearing citation in the plan. **Phase 1 is correct:**
+> one site computes saved + unbanked now, and the one theoretical divergence (`GameManager.services`
+> null while the lake's is not) is unreachable — both resolve the same autoload and
+> `frozen_lake_director.gd:123` disables the director if its own is null.
+>
+> **Every plan number re-checked against the code was exact** — `SPEED_BOOST_SPEED` 1000, segments
+> 480/640/960, `CHASM_WINDOW_SEGMENT_COUNT` 56, `obstacle_spawner.gd:187`, 75000/24000, the palette
+> data, all four `motion_scale` values, `LAKE_HORIZON_FRACTION` 0.56, all three `camera.zoom`
+> readers, and the free CanvasLayer slots at −190/−45. **This round found no wrong number**, which
+> is the first time that has been true. Three fixes came out of it, all in the commit with this
+> note:
+>
+> - **The dark-biome rule's justification was wrong** and is corrected in the plan. `sky_top` and
+>   `star_density` do not draw the boundary — `arctic_dawn` is darker than `violet_dusk` on one and
+>   level on the other. The three-palette decision is unchanged; only the reasoning moved, and
+>   `arctic_dawn` is now recorded as the cheap lever if the dark window proves too rare.
+> - **`GameManager.get_total_playtime_seconds()` has no headless guard of its own** and now says so.
+>   It reads the developer's `save.dat` in a gate; it is safe only because its callers hard-skip
+>   headless first thing in `_ready()`. **Phase 5 owes that skip**, and the helper is shared now.
+> - `project.godot` had been stripped again — see below.
+>
 > ### What to do next
 >
 > 1. ~~**Run `./scripts/check.sh` against `02964b2`**~~ — **DONE 2026-09-06 on the owner's Mac,
@@ -37,13 +60,36 @@ shipped and working. Gameplay art is still placeholder rects.
 >    merged in. `git status` clean and `project.godot` / the scenes verified untouched after each
 >    run. Phase 1 is the plumbing refactor only — it touches no physics, collision, spawning or
 >    visual code — so **the fast five is its entire gate debt**; the freeze/floor-flicker/chasm
->    tier and the three windowed visual gates are *not* owed for it. `lake_suppression` is the
->    meaningful pass, since phase 1 rewired how the lake asks for playtime.
+>    tier and the three windowed visual gates are *not* owed for it. ~~`lake_suppression` is the
+>    meaningful pass, since phase 1 rewired how the lake asks for playtime.~~
 >
->    **The rule that produced this item still stands, and phase 2 will owe gates again.** The
->    sessions doing this work run in a Linux container with **no Godot binary** — the project's
->    Godot is a macOS app bundle — so *every* gate in this feature is owed on the owner's machine.
->    Never write "gates pass" for aurora work without having actually run them.
+>    **THAT LAST CLAIM WAS BACKWARDS — corrected 2026-09-09.** `lake_suppression` is the gate that
+>    structurally *cannot* see phase 1. `FrozenLakeDirector` hard-skips headless, so the probe pins
+>    a lake with `debug_force_lake_segment_index` and never runs the director at all — its own
+>    header says so ("no probe can reach a NATURALLY armed lake"), and `check_lake_arming` tests
+>    `TerrainGenerator.arm_lake()`, the geometry writer, not the playtime decision. **No headless
+>    gate reaches `get_total_playtime_seconds()`.** The fast five going green proves phase 1 broke
+>    nothing else; it proves nothing whatever about phase 1 itself, which was verified by reading.
+>
+>    **Deliberately left uncovered.** It is three lines of pure arithmetic over two floats, and
+>    covering it means standing up a `GameManager` with a fake save — real work against
+>    *"twelve maintained checks, and only twelve"*, for a function whose failure mode is visible
+>    the first time a set piece arrives early. This is the same gate-shape blind spot the coin
+>    bug taught: **know which claims a green run is not making.** Phase 5 inherits it — the
+>    aurora's scheduling has no headless gate either, by the same mechanism, which is why the plan
+>    puts that weight on the phase 7 manual pass.
+>
+>    **The rule that produced this item still stands, and phase 2 will owe gates again.** Never
+>    write "gates pass" for aurora work without having actually run them.
+>
+>    **CORRECTED 2026-09-08: "the session cannot run gates" is not a property of this work, it is
+>    a property of where the session happens to be.** This page previously said the sessions doing
+>    this work run in a Linux container with no Godot binary, so every gate was owed on the owner's
+>    machine. That is true of a container session and false of a desktop one — a session running on
+>    the owner's Mac finds Godot at the documented path and ran the fast five there in 25s the day
+>    this note was written. So: **check for the binary before assuming the debt has to be deferred**
+>    (`ls /Applications/Godot.app/Contents/MacOS/Godot`), and discharge in-session whatever can be.
+>    This matters most for phase 3, which owes seven gates.
 > 2. **Phase 2 is the live step now.** Deliberately look-only: no scheduling, no terrain, nothing
 >    gameplay can see. Its debug knob gets its `shipping_values_check` row **in the same commit**.
 >    Not started, and it needs an explicit "go" like every other phase.
@@ -76,8 +122,25 @@ shipped and working. Gameplay art is still placeholder rects.
 > push state — this page has gone stale on exactly that claim four times now, and the claim
 > expires the moment anybody commits.
 
-**The working tree is clean and `./scripts/check.sh` passes all five gates in 25s** (verified
-2026-09-06 on `245ad80`). Everything below is a loose end, not a break.
+**The working tree is clean and `./scripts/check.sh` passes all five gates** (re-verified
+2026-09-09, 5/5, on the commit that carries this note). Everything below is a loose end, not a break.
+
+> ### `project.godot` was stripped again between 2026-09-06 and 2026-09-08 — caught, restored
+>
+> Found by an audit of the aurora step. Something saved project settings after the 09-06 green
+> run and dropped all four pins that equal an engine default — `viewport_width`,
+> `viewport_height`, `physics_ticks_per_second`, `physics_interpolation` — plus **every comment
+> in the file**. Nothing observable changed, which is exactly what makes it dangerous:
+> `physics_ticks_per_second` is level geometry, and the comments were the only record of why any
+> of it is pinned.
+>
+> **`shipping_values_check` failed on all four, by name, with the fix in its own output.** The
+> text-scan gate built on 2026-08-27 did precisely the job it was built for. `git checkout --
+> project.godot` restored it and the fast five went green.
+>
+> **Scene files still have no such cover.** `git status` showed `project.godot` as the only
+> modified file this time, so nothing else was touched — but that was verified, not assumed, and
+> the standing rule is unchanged: **`git status` after ANY engine run.**
 
 > ## THE REVIEW LISTS ARE CLOSED — 2026-09-03
 >

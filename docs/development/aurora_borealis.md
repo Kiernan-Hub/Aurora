@@ -76,9 +76,30 @@ retrying `try_arm()` until it gets a clean frame, and it costs nothing but patie
 
 **Eligible: `violet_dusk`, `twilight_blue`, `starlit_night`.** They are `BIOME_CYCLE` indices 5, 6
 and 7 — already adjacent, because the eight are authored as a day passing and only the entry point
-rotates. `sky_top` runs 0.46 → 0.26 → 0.20 across them against `pale_morning`'s 0.72, and
-`star_density` 0.30 → 0.85 → 1.00, so they are the dark end of the arc by the data and not by
-taste.
+rotates. `sky_top.r` runs 0.46 → 0.26 → 0.20 across them against `pale_morning`'s 0.72, and
+`star_density` 0.30 → 0.85 → 1.00.
+
+**Those two fields do not draw the BOUNDARY, and an earlier version of this file claimed they did**
+("the dark end of the arc by the data and not by taste" — corrected 2026-09-08). Two of the three
+are unambiguous: `twilight_blue` and `starlit_night` sit well clear of everything else in the arc.
+**`violet_dusk` is the one that is not.** `arctic_dawn` is `sky_top.r` **0.40** against its 0.46
+and `star_density` **0.28** against its 0.30 — darker on one field, level on the other — and
+`sunset_rose` is `sky_top.r` **0.42**. So the cut between the last eligible palette and the first
+ineligible one is not a reading of these numbers, whatever the run 0.46 → 0.26 → 0.20 suggests
+about the three taken together.
+
+**It is drawn by direction, and it is a taste call.** The arc runs toward morning, so the slots
+past `starlit_night` are where the sky starts getting *lighter* again — curtains fading up into a
+sunrise is a different scene from curtains over a night, whatever the channel values say. Three
+palettes is the conservative read of that, and it is the owner's to change.
+
+**Which makes `arctic_dawn` the known lever rather than an oversight.**
+`get_cycle_base_palette()` posmods (`biome_director.gd:410`), so `BIOME_CYCLE` **slot** 0 follows
+slot 7. Read that as the slot and not as absolute `cycle_index` 0, which is `first_light` and
+outside the cycle entirely — the distinction CLAUDE.md flags in its own right. Admitting the slot
+takes the eligible stable span from 201,000 px to **276,000 px** and costs nothing structurally.
+If "waits for a dark biome" turns out too rare in play — an open question at the end of this file —
+that is the cheap first move, ahead of the `push_palette` sky override.
 
 **A transition between two of those three is allowed. A transition toward a bright one is the
 deadline.** This is not a preference, it is forced:
@@ -677,7 +698,7 @@ drives no-input traversals from before the near boundary to past the far one.
 > **A BOOSTED TRAVERSAL PROVES NOTHING ON ITS OWN, AND THIS IS THE TRAP THIS FILE ALMOST SHIPPED.**
 > An earlier draft named "survives a no-input crossing at `SPEED_BOOST_SPEED`" as *the* safety test.
 > It is not a safety test. A boosting player is already immune to both hazards the calm removes:
-> `obstacle.gd:36` returns early on `player.is_boosting`, so obstacles do not touch them, and
+> `obstacle.gd:37` returns early on `player.is_boosting`, so obstacles do not touch them, and
 > `player.gd:355`/`540` keep the grounded gravity-free model on over a void, so they skim straight
 > across a chasm. **That test passes on a band with every chasm and every obstacle still in it** —
 > the exact "passes with the feature deleted" failure the eighteen archived probes are a monument
