@@ -1,5 +1,16 @@
 # Handoff
 
+## Latest — slice 7: Aurora completion achievement
+
+The first complete, non-preview encounter now grants `under_the_aurora` (“Under the Aurora”).
+`AchievementManager` listens to the existing `aurora_finished` signal and remains the only
+achievement writer; AuroraDirector has no achievement dependency. The existing toast displays it,
+and the open v3 achievement dictionary needs no version bump.
+
+The isolated lifecycle probe proves preview, partial and death cases grant nothing, a real finish
+persists/emits once, and repeated finish is idempotent: 152,095 assertions pass. Fast functional
+gates pass except the three intentional TEMP preview values. No gallery or reward was added.
+
 ## Latest — slice 6: snow gathers and releases
 
 The existing snow emitter now composes biome, glide and Aurora into one bounded density target.

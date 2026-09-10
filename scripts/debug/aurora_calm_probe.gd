@@ -17,8 +17,10 @@ var assertions: int = 0
 
 class MemorySaveStore extends SaveStore:
 	var writes: int = 0
+	var saved_achievements: Dictionary[String, bool] = {}
 	func save_to_disk() -> void:
 		writes += 1
+		saved_achievements = achievements.duplicate()
 
 
 func _init() -> void:
@@ -227,6 +229,10 @@ func make_case(preview: bool) -> Dictionary:
 	memory_services.save_store = save
 	director.services = memory_services
 	main.game_manager.services = memory_services
+	var achievements: AchievementManager = main.get_node("AchievementManager") as AchievementManager
+	# _ready() connected the triggers already; replace only the persistence target before this
+	# headless probe deliberately drives completion signals.
+	achievements.services = memory_services
 	var night: ControlledNight = ControlledNight.new()
 	night.debug_biome_seconds = 0.0
 	director.biome_director = night
@@ -241,7 +247,8 @@ func make_case(preview: bool) -> Dictionary:
 	director.lake.set_physics_process(false)
 	if not director.player.died.is_connected(director._on_player_died):
 		director.player.died.connect(director._on_player_died)
-	return {"main": main, "director": director, "night": night, "services": memory_services, "save": save}
+	return {"main": main, "director": director, "night": night, "services": memory_services,
+		"save": save, "achievements": achievements}
 
 
 func close_case(context: Dictionary) -> void:
@@ -341,6 +348,8 @@ func check_entry_failures() -> void:
 			"Death left active Aurora presentation")
 		expect((context["save"] as MemorySaveStore).aurora_count == 0 \
 			and (context["save"] as MemorySaveStore).next_aurora_due_seconds == 0.0, "Death changed due progress")
+		expect(not (context["save"] as MemorySaveStore).achievements.get(
+			AchievementManager.UNDER_THE_AURORA, false), "Partial/dead encounter awarded achievement")
 		await close_case(context)
 
 
@@ -350,9 +359,14 @@ func check_live_encounter(preview: bool) -> void:
 	var director: AuroraDirector = context["director"]
 	var terrain: TerrainGenerator = director.terrain
 	var save: MemorySaveStore = context["save"]
+	var achievements: AchievementManager = context["achievements"]
 	var counts: Array[int] = [0, 0]
+	var achievement_grants: Array[int] = [0]
 	director.aurora_started.connect(func() -> void: counts[0] += 1)
 	director.aurora_finished.connect(func(_total: int) -> void: counts[1] += 1)
+	achievements.achievement_granted.connect(func(id: String, _name: String) -> void:
+		if id == AchievementManager.UNDER_THE_AURORA:
+			achievement_grants[0] += 1)
 	# Real existing nodes, far beyond ordinary spawn lookahead, must push entry ahead.
 	director.obstacle_spawner.spawn_obstacle(20000.0)
 	var old_obstacle: Node2D = director.obstacle_spawner.active_obstacles.back()
@@ -430,9 +444,14 @@ func check_live_encounter(preview: bool) -> void:
 		"Encounter ran past recovery margin")
 	expect(main.game_manager.coin_count > coins_before + main.game_manager.TRICK_COIN_REWARD, "Coins did not keep spawning/collecting")
 	expect(save.aurora_count == (0 if preview else 1) and counts[1] == (0 if preview else 1), "Completion credit mismatch")
+	expect(bool(save.achievements.get(AchievementManager.UNDER_THE_AURORA, false)) == not preview,
+		"Preview/completion achievement mismatch")
+	expect(achievement_grants[0] == (0 if preview else 1), "Achievement grant signal mismatch")
 	if preview:
 		expect(save.next_aurora_due_seconds == 77.0, "Preview advanced deadline")
 	else:
+		expect(save.saved_achievements.get(AchievementManager.UNDER_THE_AURORA, false),
+			"Completed Aurora achievement was absent from the saved snapshot")
 		expect(absf(save.next_aurora_due_seconds - director.get_total_playtime_seconds() - 1800.0) < 0.1,
 			"Completion deadline used the wrong clock")
 		if DisplayServer.get_name() != "headless":
@@ -440,6 +459,7 @@ func check_live_encounter(preview: bool) -> void:
 				"Native completion did not bank the clock before saving")
 	director.finish_aurora()
 	expect(save.aurora_count == (0 if preview else 1), "Repeated finish double-credited")
+	expect(achievement_grants[0] == (0 if preview else 1), "Repeated finish re-granted achievement")
 	expect(director.blocks_lake_arming(), "Lake enters during recovery")
 	# Exit far enough to restore normal admission and release scheduling arbitration.
 	director.set_physics_process(false)

@@ -1,5 +1,19 @@
 # Aurora borealis — the plan and the state
 
+## Slice 7 — completion achievement implemented
+
+The first complete, non-preview Aurora now grants the permanent `under_the_aurora` achievement,
+displayed as “Under the Aurora.” `AchievementManager` remains the only writer: it listens to the
+director's existing `aurora_finished` signal, while the director stays unaware of achievements.
+The saved flag, not `aurora_count`, is the idempotence gate, so later sightings do not re-award it.
+No save-version bump, gallery, reward payload or new UI was added; the existing toast handles it.
+
+`aurora_calm_probe.gd` now injects an in-memory save into the achievement manager before manually
+driving headless completion. It proves preview, partial and death cases award nothing; real
+completion grants once, emits once and includes the flag in the saved snapshot; repeated finish
+does not re-grant. The full probe passes 152,095 assertions. Fast functional gates pass except the
+three intentional TEMP preview values.
+
 ## Slice 6 — bounded snow choreography implemented
 
 Aurora now gathers the existing snowfall toward one broad midpoint crest and releases it through

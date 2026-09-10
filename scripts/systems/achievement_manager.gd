@@ -3,8 +3,7 @@ extends Node
 class_name AchievementManager
 
 # The one place in the project that decides an achievement has been earned, and the only thing
-# that writes SaveStore.achievements. "Still Water" -- the first frozen lake -- is the first and
-# currently only entry.
+# that writes SaveStore.achievements. Set-piece directors emit completion signals; this listens.
 #
 # WHY THIS IS ITS OWN NODE AND NOT PART OF GameManager OR FrozenLakeDirector. Two reasons, and
 # the second is the load-bearing one.
@@ -24,7 +23,7 @@ class_name AchievementManager
 # ADDING AN ACHIEVEMENT is two edits, both in this file: a row in ACHIEVEMENTS, and one
 # `.connect(...)` in connect_triggers() pointing at a signal the relevant system ALREADY emits.
 # If a system has no suitable signal, add the signal there -- do not add an achievement check
-# there. The aurora set piece planned as #2 is expected to land exactly this way.
+# there. The Aurora follows this rule through its existing `aurora_finished` signal.
 #
 # IT IS NOT A GameManager.State AND IT TOUCHES NO SCREEN. GameManager.set_state() remains the
 # only thing allowed near get_tree().paused or a screen's visibility (CLAUDE.md states it as a
@@ -45,17 +44,23 @@ const ACHIEVEMENTS: Dictionary = {
 	"still_water": {
 		"name": "Still Water",
 	},
+	"under_the_aurora": {
+		"name": "Under the Aurora",
+	},
 }
 
 const STILL_WATER: String = "still_water"
+const UNDER_THE_AURORA: String = "under_the_aurora"
 
 # Carries the display name as well as the id so the toast never has to know about this table.
 signal achievement_granted(id: String, display_name: String)
 
 @export var lake_director_path: NodePath = NodePath("../FrozenLakeDirector")
+@export var aurora_director_path: NodePath = NodePath("../AuroraDirector")
 
 var services: GameServices
 var lake_director: FrozenLakeDirector
+var aurora_director: AuroraDirector
 
 
 func _ready() -> void:
@@ -77,11 +82,16 @@ func connect_triggers() -> void:
 	lake_director = get_node_or_null(lake_director_path) as FrozenLakeDirector
 	if lake_director == null:
 		push_warning("AchievementManager: no FrozenLakeDirector at %s; 'Still Water' cannot be earned." % lake_director_path)
-		return
+	else:
+		# lake_finished carries the running total, which is deliberately NOT what gates this.
+		lake_director.lake_finished.connect(_on_lake_finished)
 
-	# lake_finished carries the running total, which is deliberately NOT what gates this. See
-	# _on_lake_finished.
-	lake_director.lake_finished.connect(_on_lake_finished)
+	aurora_director = get_node_or_null(aurora_director_path) as AuroraDirector
+	if aurora_director == null:
+		push_warning("AchievementManager: no AuroraDirector at %s; 'Under the Aurora' cannot be earned." % aurora_director_path)
+	else:
+		# Emitted only after a complete, non-preview encounter has advanced and saved progress.
+		aurora_director.aurora_finished.connect(_on_aurora_finished)
 
 
 func _on_lake_finished(_total_lakes: int) -> void:
@@ -90,6 +100,10 @@ func _on_lake_finished(_total_lakes: int) -> void:
 	# once. Counting would also re-fire it for anyone whose count is reset while their
 	# achievements are not, and mis-fire if a lake is ever completed without incrementing.
 	grant(STILL_WATER)
+
+
+func _on_aurora_finished(_total_auroras: int) -> void:
+	grant(UNDER_THE_AURORA)
 
 
 # The single entry point. Idempotent by design -- callers may fire it on every occurrence of
@@ -122,9 +136,9 @@ func is_unlocked(id: String) -> bool:
 
 # ================= A TRAP FOR WHOEVER ADDS ACHIEVEMENT #3 =================
 #
-# THIS FILE HAS NO HEADLESS GUARD, AND THAT IS ONLY SAFE BECAUSE OF WHAT ITS ONE TRIGGER IS.
-# FrozenLakeDirector hard-skips headless, so lake_finished can never fire in a gate and grant()
-# can never run there. There is also no per-frame work here to switch off.
+# THIS FILE HAS NO HEADLESS GUARD, AND THAT IS ONLY SAFE BECAUSE BOTH OF ITS TRIGGERS COME FROM
+# directors that hard-skip headless. Their maintained probes inject an in-memory SaveStore before
+# driving either completion signal explicitly. There is also no per-frame work here to switch off.
 #
 # THE MOMENT A TRIGGER IS ADDED THAT DOES RUN HEADLESS -- anything hung off score, coins,
 # distance or death, all of which the gates exercise for millions of frames -- THIS FILE STARTS
