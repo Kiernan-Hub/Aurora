@@ -1,5 +1,19 @@
 # Aurora borealis — the plan and the state
 
+## Slice 8 — sparse rear wisps implemented
+
+Three small tapered arcs now drift around the skater during the Aurora. They are code-built
+`Line2D`s placed before Player and TerrainGenerator, so every gameplay object structurally renders
+over them. Their immutable nine-point shapes are built once; each frame only position and alpha
+change as deterministic functions of the existing event clock. Edge fades hide the bounded travel
+wrap. There are no particles, textures, shaders, trail history, per-frame arrays or rebase state.
+
+The windowed gate checks draw order, child count, zero cleanup, paused-frame identity, visible
+clock-driven drift and an isolated 43/255 contribution at 1152×648 and 1440×648 across both night
+palettes. Full-composition captures are in `art_source/audits/aurora-wisps-slice/`. Owner motion and
+Android review remain owed; no foreground strand was added because crossing gameplay silhouettes
+would create the readability risk this behind-world construction avoids.
+
 ## Slice 7 — completion achievement implemented
 
 The first complete, non-preview Aurora now grants the permanent `under_the_aurora` achievement,

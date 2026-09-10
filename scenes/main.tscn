@@ -28,6 +28,7 @@
 [ext_resource type="Script" path="res://scripts/systems/aurora_director.gd" id="27_aurora"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_wash.gd" id="28_aurora_wash"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_blade_glow.gd" id="29_aurora_blade"]
+[ext_resource type="Script" path="res://scripts/systems/aurora_wisps.gd" id="30_aurora_wisps"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -109,6 +110,10 @@ script = ExtResource("13_snow")
 [node name="AuroraWash" type="CanvasLayer" parent="."]
 layer = -45
 script = ExtResource("28_aurora_wash")
+
+[node name="AuroraWisps" type="Node2D" parent="."]
+visible = false
+script = ExtResource("30_aurora_wisps")
 
 [node name="Player" parent="." unique_id=1995330198 instance=ExtResource("1")]
 position = Vector2(64, 136)

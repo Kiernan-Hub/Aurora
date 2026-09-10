@@ -36,6 +36,7 @@ var sky_backdrop: Node
 var aurora_wash: Node
 var blade_glow: Node
 var snow: Node
+var wisps: Node
 var main_node: Main
 var services: GameServices
 var is_headless: bool = false
@@ -77,6 +78,7 @@ func resolve_dependencies() -> bool:
 	aurora_wash = get_node_or_null("../AuroraWash")
 	blade_glow = get_node_or_null("../AuroraBladeGlow")
 	snow = get_node_or_null("../SnowDrift/SnowParticles")
+	wisps = get_node_or_null("../AuroraWisps")
 	main_node = get_parent() as Main
 	services = GameServices.resolve(self)
 	terrain = get_node_or_null("../TerrainGenerator") as TerrainGenerator
@@ -282,6 +284,8 @@ func push_blend(blend: float) -> void:
 		blade_glow.call("apply_aurora", blend, active_elapsed)
 	if snow != null and snow.has_method("apply_aurora"):
 		snow.call("apply_aurora", get_aurora_snow_blend(blend), active_elapsed)
+	if wisps != null and wisps.has_method("apply_aurora"):
+		wisps.call("apply_aurora", blend, active_elapsed)
 	if terrain != null:
 		terrain.set_aurora_ice_blend(blend)
 

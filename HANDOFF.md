@@ -1,5 +1,16 @@
 # Handoff
 
+## Latest — slice 8: sparse rear wisps
+
+Three small tapered `Line2D` arcs now drift near the skater, structurally behind Player,
+TerrainGenerator and every gameplay object. Shapes are immutable and built once; the existing
+Aurora clock changes only line position/alpha, with edge fading at the bounded wrap. No particles,
+textures, shaders, trail history, per-frame arrays or rebase state were added.
+
+The windowed gate proves draw order, cleanup, pause stability, drift and 43/255 isolated visibility
+at both widths/night palettes. Captures are in `art_source/audits/aurora-wisps-slice/`. Foreground
+wisps were deliberately skipped to protect pickup/player readability. Owner/device review is owed.
+
 ## Latest — slice 7: Aurora completion achievement
 
 The first complete, non-preview encounter now grants `under_the_aurora` (“Under the Aurora”).
