@@ -26,6 +26,7 @@
 [ext_resource type="Script" path="res://scripts/systems/background_strip.gd" id="25_strip"]
 [ext_resource type="Texture2D" uid="uid://csplkncwj3uke" path="res://assets/textures/background/ice_pano.png" id="26_pano"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_director.gd" id="27_aurora"]
+[ext_resource type="Script" path="res://scripts/systems/aurora_wash.gd" id="28_aurora_wash"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -103,6 +104,10 @@ layer = -50
 
 [node name="SnowParticles" type="GPUParticles2D" parent="SnowDrift"]
 script = ExtResource("13_snow")
+
+[node name="AuroraWash" type="CanvasLayer" parent="."]
+layer = -45
+script = ExtResource("28_aurora_wash")
 
 [node name="Player" parent="." unique_id=1995330198 instance=ExtResource("1")]
 position = Vector2(64, 136)

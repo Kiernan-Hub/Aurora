@@ -1,5 +1,20 @@
 # Aurora borealis — the plan and the state
 
+## Slice 4 — world light connection implemented
+
+The single Aurora ramp now drives two restrained world responses. `AuroraWash`, a code-built
+vertical gradient at `CanvasLayer -45`, lightly colors the ridges and background snow while
+remaining structurally behind the player, terrain, coins and every other gameplay object. The
+same ramp enters `TerrainGenerator.set_aurora_ice_blend()`, where it is composed with the existing
+biome/lake appearance in the one function that already owns ice tint, variance and gloss. It keeps
+the tile, cracks, rolling surface and deep-body contrast; there is no new shader or per-chunk clock.
+
+The windowed sky gate passes at 1152×648 and 1440×648 with the complete sky/wash/ice response,
+including zero-state restoration and layer/input checks. Captures are in
+`art_source/audits/aurora-world-slice/`. The fast gates pass except for the three intentional TEMP
+preview values. Owner motion/taste review and Android fill-rate testing remain required. Camera,
+snow choreography, blade/wisp atmosphere, wings/flight, achievement and sound remain separate.
+
 ## Slice 3 — live calm safety implemented
 
 This slice turns the foundation into the active event without adding camera, ice/world response,

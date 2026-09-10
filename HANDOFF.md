@@ -1,5 +1,19 @@
 # Handoff
 
+## Latest — slice 4: the light reaches the world
+
+Aurora's existing ramp now drives one `CanvasLayer -45` vertical wash and a composed ice response.
+The wash remains behind every gameplay object; the ice change stays inside
+`TerrainGenerator.refresh_ice_appearance()`, alongside biome and lake inputs. It adds no shader,
+timer, movement change or per-chunk state. The upper ice catches emerald/cyan while the deep body,
+tile, cracks and rolling terrain remain readable.
+
+The windowed sky gate passes at both widths with sky, wash and ice active, including restoration,
+draw-layer and input-transparency assertions. Fast gates pass except for the three intentional TEMP
+preview knobs. Captures are in `art_source/audits/aurora-world-slice/`. Owner/device review is still
+owed. Camera, snow, blade/wisp atmosphere, wings/flight, achievement and sound are still separate;
+camera/flight remain the highest bug-surface options and should not be bundled into this slice.
+
 ## Latest — slice 3: live calm safety is in
 
 The Aurora now reserves a write-ahead flat passage and enters it through a small lifecycle:

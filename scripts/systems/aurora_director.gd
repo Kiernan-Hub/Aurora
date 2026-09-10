@@ -33,6 +33,7 @@ var phase: Phase = Phase.IDLE
 var player: Player
 var biome_director: BiomeDirector
 var sky_backdrop: Node
+var aurora_wash: Node
 var main_node: Main
 var services: GameServices
 var is_headless: bool = false
@@ -71,6 +72,7 @@ func resolve_dependencies() -> bool:
 	player = get_node_or_null(player_path) as Player
 	biome_director = get_node_or_null(biome_director_path) as BiomeDirector
 	sky_backdrop = get_node_or_null(sky_backdrop_path)
+	aurora_wash = get_node_or_null("../AuroraWash")
 	main_node = get_parent() as Main
 	services = GameServices.resolve(self)
 	terrain = get_node_or_null("../TerrainGenerator") as TerrainGenerator
@@ -270,6 +272,10 @@ func finish_aurora() -> void:
 func push_blend(blend: float) -> void:
 	if sky_backdrop != null and sky_backdrop.has_method("apply_aurora"):
 		sky_backdrop.call("apply_aurora", blend, active_elapsed)
+	if aurora_wash != null and aurora_wash.has_method("apply_aurora"):
+		aurora_wash.call("apply_aurora", blend, active_elapsed)
+	if terrain != null:
+		terrain.set_aurora_ice_blend(blend)
 
 
 func _on_player_died() -> void:

@@ -344,6 +344,12 @@ func report() -> void:
 func check_aurora() -> void:
 	var director: AuroraDirector = main.get_node("AuroraDirector")
 	var biome: BiomeDirector = main.get_node("BiomeDirector")
+	var wash: CanvasLayer = main.get_node_or_null("AuroraWash") as CanvasLayer
+	if wash == null or wash.layer != -45:
+		aurora_failures.append("Aurora wash is missing or not structurally behind gameplay at layer -45")
+	elif wash.get_node_or_null("Wash") == null \
+			or (wash.get_node("Wash") as TextureRect).mouse_filter != Control.MOUSE_FILTER_IGNORE:
+		aurora_failures.append("Aurora wash is missing its input-transparent full-screen draw")
 	director.set_physics_process(false)
 	var original_size: Vector2i = root.size
 	for width: int in [1152, 1440]:
@@ -351,6 +357,9 @@ func check_aurora() -> void:
 		for palette: BiomePalette in [BiomeDirector.PALETTE_TWILIGHT_BLUE, BiomeDirector.PALETTE_STARLIT_NIGHT]:
 			backdrop.apply_palette(palette)
 			director.push_blend(0.0)
+			if not is_zero_approx(terrain.aurora_ice_blend) \
+					or (wash != null and (wash.get_node("Wash") as TextureRect).visible):
+				aurora_failures.append("Aurora world response does not restore its zero state")
 			var clean: Image = await capture_aurora_frame()
 			# Visual envelope only; safe-entry lifecycle is exercised by aurora_calm_probe.
 			director.phase = AuroraDirector.Phase.ACTIVE
@@ -359,6 +368,9 @@ func check_aurora() -> void:
 			for elapsed: float in [0.0, 4.0, 8.0, 30.0, 53.0, 57.0, 61.0]:
 				director.active_elapsed = elapsed
 				director.push_blend(director.get_aurora_blend())
+				if elapsed == 30.0 and (terrain.aurora_ice_blend < 0.99 \
+						or (wash != null and not (wash.get_node("Wash") as TextureRect).visible)):
+					aurora_failures.append("Aurora crest does not reach both wash and ice")
 				var frame: Image = await capture_aurora_frame()
 				var peak: int = measure_peak(clean, frame)
 				if (elapsed == 0.0 or elapsed == 61.0) and peak != 0:
