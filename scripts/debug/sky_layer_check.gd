@@ -346,6 +346,7 @@ func check_aurora() -> void:
 	var biome: BiomeDirector = main.get_node("BiomeDirector")
 	var wash: CanvasLayer = main.get_node_or_null("AuroraWash") as CanvasLayer
 	var blade_glow: Node2D = main.get_node_or_null("AuroraBladeGlow") as Node2D
+	var snow: GPUParticles2D = main.get_node_or_null("SnowDrift/SnowParticles") as GPUParticles2D
 	if wash == null or wash.layer != -45:
 		aurora_failures.append("Aurora wash is missing or not structurally behind gameplay at layer -45")
 	elif wash.get_node_or_null("Wash") == null \
@@ -354,17 +355,24 @@ func check_aurora() -> void:
 	if blade_glow == null or blade_glow.get_node_or_null("Halo") == null \
 			or blade_glow.get_node_or_null("Core") == null:
 		aurora_failures.append("Aurora blade glow is missing its halo or core")
+	if snow == null or not snow.has_method("apply_aurora") \
+			or not snow.has_method("get_target_amount_ratio"):
+		aurora_failures.append("Snow does not expose one composed Aurora density target")
 	director.set_physics_process(false)
 	var original_size: Vector2i = root.size
 	for width: int in [1152, 1440]:
 		root.size = Vector2i(width, 648)
 		for palette: BiomePalette in [BiomeDirector.PALETTE_TWILIGHT_BLUE, BiomeDirector.PALETTE_STARLIT_NIGHT]:
 			backdrop.apply_palette(palette)
+			if snow != null:
+				snow.call("apply_palette", palette)
 			director.push_blend(0.0)
 			if not is_zero_approx(terrain.aurora_ice_blend) \
 					or (wash != null and (wash.get_node("Wash") as TextureRect).visible) \
-					or (blade_glow != null and blade_glow.visible):
+					or (blade_glow != null and blade_glow.visible) \
+					or (snow != null and not is_zero_approx(float(snow.get("aurora_density_blend")))):
 				aurora_failures.append("Aurora world response does not restore its zero state")
+			var snow_baseline_ratio: float = float(snow.call("get_target_amount_ratio")) if snow != null else 0.0
 			var clean: Image = await capture_aurora_frame()
 			# Visual envelope only; safe-entry lifecycle is exercised by aurora_calm_probe.
 			director.phase = AuroraDirector.Phase.ACTIVE
@@ -377,6 +385,11 @@ func check_aurora() -> void:
 						or (wash != null and not (wash.get_node("Wash") as TextureRect).visible) \
 						or (blade_glow != null and not blade_glow.visible)):
 					aurora_failures.append("Aurora crest does not reach wash, ice, and grounded blade glow")
+				if elapsed == 30.0 and snow != null:
+					var snow_crest_ratio: float = float(snow.call("get_target_amount_ratio"))
+					var density_gain: float = snow_crest_ratio / maxf(snow_baseline_ratio, 0.001)
+					if density_gain < 1.3 or density_gain > 1.6 or snow_crest_ratio > 1.0:
+						aurora_failures.append("Aurora snow crest is outside its bounded 1.3-1.6x target")
 				var frame: Image = await capture_aurora_frame()
 				var peak: int = measure_peak(clean, frame)
 				if (elapsed == 0.0 or elapsed == 61.0) and peak != 0:

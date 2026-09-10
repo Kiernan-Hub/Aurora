@@ -1,5 +1,16 @@
 # Handoff
 
+## Latest — slice 6: snow gathers and releases
+
+The existing snow emitter now composes biome, glide and Aurora into one bounded density target.
+Aurora adds a broad clock-derived crest, peaking at 1.45× the active night biome (roughly 81 or 102
+visible flakes) within the already allocated 126-flake pool. There is no new emitter, allocation,
+material, velocity mutation or timer. Snow stays on `CanvasLayer -50`, behind all gameplay objects.
+
+The windowed gate checks cleanup and the 1.3–1.6× target bound at both widths/night palettes; fast
+functional gates pass except the three intentional TEMP preview values. Owner/device motion and
+fill-rate review remain owed. Wisps, camera, flight, achievement and sound are still separate.
+
 ## Latest — slice 5: grounded blade glow
 
 Aurora now has one local connection to the skater: a compact code-built cyan-green halo and short

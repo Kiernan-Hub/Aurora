@@ -1,5 +1,20 @@
 # Aurora borealis — the plan and the state
 
+## Slice 6 — bounded snow choreography implemented
+
+Aurora now gathers the existing snowfall toward one broad midpoint crest and releases it through
+the existing fade. `AuroraDirector.get_aurora_snow_blend()` derives the curve from the event clock;
+`snow_drift.gd` remains the sole owner of particle density and composes biome × glide × Aurora into
+one clamped `amount_ratio` target. Peak density is 1.45× the active night biome: about 56→81 visible
+flakes in `starlit_night` and 70→102 in `twilight_blue`, both inside the already allocated 126-flake
+pool. No emitter, particle allocation, texture, material, velocity change or independent timer was
+added.
+
+The windowed gate checks zero-state cleanup, the 1.3–1.6× crest bound and the existing full Aurora
+composition at both widths/night palettes. Fast functional gates pass except the three intentional
+TEMP preview values. Motion, pause/resume feel and Android fill-rate still need owner/device review;
+the existing behind-gameplay layer keeps flakes structurally away from player/pickup readability.
+
 ## Slice 5 — grounded blade connection implemented
 
 A compact cyan-green halo and short bright core now pin the Aurora to the skater's actual blade

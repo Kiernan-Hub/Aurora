@@ -35,6 +35,7 @@ var biome_director: BiomeDirector
 var sky_backdrop: Node
 var aurora_wash: Node
 var blade_glow: Node
+var snow: Node
 var main_node: Main
 var services: GameServices
 var is_headless: bool = false
@@ -75,6 +76,7 @@ func resolve_dependencies() -> bool:
 	sky_backdrop = get_node_or_null(sky_backdrop_path)
 	aurora_wash = get_node_or_null("../AuroraWash")
 	blade_glow = get_node_or_null("../AuroraBladeGlow")
+	snow = get_node_or_null("../SnowDrift/SnowParticles")
 	main_node = get_parent() as Main
 	services = GameServices.resolve(self)
 	terrain = get_node_or_null("../TerrainGenerator") as TerrainGenerator
@@ -278,8 +280,21 @@ func push_blend(blend: float) -> void:
 		aurora_wash.call("apply_aurora", blend, active_elapsed)
 	if blade_glow != null and blade_glow.has_method("apply_aurora"):
 		blade_glow.call("apply_aurora", blend, active_elapsed)
+	if snow != null and snow.has_method("apply_aurora"):
+		snow.call("apply_aurora", get_aurora_snow_blend(blend), active_elapsed)
 	if terrain != null:
 		terrain.set_aurora_ice_blend(blend)
+
+
+# Snow gathers gently after the sky arrives, reaches one broad crest halfway through,
+# then relaxes before the final fade. It derives from the one event clock and base
+# visibility envelope; there is no second timer or tween to pause/clean up.
+func get_aurora_snow_blend(base_blend: float) -> float:
+	if base_blend <= 0.0:
+		return 0.0
+	var progress: float = clampf(active_elapsed / get_total_seconds(), 0.0, 1.0)
+	var broad_crest: float = 0.65 + 0.35 * sin(PI * progress)
+	return clampf(base_blend * broad_crest, 0.0, 1.0)
 
 
 func _on_player_died() -> void:
