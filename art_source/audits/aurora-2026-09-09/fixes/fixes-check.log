@@ -1,0 +1,7 @@
+shipping_values    PASS    0s
+biome_schedule     PASS    1s
+terrain_invariant  PASS   11s
+lake_suppression   PASS   11s
+export_content     PASS    2s
+----
+all 5 gates PASS in 25s

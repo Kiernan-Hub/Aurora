@@ -215,6 +215,9 @@ func is_lake_due() -> bool:
 # player_x + 1500 -- inside that window. So entry is made HARMLESS rather than conditional;
 # see begin_lake().
 func try_arm() -> void:
+	var aurora: AuroraDirector = get_node_or_null("../AuroraDirector") as AuroraDirector
+	if aurora != null and aurora.blocks_lake_arming():
+		return
 	if not player.is_on_floor() or player.is_jump_ascending:
 		return
 	if not terrain_generator.has_ground_at_world_x(player.global_position.x):

@@ -1,0 +1,16 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+Terrain replay seed: 941462462
+FREEZE_REPLAY_PROGRESS frame=5000 world_x=44727.3 world_y=1643.4
+FREEZE_REPLAY_PROGRESS frame=10000 world_x=104322.1 world_y=1078.4
+FREEZE_REPLAY_PROGRESS frame=15000 world_x=165261.0 world_y=934.8
+FREEZE_REPLAY_PROGRESS frame=20000 world_x=226158.6 world_y=1171.0
+FREEZE_REPLAY_PROGRESS frame=25000 world_x=287140.9 world_y=263.2
+FREEZE_REPLAY_PROGRESS frame=30000 world_x=348183.3 world_y=470.3
+FREEZE_REPLAY_PROGRESS frame=35000 world_x=409208.2 world_y=67.9
+FREEZE_REPLAY_PROGRESS frame=40000 world_x=470191.5 world_y=720.3
+FREEZE_REPLAY_PROGRESS frame=45000 world_x=531066.6 world_y=1727.9
+FREEZE_REPLAY_PROGRESS frame=50000 world_x=592078.9 world_y=1419.3
+FREEZE_REPLAY_PROGRESS frame=55000 world_x=652962.6 world_y=567.8
+FREEZE_REPLAY_PROGRESS frame=60000 world_x=714308.1 world_y=1330.7
+FREEZE_REPLAY_RUN_RESULT run=1 seed=941462462 rebase=1 status=no_freeze frames=60000 stall_recoveries=0 world_x=714308.1

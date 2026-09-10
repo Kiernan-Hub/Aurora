@@ -1,7 +1,8 @@
 # Visuals — background, scenery and palette
 
 Everything on screen except the player sprite is an untextured `Polygon2D` / `ColorRect` /
-`TextureRect`. There are exactly **two** shaders, and both are ice: `shaders/ice.gdshader` on
+`TextureRect`. There are **three** shaders: `shaders/aurora_curtain.gdshader` handles the Aurora
+curtains' directional reveal and internal folds; the two ice shaders are: `shaders/ice.gdshader` on
 the ice band (`biomes.md`, "The ice shader") and `shaders/frozen_lake_reflection.gdshader` on
 the frozen lake's surface quad, which exists only while a lake is being crossed ("The skate
 trail" below, and `terrain.md`). There is no `WorldEnvironment`, no MSAA and no `z_index` in the

@@ -1,0 +1,11 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+Terrain replay seed: 2160065702
+SEARCH_BEGIN	seed=2160065702	warp_base=226300.00	end_x=227100.0	phases=64 x 0.250px
+SEARCH_RESULT	seed=2160065702	rebase=1
+    trials              : 1600
+    trials with a STALL : 0
+    trials near-stalling: 0  (min motion.x < 2.08 px)
+    max slide count seen: 2
+    worst trial         : warp=226302.25 pattern=0 param=0 min_motion=11.484375 max_slides=1
+SEARCH_END

@@ -1,5 +1,95 @@
 # Handoff
 
+## Latest — slice 3: live calm safety is in
+
+The Aurora now reserves a write-ahead flat passage and enters it through a small lifecycle:
+`PENDING_ENTRY` waits until there is room for the whole 61-second presentation, then `ACTIVE`
+runs it, and `RECOVERY` carries the player safely beyond the reserved boundary. A late entry,
+daylight, a visible conflicting hazard, boost, or glide skips the appearance without changing
+already-written terrain.
+
+The reservation starts beyond the actual collision extents of existing obstacles and powerups;
+those visible objects are never removed. New obstacles and boost/glide pickups are suppressed
+inside the passage. Existing boost or glide is allowed to end before entry; trick boosts use the
+same guard. Coins, other powerups and jumping remain available. Aurora wins when it is due at
+night, while an already armed or active lake blocks Aurora; later lake/Aurora reservations choose
+non-overlapping spans.
+
+`aurora_calm_probe.gd` now proves geometry, entry rejection, death handling, two full live
+encounters (preview and real credit), pause stability, spawn resumption and lake arbitration:
+152,086 assertions headless and 14,708 native. The windowed sky gate also passes. Native shutdown
+still reports its existing audio-harness resource warning. Camera, ice/world lighting, snowfall,
+wings/flight, achievement and sound remain separate future slices. TEMP preview switches remain on.
+
+## Latest — slice 2: flat foundation, not live yet
+
+Owner accepted the sky slice. Added `arm_aurora_flat(length)` and `aurora_calm_probe.gd`.
+One immutable future flat segment; no sampled terrain changes. Eight geometry seeds / four
+ordinary-and-boosted collision traversals pass, including both seams, duration coverage, Y rebase,
+and bounded chunks. Freeze search/replay, floor contact and chasm regressions pass.
+Live Aurora still uses ordinary terrain: safe entry, obstacle/powerup policy and arbitration are
+next. Geometry currently permits only one of lake/Aurora per scene, conservatively.
+
+Found and fixed headless death saving run stats despite playtime banking being disabled. The
+void mutation test may have changed live coins/best stats; user informed, no pre-test copy to
+restore. New probe detaches Services and tests the headless guard with an in-memory save; final
+checks use a separate test project/user directory. Details and results are in the latest section
+of `docs/development/aurora_borealis.md`. TEMP and project settings are unchanged.
+
+## Latest Aurora slice — directional sky arrival
+
+Owner authorized incremental implementation after the experience brainstorm. First slice adds
+`shaders/aurora_curtain.gdshader`: right-to-left reveal and internal folds using existing curtain
+textures. Windowed sky check passes with new reveal/pause/deformation assertions at both widths.
+Four fast checks pass; shipping-values reports the three intentional TEMP overrides plus four
+project pins already missing at turn start. Project settings were not changed.
+
+Updated direction: no slowdown; sound deferred; flat protected passage and brief Aurora-wing
+flight are the proposed next safety/design work, with boost/normal glide excluded during the
+encounter. Terrain, camera, flight, ice light and local VFX are not implemented by this slice.
+See the current checkpoint in `docs/development/aurora_borealis.md`; older plans below are history.
+Owner motion review and Android performance are still required; do not treat rendered visibility
+as acceptance of the completed look. TEMP remains on.
+
+## Aurora — current state and next work, 2026-09-09
+
+The audit-fix implementation is complete but **uncommitted**. It fixes curtain occlusion,
+night-window eligibility, preview progression writes, reset rescheduling, completion clock
+banking, and missing rendered coverage. Temporary preview defaults and diagnostic prints are
+gone. The current tree passes the fast five; the rendered sky gate now includes the curtains at
+1152×648 and 1440×648; 76 native lifecycle/prediction assertions also pass. See
+`docs/review/2026-09-09-aurora-audit.md` and its `art_source/audits/` evidence.
+
+The visual core is now ready for an owner look and a device check. The calm, wash, ice light,
+camera, and achievement are **not built**. This is deliberate: the calm would touch terrain and
+must not be folded into a visual follow-up.
+
+### What the owner should test now
+
+1. Review the curtain composition in a running game: the green hem should sit above the opaque
+   ridge line, with readable rays rather than a flat glow. Judge its height, strength, and motion
+   on a real night palette. The rendered captures are evidence, not final taste.
+2. Run the current build on the target Android device through several appearances and watch frame
+   pacing and heat. Desktop rendering established visibility, not mobile fill-rate safety.
+3. If using a temporary preview knob, remember it is now progression-isolated: an event started
+   under interval/night/biome preview settings cannot initialize or advance aurora progress. A
+   night bypass is useful for checking state flow, not for judging colors authored over night.
+
+### Recommended next steps
+
+1. Accept the current visual/scheduling fixes and commit them as their own reviewable change.
+   Do not mix the pending calm work into that commit.
+2. Make a **design-and-probe pass only** for the calm. Route B, waiting for a naturally clear
+   stretch, was measured at 0.000239% eligible distance before recovery margin and is not viable.
+   Route A needs a write-once, write-ahead terrain reservation, safe entry, existing-obstacle
+   handling, and lake arbitration designed and tested together.
+3. Only after that proof is accepted, implement the calm in one terrain-focused slice with its
+   probe and physics regression tier. The wash, ice light, camera, and achievement then remain
+   separate, low-coupling visual/product slices.
+
+Do not treat the old “What to do next” section below as current; it predates the audit fixes and
+gap measurement. It is retained as history.
+
 ## Start here
 
 **Aura** is an Alto's-Adventure-style endless 2D skater in Godot 4.7 (GDScript, Mobile renderer,

@@ -8,12 +8,8 @@ extends CanvasLayer
 # Deliberately a CanvasLayer holding an ANCHORED Control, rather than anything in world
 # space or a fixed-size rect:
 #
-#   * project.godot sets no window/size/viewport_width or _height and uses
-#     stretch/aspect="expand", so the visible rect genuinely varies with device aspect
-#     ratio. Full-rect anchors cover it on every device; a fixed size would be a guess
-#     that letterboxes or overdraws somewhere. (That unset base size is a real open
-#     decision -- docs/review/2026-08-03-architecture-audit.md B4 -- but it is not this
-#     file's to make, so this file simply survives either answer.)
+#   * The pinned 1152x648 base uses stretch/aspect="expand", so the visible
+#     rect still varies with device aspect ratio. Full-rect anchors cover it.
 #   * A CanvasLayer is screen space, so main.gd's world rebase -- which shifts Y roughly
 #     every 26s -- cannot move it. Same reason every ParallaxLayer keeps motion_scale.y
 #     at 0; see docs/development/dead_code.md, "Vertical parallax -- tried, reverted".
@@ -104,13 +100,16 @@ const MOON_TEXTURE: Texture2D = preload("res://assets/textures/background/moon_f
 
 # --- Aurora borealis ---------------------------------------------------------------------
 # The game's namesake, and the ONLY thing in this file that is not always-on: it is visible for
-# ~61 seconds roughly once an hour of cumulative playtime and hidden the rest of the time.
+# ~61 seconds roughly once per 30 minutes of cumulative playtime and hidden the rest of the time.
 # AuroraDirector owns when; this file owns nothing but the look. See apply_aurora().
 #
 # THREE CURTAINS, NOT ONE. A single band reads as a smear; three at different heights, hues,
 # drift rates and breathing periods is what makes it read as depth. The count is the whole
 # reason the bands are a loop over parallel constant arrays rather than three named nodes.
 const AURORA_BAND_COUNT: int = 3
+const AURORA_CURTAIN_SHADER: Shader = preload("res://shaders/aurora_curtain.gdshader")
+const AURORA_REVEAL_SECONDS: float = 12.0
+const AURORA_REVEAL_STAGGER: float = 0.65
 # Per band, front (lowest, greenest) to back (highest, faintest). Index-aligned; all five
 # arrays must stay the same length as AURORA_BAND_COUNT.
 #
@@ -148,12 +147,11 @@ const AURORA_BAND_COLORS: Array[Color] = [
 # clipped, and that remainder is the brightest pixels of the hem itself, where a white-hot core
 # is what an aurora actually looks like. Raise any of these three and re-measure both palettes.
 const AURORA_BAND_WEIGHTS: PackedFloat32Array = [0.70, 0.28, 0.24]
-# Where each band's rect sits vertically, as viewport fractions. The bottoms deliberately reach
-# BELOW the panorama's skyline (0.33) so the curtains are cut off by the mountains rather than
-# stopping in mid-air -- SkyBackdrop is layer -200 and ParallaxBackground is -100, so the
-# silhouettes occlude these for free and the composition costs nothing to get right.
-const AURORA_BAND_TOPS: PackedFloat32Array = [0.06, 0.02, 0.00]
-const AURORA_BAND_BOTTOMS: PackedFloat32Array = [0.58, 0.42, 0.34]
+# The bright hems must sit ABOVE the opaque ridges, not merely the rect tops.
+# These bounds keep the green hem near y=0.18 and the other hems higher; the
+# soft upper tails can extend offscreen. Verified with scenery present.
+const AURORA_BAND_TOPS: PackedFloat32Array = [-0.11, -0.16, -0.20]
+const AURORA_BAND_BOTTOMS: PackedFloat32Array = [0.23, 0.17, 0.13]
 # Seconds per full horizontal drift cycle, and per brightness breath. Deliberately coprime-ish
 # and none of them a divisor of another: bands that share a period visibly pulse together, which
 # reads as one object flickering rather than three curtains moving independently.
@@ -173,7 +171,7 @@ const AURORA_OVERSCAN: float = 0.6
 const AURORA_BREATH_FLOOR: float = 0.72
 
 # 512 wide because the horizontal wave is the only thing in the image with structure, and 192
-# tall because the vertical falloff is smooth -- three of these is ~295 KB in LA8, against the
+# tall because the vertical falloff is smooth -- three of these is 576 KiB in LA8, against the
 # starfield's 1.1 MB. LA8 for the same reason the stars use it: the curtains are white and their
 # colour comes from modulate.
 const AURORA_TEXTURE_SIZE: Vector2i = Vector2i(512, 192)
@@ -363,20 +361,13 @@ func build_aurora_bands() -> void:
 		# MOUSE_FILTER_STOP and these rects are wider than the screen; left at the default they
 		# are three stacked input eaters sitting under the pause button.
 		band.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		# ADDITIVE, and this is the one place in the file that needs a material.
-		#
-		# An aurora EMITS. Alpha-blended over the sky it can only ever darken toward its own
-		# colour, so a green curtain over a near-black sky comes out as flat paint; added, the
-		# sky shows through it and the bright hem actually glows. A CanvasItemMaterial is a
-		# built-in, NOT a third .gdshader -- the shader budget (CLAUDE.md: two, both owned by
-		# ice) is untouched by this.
-		#
-		# THE TRAP, and it is why AuroraDirector gates on night: additive over a BRIGHT sky
-		# blows straight out to white. That gate is what keeps this safe, so
-		# debug_aurora_ignore_night shows a composition the game never ships.
-		var additive: CanvasItemMaterial = CanvasItemMaterial.new()
-		additive.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-		band.material = additive
+		# Each band owns its parameters, sharing shader code and the existing baked art.
+		# Additive light still needs the night gate; the shader adds folds and a spatial
+		# arrival, not more brightness or another draw pass.
+		var curtain_material: ShaderMaterial = ShaderMaterial.new()
+		curtain_material.shader = AURORA_CURTAIN_SHADER
+		curtain_material.set_shader_parameter("band_phase", float(band_index) * 2.1)
+		band.material = curtain_material
 		# Hidden until an aurora is actually running. Same rule as the glow's, and for the same
 		# reason: a fully transparent full-screen TextureRect still rasterises every pixel it
 		# covers, and three of them stacked is the fill-rate cost that matters on a mobile GPU.
@@ -459,11 +450,8 @@ func apply_celestial(palette: BiomePalette) -> void:
 # playtime-gated; the palette cycle is distance-driven, and the two meeting is the "just another
 # biome" failure the fixed colours above exist to prevent.
 #
-# TWO ARGUMENTS, AND THAT IS DELIBERATE. `blend` is the director's single cosmetic ramp -- the
-# ONE value every piece of this feature rides, exactly as FrozenLakeDirector.get_lake_blend()
-# is for the lake, so nothing here may compute a second fade of its own. `elapsed` is a clock,
-# which the ramp cannot be: blend rises and falls, so drift driven from it would run forwards
-# then backwards.
+# `blend` is the director's visibility envelope. The directional reveal and folds are
+# deterministic functions of its elapsed clock, never a second independently advancing timer.
 #
 # WHY THE CLOCK IS PASSED IN RATHER THAN KEPT HERE, and it is the load-bearing reason this file
 # still has no _process. Every one of the six headless gates instantiates main.tscn, so
@@ -487,6 +475,11 @@ func apply_aurora(blend: float, elapsed: float) -> void:
 		band.visible = is_showing
 		if not is_showing:
 			continue
+		var curtain_material: ShaderMaterial = band.material as ShaderMaterial
+		curtain_material.set_shader_parameter("event_elapsed", elapsed)
+		curtain_material.set_shader_parameter("reveal_progress", clampf(
+			(elapsed - float(band_index) * AURORA_REVEAL_STAGGER) / AURORA_REVEAL_SECONDS,
+			0.0, 1.0))
 
 		# The breath. Each band on its own period so they cannot pulse together -- see
 		# AURORA_BREATH_PERIODS. Floored, so a curtain dims rather than vanishing.
@@ -505,8 +498,8 @@ func apply_aurora(blend: float, elapsed: float) -> void:
 
 		# Anchors, like position_glow() -- fractions of the parent rect, so this is correct on
 		# any viewport with no resize signal to connect and nothing to recompute when the window
-		# changes. That matters here for the same reason it does there: project.godot pins no
-		# base size the stretch cannot change, so the visible rect genuinely differs per device.
+		# changes. That matters here for the same reason it does there: the pinned base
+		# size still expands with aspect ratio, so the visible rect differs per device.
 		#
 		# The rect is wider than the screen by AURORA_OVERSCAN on each side, which is what lets
 		# the texture be an ordinary image rather than a seamless one: a band can drift its full
@@ -638,7 +631,7 @@ func build_aurora_texture(band_index: int) -> ImageTexture:
 # Anchors are fractions of the parent rect, which is exactly what glow_position and
 # glow_radius already are -- so the layout is correct on any viewport with no resize signal
 # to connect, no get_viewport_rect() read, and nothing to recompute when the window changes.
-# That matters more here than usual: project.godot pins no viewport size and stretches with
+# That matters more here than usual: project.godot pins a base viewport and stretches with
 # aspect="expand", so the visible rect genuinely differs per device (see this file's header).
 #
 # The rect is deliberately NOT clamped to the screen. Fragments outside the viewport are

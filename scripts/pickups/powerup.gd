@@ -5,6 +5,8 @@ class_name Powerup
 signal collected
 
 var has_been_collected: bool = false
+# Assigned by the spawner before entering the tree, for safe-entry inspection.
+var effect: StringName = &""
 
 
 func _ready() -> void:

@@ -568,7 +568,10 @@ func _on_player_died() -> void:
 	# process exits. See BiomeDirector.session_biome_phase for why it is not persisted.
 	if biome_director != null:
 		BiomeDirector.session_biome_phase = biome_director.get_persisted_phase(player.global_position.x)
-	if services != null:
+	# Script harnesses can have a real Services autoload. bank_playtime() already
+	# skips headless, but record_run() itself writes coins/bests even when banking
+	# returned false. A regression probe's deliberate death must never save a run.
+	if services != null and DisplayServer.get_name() != "headless":
 		# BEFORE record_run, so this run's seconds ride record_run's single disk write
 		# rather than costing a second one from set_state(DEAD) a few lines below.
 		bank_playtime()

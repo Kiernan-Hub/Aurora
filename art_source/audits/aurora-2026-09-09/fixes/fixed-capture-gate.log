@@ -1,0 +1,30 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+Metal 4.0 - Forward Mobile - Using Device #0: Apple - Apple M4 (Apple9)
+
+AURORA_LAYER width=1152 palette=twilight_blue.tres band=0 peak=124 floor=64
+AURORA_LAYER width=1152 palette=twilight_blue.tres band=1 peak=54 floor=24
+AURORA_LAYER width=1152 palette=twilight_blue.tres band=2 peak=48 floor=24
+AURORA_LAYER width=1152 palette=starlit_night.tres band=0 peak=128 floor=64
+AURORA_LAYER width=1152 palette=starlit_night.tres band=1 peak=55 floor=24
+AURORA_LAYER width=1152 palette=starlit_night.tres band=2 peak=50 floor=24
+AURORA_LAYER width=1440 palette=twilight_blue.tres band=0 peak=124 floor=64
+AURORA_LAYER width=1440 palette=twilight_blue.tres band=1 peak=54 floor=24
+AURORA_LAYER width=1440 palette=twilight_blue.tres band=2 peak=48 floor=24
+AURORA_LAYER width=1440 palette=starlit_night.tres band=0 peak=128 floor=64
+AURORA_LAYER width=1440 palette=starlit_night.tres band=1 peak=55 floor=24
+AURORA_LAYER width=1440 palette=starlit_night.tres band=2 peak=50 floor=24
+AURORA_CHECK PASS
+
+biome             SkyGlow      SkyCelestial SkyStars     SkyTint      IceHue       SnowCap      IceContrast  
+-------------------------------------------------------------------------------------------------------------
+first_light         --           --           --           --           27           72           13         
+arctic_dawn         98           --           36           30           25           69           15         
+pale_morning        40           --           --           --           26           64           14         
+glacier_teal        42           60           --           --           28           48           20         
+mauve_haze          52           --           --           29           24           65           22         
+sunset_rose        111           --           --           39           35           39           14         
+violet_dusk         77           --           32           29           28           47           18         
+twilight_blue       77           --          116           --           25           69           20         
+starlit_night       79          115          154           --           --           78           17         
+
+SKY_LAYER_CHECK PASS  biomes=9  layers_measured=44  floor=24/255 (ice contrast 10/255)

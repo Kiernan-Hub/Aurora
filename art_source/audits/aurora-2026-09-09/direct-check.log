@@ -1,0 +1,14 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+[aurora debug] BEGIN_AURORA firing now
+NIGHT_REPRO start_night=0.85725947737694 phase=1 sky_top=(0.2583, 0.3041, 0.4783, 1.0)
+NIGHT_REPRO elapsed=8.0 night=0.48991255283356 blend=1.0 sky_top=(0.3603, 0.4164, 0.5803, 1.0)
+NIGHT_REPRO elapsed=20.0 night=0.28 blend=1.0 sky_top=(0.4, 0.46, 0.62, 1.0)
+NIGHT_REPRO elapsed=30.0 night=0.28 blend=1.0 sky_top=(0.4, 0.46, 0.62, 1.0)
+NIGHT_REPRO elapsed=53.0 night=0.28 blend=1.0 sky_top=(0.4, 0.46, 0.62, 1.0)
+DEBUG_PERSIST_REPRO old_deadline=1900 saved_deadline=1971.0 saved_count=1
+BAKE three_bands_ms=24.009
+GAP_MEASUREMENT seeds=32 segments_per_seed=5600 gaps=3152 qualifying_61000=0 max_gap=60640.0 max_seed=63353 eligible_distance_fraction=0.0
+AUDIT_CHECKS 50 assertions, 0 failures
+ERROR: Condition "ret != noErr" is true. Returning: ""
+   at: get_system_ca_certificates (platform/macos/os_macos.mm:1035)

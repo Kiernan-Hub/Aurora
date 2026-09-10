@@ -527,7 +527,8 @@ const LAKE_ARM_LEAD_SEGMENTS: int = 2
 
 # The armed lake's segment index, or -1 for "no lake in this run". Set ONLY by arm_lake().
 #
-# THIS IS THE ONE RUNTIME INPUT TO THE HEIGHT FIELD, under a write-once, write-ahead rule.
+# The lake is a runtime input to the height field, under a write-once, write-ahead rule.
+# Aurora below takes the same deal; neither reservation is cleared after presentation.
 # get_terrain_height must stay pure in (session_seed, world_x) because chunk visuals,
 # collision, player tilt and the debug HUD all sample it independently and must agree. Setting
 # this breaks that literally -- so arm_lake() may only ever set it to an index STRICTLY GREATER
@@ -542,6 +543,13 @@ const LAKE_ARM_LEAD_SEGMENTS: int = 2
 #
 # Never assign this directly. arm_lake() is the only writer and enforces the rule itself.
 var lake_segment_index: int = -1
+
+# Aurora uses one long FLAT segment, not a time-dependent flattening of existing hills.
+# These two fields are committed together, once, by arm_aurora_flat(). Like the lake,
+# the reservation persists after presentation ends and may only extend unsampled terrain.
+# AuroraDirector owns pending entry and schedules this ahead of existing bodies.
+var aurora_segment_index: int = -1
+var aurora_segment_length: float = 0.0
 
 # Pins a lake at a fixed index for gates and playtesting, with no FrozenLakeDirector and no
 # save file involved -- the deterministic counterpart to the runtime schedule.
@@ -1417,6 +1425,9 @@ func is_lake_segment_index(segment_index: int) -> bool:
 func arm_lake() -> bool:
 	if lake_segment_index >= 0:
 		return false
+	# Directors arbitrate time; geometry permits both set pieces at disjoint indices.
+	if aurora_segment_index >= 0:
+		ensure_segment_cache_through(aurora_segment_index)
 
 	var candidate: int = highest_cached_segment_index + LAKE_ARM_LEAD_SEGMENTS
 	while segment_spec_cache.has(candidate) \
@@ -1426,6 +1437,55 @@ func arm_lake() -> bool:
 		candidate += 1
 	lake_segment_index = candidate
 	return true
+
+
+# Geometry-only reservation. Directors arbitrate timing; an earlier lake stays immutable.
+# Skip every spec already read, even sparse reads above the contiguous cache watermark.
+# Choosing a candidate never calls get_segment_spec(), which would consume its virginity.
+func arm_aurora_flat(length: float) -> bool:
+	if aurora_segment_index >= 0 \
+			or not is_finite(length) or length < SMALL_SEGMENT_LENGTH:
+		return false
+	if get_active_lake_segment_index() >= 0:
+		ensure_segment_cache_through(get_active_lake_segment_index())
+	var last_observed: int = highest_cached_segment_index
+	for index: int in segment_spec_cache:
+		last_observed = maxi(last_observed, index)
+	var candidate: int = last_observed + LAKE_ARM_LEAD_SEGMENTS
+	# Keep a normal, grounded neighbour on both sides. This does not promise the
+	# whole approach is safe; live entry must wait until the reserved flat is reached.
+	while is_chasm_segment_index(candidate - 1) or is_chasm_segment_index(candidate) \
+			or is_chasm_segment_index(candidate + 1):
+		candidate += 1
+	aurora_segment_length = length
+	aurora_segment_index = candidate
+	return true
+
+
+func get_aurora_flat_start_x() -> float:
+	if aurora_segment_index < 0:
+		return 0.0
+	ensure_segment_cache_through(aurora_segment_index)
+	return segment_start_x_cache[aurora_segment_index]
+
+
+func get_aurora_flat_end_x() -> float:
+	if aurora_segment_index < 0:
+		return 0.0
+	ensure_segment_cache_through(aurora_segment_index)
+	return get_cached_segment_end_x(aurora_segment_index)
+
+
+func is_aurora_flat_world_x(world_x: float) -> bool:
+	if aurora_segment_index < 0:
+		return false
+	return world_x >= get_aurora_flat_start_x() and world_x < get_aurora_flat_end_x()
+
+
+func overlaps_aurora_flat(start_x: float, end_x: float) -> bool:
+	if aurora_segment_index < 0:
+		return false
+	return end_x >= get_aurora_flat_start_x() and start_x <= get_aurora_flat_end_x()
 
 
 # World-x span of the armed lake, or an empty span when none is armed. Both call
@@ -1744,6 +1804,14 @@ func get_segment_spec(segment_index: int) -> Dictionary:
 # uses it identically per type), tier, and debug label. Everything else in this file
 # reads this instead of re-deriving it.
 func build_segment_spec(segment_index: int) -> Dictionary:
+	if aurora_segment_index >= 0 and segment_index == aurora_segment_index:
+		return {
+			"type": SEGMENT_TYPE_FLAT,
+			"tier": SEGMENT_TIER_MEDIUM,
+			"length": aurora_segment_length,
+			"magnitude": 0.0,
+			"label": "aurora_flat",
+		}
 	# Chasm overrides the weighted selection entirely rather than joining the weight table:
 	# its rarity is a guaranteed minimum SPACING, which a weight cannot express. See the
 	# CHASM_ constants block and is_chasm_segment_index().

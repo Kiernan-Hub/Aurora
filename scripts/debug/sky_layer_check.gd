@@ -110,6 +110,8 @@ var started: bool = false
 # quit() inside _init() does not stop the tree from running _process once, and by then `main`
 # is still null -- so the abort below has to be latched and re-checked there.
 var aborted: bool = false
+var checking_aurora: bool = false
+var aurora_failures: Array[String] = []
 var baseline: Image
 # [biome_index][layer_index] -> peak, or -1 for "biome does not claim this layer"
 var peaks: Array[PackedInt32Array] = []
@@ -117,7 +119,7 @@ var peaks: Array[PackedInt32Array] = []
 
 func _init() -> void:
 	# REFUSES to run under --headless rather than measuring it. There is no rendering device
-	# there, so root.get_texture().get_image() hands back a blank frame, every layer diffs to
+	# there, so capture_rendered_frame() hands back a blank frame, every layer diffs to
 	# 0/255, and this gate reports every claimed layer in every biome as invisible -- 19
 	# confident, meaningless violations. That is the same blank-frame failure this file's header
 	# already records for Engine.time_scale = 0, just with the sign flipped (there everything
@@ -140,6 +142,8 @@ func _init() -> void:
 func _process(_delta: float) -> bool:
 	if aborted:
 		return true
+	if checking_aurora:
+		return false
 
 	frame_index += 1
 	# The UI layer is hidden so labels never land in a capture.
@@ -182,9 +186,9 @@ func _process(_delta: float) -> bool:
 	if armed:
 		armed = false
 		if phase == 0:
-			baseline = root.get_texture().get_image()
+			baseline = capture_rendered_frame()
 		else:
-			peaks[biome_index][layer_index] = measure_peak(baseline, root.get_texture().get_image())
+			peaks[biome_index][layer_index] = measure_peak(baseline, capture_rendered_frame())
 		phase += 1
 		if phase > 1:
 			phase = 0
@@ -195,8 +199,9 @@ func _process(_delta: float) -> bool:
 		return false
 
 	if biome_index >= get_measured_palettes().size():
-		report()
-		return true
+		checking_aurora = true
+		check_aurora()
+		return false
 
 	var palette: BiomePalette = get_measured_palettes()[biome_index]
 	while peaks.size() <= biome_index:
@@ -293,7 +298,7 @@ func get_measured_palettes() -> Array[BiomePalette]:
 
 
 func report() -> void:
-	var failures: Array[String] = []
+	var failures: Array[String] = aurora_failures.duplicate()
 	print("")
 	# Header built from LAYERS rather than written out, so adding a row cannot silently shift
 	# every column under the wrong heading. Column width matches the "%4d LOW!" cells below.
@@ -332,3 +337,109 @@ func report() -> void:
 	for failure: String in failures:
 		print("    ", failure)
 	quit(1)
+
+
+# Render the actual director ramp against real scenery. In particular, a healthy
+# green texture hidden behind the ridges must fail, even if violet still contributes.
+func check_aurora() -> void:
+	var director: AuroraDirector = main.get_node("AuroraDirector")
+	var biome: BiomeDirector = main.get_node("BiomeDirector")
+	director.set_physics_process(false)
+	var original_size: Vector2i = root.size
+	for width: int in [1152, 1440]:
+		root.size = Vector2i(width, 648)
+		for palette: BiomePalette in [BiomeDirector.PALETTE_TWILIGHT_BLUE, BiomeDirector.PALETTE_STARLIT_NIGHT]:
+			backdrop.apply_palette(palette)
+			director.push_blend(0.0)
+			var clean: Image = await capture_aurora_frame()
+			# Visual envelope only; safe-entry lifecycle is exercised by aurora_calm_probe.
+			director.phase = AuroraDirector.Phase.ACTIVE
+			director.active_elapsed = 0.0
+			director.is_preview = true
+			for elapsed: float in [0.0, 4.0, 8.0, 30.0, 53.0, 57.0, 61.0]:
+				director.active_elapsed = elapsed
+				director.push_blend(director.get_aurora_blend())
+				var frame: Image = await capture_aurora_frame()
+				var peak: int = measure_peak(clean, frame)
+				if (elapsed == 0.0 or elapsed == 61.0) and peak != 0:
+					aurora_failures.append("Aurora does not restore the baseline at t=%s, width=%d" % [elapsed, width])
+				elif elapsed > 0.0 and elapsed < 61.0 and peak < MIN_PEAK_CONTRIBUTION:
+					aurora_failures.append("Aurora ramp is not visible at t=%s, width=%d" % [elapsed, width])
+			# Arrival must begin on the right, then reach the left. Whole-screen fading
+			# (or a reveal tied to drifting texture UV) must not pass on brightness alone.
+			backdrop.apply_aurora(1.0, 4.0)
+			var arrival: Image = await capture_aurora_frame()
+			var left: Rect2i = Rect2i(0, 0, clean.get_width() / 4, clean.get_height() / 5)
+			var right: Rect2i = Rect2i(clean.get_width() * 3 / 4, 0, clean.get_width() / 4, clean.get_height() / 5)
+			if measure_peak(clean.get_region(left), arrival.get_region(left)) != 0 \
+					or measure_peak(clean.get_region(right), arrival.get_region(right)) < MIN_PEAK_CONTRIBUTION:
+				aurora_failures.append("Aurora arrival is not confined to the right at width=%d" % width)
+			backdrop.apply_aurora(1.0, 16.0)
+			var unfolded: Image = await capture_aurora_frame()
+			if measure_peak(clean.get_region(left), unfolded.get_region(left)) < MIN_PEAK_CONTRIBUTION:
+				aurora_failures.append("Aurora reveal never reaches the left at width=%d" % width)
+			# No shader TIME: repeated frames while paused must remain identical.
+			var held: Image = await capture_aurora_frame()
+			if measure_peak(unfolded, held) != 0:
+				aurora_failures.append("Aurora shader moves while its clock is paused")
+			# Isolate internal deformation from the existing rect drift/bob and breath.
+			for band: TextureRect in backdrop.aurora_bands:
+				(band.material as ShaderMaterial).set_shader_parameter("event_elapsed", 25.0)
+			var folded: Image = await capture_aurora_frame()
+			if measure_peak(unfolded, folded) < 8:
+				aurora_failures.append("Aurora internal folds do not visibly move")
+			for argument: String in OS.get_cmdline_user_args():
+				if argument.begins_with("--capture-dir="):
+					var directory: String = argument.trim_prefix("--capture-dir=")
+					DirAccess.make_dir_recursive_absolute(directory)
+					var prefix: String = "%s/%s-%d" % [directory, palette.resource_path.get_file().get_basename(), width]
+					clean.save_png(prefix + "-baseline.png")
+					arrival.save_png(prefix + "-arrival.png")
+					unfolded.save_png(prefix + "-unfolded.png")
+			# Measure each band separately at full strength; the green carries the event.
+			for selected: int in range(3):
+				backdrop.apply_aurora(1.0, 8.0)
+				for index: int in range(3):
+					backdrop.aurora_bands[index].visible = index == selected
+				var frame: Image = await capture_aurora_frame()
+				var peak: int = measure_peak(clean, frame)
+				var required: int = 64 if selected == 0 else MIN_PEAK_CONTRIBUTION
+				print("AURORA_LAYER width=%d palette=%s band=%d peak=%d floor=%d" % [width, palette.resource_path.get_file(), selected, peak, required])
+				if peak < required:
+					aurora_failures.append("Aurora band %d is obscured/too faint at width=%d: %d < %d" % [selected, width, peak, required])
+			director._on_player_died()
+			var cleared: Image = await capture_aurora_frame()
+			if measure_peak(clean, cleared) != 0:
+				aurora_failures.append("Aurora death cleanup changed the baseline")
+	root.size = original_size
+	# The audited late-night start must be rejected with shipping timing. Restore all
+	# session state afterwards; this query never applies a palette or changes the world.
+	var old_rotation: int = BiomeDirector.session_cycle_rotation
+	var old_offset: float = biome.biome_phase_offset
+	var old_debug: float = biome.debug_biome_seconds
+	BiomeDirector.session_cycle_rotation = 0
+	biome.debug_biome_seconds = 0.0
+	biome.biome_phase_offset = 582000.0 - biome.player.global_position.x
+	if biome.get_minimum_night_ahead(61.0, 1000.0) >= AuroraDirector.NIGHT_THRESHOLD:
+		aurora_failures.append("Late-night boundary incorrectly admits a full aurora")
+	biome.biome_phase_offset = 450000.0 - biome.player.global_position.x
+	if biome.get_minimum_night_ahead(61.0, 1000.0) < AuroraDirector.NIGHT_THRESHOLD:
+		aurora_failures.append("Full night window incorrectly rejects an aurora")
+	BiomeDirector.session_cycle_rotation = old_rotation
+	biome.biome_phase_offset = old_offset
+	biome.debug_biome_seconds = old_debug
+	print("AURORA_CHECK ", "PASS" if aurora_failures.is_empty() else "FAIL")
+	report()
+
+
+func capture_aurora_frame() -> Image:
+	for frame: int in range(SETTLE_FRAMES):
+		await process_frame
+	return capture_rendered_frame()
+
+
+func capture_rendered_frame() -> Image:
+	# An occluded desktop window may stop presenting even while process_frame
+	# continues. Force a render so captures cannot repeatedly read a stale image.
+	RenderingServer.force_draw()
+	return root.get_texture().get_image()

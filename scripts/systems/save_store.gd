@@ -251,8 +251,8 @@ func reset_progress() -> void:
 	frozen_lake_count = 0
 	aurora_count = 0
 	# Back to UNSCHEDULED rather than to an interval, because this file does not own the
-	# interval -- AuroraDirector does, and it reschedules from 0 at the next scene load. Until
-	# then is_aurora_due() reads the negative and answers false, so a reset cannot fire one.
+	# interval -- AuroraDirector reschedules from 0 on its next IDLE tick or scene load.
+	# Until then is_aurora_due() reads the negative and answers false.
 	next_aurora_due_seconds = -1.0
 	achievements.clear()
 	save_to_disk()

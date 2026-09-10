@@ -786,3 +786,19 @@ accounts for ~0.0009 px/frame², so anything above ~0.001 is judder.
 
 Full investigation — root cause, the four hypotheses ruled out first, and why
 the contact-point metric it replaced was a dead end: `docs/research/camera_shake.md`.
+
+
+## Aurora calm probe
+
+`godot --headless --fixed-fps 60 --path . --script res://scripts/debug/aurora_calm_probe.gd`
+exercises eight geometry seeds and four ordinary/boosted traversals, plus headless death-save
+isolation. It also drives preview and real live encounters in an isolated in-memory save setup:
+safe pending entry, rejected late/day/conflicted entries, obstacle and boost/glide suppression,
+trick-boost rejection, recovery, completion credit, death handling and lake arbitration.
+
+**Headless does not imply save isolation.** Services may exist and load the user save. A death
+previously called `record_run()` even though `bank_playtime()` refused headless banking. That
+death-write path is now guarded and covered with an in-memory SaveStore. New probes should still
+detach unneeded Services, and deliberate destructive/mutation tests should use a copied project
+with a different application name/user directory. Never run save-reset tests against the real
+user-data path merely because `--headless` is set.

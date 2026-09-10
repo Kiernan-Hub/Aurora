@@ -1,0 +1,66 @@
+shipping_values    FAIL    0s  (exit 1)
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+
+  TerrainGenerator.debug_chasm_disabled            false      
+  TerrainGenerator.debug_drop_chasm_rehearsal      false      
+  TerrainGenerator.debug_log_segment_selection     false      
+  TerrainGenerator.debug_replay_session_seed       -1         
+  TerrainGenerator.debug_force_lake_segment_index  -1         
+  TerrainGenerator.debug_weight_mega_drop          0          
+  TerrainGenerator.debug_weight_flat               16         
+  TerrainGenerator.debug_weight_small_hill         16         
+  TerrainGenerator.debug_weight_medium_hill_valley_mix 42         
+  TerrainGenerator.debug_weight_big_downhill       16         
+  TerrainGenerator.debug_weight_gentle_uphill      10         
+  ObstacleSpawner.debug_spawning_disabled          false      
+  PowerupSpawner.debug_spawning_disabled           false      
+  PowerupSpawner.debug_forced_effect               ""         
+  PowerupSpawner.debug_first_powerup_effect_override ""         
+  RareCoinSpawner.debug_spawning_disabled          false      
+  Main.world_rebase_enabled                        true       
+  GameManager.require_start_screen                 true       
+  BiomeDirector.BIOME_DISTANCE                     75000.0    
+  BiomeDirector.TRANSITION_DISTANCE                24000.0    
+  BiomeDirector.debug_pin_intro_biome              false      
+  BiomeDirector.debug_biome_seconds                10.0       != 0.0
+  FrozenLakeDirector.debug_lake_interval_override  0.0        
+  FrozenLakeDirector.debug_lake_min_run_time_override 0.0        
+  AuroraDirector.debug_aurora_interval_override    10.0       != 0.0
+  AuroraDirector.debug_aurora_ignore_night         true       != false
+  ProjectSettings display/window/size/viewport_width 1152       
+  ProjectSettings display/window/size/viewport_height 648        
+  ProjectSettings physics/common/physics_ticks_per_second 60         
+  ProjectSettings physics/common/physics_interpolation false      
+  ProjectSettings display/window/stretch/mode      "canvas_items" 
+  ProjectSettings display/window/stretch/aspect    "expand"   
+  ProjectSettings display/window/handheld/orientation "landscape" 
+  ProjectSettings application/config/quit_on_go_back false      
+  project.godot declares display/window/size/viewport_width STRIPPED   != present
+  project.godot declares display/window/size/viewport_height STRIPPED   != present
+  project.godot declares physics/common/physics_ticks_per_second STRIPPED   != present
+  project.godot declares physics/common/physics_interpolation STRIPPED   != present
+  project.godot declares display/window/stretch/mode present    
+  project.godot declares display/window/stretch/aspect present    
+  project.godot declares display/window/handheld/orientation present    
+  project.godot declares application/config/quit_on_go_back present    
+
+  editor-only (is_debug_build, not checked):
+    first powerup time override    5.0
+
+SHIPPING_VALUES_CHECK FAIL  7 knob(s) not at shipping values
+    BiomeDirector.debug_biome_seconds is 10.0, shipping value is 0.0
+    AuroraDirector.debug_aurora_interval_override is 10.0, shipping value is 0.0
+    AuroraDirector.debug_aurora_ignore_night is true, shipping value is false
+    project.godot no longer declares `display/window/size/viewport_width` -- a project-setting save stripped the pin. The engine default currently equals it, so nothing else in the repo can see the difference. Restore it with `git checkout -- project.godot` (the comment above it is the only record of why it exists)
+    project.godot no longer declares `display/window/size/viewport_height` -- a project-setting save stripped the pin. The engine default currently equals it, so nothing else in the repo can see the difference. Restore it with `git checkout -- project.godot` (the comment above it is the only record of why it exists)
+    project.godot no longer declares `physics/common/physics_ticks_per_second` -- a project-setting save stripped the pin. The engine default currently equals it, so nothing else in the repo can see the difference. Restore it with `git checkout -- project.godot` (the comment above it is the only record of why it exists)
+    project.godot no longer declares `physics/common/physics_interpolation` -- a project-setting save stripped the pin. The engine default currently equals it, so nothing else in the repo can see the difference. Restore it with `git checkout -- project.godot` (the comment above it is the only record of why it exists)
+  Re-run with --allow-temp if these are deliberate for an eyeballing session.
+
+biome_schedule     PASS    1s
+terrain_invariant  PASS   12s
+lake_suppression   PASS   10s
+export_content     PASS    2s
+----
+1 of 5 gates FAILED in 25s: shipping_values

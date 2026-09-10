@@ -145,6 +145,11 @@ func is_effect_active(effect: StringName) -> bool:
 
 
 func start_effect(effect: StringName) -> void:
+	# One admission point covers pickups AND trick-earned boosts. Existing effects
+	# keep their timers; Aurora waits for them to expire and for the player to land.
+	if is_aurora_excluded_effect(effect) and terrain_generator != null \
+			and terrain_generator.is_aurora_flat_world_x(player.global_position.x):
+		return
 	# INF for an untimed effect, so _process() skips it and only its owner can end it.
 	active_effects[effect] = EFFECT_DURATIONS.get(effect, INF)
 	match effect:
@@ -163,6 +168,10 @@ func start_effect(effect: StringName) -> void:
 	# EFFECT_COIN_MULTIPLIERS above are the entire implementation, nothing else to start.
 	refresh_coin_multiplier()
 	effect_started.emit(effect)
+
+
+static func is_aurora_excluded_effect(effect: StringName) -> bool:
+	return effect == EFFECT_SPEED_BOOST or effect == EFFECT_GLIDE
 
 
 func end_effect(effect: StringName) -> void:

@@ -1,0 +1,65 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+Terrain replay seed: 683407368
+CHASM_PROBE_BEGIN seed=683407368 chasms=3
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=no_jump speed=605 survived=true expected=true reached=28485.5 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=no_jump speed=605 survived=true expected=true reached=28475.2 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=no_jump speed=605 survived=true expected=true reached=28475.4 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=no_jump speed=605 survived=true expected=true reached=28475.7 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=jump    speed=605 survived=true expected=true reached=28585.9 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=jump    speed=605 survived=true expected=true reached=28586.1 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=jump    speed=605 survived=true expected=true reached=28586.4 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=jump    speed=605 survived=true expected=true reached=28586.6 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=late    speed=606 survived=true expected=true reached=28747.3 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=late    speed=606 survived=true expected=true reached=28747.6 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=late    speed=606 survived=true expected=true reached=28747.8 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=late    speed=606 survived=true expected=true reached=28748.1 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=boost   speed=605 survived=true expected=true reached=29189.9 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=boost   speed=605 survived=true expected=true reached=29190.2 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=boost   speed=605 survived=true expected=true reached=29190.4 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=boost   speed=605 survived=true expected=true reached=29190.7 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=glide   speed=612 survived=true expected=true reached=30462.3 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=glide   speed=612 survived=true expected=true reached=30462.5 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=glide   speed=612 survived=true expected=true reached=30462.8 recoveries=0 ok
+  CHASM_TRIAL void=[27860.0, 28180.0] mode=glide   speed=612 survived=true expected=true reached=30463.0 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=no_jump speed=724 survived=false expected=false reached=63447.5 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=no_jump speed=724 survived=false expected=false reached=63447.8 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=no_jump speed=724 survived=false expected=false reached=63448.0 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=no_jump speed=724 survived=false expected=false reached=63448.3 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=jump    speed=725 survived=true expected=true reached=63544.1 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=jump    speed=725 survived=true expected=true reached=63544.4 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=jump    speed=725 survived=true expected=true reached=63544.6 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=jump    speed=725 survived=true expected=true reached=63544.9 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=late    speed=725 survived=true expected=true reached=63640.8 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=late    speed=725 survived=true expected=true reached=63641.0 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=late    speed=725 survived=true expected=true reached=63641.3 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=late    speed=725 survived=true expected=true reached=63641.5 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=boost   speed=724 survived=true expected=true reached=63555.3 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=boost   speed=724 survived=true expected=true reached=63555.8 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=boost   speed=724 survived=true expected=true reached=63556.3 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=boost   speed=724 survived=true expected=true reached=63540.1 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=glide   speed=728 survived=true expected=true reached=64598.2 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=glide   speed=728 survived=true expected=true reached=64598.5 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=glide   speed=728 survived=true expected=true reached=64598.7 recoveries=0 ok
+  CHASM_TRIAL void=[63060.0, 63280.0] mode=glide   speed=728 survived=true expected=true reached=64598.9 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=no_jump speed=750 survived=true expected=true reached=110561.8 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=no_jump speed=750 survived=true expected=true reached=110562.7 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=no_jump speed=750 survived=true expected=true reached=110562.9 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=no_jump speed=750 survived=true expected=true reached=110548.5 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=jump    speed=750 survived=true expected=true reached=110722.5 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=jump    speed=750 survived=true expected=true reached=110722.8 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=jump    speed=750 survived=true expected=true reached=110723.0 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=jump    speed=750 survived=true expected=true reached=110723.2 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=late    speed=750 survived=true expected=true reached=110885.0 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=late    speed=750 survived=true expected=true reached=110885.2 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=late    speed=750 survived=true expected=true reached=110885.5 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=late    speed=750 survived=true expected=true reached=110886.0 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=boost   speed=750 survived=true expected=true reached=111109.7 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=boost   speed=750 survived=true expected=true reached=111110.0 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=boost   speed=750 survived=true expected=true reached=111110.2 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=boost   speed=750 survived=true expected=true reached=111110.5 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=glide   speed=750 survived=true expected=true reached=112559.8 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=glide   speed=750 survived=true expected=true reached=112560.0 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=glide   speed=750 survived=true expected=true reached=112560.3 recoveries=0 ok
+  CHASM_TRIAL void=[109780.0, 110100.0] mode=glide   speed=750 survived=true expected=true reached=112560.5 recoveries=0 ok
+CHASM_PROBE_RESULT trials=60 failures=0 status=PASS

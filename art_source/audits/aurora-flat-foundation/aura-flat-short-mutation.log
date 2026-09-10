@@ -1,0 +1,23 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+Terrain replay seed: 941462462
+AURORA_FLAT_TRAVERSAL seed=941462462 boosted=false frames=2789
+Terrain replay seed: 941462462
+AURORA_FLAT_TRAVERSAL seed=941462462 boosted=true frames=2092
+Terrain replay seed: 2160065702
+AURORA_FLAT_TRAVERSAL seed=2160065702 boosted=false frames=2789
+Terrain replay seed: 2160065702
+AURORA_FLAT_TRAVERSAL seed=2160065702 boosted=true frames=2092
+  Wrong reserved length
+  Wrong reserved length
+  Wrong reserved length
+  Wrong reserved length
+  Wrong reserved length
+  Wrong reserved length
+  Wrong reserved length
+  Wrong reserved length
+  Traversal never proved full event duration
+  Traversal never proved full event duration
+  Traversal never proved full event duration
+  Traversal never proved full event duration
+AURORA_CALM_FOUNDATION FAIL assertions=85418 seeds=8 traversals=4

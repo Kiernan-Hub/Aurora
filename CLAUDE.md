@@ -36,21 +36,22 @@ lake-suppression, and an export-content check that fails if `scripts/debug` reac
 `experiments/` paths went on 2026-09-03; still listed, as a rule about where throwaway work goes). Run it
 before every commit. It deliberately does *not* import the project, for the reason in the `project.godot` bullet below.
 
-**Twelve maintained checks, and only twelve** — everything else lives in `scripts/debug/archive/`, so the
-directory answers "is this a gate?". `check.sh` runs four; the other eight take minutes or need a window (`debugging.md`):
+**Thirteen maintained checks** — everything else lives in `scripts/debug/archive/`, so the
+directory answers "is this a gate?". `check.sh` runs four; the other nine take minutes or need a window (`debugging.md`):
 
 | Check | Run after |
 |---|---|
 | freeze-replay, **freeze-search**, floor-flicker | any player/collision/segment change. Freeze-search is the one that actually finds stalls — replay alone isn't sufficient |
 | camera-shake | any change to the camera follow in `main.gd` |
 | chasm | anything touching voids, fall death or the boost velocity model |
+| `aurora_calm_probe.gd` | Aurora flat reservation, live entry/recovery, spawn suppression and lake arbitration |
 | `sky_layer_check.gd`, `ice_look_capture.gd`, `biome_contact_sheet.gd` | any visual change. **These three must run WITHOUT `--headless`** — they diff or save rendered frames |
 
 **Every headless gate is blind to biome code** (`BiomeDirector` returns early under `--headless`) — the only
 reason the visual three exist. And `shipping_values_check` is the only thing watching the debug knobs: each is
 a plain `var` the editor can't serialise, so no other gate sees one left flipped. It fails on all of them, on any
 `debug_*` override reaching `main.tscn`, and on a pinned engine setting going missing from `project.godot`;
-`--allow-temp` downgrades it to a warning. A 13th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing;
+`--allow-temp` downgrades it to a warning. A 14th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing;
 the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, meaningless numbers — never trust one without reviving it (`debugging.md`, which also has the `FREEZE_REPRO` rule).
 
 ## Scene wiring
@@ -82,9 +83,9 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
   before parents, so it's still 0 there; initialise seed-derived state on the first
   `_physics_process`. Shipped as a real bug: identical powerup schedule every session.
 - **`get_terrain_height` must stay pure** in `(session_seed, world_x)` — chunk visuals, collision,
-  player tilt and the debug HUD all sample it independently. **One runtime input is allowed**,
-  `lake_segment_index`, **write-once and write-ahead**: `arm_lake()` is its only writer and may only
-  set it *above* `highest_cached_segment_index`, so arming can only **extend** the height field.
+  player tilt and the debug HUD all sample it independently. Lake and Aurora reservations are
+  **write-once and write-ahead**: `arm_lake()` / `arm_aurora_flat()` may only extend unsampled
+  terrain. Aurora's live director reserves its flat passage before it can become visible (`aurora_borealis.md`).
 - **`get_terrain_height` returns an offset FROM `ground_y`**, not a TerrainGenerator-local y — place nodes at
   `ground_y + get_terrain_height(x) − clearance`, or a per-chunk spawner's GROUP at `y = ground_y`. Both coin
   spawners omitted it and hung every diamond 192px too high, unreachable at every jump level, for months while
@@ -152,11 +153,11 @@ All **working** unless said otherwise. The numbers are load-bearing; the reasoni
 | 9 | Upgrades | Vertical slice: one track (jump, five levels), SHOP screen, banked coins. Missions/zones not started |
 | 10 | **Frozen lake** | The first set piece. Every 20 min of *cumulative* playtime, and only past 130s into a run, a forced 7500px flat segment is armed ahead of the player: jumping locked, all six spawners suppressed, ice takes a fixed authored blue under a full-screen reflection quad. Everything cosmetic rides ONE ramp, `FrozenLakeDirector.get_lake_blend()` — including the camera's framing. Skate spray and an etched track ride it too. The first crossing grants the game's first **achievement**. `terrain.md`, `visuals.md`, `input.md` |
 | 11 | **Achievements** | `AchievementManager` is the ONLY writer of `SaveStore.achievements` (an open dictionary, so a new one needs no version bump). **Triggers come TO it** — it listens to signals systems already emit, never the reverse — so adding one is a table row plus one `.connect()`, both in that file. **Its ids are save data**: adding is free, renaming un-earns it for everyone. No gallery/rewards yet, and an addon was evaluated and declined. `architecture.md` |
-| 12 | **Aurora borealis** | The namesake feature, **IN PROGRESS**. Every **30 min** cumulative playtime, **night only** (blended `star_density` ≥ 0.8), ~60s on one `get_aurora_blend()`, one per run. Built: three code-built curtains in `SkyBackdrop`, **additive `CanvasItemMaterial`, NOT a third shader**. **Scheduled by a STORED DEADLINE** (`next_aurora_due_seconds`), never `count × interval` — the aurora lands in saves that already hold hours, so a multiple pays out back to back. **The calm band — no obstacles, no chasms — is in scope and NOT built**: obstacles are free (spawned nodes), chasms are terrain and must take `arm_lake()`'s write-once/write-ahead deal or avoid writing at all. `aurora_borealis.md` |
+| 12 | **Aurora borealis** | The namesake feature, **IN PROGRESS**. Every **30 min** cumulative playtime, one per run, only when the whole ~61s maximum-travel window is night (`star_density` ≥ 0.8). Built and pending owner/device review: three code-built curtains with an additive reveal/fold shader, stored deadline and progression-isolated previews; a write-ahead flat protected passage with safe entry/recovery; obstacle and boost/glide suppression; and lake arbitration. Existing visible objects are never deleted, while coins, other powerups and jumping continue. Camera, ice/world response, snowfall, wings/flight, achievement and sound are not built. `aurora_borealis.md` |
 
-**Two `.gdshader`s exist, both owned by ice** — `shaders/ice.gdshader` (the band: two-tile noise dissolve,
+**Three `.gdshader`s exist: `aurora_curtain.gdshader` owns sky reveal/folds; the other two are ice** — `shaders/ice.gdshader` (the band: two-tile noise dissolve,
 per-biome `ice_contrast`, plus a `flatten` and a `gloss` only the lake writes) and `shaders/frozen_lake_reflection.gdshader`.
-Colour needs no shader — `Polygon2D` already renders `texture * vertex_color` — so a third needs a reason.
+Colour needs no shader — `Polygon2D` already renders `texture * vertex_color` — so additional shaders need a reason.
 
 **Base viewport pinned 1152×648**, `aspect="expand"`, `Camera2D.zoom` 0.8333 → 1382×778 world px visible.
 **Base size and zoom are one decision — only their ratio is field of view**, which on an auto-runner is reaction
