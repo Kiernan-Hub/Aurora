@@ -27,6 +27,7 @@
 [ext_resource type="Texture2D" uid="uid://csplkncwj3uke" path="res://assets/textures/background/ice_pano.png" id="26_pano"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_director.gd" id="27_aurora"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_wash.gd" id="28_aurora_wash"]
+[ext_resource type="Script" path="res://scripts/systems/aurora_blade_glow.gd" id="29_aurora_blade"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -134,6 +135,10 @@ script = ExtResource("16_glide_coins")
 
 [node name="RareCoinSpawner" type="Node2D" parent="TerrainGenerator"]
 script = ExtResource("18_rare_coins")
+
+[node name="AuroraBladeGlow" type="Node2D" parent="."]
+visible = false
+script = ExtResource("29_aurora_blade")
 
 [node name="LakeReflection" type="Node2D" parent="."]
 visible = false

@@ -1,5 +1,18 @@
 # Aurora borealis — the plan and the state
 
+## Slice 5 — grounded blade connection implemented
+
+A compact cyan-green halo and short bright core now pin the Aurora to the skater's actual blade
+contact. `AuroraBladeGlow` is code-built once, reads the real terrain surface and slope, and is
+shown only while the player is grounded. The existing director ramp drives it; there is no new
+timer, shader, trail history, particle pool, movement mode or rebase state. Jumping stops the
+effect immediately rather than drawing light across empty air.
+
+The windowed gate now isolates the blade pixels from the sky/wash/ice response and checks grounded
+crest visibility plus zero-state cleanup at both widths and both night palettes. Captures are in
+`art_source/audits/aurora-blade-slice/`. Wisps and snow were deliberately left out: they add
+overlap and particle cost and should be judged separately. Owner/device review remains owed.
+
 ## Slice 4 — world light connection implemented
 
 The single Aurora ramp now drives two restrained world responses. `AuroraWash`, a code-built

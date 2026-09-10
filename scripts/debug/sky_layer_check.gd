@@ -345,11 +345,15 @@ func check_aurora() -> void:
 	var director: AuroraDirector = main.get_node("AuroraDirector")
 	var biome: BiomeDirector = main.get_node("BiomeDirector")
 	var wash: CanvasLayer = main.get_node_or_null("AuroraWash") as CanvasLayer
+	var blade_glow: Node2D = main.get_node_or_null("AuroraBladeGlow") as Node2D
 	if wash == null or wash.layer != -45:
 		aurora_failures.append("Aurora wash is missing or not structurally behind gameplay at layer -45")
 	elif wash.get_node_or_null("Wash") == null \
 			or (wash.get_node("Wash") as TextureRect).mouse_filter != Control.MOUSE_FILTER_IGNORE:
 		aurora_failures.append("Aurora wash is missing its input-transparent full-screen draw")
+	if blade_glow == null or blade_glow.get_node_or_null("Halo") == null \
+			or blade_glow.get_node_or_null("Core") == null:
+		aurora_failures.append("Aurora blade glow is missing its halo or core")
 	director.set_physics_process(false)
 	var original_size: Vector2i = root.size
 	for width: int in [1152, 1440]:
@@ -358,7 +362,8 @@ func check_aurora() -> void:
 			backdrop.apply_palette(palette)
 			director.push_blend(0.0)
 			if not is_zero_approx(terrain.aurora_ice_blend) \
-					or (wash != null and (wash.get_node("Wash") as TextureRect).visible):
+					or (wash != null and (wash.get_node("Wash") as TextureRect).visible) \
+					or (blade_glow != null and blade_glow.visible):
 				aurora_failures.append("Aurora world response does not restore its zero state")
 			var clean: Image = await capture_aurora_frame()
 			# Visual envelope only; safe-entry lifecycle is exercised by aurora_calm_probe.
@@ -369,14 +374,29 @@ func check_aurora() -> void:
 				director.active_elapsed = elapsed
 				director.push_blend(director.get_aurora_blend())
 				if elapsed == 30.0 and (terrain.aurora_ice_blend < 0.99 \
-						or (wash != null and not (wash.get_node("Wash") as TextureRect).visible)):
-					aurora_failures.append("Aurora crest does not reach both wash and ice")
+						or (wash != null and not (wash.get_node("Wash") as TextureRect).visible) \
+						or (blade_glow != null and not blade_glow.visible)):
+					aurora_failures.append("Aurora crest does not reach wash, ice, and grounded blade glow")
 				var frame: Image = await capture_aurora_frame()
 				var peak: int = measure_peak(clean, frame)
 				if (elapsed == 0.0 or elapsed == 61.0) and peak != 0:
 					aurora_failures.append("Aurora does not restore the baseline at t=%s, width=%d" % [elapsed, width])
 				elif elapsed > 0.0 and elapsed < 61.0 and peak < MIN_PEAK_CONTRIBUTION:
 					aurora_failures.append("Aurora ramp is not visible at t=%s, width=%d" % [elapsed, width])
+			# Isolate the blade contribution from the much larger sky/wash/ice changes.
+			director.active_elapsed = 30.0
+			director.push_blend(1.0)
+			var blade_on: Image = await capture_aurora_frame()
+			if blade_glow != null:
+				blade_glow.visible = false
+			var blade_off: Image = await capture_aurora_frame()
+			var blade_peak: int = measure_peak(blade_off, blade_on)
+			print("AURORA_BLADE width=%d palette=%s peak=%d floor=%d" % [
+				width, palette.resource_path.get_file(), blade_peak, MIN_PEAK_CONTRIBUTION])
+			if blade_peak < MIN_PEAK_CONTRIBUTION:
+				aurora_failures.append("Aurora blade glow is too faint at width=%d: %d < %d" % [
+					width, blade_peak, MIN_PEAK_CONTRIBUTION])
+			director.push_blend(0.0)
 			# Arrival must begin on the right, then reach the left. Whole-screen fading
 			# (or a reveal tied to drifting texture UV) must not pass on brightness alone.
 			backdrop.apply_aurora(1.0, 4.0)

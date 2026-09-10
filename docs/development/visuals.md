@@ -21,6 +21,7 @@ Front-to-back, as wired in `scenes/main.tscn`:
 | Node | Kind | `layer` / `motion_scale` | Script |
 |---|---|---|---|
 | `CanvasLayer` | UI | `1` | — |
+| `AuroraBladeGlow` | world | `0`, after terrain | `aurora_blade_glow.gd` |
 | `TerrainGenerator` chunks, pickups, obstacles | world | `0` | `terrain_generator.gd` |
 | `TerrainGenerator/GroundTreeSpawner` | world | `0` | `ground_tree_spawner.gd` |
 | `Player` | world | `0` | `player.gd` |

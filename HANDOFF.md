@@ -1,5 +1,16 @@
 # Handoff
 
+## Latest — slice 5: grounded blade glow
+
+Aurora now has one local connection to the skater: a compact code-built cyan-green halo and short
+core at the real terrain contact, aligned to the slope and hidden whenever the player is airborne.
+It uses the existing Aurora ramp and adds no shader, particles, trail history, timer or movement
+state. The rendered gate isolates its pixels from the sky/world response and checks cleanup at both
+widths and both night palettes. Captures are in `art_source/audits/aurora-blade-slice/`.
+
+Wisps and snow remain separate because they add overlap and GPU/particle cost. Camera and flight
+remain the highest bug-surface candidates. TEMP preview values remain on for owner review.
+
 ## Latest — slice 4: the light reaches the world
 
 Aurora's existing ramp now drives one `CanvasLayer -45` vertical wash and a composed ice response.
