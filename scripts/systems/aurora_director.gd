@@ -19,6 +19,21 @@ const NIGHT_THRESHOLD: float = 0.8
 const MIN_RUN_TIME_SECONDS: float = 130.0
 # Space to let an existing glide/boost finish and land before the presentation starts.
 # A failed/late entry skips the appearance without undoing the immutable flat.
+#
+# THE GLIDE SETS THIS FLOOR, NOT THE BOOST, and reading the wrong one is how you talk yourself
+# into halving it. SPEED_BOOST_DURATION is 3s, but GLIDE_DURATION is 7s and glide leaves
+# velocity.x = current_speed untouched -- so 7 x MAX_SPEED is 5250px, plus up to ~750px more
+# because begin_aurora() also needs is_on_floor() and a glide can expire at altitude with
+# GLIDE_MAX_FALL_SPEED 550. Worst case is ~6000px; this is ~1.7x that.
+#
+# A glide powerup can also be collected AFTER the reservation but before the flat -- suppression
+# only covers overlaps_aurora_flat() -- so refusing to reserve mid-effect would not remove the
+# need for this budget. It has to be here.
+#
+# WHAT IT COSTS, since it is also the reason the tail is long: unused budget becomes flat the
+# player rides with nothing on it (~12s at cap). Cutting it does NOT shorten a flat already
+# armed, and undershooting fails has_duration_room() at entry, which skips the aurora AND still
+# spends the whole reservation. Trim only against a re-measured worst case.
 const ENTRY_WAIT_DISTANCE: float = 10000.0
 const MIN_RECOVERY_DISTANCE: float = 2048.0
 const BODY_CLEARANCE: float = 128.0

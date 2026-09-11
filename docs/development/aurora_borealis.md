@@ -13,11 +13,22 @@ dead flat. A preview interval bypasses the gate so review sessions need no secon
 **A protected flat is always longer than its event, by design.** At cap the reservation is
 ~59,846px (~80s) against ~45,750px of presentation, so roughly **12 seconds of empty, obstacle-free
 flat follows the fade** and ~3s precedes it. `ENTRY_WAIT_DISTANCE` (10,000px) is budget for an
-existing 3-second boost to expire before entry; when no boost is running, that budget becomes tail.
+existing movement effect to expire and land before entry; when none is running, that budget
+becomes tail.
+
+**The GLIDE sets that floor, not the boost.** `SPEED_BOOST_DURATION` is 3s, but `GLIDE_DURATION`
+is 7s and glide leaves `velocity.x = current_speed` untouched — 7 × `MAX_SPEED` is 5,250px, plus
+up to ~750px more because `begin_aurora()` also needs `is_on_floor()` and a glide can expire at
+altitude. Worst case ~6,000px; the constant is ~1.7× that. A glide powerup can also be collected
+*after* the reservation but before the flat (suppression only covers `overlaps_aurora_flat()`),
+so refusing to reserve mid-effect would not remove the need for the budget. Sizing this against
+the boost alone argues for halving it and is wrong.
+
 A failed entry (night lapsed, conflict) spends the whole reservation with no event at all — rare,
 since reserve and entry are ~3s apart and share `is_sky_ready()`, and unfixable after the fact
 because the terrain is immutable once armed. Trimming the tail means trimming
-`ENTRY_WAIT_DISTANCE`, not shortening a flat that has already been written. A single
+`ENTRY_WAIT_DISTANCE`, not shortening a flat that has already been written — and undershooting
+fails `has_duration_room()` at entry, which skips the aurora *and* still spends the reservation. A single
 `AuroraDirector` clock drives the protected write-ahead flat/recovery and every presentation
 consumer: curtains, wash, ice response, camera, blade glow, snow, rear wisps, wings, guided
 flight, and ambience. It also owns the completion signal; `AchievementManager` remains the sole
