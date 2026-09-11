@@ -5,7 +5,7 @@ class_name AuroraDirector
 # Owns timing and the single cosmetic ramp; SkyBackdrop owns the curtains.
 # One event per run, due 30 minutes after the last completed event, with enough night
 # remaining for the entire event. Reserves a future flat, then waits for safe entry.
-# Spawners and PowerupManager own exclusion; actual Aurora flight is still unbuilt.
+# Spawners and PowerupManager own exclusion; Player owns the bounded crest-flight body state.
 const AURORA_INTERVAL_SECONDS: float = 1800.0
 const AURORA_DURATION_SECONDS: float = 45.0
 const AURORA_FADE_SECONDS: float = 8.0

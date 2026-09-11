@@ -1,5 +1,35 @@
 # Aurora borealis — the plan and the state
 
+## Current implementation, verification, and release gate — 2026-09-11
+
+Aurora is fully implemented on `claude/aurora-reconcile` through `9db1fb9` (pushed to `origin`).
+It is a 61-second, once-per-run experience due every 30 minutes of cumulative playtime and can
+begin only when the full presentation has enough remaining night (`star_density >= 0.8`). A single
+`AuroraDirector` clock drives the protected write-ahead flat/recovery and every presentation
+consumer: curtains, wash, ice response, camera, blade glow, snow, rear wisps, wings, guided
+flight, and ambience. It also owns the completion signal; `AchievementManager` remains the sole
+writer of the once-only `under_the_aurora` achievement.
+
+Safety policy is now concrete: the reservation is immutable and ahead of all visible bodies;
+existing bodies are never removed; newly spawned obstacles and boost/glide pickups are suppressed
+inside the passage; coins and non-movement powerups continue; Aurora and Frozen Lake reserve
+non-overlapping spans; and entry fails closed if a real floor contact, full night duration, room,
+or conflict is absent. The Player's one 96px crest flight runs from 27–45 seconds, preserves
+horizontal speed, rejects buffered jumps during flight/landing, and returns ordinary input after
+one real landing.
+
+Verification is green: the complete `aurora_calm_probe.gd` passes 163,746 assertions across
+preview and credited encounters; native `sky_layer_check.gd` passes at 1152×648 and 1440×648; and
+the 20,000-frame ordinary camera/movement regression passes unchanged. The only shipping-values
+differences are deliberate preview values: `debug_biome_seconds = 10.0`,
+`debug_aurora_interval_override = 10.0`, and `debug_aurora_ignore_night = true`. Restore them to
+`0.0`, `0.0`, and `false`, then run the normal shipping gate before release.
+
+The remaining acceptance work is qualitative: review full motion, camera, flight and ambience on
+a real night at normal biome pace; check Android frame pacing, input feel, and speaker/headphone
+balance; then make only evidence-led tuning changes. The dated slice and planning records below
+are retained as history; this section is the current source of truth.
+
 ## Slice 12 — dedicated Aurora ambience implemented
 
 Aurora now owns a quiet 12-second seamless stereo bed generated locally from periodic harmonics
@@ -44,9 +74,9 @@ changes only their transform and opacity. There are no particles, trails, timers
 
 The windowed gate proves behind-gameplay ordering, zero cleanup, bounded timing, paused-frame
 identity and 65/255 isolated visibility at 1152×648 and 1440×648 across both night palettes.
-Captures are in `art_source/audits/aurora-wings-slice/`. The complete calm probe remains green at
-159,415 assertions. Actual controlled flight remains unbuilt and is now an explicit optional
-follow-up, contingent on accepting this visual direction before taking on movement risk.
+Captures are in `art_source/audits/aurora-wings-slice/`. The complete calm probe was green at
+159,415 assertions at this slice. The controlled flight followed in slice 11 after separate
+movement proof, and the ambient bed followed in slice 12.
 
 ## Slice 9 — restrained camera composition implemented
 

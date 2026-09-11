@@ -1,5 +1,30 @@
 # Handoff
 
+## Current Aurora state — 2026-09-11
+
+The complete Aurora encounter is implemented on `claude/aurora-reconcile` through
+`9db1fb9` and pushed to `origin`. It is a 61-second, once-per-run event due every 30 minutes of
+cumulative playtime, gated by enough remaining night for the full encounter. The current scene is
+intentionally in **TEMP preview mode** (`BiomeDirector.debug_biome_seconds = 10.0`,
+`AuroraDirector.debug_aurora_interval_override = 10.0`,
+`AuroraDirector.debug_aurora_ignore_night = true`), so it is reviewable now but not shippable until
+those three values are restored to `0.0`, `0.0`, and `false` respectively.
+
+One director clock owns the entire presentation: protected write-ahead flat and recovery; new
+obstacle/boost/glide suppression; night/lake arbitration; curtains, world wash and ice response;
+camera framing; blade glow; snow; rear wisps; six-feather wings; one bounded 96px crest flight;
+the Music-bus ambient bed; and the once-only `under_the_aurora` achievement. Existing visible
+objects are never removed; coins and non-movement powerups continue. The player returns to normal
+grounded input before recovery ends.
+
+Latest evidence: `aurora_calm_probe.gd` passes 163,746 assertions across preview and credited
+encounters; `sky_layer_check.gd` passes native at 1152×648 and 1440×648; the 20,000-frame ordinary
+camera/movement regression passes. `shipping_values_check.gd -- --allow-temp` reports only the
+three deliberate preview values. Remaining work is owner motion/audio taste review and Android
+speaker/headphone/frame-input testing, then restoring the shipping defaults and running the clean
+shipping gate. Do not add another Aurora subsystem until that acceptance pass identifies a concrete
+issue.
+
 ## Latest — slice 12: Aurora ambient bed
 
 Aurora now has a dedicated 12-second seamless stereo ambient loop generated locally from periodic
@@ -39,9 +64,9 @@ opacity. It stays structurally behind Player and TerrainGenerator and hides whil
 
 The rendered gate passes at both widths/night palettes, measuring 65/255 isolated visibility,
 paused-frame identity, bounded timing, draw order and cleanup. Captures are in
-`art_source/audits/aurora-wings-slice/`. The full calm probe still passes 159,415 assertions; fast
-gates pass except the three intentional TEMP preview values. Actual flight remains unbuilt and
-should not be attempted unless this safer visual is accepted first. Audio still needs an asset.
+`art_source/audits/aurora-wings-slice/`. The full calm probe passed 159,415 assertions at this
+slice. The controlled flight and ambient bed were deliberately added in later, separately verified
+slices 11 and 12.
 
 ## Latest — slice 9: Aurora camera composition
 
