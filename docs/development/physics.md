@@ -261,8 +261,8 @@ over.
 
 ## Camera follow (`scripts/main.gd`)
 
-Vertical: follows **downward only**, `max(camera_baseline_y, player.y - 72)`, with
-exponential smoothing.
+Vertical: uses a 72px baseline-relative dead zone with symmetric climb/descent follow and
+exponential smoothing. Glide temporarily takes tight vertical control until landing.
 
 Horizontal: **also exponentially smoothed** (`HORIZONTAL_FOLLOW_SMOOTHNESS`, 8.0) and
 then *led* by a smoothed scroll-rate estimate that cancels the filter's steady-state lag.
@@ -293,6 +293,20 @@ Two constants that must stay in their current relationship:
 The lead exists because an exponential follow settles ~38px behind its target at cap
 speed, and on an auto-runner that's forward reaction distance the player can't afford to
 lose. Cancelling it costs judder rejection only, not visibility.
+
+Aurora camera composition is layered into this same sole writer: the event ramp eases to 1.055×
+the captured authored zoom and frames its protected flat at 0.59 of screen height. Glide has
+priority and suppresses both effects. There is no camera rotation or second controller, and the
+authored zoom is restored before normal hazards resume.
+
+## Aurora crest flight
+
+`Player.is_aurora_flight_active` is a dedicated, director-driven state used only over Aurora's
+write-ahead protected flat. It preserves horizontal speed and guides Y toward a surface-relative
+target capped at 96px altitude and 260px/s vertical speed. It is not ordinary glide, a powerup,
+invulnerability, collision bypass or `Engine.time_scale`. Five-second rise/release ramps produce
+one takeoff and one real landing; a landing latch prevents held or buffered input from firing during
+the gravity handoff. Normal grounded physics is restored long before the protected recovery ends.
 
 X is never world-rebased (`world_rebaser.gd` rebases Y only), so the scroll-rate estimate
 needs no rebase correction — unlike `camera_y` / `camera_baseline_y`, which do.

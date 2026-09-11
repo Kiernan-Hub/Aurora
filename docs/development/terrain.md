@@ -356,3 +356,17 @@ See "Known issues" in `CLAUDE.md` and `docs/research/camera_shake.md`.
 **Consequence worth knowing:** with `mega_drop` gone the steepest slope the generator
 can produce is **20.13°**, down from 40.5°. Anything written assuming a
 near-`floor_max_angle` face still exists in the world is now wrong.
+
+
+## Aurora flat reservation
+
+`arm_aurora_flat(length)` reserves one long zero-magnitude flat segment after the highest
+contiguous cache index and all sparse spec reads. The index and length are committed once and
+remain immutable, including after cache rebuilds. Normal fixed-size chunks keep streaming;
+segment length does not create a correspondingly large collision node. A neighbouring chasm is
+excluded at candidate selection. The live Aurora director arms it only ahead of existing spawned
+collision bodies; it never changes sampled terrain or deletes something already visible. An
+already armed/active lake blocks the Aurora, while later reservations choose non-overlapping spans.
+
+Run `aurora_calm_probe.gd` for geometry, collision traversal and live lifecycle proof, including
+pending entry, obstacle/powerup suppression, recovery and lake arbitration.

@@ -95,6 +95,10 @@ var snow_cap_strength: float = 0.0
 # player is has no seam to disagree about: it reaches 1 only once the screen holds nothing but
 # lake, and it retreats the same way at the far shore.
 var lake_ice_blend: float = 0.0
+# A second cosmetic input, composed here rather than writing shader/tint state from the
+# Aurora director. Lake and Aurora scheduling keeps them apart, but composition makes the
+# renderer correct even if that policy changes later.
+var aurora_ice_blend: float = 0.0
 # What the painters actually use: the palette's values with the lake blended in. Kept separate
 # from the palette fields above so apply_ice_palette() and set_lake_ice_blend() can be written by
 # two different systems without either having to read the other's state back.
@@ -269,6 +273,14 @@ const LAKE_ICE_FLATTEN: float = 1.0
 const LAKE_ICE_GLOSS_STRENGTH: float = 0.34
 const LAKE_ICE_GLOSS_DEPTH: float = 0.1
 const LAKE_ICE_GLOSS_SOFTNESS: float = 0.14
+# Aurora keeps the tile and depth structure; these are restrained light targets, not a
+# second fixed ice palette like the lake.
+const AURORA_ICE_SURFACE: Color = Color(0.34, 0.82, 0.68)
+const AURORA_ICE_DEPTH: Color = Color(0.12, 0.31, 0.34)
+const AURORA_SURFACE_WEIGHT: float = 0.42
+const AURORA_DEPTH_WEIGHT: float = 0.18
+const AURORA_HUE_VARIANCE: float = 0.015
+const AURORA_GLOSS_STRENGTH: float = 0.16
 
 const SLOPE_SAMPLE_DISTANCE: float = 2.0
 const MAX_COLLISION_SEGMENT_LENGTH: float = 16.0
@@ -527,7 +539,8 @@ const LAKE_ARM_LEAD_SEGMENTS: int = 2
 
 # The armed lake's segment index, or -1 for "no lake in this run". Set ONLY by arm_lake().
 #
-# THIS IS THE ONE RUNTIME INPUT TO THE HEIGHT FIELD, under a write-once, write-ahead rule.
+# The lake is a runtime input to the height field, under a write-once, write-ahead rule.
+# Aurora below takes the same deal; neither reservation is cleared after presentation.
 # get_terrain_height must stay pure in (session_seed, world_x) because chunk visuals,
 # collision, player tilt and the debug HUD all sample it independently and must agree. Setting
 # this breaks that literally -- so arm_lake() may only ever set it to an index STRICTLY GREATER
@@ -542,6 +555,13 @@ const LAKE_ARM_LEAD_SEGMENTS: int = 2
 #
 # Never assign this directly. arm_lake() is the only writer and enforces the rule itself.
 var lake_segment_index: int = -1
+
+# Aurora uses one long FLAT segment, not a time-dependent flattening of existing hills.
+# These two fields are committed together, once, by arm_aurora_flat(). Like the lake,
+# the reservation persists after presentation ends and may only extend unsampled terrain.
+# AuroraDirector owns pending entry and schedules this ahead of existing bodies.
+var aurora_segment_index: int = -1
+var aurora_segment_length: float = 0.0
 
 # Pins a lake at a fixed index for gates and playtesting, with no FrozenLakeDirector and no
 # save file involved -- the deterministic counterpart to the runtime schedule.
@@ -1417,6 +1437,9 @@ func is_lake_segment_index(segment_index: int) -> bool:
 func arm_lake() -> bool:
 	if lake_segment_index >= 0:
 		return false
+	# Directors arbitrate time; geometry permits both set pieces at disjoint indices.
+	if aurora_segment_index >= 0:
+		ensure_segment_cache_through(aurora_segment_index)
 
 	var candidate: int = highest_cached_segment_index + LAKE_ARM_LEAD_SEGMENTS
 	while segment_spec_cache.has(candidate) \
@@ -1426,6 +1449,55 @@ func arm_lake() -> bool:
 		candidate += 1
 	lake_segment_index = candidate
 	return true
+
+
+# Geometry-only reservation. Directors arbitrate timing; an earlier lake stays immutable.
+# Skip every spec already read, even sparse reads above the contiguous cache watermark.
+# Choosing a candidate never calls get_segment_spec(), which would consume its virginity.
+func arm_aurora_flat(length: float) -> bool:
+	if aurora_segment_index >= 0 \
+			or not is_finite(length) or length < SMALL_SEGMENT_LENGTH:
+		return false
+	if get_active_lake_segment_index() >= 0:
+		ensure_segment_cache_through(get_active_lake_segment_index())
+	var last_observed: int = highest_cached_segment_index
+	for index: int in segment_spec_cache:
+		last_observed = maxi(last_observed, index)
+	var candidate: int = last_observed + LAKE_ARM_LEAD_SEGMENTS
+	# Keep a normal, grounded neighbour on both sides. This does not promise the
+	# whole approach is safe; live entry must wait until the reserved flat is reached.
+	while is_chasm_segment_index(candidate - 1) or is_chasm_segment_index(candidate) \
+			or is_chasm_segment_index(candidate + 1):
+		candidate += 1
+	aurora_segment_length = length
+	aurora_segment_index = candidate
+	return true
+
+
+func get_aurora_flat_start_x() -> float:
+	if aurora_segment_index < 0:
+		return 0.0
+	ensure_segment_cache_through(aurora_segment_index)
+	return segment_start_x_cache[aurora_segment_index]
+
+
+func get_aurora_flat_end_x() -> float:
+	if aurora_segment_index < 0:
+		return 0.0
+	ensure_segment_cache_through(aurora_segment_index)
+	return get_cached_segment_end_x(aurora_segment_index)
+
+
+func is_aurora_flat_world_x(world_x: float) -> bool:
+	if aurora_segment_index < 0:
+		return false
+	return world_x >= get_aurora_flat_start_x() and world_x < get_aurora_flat_end_x()
+
+
+func overlaps_aurora_flat(start_x: float, end_x: float) -> bool:
+	if aurora_segment_index < 0:
+		return false
+	return end_x >= get_aurora_flat_start_x() and start_x <= get_aurora_flat_end_x()
 
 
 # World-x span of the armed lake, or an empty span when none is armed. Both call
@@ -1744,6 +1816,14 @@ func get_segment_spec(segment_index: int) -> Dictionary:
 # uses it identically per type), tier, and debug label. Everything else in this file
 # reads this instead of re-deriving it.
 func build_segment_spec(segment_index: int) -> Dictionary:
+	if aurora_segment_index >= 0 and segment_index == aurora_segment_index:
+		return {
+			"type": SEGMENT_TYPE_FLAT,
+			"tier": SEGMENT_TIER_MEDIUM,
+			"length": aurora_segment_length,
+			"magnitude": 0.0,
+			"label": "aurora_flat",
+		}
 	# Chasm overrides the weighted selection entirely rather than joining the weight table:
 	# its rarity is a guaranteed minimum SPACING, which a weight cannot express. See the
 	# CHASM_ constants block and is_chasm_segment_index().
@@ -2103,6 +2183,14 @@ func set_lake_ice_blend(blend: float) -> void:
 	refresh_ice_appearance()
 
 
+func set_aurora_ice_blend(blend: float) -> void:
+	var clamped: float = clampf(blend, 0.0, 1.0)
+	if is_equal_approx(clamped, aurora_ice_blend):
+		return
+	aurora_ice_blend = clamped
+	refresh_ice_appearance()
+
+
 # Folds the palette and the lake blend into the values the painters read, then pushes the
 # material uniforms and repaints what is already on screen. Both writers come through here, so
 # neither can leave the world half-updated: a biome transition DURING a lake crossing (nothing
@@ -2111,10 +2199,17 @@ func set_lake_ice_blend(blend: float) -> void:
 func refresh_ice_appearance() -> void:
 	effective_ice_surface = ice_surface_tint.lerp(get_lake_tint(LAKE_ICE_SURFACE), lake_ice_blend)
 	effective_ice_depth = ice_depth_tint.lerp(get_lake_tint(LAKE_ICE_DEPTH), lake_ice_blend)
+	# Upper ice catches the Aurora while the deep body stays dark enough to retain depth.
+	effective_ice_surface = effective_ice_surface.lerp(
+		AURORA_ICE_SURFACE, aurora_ice_blend * AURORA_SURFACE_WEIGHT)
+	effective_ice_depth = effective_ice_depth.lerp(
+		AURORA_ICE_DEPTH, aurora_ice_blend * AURORA_DEPTH_WEIGHT)
 	# Toward ZERO on the lake, not toward the palette's value. The hue drift is a slow warm/cool
 	# wash along the ride line -- correct for a landscape, wrong for a sheet that is supposed to
 	# look identical every time and identical along its own length.
 	effective_ice_hue_variance = lerpf(ice_hue_variance, 0.0, lake_ice_blend)
+	effective_ice_hue_variance = lerpf(
+		effective_ice_hue_variance, AURORA_HUE_VARIANCE, aurora_ice_blend)
 	if ice_material != null:
 		# Already blended on the ice channel by the time it gets here, so this crossfades with
 		# the tints rather than snapping at the boundary. Global for the same reason the tile
@@ -2124,7 +2219,9 @@ func refresh_ice_appearance() -> void:
 		ice_material.set_shader_parameter("flatten", LAKE_ICE_FLATTEN * lake_ice_blend)
 		# The sheen ice.gdshader has carried unwritten since it was built. Scaled by the blend
 		# alone, so it is exactly 0 -- the shader's documented identity -- everywhere but a lake.
-		ice_material.set_shader_parameter("gloss_strength", LAKE_ICE_GLOSS_STRENGTH * lake_ice_blend)
+		ice_material.set_shader_parameter("gloss_strength", maxf(
+			LAKE_ICE_GLOSS_STRENGTH * lake_ice_blend,
+			AURORA_GLOSS_STRENGTH * aurora_ice_blend))
 		ice_material.set_shader_parameter("gloss_depth", LAKE_ICE_GLOSS_DEPTH)
 		ice_material.set_shader_parameter("gloss_softness", LAKE_ICE_GLOSS_SOFTNESS)
 	for chunk: Node2D in active_chunks.values():

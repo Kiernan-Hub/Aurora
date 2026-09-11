@@ -66,6 +66,11 @@ if you touch it:
 That third one is the non-obvious case, and it is the reason a lake entry does not eat one
 buffered jump on the far side of the seam.
 
+Aurora crest flight has its own narrower input ownership: while the guided arc or its landing
+handoff is active, both desktop polling and `buffer_jump()` decline new jump buffers, and the launch
+gate rejects any stale one. The latch clears on the actual floor contact, so normal input resumes
+without a delayed jump. It does not reuse the lake's `is_jump_suppressed` flag or ordinary glide.
+
 **Glide is deliberately exempt.** `is_glide_input_held()` returns false under suppression *only
 when a glide is not already active* — an in-flight glide keeps reading its input and ends
 through the normal `can_end_effect()` path. Force-ending it at the seam would add a call site to

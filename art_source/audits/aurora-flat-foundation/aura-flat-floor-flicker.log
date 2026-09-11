@@ -1,0 +1,93 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+FLICKER_BEGIN	godot=4.7-stable (official)	frames_per_seed=20000
+Terrain replay seed: 941462462
+FLICKER_RESULT	seed=941462462	distance=226171
+    by slope sign : uphill frames=  8170 flip_rate=0.0000 | downhill frames=  9563 flip_rate=0.0007 | flat frames=  2267 flip_rate=0.0000
+    jumps=0  airborne_streaks=4  max_streak=5 frames  apex mean=2.56 px max=6.98 px
+    airborne fraction=0.0004  forced_snaps=5310 (max 1.8633 px)  recoveries=0  stuck=0
+    flat                 frames=  2206 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-0.3951 gap_wobble=0.0050 vy_reversals=0.0045 snaps=0.0068/frame mean_snap=0.3820
+    gentle_uphill        frames=  2906 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-0.6946 gap_wobble=0.0333 vy_reversals=0.0358 snaps=0.9900/frame mean_snap=0.0135
+    medium_hill          frames=  3713 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1477 gap_wobble=0.3771 vy_reversals=0.0587 snaps=0.2300/frame mean_snap=0.7965
+    medium_hill_big      frames=   646 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1988 gap_wobble=0.3560 vy_reversals=0.0433 snaps=0.2415/frame mean_snap=0.5815
+    medium_valley        frames=  2983 flip_rate=0.0003 gravity_while_grounded=0.0003 mean_gap=-1.1752 gap_wobble=0.3510 vy_reversals=0.0386 snaps=0.2048/frame mean_snap=0.8125
+    medium_valley_big    frames=   348 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2503 gap_wobble=0.3145 vy_reversals=0.0230 snaps=0.2184/frame mean_snap=0.5297
+    small_hill           frames=  2404 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1042 gap_wobble=0.4104 vy_reversals=0.0599 snaps=0.2442/frame mean_snap=0.9217
+    small_hill_big       frames=   529 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1714 gap_wobble=0.3728 vy_reversals=0.0510 snaps=0.2306/frame mean_snap=0.6840
+    sustained_downhill   frames=  4265 flip_rate=0.0014 gravity_while_grounded=0.0007 mean_gap=-1.0267 gap_wobble=0.2819 vy_reversals=0.0166 snaps=0.0028/frame mean_snap=0.2593
+Terrain replay seed: 2160065702
+FLICKER_RESULT	seed=2160065702	distance=226158
+    by slope sign : uphill frames=  7713 flip_rate=0.0000 | downhill frames=  9541 flip_rate=0.0007 | flat frames=  2746 flip_rate=0.0000
+    jumps=0  airborne_streaks=4  max_streak=5 frames  apex mean=2.44 px max=6.98 px
+    airborne fraction=0.0004  forced_snaps=4765 (max 1.7578 px)  recoveries=0  stuck=0
+    flat                 frames=  2697 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-0.4293 gap_wobble=0.0058 vy_reversals=0.0044 snaps=0.0082/frame mean_snap=0.3236
+    gentle_uphill        frames=  2336 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-0.7077 gap_wobble=0.0320 vy_reversals=0.0347 snaps=0.9893/frame mean_snap=0.0134
+    medium_hill          frames=  3354 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1545 gap_wobble=0.3763 vy_reversals=0.0549 snaps=0.2299/frame mean_snap=0.7915
+    medium_hill_big      frames=   958 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1897 gap_wobble=0.3701 vy_reversals=0.0438 snaps=0.2265/frame mean_snap=0.6362
+    medium_valley        frames=  3542 flip_rate=0.0003 gravity_while_grounded=0.0003 mean_gap=-1.1667 gap_wobble=0.3608 vy_reversals=0.0404 snaps=0.2055/frame mean_snap=0.8121
+    medium_valley_big    frames=   414 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2131 gap_wobble=0.3511 vy_reversals=0.0338 snaps=0.2271/frame mean_snap=0.5827
+    small_hill           frames=  1775 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1190 gap_wobble=0.3910 vy_reversals=0.0580 snaps=0.2462/frame mean_snap=0.8738
+    small_hill_big       frames=   793 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1825 gap_wobble=0.3550 vy_reversals=0.0467 snaps=0.2169/frame mean_snap=0.7751
+    sustained_downhill   frames=  4131 flip_rate=0.0015 gravity_while_grounded=0.0007 mean_gap=-1.0188 gap_wobble=0.2939 vy_reversals=0.0194 snaps=0.0031/frame mean_snap=0.3502
+Terrain replay seed: 3188032853
+FLICKER_RESULT	seed=3188032853	distance=226317
+    by slope sign : uphill frames=  8298 flip_rate=0.0000 | downhill frames=  9188 flip_rate=0.0008 | flat frames=  2514 flip_rate=0.0000
+    jumps=0  airborne_streaks=4  max_streak=7 frames  apex mean=2.75 px max=6.98 px
+    airborne fraction=0.0007  forced_snaps=5447 (max 1.8633 px)  recoveries=0  stuck=0
+    flat                 frames=  2449 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-0.4704 gap_wobble=0.0051 vy_reversals=0.0045 snaps=0.0098/frame mean_snap=0.2454
+    gentle_uphill        frames=  3068 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-0.6966 gap_wobble=0.0336 vy_reversals=0.0359 snaps=0.9912/frame mean_snap=0.0143
+    medium_hill          frames=  3464 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1440 gap_wobble=0.3787 vy_reversals=0.0569 snaps=0.2367/frame mean_snap=0.7863
+    medium_hill_big      frames=   698 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2130 gap_wobble=0.3464 vy_reversals=0.0401 snaps=0.2149/frame mean_snap=0.6531
+    medium_valley        frames=  3472 flip_rate=0.0009 gravity_while_grounded=0.0006 mean_gap=-1.1698 gap_wobble=0.3538 vy_reversals=0.0389 snaps=0.2074/frame mean_snap=0.8232
+    medium_valley_big    frames=   814 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2682 gap_wobble=0.2809 vy_reversals=0.0442 snaps=0.1966/frame mean_snap=0.6033
+    small_hill           frames=  1718 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.0920 gap_wobble=0.4052 vy_reversals=0.0623 snaps=0.2445/frame mean_snap=0.9223
+    small_hill_big       frames=   441 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1609 gap_wobble=0.3876 vy_reversals=0.0612 snaps=0.2222/frame mean_snap=0.8007
+    sustained_downhill   frames=  3876 flip_rate=0.0010 gravity_while_grounded=0.0005 mean_gap=-1.0348 gap_wobble=0.2740 vy_reversals=0.0137 snaps=0.0036/frame mean_snap=0.2637
+Terrain replay seed: 222894852
+FLICKER_RESULT	seed=222894852	distance=226481
+    by slope sign : uphill frames=  8562 flip_rate=0.0000 | downhill frames=  9071 flip_rate=0.0007 | flat frames=  2367 flip_rate=0.0000
+    jumps=0  airborne_streaks=3  max_streak=1 frames  apex mean=0.99 px max=1.15 px
+    airborne fraction=0.0001  forced_snaps=5880 (max 1.7578 px)  recoveries=0  stuck=0
+    flat                 frames=  2307 flip_rate=0.0000 gravity_while_grounded=0.0004 mean_gap=-0.3884 gap_wobble=0.0053 vy_reversals=0.0048 snaps=0.0074/frame mean_snap=0.2709
+    gentle_uphill        frames=  3644 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-0.6990 gap_wobble=0.0332 vy_reversals=0.0349 snaps=0.9912/frame mean_snap=0.0138
+    medium_hill          frames=  2754 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1494 gap_wobble=0.3865 vy_reversals=0.0483 snaps=0.2375/frame mean_snap=0.7839
+    medium_hill_big      frames=   856 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2229 gap_wobble=0.3393 vy_reversals=0.0386 snaps=0.2231/frame mean_snap=0.5882
+    medium_valley        frames=  3724 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1454 gap_wobble=0.3770 vy_reversals=0.0416 snaps=0.2046/frame mean_snap=0.8571
+    medium_valley_big    frames=   399 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2015 gap_wobble=0.3587 vy_reversals=0.0276 snaps=0.2331/frame mean_snap=0.6120
+    small_hill           frames=  1781 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1094 gap_wobble=0.3942 vy_reversals=0.0539 snaps=0.2510/frame mean_snap=0.9183
+    small_hill_big       frames=   419 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2160 gap_wobble=0.3530 vy_reversals=0.0549 snaps=0.2196/frame mean_snap=0.6743
+    sustained_downhill   frames=  4116 flip_rate=0.0015 gravity_while_grounded=0.0007 mean_gap=-1.0260 gap_wobble=0.2809 vy_reversals=0.0163 snaps=0.0029/frame mean_snap=0.1963
+Terrain replay seed: 12345
+FLICKER_RESULT	seed=12345	distance=226059
+    by slope sign : uphill frames=  8472 flip_rate=0.0000 | downhill frames=  9105 flip_rate=0.0005 | flat frames=  2423 flip_rate=0.0000
+    jumps=0  airborne_streaks=3  max_streak=5 frames  apex mean=2.44 px max=6.98 px
+    airborne fraction=0.0003  forced_snaps=5444 (max 1.8633 px)  recoveries=0  stuck=0
+    flat                 frames=  2374 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-0.4526 gap_wobble=0.0050 vy_reversals=0.0034 snaps=0.0046/frame mean_snap=0.3212
+    gentle_uphill        frames=  2912 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-0.7139 gap_wobble=0.0303 vy_reversals=0.0312 snaps=0.9918/frame mean_snap=0.0122
+    medium_hill          frames=  3602 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1408 gap_wobble=0.3770 vy_reversals=0.0575 snaps=0.2360/frame mean_snap=0.8078
+    medium_hill_big      frames=   422 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2182 gap_wobble=0.3380 vy_reversals=0.0427 snaps=0.2204/frame mean_snap=0.6230
+    medium_valley        frames=  3867 flip_rate=0.0003 gravity_while_grounded=0.0003 mean_gap=-1.1585 gap_wobble=0.3636 vy_reversals=0.0411 snaps=0.2082/frame mean_snap=0.8278
+    medium_valley_big    frames=   741 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2391 gap_wobble=0.3177 vy_reversals=0.0499 snaps=0.2092/frame mean_snap=0.5760
+    small_hill           frames=  2135 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.0998 gap_wobble=0.4061 vy_reversals=0.0548 snaps=0.2506/frame mean_snap=0.9266
+    small_hill_big       frames=   435 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2117 gap_wobble=0.3385 vy_reversals=0.0460 snaps=0.2138/frame mean_snap=0.7067
+    sustained_downhill   frames=  3512 flip_rate=0.0011 gravity_while_grounded=0.0006 mean_gap=-1.0218 gap_wobble=0.2921 vy_reversals=0.0174 snaps=0.0040/frame mean_snap=0.6152
+Terrain replay seed: 987654321
+FLICKER_RESULT	seed=987654321	distance=226440
+    by slope sign : uphill frames=  7959 flip_rate=0.0000 | downhill frames=  9189 flip_rate=0.0007 | flat frames=  2852 flip_rate=0.0000
+    jumps=0  airborne_streaks=3  max_streak=4 frames  apex mean=1.05 px max=1.92 px
+    airborne fraction=0.0003  forced_snaps=5144 (max 1.7578 px)  recoveries=0  stuck=0
+    flat                 frames=  2794 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-0.4938 gap_wobble=0.0042 vy_reversals=0.0039 snaps=0.0047/frame mean_snap=0.1893
+    gentle_uphill        frames=  2919 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-0.6990 gap_wobble=0.0331 vy_reversals=0.0349 snaps=0.9908/frame mean_snap=0.0135
+    medium_hill          frames=  3325 flip_rate=0.0000 gravity_while_grounded=0.0003 mean_gap=-1.1666 gap_wobble=0.3717 vy_reversals=0.0602 snaps=0.2310/frame mean_snap=0.7635
+    medium_hill_big      frames=   600 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2205 gap_wobble=0.3256 vy_reversals=0.0417 snaps=0.2350/frame mean_snap=0.6101
+    medium_valley        frames=  3164 flip_rate=0.0006 gravity_while_grounded=0.0003 mean_gap=-1.1544 gap_wobble=0.3624 vy_reversals=0.0430 snaps=0.2007/frame mean_snap=0.8626
+    medium_valley_big    frames=   911 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2086 gap_wobble=0.3429 vy_reversals=0.0329 snaps=0.2009/frame mean_snap=0.7128
+    small_hill           frames=  1855 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.1107 gap_wobble=0.4133 vy_reversals=0.0647 snaps=0.2361/frame mean_snap=0.8933
+    small_hill_big       frames=   313 flip_rate=0.0000 gravity_while_grounded=0.0000 mean_gap=-1.2124 gap_wobble=0.3764 vy_reversals=0.0415 snaps=0.1853/frame mean_snap=0.7828
+    sustained_downhill   frames=  4119 flip_rate=0.0010 gravity_while_grounded=0.0005 mean_gap=-1.0239 gap_wobble=0.2893 vy_reversals=0.0216 snaps=0.0039/frame mean_snap=0.2043
+FLICKER_SUMMARY
+    worst uphill flip rate               : 0.0000
+    worst gravity-model-while-grounded   : 0.0007
+    largest forced floor snap (px)       : 1.8633
+    stall recoveries / stuck events      : 0 / 0
+FLICKER_END

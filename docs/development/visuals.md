@@ -1,7 +1,8 @@
 # Visuals — background, scenery and palette
 
 Everything on screen except the player sprite is an untextured `Polygon2D` / `ColorRect` /
-`TextureRect`. There are exactly **two** shaders, and both are ice: `shaders/ice.gdshader` on
+`TextureRect`. There are **three** shaders: `shaders/aurora_curtain.gdshader` handles the Aurora
+curtains' directional reveal and internal folds; the two ice shaders are: `shaders/ice.gdshader` on
 the ice band (`biomes.md`, "The ice shader") and `shaders/frozen_lake_reflection.gdshader` on
 the frozen lake's surface quad, which exists only while a lake is being crossed ("The skate
 trail" below, and `terrain.md`). There is no `WorldEnvironment`, no MSAA and no `z_index` in the
@@ -20,9 +21,13 @@ Front-to-back, as wired in `scenes/main.tscn`:
 | Node | Kind | `layer` / `motion_scale` | Script |
 |---|---|---|---|
 | `CanvasLayer` | UI | `1` | — |
+| `AuroraBladeGlow` | world | `0`, after terrain | `aurora_blade_glow.gd` |
 | `TerrainGenerator` chunks, pickups, obstacles | world | `0` | `terrain_generator.gd` |
 | `TerrainGenerator/GroundTreeSpawner` | world | `0` | `ground_tree_spawner.gd` |
 | `Player` | world | `0` | `player.gd` |
+| `AuroraWings` | world | `0`, before player/terrain | `aurora_wings.gd` |
+| `AuroraWisps` | world | `0`, before player/terrain | `aurora_wisps.gd` |
+| `AuroraWash/Wash` | `TextureRect` | `-45` | `aurora_wash.gd` |
 | `SnowDrift/SnowParticles` | `GPUParticles2D` | `-50` | `snow_drift.gd` |
 | `BirdFlock/Flock` | `Node2D` | `-60` | `bird_flock.gd` |
 | `ParallaxBackground/IceStrip` | `ParallaxLayer` | `(0.05, 0)` | `background_strip.gd` |
@@ -108,6 +113,11 @@ and needed no gate re-run.
 base ÷ zoom = **1382 × 778 world px**. Changing either alone changes the field of view, which on
 an auto-runner is how much warning the player gets. Terrain constants are unaffected either way —
 `GROUND_Y`, `ICE_BAND_DEPTH`, `FILL_GRADIENT_DEPTH` and `CHASM_LEAD_IN_LENGTH` are all world px.
+
+Aurora is the one bounded exception: inside its protected obstacle-free passage, the existing
+appearance ramp eases to 1.055× the captured authored zoom and lifts the ice line to 0.59 of screen
+height. It returns to the authored zoom before hazards resume; glide takes priority, and the camera
+never rotates.
 
 ### What `expand` actually does
 

@@ -263,12 +263,9 @@ func wire_scene() -> bool:
 	pause_restart_button.pressed.connect(_on_quick_restart_pressed)
 	pause_home_button.pressed.connect(_on_restart_pressed)
 
-	# MusicSlider and MusicLabel are authored visible = false in main.tscn, because no
-	# stream is ever assigned to GameServices.music_player -- SfxPlayer is the only thing
-	# in the project that sets .stream. A slider that moves and changes nothing audible
-	# reads as a bug to a player. Everything below stays wired: the node still exists, so
-	# the null-guard above still passes, the saved volume still loads and persists, and
-	# shipping music is deleting the two visible = false lines. Do NOT delete the nodes.
+	# MusicSlider and MusicLabel are visible because AuroraAudio now owns a scene-local ambient
+	# stream on the existing Music bus. The control stays bus-level: it applies to this bed and any
+	# future music without giving GameManager ownership of a stream.
 	if services != null:
 		music_slider.value = services.save_store.music_volume
 		sfx_slider.value = services.save_store.sfx_volume
@@ -443,6 +440,42 @@ func get_unbanked_seconds() -> float:
 	return maxf(main.elapsed_time - banked_run_seconds, 0.0)
 
 
+# CUMULATIVE playtime across every run and every launch, including the part of this run
+# get_unbanked_seconds() above says is not on disk yet. This is the clock every playtime-gated
+# set piece schedules against, and it lives here because this node owns both halves of it --
+# the banking, and the save store the banked half is read from.
+#
+# IT WAS FrozenLakeDirector'S, and it moved here on 2026-09-05 because the aurora
+# (docs/development/aurora_borealis.md) needs the identical number and a second copy of this
+# arithmetic is a second chance to get it wrong. That is not hypothetical: the WRONG version of
+# this sum is `save_store.total_playtime_seconds` alone, which is stale by the whole unbanked run
+# and reads minutes low in the middle of an uninterrupted session. A scheduler that sets its next
+# deadline from that number hands out its set piece again almost immediately. One owner, so there
+# is one place for that to be right.
+#
+# Callers must still handle a MISSING GameManager themselves -- an absent node cannot answer for
+# itself. FrozenLakeDirector.get_total_playtime_seconds() shows the shape and carries the reason
+# the fallback is what it is.
+#
+# NO HEADLESS GUARD HERE, DELIBERATELY -- IT BELONGS IN THE CALLER. `services` resolves fine under
+# `--headless --script` (only bank_playtime() early-returns), so this answers a gate with however
+# many hours are in the DEVELOPER'S OWN save.dat. That is the apply_upgrades() failure (48/48 -> 8)
+# with a different field.
+#
+# Guarding here would not actually fix it, which is why it is not done: a director that reached
+# this call has already built its state machine and connected its signals inside a gate, and the
+# lake's skip exists to stop it injecting terrain, not to stop it reading a number. So every
+# playtime-gated consumer hard-skips headless as the FIRST statement in its _ready(), the way
+# FrozenLakeDirector does. AuroraDirector owes the same -- docs/development/aurora_borealis.md,
+# "The headless contract". This helper is now shared, so that rule travels with each new caller.
+#
+# Free to call every physics frame: it reads two floats and banks nothing.
+func get_total_playtime_seconds() -> float:
+	if services == null:
+		return 0.0
+	return services.save_store.total_playtime_seconds + get_unbanked_seconds()
+
+
 # Android lifecycle. There was no _notification anywhere in the project before
 # 2026-08-03, which meant three device-only failures that desktop testing cannot show:
 # the back button quit the app mid-run, a notification/call/app-switch left the game in
@@ -532,7 +565,10 @@ func _on_player_died() -> void:
 	# process exits. See BiomeDirector.session_biome_phase for why it is not persisted.
 	if biome_director != null:
 		BiomeDirector.session_biome_phase = biome_director.get_persisted_phase(player.global_position.x)
-	if services != null:
+	# Script harnesses can have a real Services autoload. bank_playtime() already
+	# skips headless, but record_run() itself writes coins/bests even when banking
+	# returned false. A regression probe's deliberate death must never save a run.
+	if services != null and DisplayServer.get_name() != "headless":
 		# BEFORE record_run, so this run's seconds ride record_run's single disk write
 		# rather than costing a second one from set_state(DEAD) a few lines below.
 		bank_playtime()

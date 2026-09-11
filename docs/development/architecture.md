@@ -33,6 +33,8 @@ Main (Node2D, scripts/main.gd)
 ├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP }
 ├── PowerupManager    effect timers; drives Player.start_boost etc.
 ├── FrozenLakeDirector  owns WHEN a lake happens; returns early under --headless
+├── AuroraDirector    owns Aurora lifecycle and the single presentation clock
+├── AuroraAudio       one event-only loop on the Music bus; absent under --headless
 ├── AchievementManager  the ONLY writer of SaveStore.achievements; triggers come to it
 ├── SfxPlayer         6-voice AudioStreamPlayer pool on the SFX bus
 └── CanvasLayer       Start/Pause/Death/ShopScreen (all process_mode=ALWAYS),
@@ -59,6 +61,11 @@ too.
 
 `BackgroundGenerator` falls back to `/root/Main/Player` if `player_path` is unset.
 (Ignore any older doc claiming `GameState.gd` exists — it doesn't.)
+
+Aurora's long-form bed is scene-local because it must stop with the encounter/run. It uses its own
+`AudioStreamPlayer` rather than the one-shot SFX pool, while the Music bus remains the sole owner of
+saved user volume. `AuroraAudio` explicitly pauses/resumes from `GameManager.state_changed` and
+stops on every non-playing terminal/menu state.
 
 ## The spawners live under TerrainGenerator on purpose
 
@@ -188,9 +195,9 @@ doubles as the index of the next 20-minute threshold.
 `SaveStore.achievements`, an open `Dictionary[String, bool]` — same trick as `upgrades` above,
 so adding an achievement needs no version bump. Only the *concept* arriving needed one.
 
-**THE TRIGGERS COME TO THE MANAGER; IT NEVER GOES OUT TO THEM.** `FrozenLakeDirector` does not
-know achievements exist — it emits `lake_finished`, which it already did, and the manager
-listens. The failure being designed against is `if score > 1000` sprouting across thirty
+**THE TRIGGERS COME TO THE MANAGER; IT NEVER GOES OUT TO THEM.** `FrozenLakeDirector` and
+`AuroraDirector` do not know achievements exist — they emit `lake_finished` / `aurora_finished`,
+and the manager listens. The failure being designed against is `if score > 1000` sprouting across thirty
 scripts, at which point "what unlocks this?" needs a full-project grep. Every trigger is wired
 in `connect_triggers()`, so that question has one answer.
 
@@ -205,8 +212,9 @@ Three traps:
 - **Gate on the flag, never on a count.** The lake recurs every 20 minutes forever and the
   achievement fires once — which is exactly why `frozen_lake_count` and `achievements` are
   separate fields. `reset_progress()` clears achievements deliberately, so they can be re-earned.
-- **The manager has no headless guard, and that is only safe while its one trigger is the lake**
-  (which hard-skips headless). A trigger hung off score, coins, distance or death — all of which
+- **The manager has no headless guard, and that is only safe while its triggers come from the lake
+  and Aurora directors** (which both hard-skip headless; their explicit probes inject memory saves).
+  A trigger hung off score, coins, distance or death — all of which
   the gates exercise for millions of frames — would start writing to the developer's real
   `save.dat` during every probe. That is the `apply_upgrades()` class of bug, and this project
   has already lost a save file to a probe. The file's footer carries the guard to add.

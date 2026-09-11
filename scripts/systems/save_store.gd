@@ -62,6 +62,45 @@ var total_playtime_seconds: float = 0.0
 var frozen_lake_count: int = 0
 var achievements: Dictionary[String, bool] = {}
 
+# How many auroras have been COMPLETED. A STATISTIC AND THE ACHIEVEMENT'S SOURCE, NOT THE
+# SCHEDULE -- next_aurora_due_seconds below is the schedule, and the split is the whole point.
+#
+# NO VERSION BUMP, DELIBERATELY, and this file's own idiom is the argument. A v3 file written
+# before the aurora existed simply has no "aurora_count" key, so .get(..., 0) yields 0 -- which
+# IS the correct state for a save that has never seen one. "Reading the fields that exist is
+# the migration" is what v0->v1, v1->v2 and v2->v3 above all say; a bump is earned by a new
+# top-level CONCEPT arriving, and cumulative-playtime-gated set-piece counts arrived at v3.
+#
+# The direction that matters is the other one, and it holds: a v3 file written by THIS build
+# carries the key, and an older build reading it ignores an unknown key and preserves nothing
+# -- so a player who downgrades loses their aurora count. Same exposure frozen_lake_count has
+# and the same one a bump would not fix.
+var aurora_count: int = 0
+
+# WHEN THE NEXT AURORA IS DUE, as a cumulative-playtime timestamp. -1.0 means UNSCHEDULED;
+# AuroraDirector._ready() fills it in and is its only writer.
+#
+# WHY THIS IS NOT `(aurora_count + 1) * AURORA_INTERVAL_SECONDS`, the device frozen_lake_count
+# uses. That device is only safe because frozen_lake_count and total_playtime_seconds were born
+# together at v3, both at 0, so a lake could never be retroactively owed (they are two lines
+# apart above -- that adjacency IS the argument). The aurora arrives into saves that ALREADY
+# HOLD HOURS. Against a ten-hour save, threshold 1 x 30 min is nine and a half hours in the
+# past, and so are thresholds 2 through 20: the player would be handed roughly twenty auroras
+# back to back, one per run, until the count caught up with the clock. That is the rarity of the
+# game's headline feature destroyed on the first launch after the update.
+#
+# A STORED DEADLINE HAS NO BACKLOG TO CLEAR. It is set once from where the player actually is
+# and pushed forward on completion, so "every 30 minutes" means 30 minutes BETWEEN SIGHTINGS
+# rather than 30 minutes of lifetime credit that can be spent in a burst.
+#
+# -1.0 RATHER THAN 0.0, and the sentinel is load-bearing: 0.0 reads as "due immediately" to any
+# >= comparison, so an unscheduled save would fire on the first frame -- the same bug in a new
+# hat. Everything that reads this treats a negative as NOT DUE and waits for the director to
+# schedule. Absence therefore needs no migration and no version bump: a v3 file yields -1.0 and
+# is scheduled at load, which is exactly the honest reading v2->v3 gave playtime itself -- the
+# clock starts now rather than being back-dated.
+var next_aurora_due_seconds: float = -1.0
+
 
 # Not named load(): that would shadow GDScript's global load() inside this class.
 func load_from_disk() -> void:
@@ -114,6 +153,14 @@ func load_from_disk() -> void:
 		# unreachably far away.
 		total_playtime_seconds = maxf(float(data.get("total_playtime_seconds", 0.0)), 0.0)
 		frozen_lake_count = maxi(int(data.get("frozen_lake_count", 0)), 0)
+		# Read inside `version >= 3` rather than under a version of its own -- see the field's
+		# note. Absent in a pre-aurora v3 file, where the 0 default is correct.
+		aurora_count = maxi(int(data.get("aurora_count", 0)), 0)
+		# NO maxf CLAMP TO 0 HERE, unlike the seconds field above, because -1.0 is the
+		# UNSCHEDULED sentinel and clamping it to 0.0 would mean "due immediately" -- the
+		# backlog bug the sentinel exists to prevent. Absent in a pre-aurora save, where -1.0
+		# is exactly right: AuroraDirector schedules it at load from where the player is.
+		next_aurora_due_seconds = float(data.get("next_aurora_due_seconds", -1.0))
 		# Copied key by key for the same reason upgrade_levels above is -- JSON hands back
 		# an UNTYPED Dictionary, which cannot be assigned into a Dictionary[String, bool].
 		var stored_achievements: Dictionary = data.get("achievements", {}) as Dictionary
@@ -150,6 +197,8 @@ func save_to_disk() -> void:
 		"upgrades": upgrade_levels,
 		"total_playtime_seconds": total_playtime_seconds,
 		"frozen_lake_count": frozen_lake_count,
+		"aurora_count": aurora_count,
+		"next_aurora_due_seconds": next_aurora_due_seconds,
 		"achievements": achievements,
 		"settings": {
 			"music_volume": music_volume,
@@ -200,5 +249,10 @@ func reset_progress() -> void:
 	# deliberate: the 20-minute clock restarts and the achievement can be earned again.
 	total_playtime_seconds = 0.0
 	frozen_lake_count = 0
+	aurora_count = 0
+	# Back to UNSCHEDULED rather than to an interval, because this file does not own the
+	# interval -- AuroraDirector reschedules from 0 on its next IDLE tick or scene load.
+	# Until then is_aurora_due() reads the negative and answers false.
+	next_aurora_due_seconds = -1.0
 	achievements.clear()
 	save_to_disk()

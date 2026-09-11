@@ -230,7 +230,7 @@ var debug_pin_intro_biome: bool = false
 #
 # get_persisted_phase() still uses the real world_x, so a review session cannot write a bogus
 # phase into the shipping path either.
-var debug_biome_seconds: float = 0.0
+var debug_biome_seconds: float = 10.0
 
 # Static, so a restart resumes the accelerated arc instead of snapping back to the intro biome.
 # See the note above -- this mirrors session_biome_phase deliberately.
@@ -322,12 +322,7 @@ func apply_palette_for_world_x(world_x: float) -> void:
 	# order rather than folding around zero.
 	var cycle_position: float = world_x / BIOME_DISTANCE
 	var biome_index: int = int(floor(cycle_position))
-	var distance_into_biome: float = (cycle_position - float(biome_index)) * BIOME_DISTANCE
-
-	var transition_start: float = BIOME_DISTANCE - TRANSITION_DISTANCE
-	var progress: float = 0.0
-	if distance_into_biome > transition_start:
-		progress = clampf((distance_into_biome - transition_start) / TRANSITION_DISTANCE, 0.0, 1.0)
+	var progress: float = get_transition_progress(world_x)
 
 	if biome_index == applied_biome_index and absf(progress - applied_progress) < PROGRESS_EPSILON:
 		return
@@ -370,6 +365,56 @@ func apply_palette_for_world_x(world_x: float) -> void:
 # X is safe to use raw here -- world_rebaser.gd shifts Y only (main.gd:258).
 func get_persisted_phase(world_x: float) -> float:
 	return maxf(world_x + biome_phase_offset, 0.0)
+
+
+# HOW MUCH NIGHT IS ON SCREEN RIGHT NOW, 0..1. Together with the lookahead below, this
+# keeps callers from reaching into `blended` or reasoning
+# about which palettes are the night ones.
+#
+# star_density is the right field rather than a new one: it is authored on all eight palettes
+# (starlit_night 1.00, twilight_blue 0.85, violet_dusk 0.30, arctic_dawn 0.28, the rest 0.00),
+# it already rides CHANNEL_ATMOSPHERE, and it already means exactly "how dark is this". A
+# separate is_night flag would be a second thing to keep in sync with the palettes for no
+# information the existing one does not carry.
+#
+# THE BLENDED VALUE, NOT THE PALETTE'S. That is the point of reading it here: mid-crossfade it
+# is genuinely between the two, so a caller thresholding on it cannot fire while the sky is
+# still on its way into or out of night. Reading get_cycle_base_palette(applied_biome_index)
+# instead would snap at the biome boundary and get that wrong.
+#
+# UNDER --headless THIS IS MEANINGLESS. This director returns early having applied nothing, so
+# `blended` holds BiomePalette.new()'s defaults rather than any authored sky. That is safe only
+# because its one caller hard-skips headless itself; do not let a headless-running system start
+# gating on this.
+func get_night_amount() -> float:
+	return blended.star_density
+
+
+# Same monotonic atmosphere interpolation as blend_into, without changing the scene.
+func get_transition_progress(world_x: float) -> float:
+	var distance_into_biome: float = fposmod(world_x, BIOME_DISTANCE)
+	return clampf((distance_into_biome - (BIOME_DISTANCE - TRANSITION_DISTANCE)) / TRANSITION_DISTANCE, 0.0, 1.0)
+
+
+func get_night_amount_at_world_x(world_x: float) -> float:
+	var index: int = int(floor(world_x / BIOME_DISTANCE))
+	var weight: float = get_channel_weight(BiomePalette.CHANNEL_ATMOSPHERE, get_transition_progress(world_x))
+	return lerpf(get_cycle_palette(index).star_density, get_cycle_palette(index + 1).star_density, weight)
+
+
+# Endpoints and intervening biome boundaries suffice: each biome's atmosphere
+# curve is monotonic. Checking boundaries also handles accelerated previews that
+# cross multiple biomes, without mistaking the following night for continuous night.
+func get_minimum_night_ahead(seconds: float, maximum_speed: float) -> float:
+	var start_x: float = get_cycle_world_x()
+	var cycle_speed: float = BIOME_DISTANCE / debug_biome_seconds if debug_biome_seconds > 0.0 else maximum_speed
+	var end_x: float = start_x + maxf(seconds, 0.0) * maxf(cycle_speed, 0.0)
+	var minimum: float = minf(get_night_amount_at_world_x(start_x), get_night_amount_at_world_x(end_x))
+	var boundary: float = (floor(start_x / BIOME_DISTANCE) + 1.0) * BIOME_DISTANCE
+	while boundary < end_x:
+		minimum = minf(minimum, get_night_amount_at_world_x(boundary))
+		boundary += BIOME_DISTANCE
+	return minimum
 
 
 func resolve_palette_consumer(consumer_path: NodePath) -> Node:

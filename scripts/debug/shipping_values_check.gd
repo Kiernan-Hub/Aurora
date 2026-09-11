@@ -152,6 +152,18 @@ func check_flag_defaults() -> void:
 	expect_float("FrozenLakeDirector.debug_lake_min_run_time_override", lake_director.debug_lake_min_run_time_override, 0.0)
 	lake_director.free()
 
+	# Left set, the game's namesake fires on whatever the override says instead of once an
+	# hour -- at a playtest value that is a sky full of ribbons every few seconds, which is the
+	# opposite of the "rare enough that seeing it is an event" the feature exists for.
+	var aurora_director: AuroraDirector = AuroraDirector.new()
+	expect_float("AuroraDirector.debug_aurora_interval_override", aurora_director.debug_aurora_interval_override, 0.0)
+	# Left true, the night gate is gone and an aurora can arrive over a bright morning sky --
+	# which is exactly the failure the gate was added to prevent, and it reads as a rendering
+	# bug rather than a set piece. No other check can see this: AuroraDirector hard-skips
+	# headless, so every gate in the project runs with this feature switched off entirely.
+	expect_bool("AuroraDirector.debug_aurora_ignore_night", aurora_director.debug_aurora_ignore_night, false)
+	aurora_director.free()
+
 
 # The freeze-bug check, generalised. Any of these appearing as a serialised property in the
 # scene means the editor wrote a debug knob into it -- which is the exact mechanism that

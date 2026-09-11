@@ -243,8 +243,12 @@ func spawn_powerup(scene: PackedScene, world_x: float, effect: StringName) -> vo
 	# be empty and where jump is disabled. Losing one scheduled powerup is the cheaper cost.
 	if terrain_generator.is_lake_world_x(world_x):
 		return
+	if PowerupManager.is_aurora_excluded_effect(effect) \
+			and terrain_generator.overlaps_aurora_flat(world_x - 128.0, world_x + 128.0):
+		return
 	var world_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - POWERUP_SURFACE_CLEARANCE
 	var powerup: Powerup = scene.instantiate() as Powerup
+	powerup.effect = effect
 	powerup.position = Vector2(world_x, world_y)
 	powerup.collected.connect(_on_powerup_collected.bind(effect))
 	add_child(powerup)

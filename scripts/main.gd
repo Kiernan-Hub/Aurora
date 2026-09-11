@@ -12,6 +12,7 @@ class_name Main
 # Null under any harness that builds its own scene, which is why every use is guarded. The lake
 # is a set piece, not a mechanic: a missing one must never stop the camera working.
 @onready var lake_director: FrozenLakeDirector = get_node_or_null("FrozenLakeDirector")
+@onready var aurora_director: AuroraDirector = get_node_or_null("AuroraDirector")
 
 const WORLD_REBASER_SCRIPT: Script = preload("res://scripts/systems/world_rebaser.gd")
 const VERTICAL_FOLLOW_MARGIN: float = 72.0
@@ -31,6 +32,14 @@ const VERTICAL_FOLLOW_SMOOTHNESS: float = 6.0
 # it to reflect but sky, and no shader change could have fixed that. Framing the shore this low
 # puts the whole ridgeline above it, which is what the reference does.
 const LAKE_HORIZON_FRACTION: float = 0.56
+# Aurora is a protected, obstacle-free passage, so it can briefly trade a little forward view
+# for a more intimate sky composition. Larger Camera2D zoom values zoom IN. Keep this restrained:
+# 1.055 is noticeable in motion without reading as a cut or turning the spectacle into a close-up.
+const AURORA_CAMERA_ZOOM_MULTIPLIER: float = 1.055
+const AURORA_CAMERA_ZOOM_SMOOTHNESS: float = 4.0
+# The ordinary flat sits at about 0.55. Moving it to 0.59 lifts the camera by roughly 4% of the
+# visible height, opening the sky while leaving the player comfortably inside the play area.
+const AURORA_HORIZON_FRACTION: float = 0.59
 # Horizontal follow was a rigid `camera.x = player.x` until 2026-08-01. The
 # terrain is static in world space, so the on-screen motion of the ENTIRE view
 # is exactly the camera's per-frame displacement -- a rigid follow therefore
@@ -74,6 +83,7 @@ var world_rebase_enabled: bool = true
 var camera_baseline_y: float = 0.0
 var camera_y: float = 0.0
 var camera_x: float = 0.0
+var camera_authored_zoom: Vector2 = Vector2.ONE
 # Sweepable copy of HORIZONTAL_FOLLOW_SMOOTHNESS. Deliberately a plain var and
 # NOT @export: main.tscn silently serialising an @export is exactly how
 # world_rebase_enabled regressed the freeze fix for weeks. Debug harnesses set
@@ -102,6 +112,7 @@ var is_glide_vertical_follow_active: bool = false
 
 func _ready() -> void:
 	InputSetup.configure()
+	camera_authored_zoom = camera_2d.zoom
 	camera_baseline_y = camera_2d.global_position.y
 	camera_y = camera_baseline_y
 	camera_x = player.global_position.x
@@ -221,6 +232,8 @@ func _physics_process(delta: float) -> void:
 	apply_world_rebase()
 
 	update_glide_vertical_follow_state()
+	var aurora_camera_blend: float = get_aurora_camera_blend()
+	update_aurora_camera_zoom(delta, aurora_camera_blend)
 	var target_camera_y: float
 	var interpolation_weight: float
 	if is_glide_vertical_follow_active:
@@ -230,6 +243,7 @@ func _physics_process(delta: float) -> void:
 		target_camera_y = get_vertical_camera_target()
 		interpolation_weight = 1.0 - exp(-VERTICAL_FOLLOW_SMOOTHNESS * delta)
 	target_camera_y = apply_lake_framing(target_camera_y)
+	target_camera_y = apply_aurora_framing(target_camera_y, aurora_camera_blend)
 	camera_y = lerpf(camera_y, target_camera_y, interpolation_weight)
 
 	var player_x: float = player.global_position.x
@@ -343,6 +357,37 @@ func apply_lake_framing(target_camera_y: float) -> float:
 	# aspect="expand" makes that base a minimum -- a taller window genuinely sees more world.
 	var lake_camera_y: float = surface_world_y - (LAKE_HORIZON_FRACTION - 0.5) * visible_world_height
 	return lerpf(target_camera_y, lake_camera_y, lake_blend)
+
+
+# Glide owns vertical framing. Aurora and ordinary glide are excluded from one another at event
+# entry, but keeping that priority here prevents a future/direct state change from making two
+# camera modes fight over the player.
+func get_aurora_camera_blend() -> float:
+	if aurora_director == null or is_glide_vertical_follow_active:
+		return 0.0
+	return aurora_director.get_aurora_blend()
+
+
+# Capture-and-restore uses the scene's authored value rather than duplicating its literal here.
+# The event ramp supplies the long arrival/release; this small exponential filter removes any
+# frame-step edge and settles well inside the protected recovery span.
+func update_aurora_camera_zoom(delta: float, aurora_blend: float) -> void:
+	var multiplier: float = lerpf(1.0, AURORA_CAMERA_ZOOM_MULTIPLIER, aurora_blend)
+	var target_zoom: Vector2 = camera_authored_zoom * multiplier
+	var zoom_weight: float = 1.0 - exp(-AURORA_CAMERA_ZOOM_SMOOTHNESS * delta)
+	camera_2d.zoom = camera_2d.zoom.lerp(target_zoom, zoom_weight)
+
+
+# Applied to the same target-Y pipeline as lake framing, so Main remains the sole camera writer
+# and the established vertical smoothing handles the move. The terrain surface is the stable
+# anchor; parallax layers intentionally remain vertically screen-locked.
+func apply_aurora_framing(target_camera_y: float, aurora_blend: float) -> float:
+	if aurora_blend <= 0.0:
+		return target_camera_y
+	var surface_world_y: float = terrain_generator.get_surface_world_y(player.global_position.x)
+	var visible_world_height: float = get_viewport_rect().size.y / camera_2d.zoom.y
+	var aurora_camera_y: float = surface_world_y - (AURORA_HORIZON_FRACTION - 0.5) * visible_world_height
+	return lerpf(target_camera_y, aurora_camera_y, aurora_blend)
 
 
 # Shifts the whole play area back toward y=0 so physics contacts keep float

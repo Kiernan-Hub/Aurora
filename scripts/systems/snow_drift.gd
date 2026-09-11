@@ -1,8 +1,8 @@
 extends GPUParticles2D
 
-# Drifting snow. GPUParticles2D rather than a hand-rolled drifter so the per-frame cost
-# is zero CPU -- the particles are simulated on the GPU and this script runs only in
-# _ready() and on a viewport resize.
+# Drifting snow. GPUParticles2D rather than a hand-rolled drifter: particles remain GPU
+# simulated, while one lightweight target interpolation composes biome, glide and Aurora
+# density each render frame.
 #
 # WHERE IT SITS IS A GAMEPLAY DECISION, NOT A VISUAL ONE. main.tscn parents this to a
 # CanvasLayer at layer = -50: behind everything in the world (default layer 0), in front
@@ -46,6 +46,9 @@ const GLIDE_DENSITY_MULTIPLIER: float = 1.8
 const BASE_AMOUNT_RATIO: float = 1.0 / GLIDE_DENSITY_MULTIPLIER
 const GLIDE_AMOUNT_RATIO: float = 1.0
 const INTENSITY_SMOOTHNESS: float = 4.0
+# 1.45x the current biome density at the Aurora crest: inside the authored 1.3-1.6x
+# study range and still within the existing 126-flake pool for both eligible night biomes.
+const AURORA_DENSITY_MULTIPLIER: float = 1.45
 
 @export var player_path: NodePath
 
@@ -55,6 +58,9 @@ var player: CharacterBody2D
 # low-snowfall biome still thickens during a glide -- the two are independent reasons for
 # the snow to change and neither should cancel the other out.
 var biome_density_scale: float = 1.0
+# Set by AuroraDirector. It is a bounded contribution to the one target below, never a
+# competing write to amount_ratio or the particle material.
+var aurora_density_blend: float = 0.0
 
 
 func _ready() -> void:
@@ -100,10 +106,21 @@ func resolve_player() -> CharacterBody2D:
 # Purely cosmetic and soft-optional: if player resolution ever fails, the base snowfall
 # above still runs exactly as before, just without the glide boost.
 func _process(delta: float) -> void:
-	var target_ratio: float = GLIDE_AMOUNT_RATIO if player.is_glide_active else BASE_AMOUNT_RATIO
-	target_ratio *= biome_density_scale
+	var target_ratio: float = get_target_amount_ratio()
 	var interpolation_weight: float = 1.0 - exp(-INTENSITY_SMOOTHNESS * delta)
 	amount_ratio = lerpf(amount_ratio, target_ratio, interpolation_weight)
+
+
+func get_target_amount_ratio() -> float:
+	var movement_ratio: float = GLIDE_AMOUNT_RATIO if player != null and player.is_glide_active \
+		else BASE_AMOUNT_RATIO
+	var aurora_multiplier: float = lerpf(
+		1.0, AURORA_DENSITY_MULTIPLIER, aurora_density_blend)
+	return minf(movement_ratio * biome_density_scale * aurora_multiplier, 1.0)
+
+
+func apply_aurora(blend: float, _elapsed: float) -> void:
+	aurora_density_blend = clampf(blend, 0.0, 1.0)
 
 
 # Called by biome_director.gd only. Never called under --headless -- and note this node's

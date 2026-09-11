@@ -1,0 +1,72 @@
+diff --git a/scripts/systems/aurora_director.gd b/scripts/systems/aurora_director.gd
+index 7de8612..311cd8a 100644
+--- a/scripts/systems/aurora_director.gd
++++ b/scripts/systems/aurora_director.gd
+@@ -111,7 +111,7 @@ const NIGHT_THRESHOLD: float = 0.8
+ # (CLAUDE.md, "Things that break silently"). shipping_values_check fails on it.
+ #
+ # Note this does NOT bypass the night gate -- see the knob below, which is the one that does.
+-var debug_aurora_interval_override: float = 0.0
++var debug_aurora_interval_override: float = 10.0
+ 
+ # Ignores NIGHT_THRESHOLD, so an aurora can be looked at without waiting for the day arc to
+ # reach night. Needed alongside the interval override, because that one alone cannot make an
+@@ -149,6 +149,7 @@ var is_headless: bool = false
+ # the rest of the tree -- an aurora paused halfway through resumes halfway through rather than
+ # expiring behind the pause screen.
+ var active_elapsed: float = 0.0
++var _debug_print_timer: float = 0.0  # TEMP, uncommitted
+ 
+ 
+ func _ready() -> void:
+@@ -187,11 +188,36 @@ func _ready() -> void:
+ func _physics_process(delta: float) -> void:
+ 	match phase:
+ 		Phase.IDLE:
++			# TEMP DIAGNOSTIC, uncommitted -- throttled to ~1/s. Remove before committing.
++			_debug_print_timer += delta
++			if _debug_print_timer >= 1.0:
++				_debug_print_timer = 0.0
++				print("[aurora debug] due=%s sky_ready=%s night=%.2f elapsed=%.1f aurora_bands_ready=%s" % [
++					is_aurora_due(), is_sky_ready(), biome_director.get_night_amount(),
++					main_node.elapsed_time,
++					sky_backdrop != null and sky_backdrop.has_method("apply_aurora")])
+ 			if is_aurora_due() and is_sky_ready():
++				print("[aurora debug] BEGIN_AURORA firing now")
+ 				begin_aurora()
+ 		Phase.ACTIVE:
+ 			active_elapsed += delta
+-			push_blend(get_aurora_blend())
++			var blend: float = get_aurora_blend()
++			push_blend(blend)
++			# TEMP DIAGNOSTIC, uncommitted. Remove before committing. .get() (dynamic), not a
++			# typed attribute access -- sky_backdrop is a plain Node here, no class_name.
++			_debug_print_timer += delta
++			if _debug_print_timer >= 1.0:
++				_debug_print_timer = 0.0
++				var bands: Variant = sky_backdrop.get("aurora_bands") if sky_backdrop != null else null
++				var band0: TextureRect = null
++				if bands is Array and bands.size() > 0:
++					band0 = bands[0]
++				print("[aurora debug] ACTIVE blend=%.3f elapsed=%.1f band0_visible=%s band0_alpha=%s band0_rect=%s layer=%s" % [
++					blend, active_elapsed,
++					band0.visible if band0 != null else "NO_BAND",
++					band0.modulate.a if band0 != null else "?",
++					str(band0.get_rect()) if band0 != null else "?",
++					sky_backdrop.get("layer") if sky_backdrop != null else "?"])
+ 			if active_elapsed >= get_total_seconds():
+ 				finish_aurora()
+ 		Phase.DONE:
+diff --git a/scripts/systems/biome_director.gd b/scripts/systems/biome_director.gd
+index a2a0056..68bf513 100644
+--- a/scripts/systems/biome_director.gd
++++ b/scripts/systems/biome_director.gd
+@@ -230,7 +230,7 @@ var debug_pin_intro_biome: bool = false
+ #
+ # get_persisted_phase() still uses the real world_x, so a review session cannot write a bogus
+ # phase into the shipping path either.
+-var debug_biome_seconds: float = 0.0
++var debug_biome_seconds: float = 10.0
+ 
+ # Static, so a restart resumes the accelerated arc instead of snapping back to the intro biome.
+ # See the note above -- this mirrors session_biome_phase deliberately.
