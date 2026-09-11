@@ -1,5 +1,24 @@
 # Aurora borealis — the plan and the state
 
+## Slice 11 — bounded guided crest flight implemented
+
+The wing apparition now accompanies one guided flight arc inside the already protected flat. From
+27–32 seconds the skater rises smoothly toward 96px above the ice, holds through the broad crest,
+then returns from 40–45 seconds. Horizontal speed and the underlying acceleration clock remain
+unchanged. This is a dedicated Player state rather than normal glide or a powerup: it has a hard
+altitude target, a 260px/s vertical cap, no collision bypass, no invulnerability and no extra timer.
+Jump input is neutral only while the flight/landing handoff owns the body, preventing a stale press
+from firing on touchdown; ordinary input resumes after the one real landing.
+
+The complete calm probe passes 163,746 assertions across preview and credited encounters. It
+measures 1,079 bounded flight frames, 95.999px peak altitude, exactly one landing, rejected buffered
+jumps during the arc, unchanged horizontal speed, safe camera placement, death cleanup, continued
+coin/progression behavior and restored grounded
+movement well before recovery. The fast gates pass except the three intentional TEMP preview
+values, and the windowed composition gate passes at both widths/night palettes. Owner feel and
+Android frame/input review remain required because deterministic correctness is not motion taste.
+The established 20,000-frame ordinary camera/movement regression also passes unchanged.
+
 ## Slice 10 — visual wing apparition implemented
 
 A brief six-feather light fan now appears behind the grounded skater from 20–51 seconds, reaching
@@ -187,9 +206,9 @@ The owner authorized incremental implementation, explicitly asking not to build 
 Keep sky/world/ice light, camera, snow and achievement. Explore a reserved **flat** protected
 passage, suppress boost and ordinary glide during the encounter (including trick-earned boost
 and existing effects/pickups at entry), and develop the signature as skating → brief controlled
-Aurora-wing flight → skating. Controlled flight is still an unbuilt, separately proved candidate;
-the safer wing-visual fallback while skating was implemented in slice 10. Existing normal glide
-is not a stable-height flight implementation. Obstacle-only event protection is a possible alternative to suppression,
+Aurora-wing flight → skating. The safer wing-visual fallback arrived in slice 10 and the separately
+bounded guided flight followed in slice 11. Existing normal glide was not reused because it is not
+a stable-height flight implementation. Obstacle-only event protection is a possible alternative to suppression,
 not repeated grants of the consumable/tinting shield; chasm safety still requires terrain work.
 
 **Slice 1 implemented: directional sky arrival and internal curtain folds only.**

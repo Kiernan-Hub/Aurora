@@ -52,6 +52,11 @@ const GLIDE_MAX_FALL_SPEED: float = 550.0
 # but strong enough to clear a noticeably higher hop than the original -350 before the
 # hold/thrust math takes over.
 const GLIDE_LAUNCH_VELOCITY: float = -480.0
+# Aurora's brief automatic crest flight is a separate, bounded controller -- not a powerup and
+# not ordinary glide. The event only enables it over its write-ahead protected flat.
+const AURORA_FLIGHT_HEIGHT: float = 96.0
+const AURORA_FLIGHT_VERTICAL_RESPONSE: float = 5.0
+const AURORA_FLIGHT_MAX_VERTICAL_SPEED: float = 260.0
 # Airborne trick spin (Phase 4): spins animated_sprite only, same as the rest of
 # update_visual_rotation -- collision_shape is never touched, so this has zero physics
 # surface. Shares is_glide_input_held() rather than a separate poll: hold means glide
@@ -152,6 +157,11 @@ var has_shield: bool = false
 # Timed effect, driven entirely by PowerupManager.start_glide()/end_glide(); see the
 # airborne branch of _physics_process for what it actually does.
 var is_glide_active: bool = false
+var is_aurora_flight_active: bool = false
+# Holds input/rotation neutral during the short gravity handoff after the event target reaches
+# the floor. It clears on contact, preventing a held tap from becoming a buffered jump or trick.
+var is_aurora_flight_landing: bool = false
+var aurora_flight_strength: float = 0.0
 # Latches on with the glide and stays on for the rest of the airborne arc, same pattern
 # as Main's is_glide_vertical_follow_active -- the effect (and therefore is_glide_active)
 # can end mid-air, well before landing. Grants a short obstacle-only shield on touchdown
@@ -286,7 +296,7 @@ func _ready() -> void:
 # gating only the "ui_accept" poll would leave touch jumps fully working on Android,
 # which is the platform this ships to.
 func buffer_jump() -> void:
-	if is_jump_suppressed:
+	if is_jump_suppressed or is_aurora_flight_active or is_aurora_flight_landing:
 		return
 	jump_buffer_timer = JUMP_BUFFER_DURATION
 
@@ -301,7 +311,8 @@ func _physics_process(delta: float) -> void:
 	else:
 		coyote_timer = maxf(coyote_timer - delta, 0.0)
 
-	if Input.is_action_just_pressed("ui_accept") and not is_jump_suppressed:
+	if Input.is_action_just_pressed("ui_accept") and not is_jump_suppressed \
+			and not is_aurora_flight_active and not is_aurora_flight_landing:
 		jump_buffer_timer = JUMP_BUFFER_DURATION
 	else:
 		jump_buffer_timer = maxf(jump_buffer_timer - delta, 0.0)
@@ -319,7 +330,9 @@ func _physics_process(delta: float) -> void:
 	# redundant: a jump buffered in the frames just BEFORE the lake's seam would otherwise
 	# still fire once the player is on it, since JUMP_BUFFER_DURATION outlives the crossing
 	# of a segment boundary.
-	if not is_jump_suppressed and not is_boosting and not is_jump_ascending and coyote_timer > 0.0 and jump_buffer_timer > 0.0:
+	if not is_jump_suppressed and not is_boosting and not is_aurora_flight_active \
+			and not is_aurora_flight_landing and not is_jump_ascending \
+			and coyote_timer > 0.0 and jump_buffer_timer > 0.0:
 		velocity.y = JUMP_VELOCITY * upgrade_jump_multiplier * jump_boost_multiplier
 		coyote_timer = 0.0
 		jump_buffer_timer = 0.0
@@ -352,9 +365,14 @@ func _physics_process(delta: float) -> void:
 	# boost out of this gate, or pruning those samples, silently turns every boosted chasm into
 	# unavoidable death. PowerupManager.can_end_effect() / VOID_GUARDED_EFFECTS covers the
 	# other half.
-	is_using_grounded_model = (is_boosting and not is_boost_gliding_over_drop()) or (is_on_floor() and not is_jump_ascending)
+	is_using_grounded_model = not is_aurora_flight_active and ( \
+		(is_boosting and not is_boost_gliding_over_drop()) \
+		or (is_on_floor() and not is_jump_ascending))
 	var current_speed: float = boost_speed if is_boosting else speed_manager.current_speed
-	if is_using_grounded_model:
+	if is_aurora_flight_active:
+		velocity.x = current_speed
+		velocity.y = get_aurora_flight_velocity_y()
+	elif is_using_grounded_model:
 		var slope_tangent: Vector2 = get_slope_tangent()
 		velocity = slope_tangent * current_speed
 	else:
@@ -374,6 +392,8 @@ func _physics_process(delta: float) -> void:
 	if is_on_floor() and not was_on_floor:
 		landed.emit()
 		play_squash_stretch(LAND_SQUASH_SCALE)
+	if is_on_floor():
+		is_aurora_flight_landing = false
 	was_on_floor = is_on_floor()
 	# Measured after the snap deliberately: the snap is part of this frame's motion,
 	# and the stall/stuck watchdogs downstream must see where the body actually ended.
@@ -443,7 +463,8 @@ func update_visual_rotation(delta: float) -> void:
 		# Precedence, written down per the plan: hold means glide while a glide effect
 		# is active (existing behavior below, sprite locked to airborne_rotation) and
 		# spin otherwise.
-		if not is_glide_active and is_glide_input_held():
+		if not is_aurora_flight_active and not is_aurora_flight_landing \
+				and not is_glide_active and is_glide_input_held():
 			var spin_delta: float = TRICK_SPIN_RATE * delta
 			animated_sprite.rotation += spin_delta
 			trick_rotation_progress += spin_delta
@@ -932,6 +953,31 @@ func get_glide_velocity_y(delta: float) -> float:
 	return clampf(new_velocity_y, GLIDE_MAX_RISE_SPEED, GLIDE_MAX_FALL_SPEED)
 
 
+# Called by AuroraDirector's one event clock. Entry waits for a real floor contact; release hands
+# the nearly-landed body back to ordinary gravity and keeps input neutral until contact.
+func set_aurora_flight_strength(value: float) -> void:
+	var next_strength: float = clampf(value, 0.0, 1.0)
+	if next_strength > 0.0 and not is_aurora_flight_active:
+		if is_dead or not is_on_floor() or is_boosting or is_glide_active:
+			return
+		is_aurora_flight_active = true
+		is_aurora_flight_landing = false
+		is_jump_ascending = false
+		jump_buffer_timer = 0.0
+		coyote_timer = 0.0
+	if next_strength <= 0.0 and is_aurora_flight_active:
+		is_aurora_flight_active = false
+		is_aurora_flight_landing = not is_on_floor()
+	aurora_flight_strength = next_strength if is_aurora_flight_active else 0.0
+
+
+func get_aurora_flight_velocity_y() -> float:
+	var surface_y: float = terrain_generator.get_surface_world_y(global_position.x)
+	var target_y: float = surface_y - capsule_half_height - AURORA_FLIGHT_HEIGHT * aurora_flight_strength
+	return clampf((target_y - global_position.y) * AURORA_FLIGHT_VERTICAL_RESPONSE,
+		-AURORA_FLIGHT_MAX_VERTICAL_SPEED, AURORA_FLIGHT_MAX_VERTICAL_SPEED)
+
+
 # is_shield_from_glide_landing is cleared here, not just in absorb_hit(): a shield granted
 # from ANY other source replaces the glide-landing one, and leaving the flag set would let
 # update_glide_landing_shield()'s timer expire the replacement. See that function's comment
@@ -1003,4 +1049,7 @@ func die() -> void:
 		return
 
 	is_dead = true
+	is_aurora_flight_active = false
+	is_aurora_flight_landing = false
+	aurora_flight_strength = 0.0
 	died.emit()

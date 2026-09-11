@@ -299,6 +299,15 @@ the captured authored zoom and frames its protected flat at 0.59 of screen heigh
 priority and suppresses both effects. There is no camera rotation or second controller, and the
 authored zoom is restored before normal hazards resume.
 
+## Aurora crest flight
+
+`Player.is_aurora_flight_active` is a dedicated, director-driven state used only over Aurora's
+write-ahead protected flat. It preserves horizontal speed and guides Y toward a surface-relative
+target capped at 96px altitude and 260px/s vertical speed. It is not ordinary glide, a powerup,
+invulnerability, collision bypass or `Engine.time_scale`. Five-second rise/release ramps produce
+one takeoff and one real landing; a landing latch prevents held or buffered input from firing during
+the gravity handoff. Normal grounded physics is restored long before the protected recovery ends.
+
 X is never world-rebased (`world_rebaser.gd` rebases Y only), so the scroll-rate estimate
 needs no rebase correction — unlike `camera_y` / `camera_baseline_y`, which do.
 

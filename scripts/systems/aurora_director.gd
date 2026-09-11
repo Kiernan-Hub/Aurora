@@ -15,6 +15,11 @@ const NIGHT_THRESHOLD: float = 0.8
 const ENTRY_WAIT_DISTANCE: float = 10000.0
 const MIN_RECOVERY_DISTANCE: float = 2048.0
 const BODY_CLEARANCE: float = 128.0
+# One gentle lift at the broad crest. Long ramps keep takeoff/landing inside the protected flat.
+const FLIGHT_RISE_START_SECONDS: float = 27.0
+const FLIGHT_RISE_END_SECONDS: float = 32.0
+const FLIGHT_RELEASE_START_SECONDS: float = 40.0
+const FLIGHT_RELEASE_END_SECONDS: float = 45.0
 
 # Plain vars, never exported. shipping_values_check protects the defaults.
 # Preview completions never grant progress or change an existing deadline.
@@ -278,6 +283,8 @@ func finish_aurora() -> void:
 
 
 func push_blend(blend: float) -> void:
+	if player != null:
+		player.set_aurora_flight_strength(get_aurora_flight_strength(blend))
 	if sky_backdrop != null and sky_backdrop.has_method("apply_aurora"):
 		sky_backdrop.call("apply_aurora", blend, active_elapsed)
 	if aurora_wash != null and aurora_wash.has_method("apply_aurora"):
@@ -292,6 +299,15 @@ func push_blend(blend: float) -> void:
 		wings.call("apply_aurora", blend, active_elapsed)
 	if terrain != null:
 		terrain.set_aurora_ice_blend(blend)
+
+
+func get_aurora_flight_strength(base_blend: float) -> float:
+	if base_blend <= 0.0:
+		return 0.0
+	var rise: float = smoothstep(FLIGHT_RISE_START_SECONDS, FLIGHT_RISE_END_SECONDS, active_elapsed)
+	var release: float = 1.0 - smoothstep(
+		FLIGHT_RELEASE_START_SECONDS, FLIGHT_RELEASE_END_SECONDS, active_elapsed)
+	return clampf(base_blend * rise * release, 0.0, 1.0)
 
 
 # Snow gathers gently after the sky arrives, reaches one broad crest halfway through,

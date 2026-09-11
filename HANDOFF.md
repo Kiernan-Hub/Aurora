@@ -1,5 +1,21 @@
 # Handoff
 
+## Latest — slice 11: bounded Aurora crest flight
+
+The wing apparition now carries the skater through one guided crest arc over the already protected
+flat: five seconds rising, roughly eight near 96px altitude, and five seconds descending. Horizontal
+speed and the base speed ramp continue unchanged. This is a dedicated Player state, not ordinary
+glide or a powerup; it has a hard 96px target, 260px/s vertical cap, no collision bypass and no
+invulnerability. Jump input is neutral only during flight/landing, then ordinary input resumes.
+
+The complete calm probe passes 163,746 assertions across preview and credited encounters. It
+measures 1,079 bounded flight frames, 95.999px peak altitude, exactly one landing, buffered-input
+rejection, unchanged horizontal speed, safe camera placement, death cleanup, continued coins,
+camera framing and fully restored grounded movement
+before recovery. Fast gates pass except the three intentional TEMP preview values; the rendered
+gate passes at both widths/night palettes. Owner feel and Android testing are still required.
+The established 20,000-frame ordinary camera/movement regression also passes unchanged.
+
 ## Latest — slice 10: visual Aurora wings
 
 A brief six-feather light apparition now opens behind the grounded skater from 20–51 seconds,

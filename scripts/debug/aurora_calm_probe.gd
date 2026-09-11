@@ -341,11 +341,16 @@ func check_entry_failures() -> void:
 			await warp_case(context, director.flat_start_x + director.recovery_distance + 64.0)
 			director.begin_aurora()
 			expect(director.phase == AuroraDirector.Phase.ACTIVE, "Active death setup never entered")
+			director.active_elapsed = 32.0
+			director.push_blend(1.0)
+			expect(director.player.is_aurora_flight_active, "Active death setup never entered flight")
 			director.finish_aurora()
 			expect(director.phase == AuroraDirector.Phase.ACTIVE, "Early finish credited a partial event")
 		director._on_player_died()
 		expect(director.phase == AuroraDirector.Phase.DONE and director.get_aurora_blend() == 0.0,
 			"Death left active Aurora presentation")
+		expect(not director.player.is_aurora_flight_active and not director.player.is_aurora_flight_landing,
+			"Death left Aurora flight state active")
 		expect((context["save"] as MemorySaveStore).aurora_count == 0 \
 			and (context["save"] as MemorySaveStore).next_aurora_due_seconds == 0.0, "Death changed due progress")
 		expect(not (context["save"] as MemorySaveStore).achievements.get(
@@ -362,8 +367,12 @@ func check_live_encounter(preview: bool) -> void:
 	var achievements: AchievementManager = context["achievements"]
 	var counts: Array[int] = [0, 0]
 	var achievement_grants: Array[int] = [0]
+	var flight_landings: Array[int] = [0]
 	director.aurora_started.connect(func() -> void: counts[0] += 1)
 	director.aurora_finished.connect(func(_total: int) -> void: counts[1] += 1)
+	director.player.landed.connect(func() -> void:
+		if director.player.is_aurora_flight_active or director.player.is_aurora_flight_landing:
+			flight_landings[0] += 1)
 	achievements.achievement_granted.connect(func(id: String, _name: String) -> void:
 		if id == AchievementManager.UNDER_THE_AURORA:
 			achievement_grants[0] += 1)
@@ -436,6 +445,11 @@ func check_live_encounter(preview: bool) -> void:
 	frames = 0
 	var max_zoom_ratio: float = 1.0
 	var settled_surface_fraction: float = 0.0
+	var max_flight_altitude: float = 0.0
+	var min_flight_screen_fraction: float = 1.0
+	var max_flight_screen_fraction: float = 0.0
+	var flight_frames: int = 0
+	var checked_flight_input: bool = false
 	while frames < 4000 and director.phase == AuroraDirector.Phase.ACTIVE and not director.player.is_dead:
 		await physics_frame
 		resume_external_pause(context)
@@ -444,6 +458,25 @@ func check_live_encounter(preview: bool) -> void:
 		var surface_y: float = terrain.get_surface_world_y(director.player.global_position.x)
 		var surface_fraction: float = 0.5 + (surface_y - main.camera_2d.global_position.y) \
 			* main.camera_2d.zoom.y / main.get_viewport_rect().size.y
+		var flight_altitude: float = surface_y - director.player.capsule_half_height \
+			- director.player.global_position.y
+		if director.player.is_aurora_flight_active:
+			flight_frames += 1
+			max_flight_altitude = maxf(max_flight_altitude, flight_altitude)
+			var player_screen_fraction: float = 0.5 \
+				+ (director.player.global_position.y - main.camera_2d.global_position.y) \
+				* main.camera_2d.zoom.y / main.get_viewport_rect().size.y
+			min_flight_screen_fraction = minf(min_flight_screen_fraction, player_screen_fraction)
+			max_flight_screen_fraction = maxf(max_flight_screen_fraction, player_screen_fraction)
+			expect(flight_altitude <= Player.AURORA_FLIGHT_HEIGHT + 1.0,
+				"Aurora flight exceeded its altitude cap")
+			expect(absf(director.player.velocity.x - director.player.speed_manager.current_speed) < 0.1,
+				"Aurora flight changed horizontal speed")
+			if not checked_flight_input:
+				checked_flight_input = true
+				director.player.buffer_jump()
+				expect(director.player.jump_buffer_timer == 0.0,
+					"Aurora flight accepted a buffered jump")
 		if director.get_aurora_blend() >= 0.999 and director.player.is_on_floor():
 			settled_surface_fraction = surface_fraction
 		expect(not director.has_existing_conflict(), "Live spawner placed a hazard/movement pickup during Aurora")
@@ -457,10 +490,23 @@ func check_live_encounter(preview: bool) -> void:
 		"Aurora camera framing missed its bounded sky composition")
 	expect(main.camera_2d.zoom.distance_to(authored_zoom) <= 0.002,
 		"Aurora camera did not restore before recovery")
+	expect(flight_frames >= 900 and flight_frames <= 1200,
+		"Aurora crest flight did not stay inside its bounded window")
+	expect(max_flight_altitude >= 90.0 and max_flight_altitude <= Player.AURORA_FLIGHT_HEIGHT + 1.0,
+		"Aurora flight did not reach its restrained target altitude")
+	expect(min_flight_screen_fraction >= 0.38 and max_flight_screen_fraction <= 0.58,
+		"Aurora flight moved the player outside the safe camera composition")
+	expect(not director.player.is_aurora_flight_active \
+		and not director.player.is_aurora_flight_landing and director.player.is_on_floor(),
+		"Aurora flight did not restore ordinary grounded movement before recovery")
+	expect(flight_landings[0] == 1, "Aurora flight did not produce one clean landing")
 	print("AURORA_LIVE_FINISH preview=", preview, " phase=", director.phase, " dead=", director.player.is_dead,
 		" elapsed=", director.active_elapsed, " frames=", frames, " x=", director.player.global_position.x,
 		" end=", director.flat_end_x, " speed=", director.player.speed_manager.current_speed,
-		" max_zoom=", max_zoom_ratio, " settled_surface_fraction=", settled_surface_fraction)
+		" max_zoom=", max_zoom_ratio, " settled_surface_fraction=", settled_surface_fraction,
+		" flight_frames=", flight_frames, " max_flight_altitude=", max_flight_altitude,
+		" flight_screen=", min_flight_screen_fraction, "..", max_flight_screen_fraction,
+		" flight_landings=", flight_landings[0])
 	expect(director.flat_end_x - director.player.global_position.x >= director.recovery_distance,
 		"Encounter ran past recovery margin")
 	expect(main.game_manager.coin_count > coins_before + main.game_manager.TRICK_COIN_REWARD, "Coins did not keep spawning/collecting")

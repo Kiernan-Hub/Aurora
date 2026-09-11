@@ -62,8 +62,7 @@ func apply_aurora(blend: float, elapsed: float) -> void:
 	if disabled:
 		return
 	var strength: float = get_wing_strength(blend, elapsed)
-	# Ground-only makes the promise honest: this is a skating apparition, not hidden flight.
-	if strength <= 0.0 or not player.is_on_floor():
+	if strength <= 0.0 or (not player.is_on_floor() and not player.is_aurora_flight_active):
 		visible = false
 		return
 	global_position = player.global_position + Vector2(-2.0, -8.0).rotated(player.animated_sprite.rotation)
