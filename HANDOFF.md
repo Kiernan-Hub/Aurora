@@ -1,9 +1,79 @@
 # Handoff
 
+## Audit pass — 2026-09-11, READ THIS FIRST
+
+The Aurora branch was audited end to end against `CLAUDE.md`, this file, `aurora_borealis.md` and
+the `2026-09-09` review. **No defect was found in the Aurora implementation itself.** All six
+findings of the 2026-09-09 audit are genuinely fixed in code (verified by reading it, not by
+trusting the doc): occluded green hem, night-duration eligibility, preview progression writes,
+reset rescheduling, completion clock banking, and the gate that never tested an aurora. Write-ahead
+terrain purity holds, lake/Aurora arbitration is symmetric, and the new Player flight state leaves
+the boost/chasm velocity model untouched.
+
+What the audit *did* find was a missing gate, three unrun regressions, and doc wording pointing at
+the wrong file. All three are now closed:
+
+`claude/aurora-reconcile` is at **`8396247`**, pushed to `origin`, working tree clean:
+
+| Commit | What |
+|---|---|
+| `357f957` | `AuroraDirector.MIN_RUN_TIME_SECONDS = 130.0` (the lake's number) + TEMP-wording corrections |
+| `8396247` | Comments-only: why `ENTRY_WAIT_DISTANCE` is 10,000 and must not be trimmed |
+
+**The run-time gate.** `is_aurora_due()` now refuses before 130s into a run. This is about the
+SPEED RAMP, not pacing: the flat is cut at `MAX_SPEED` while the event ends on a 61s clock, so a
+still-accelerating player covers less of it than it was sized for — entering at t=20s (~530px/s)
+left ~28,000px of dead protected flat. `FrozenLakeDirector` has had this gate since it shipped; the
+Aurora had none. The check sits BELOW the preview branch on purpose, so a 10s review interval still
+bypasses it and no second knob enters `shipping_values_check`'s table.
+
+### Verified, with numbers — do not re-run these to "make sure"
+
+| Gate | Result |
+|---|---|
+| `aurora_calm_probe.gd` | PASS, **163,746** assertions, both live cases, credited completion intact |
+| `freeze-search` | PASS — 40 trials, **0 stalls, 0 near-stalls**, worst `min_motion` 8.36px |
+| `freeze-replay` | PASS — 60,000 frames, `no_freeze`, **0 stall recoveries** |
+| `floor-flicker` | PASS — **6 seeds × 20,000 frames, 0 recoveries, 0 stuck**, max forced snap 1.86px |
+| `check.sh` | 4/5 — fails **only** on the three declared TEMP knobs |
+
+The three physics regressions had been owed since **slice 2**, when the Aurora was terrain-only.
+Slice 11 then added a whole Player movement state and slice 9 changed camera framing, and neither
+re-ran them. They are green now. `git status` was checked after every engine run — no scene or
+`project.godot` strip.
+
+### Accepted costs — DOCUMENTED, NOT BUGS. Do not re-open.
+
+- **A protected flat is always longer than its event.** ~59,846px reserved against ~45,750px of
+  presentation, so **~12s of empty obstacle-free flat follows the fade** and ~3s precedes it. This
+  is the price of guaranteeing the calm on immutable terrain.
+- **`ENTRY_WAIT_DISTANCE` (10,000px) must not be trimmed.** The GLIDE sets its floor, not the
+  boost: `GLIDE_DURATION` 7s × `MAX_SPEED` = 5,250px, plus ~750px because `begin_aurora()` needs
+  `is_on_floor()` and a glide can expire at altitude. Worst case ~6,000px; 10,000 is ~1.7×. Sizing
+  it against `SPEED_BOOST_DURATION` (3s) argues for halving it and **is wrong — that mistake was
+  made and corrected in this pass.** Undershooting fails `has_duration_room()` at entry, which
+  skips the aurora *and* still spends the whole reservation.
+- **A failed entry spends the whole reservation** with no event. Rare (reserve and entry are ~3s
+  apart and share `is_sky_ready()`) and unfixable after the fact, since arming is immutable.
+
+### Left before ship, in order
+
+1. Restore the three knobs: `biome_director.gd` `debug_biome_seconds` → `0.0`;
+   `aurora_director.gd` `debug_aurora_interval_override` → `0.0`, `debug_aurora_ignore_night` → `false`
+2. `./scripts/check.sh` must then be 5/5
+3. The three windowed visual gates at shipping pace (`sky_layer_check`, `ice_look_capture`,
+   `biome_contact_sheet`) — these need a window, no `--headless`
+4. Owner motion/audio review + Android speaker/headphone/frame-input testing
+
+Minor, unfixed, low value: `aurora_wisps.gd:4` says the wisps are "rebuilt each frame" — they are
+built once and only repositioned. `frozen_lake_director.gd:218` reaches for `"../AuroraDirector"`
+by hardcoded string rather than an `@export NodePath` like every other dependency in that file.
+`AuroraWings` may flicker for a few frames during the `is_aurora_flight_landing` gap around t=45.
+
 ## Current Aurora state — 2026-09-11
 
-The complete Aurora encounter is implemented on `claude/aurora-reconcile` through
-`9db1fb9` and pushed to `origin`. It is a 61-second, once-per-run event due every 30 minutes of
+The complete Aurora encounter is implemented on `claude/aurora-reconcile` (feature work landed
+through `9db1fb9`; see the audit section above for the current head). It is a 61-second, once-per-run event due every 30 minutes of
 cumulative playtime, gated to past 130s into a run (`MIN_RUN_TIME_SECONDS` — the flat is cut at
 `MAX_SPEED` but ends on a clock, so an accelerating player leaves dead flat behind) and by enough
 remaining night for the full encounter. The current scene is
