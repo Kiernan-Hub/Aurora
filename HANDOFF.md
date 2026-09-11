@@ -4,11 +4,15 @@
 
 The complete Aurora encounter is implemented on `claude/aurora-reconcile` through
 `9db1fb9` and pushed to `origin`. It is a 61-second, once-per-run event due every 30 minutes of
-cumulative playtime, gated by enough remaining night for the full encounter. The current scene is
-intentionally in **TEMP preview mode** (`BiomeDirector.debug_biome_seconds = 10.0`,
-`AuroraDirector.debug_aurora_interval_override = 10.0`,
-`AuroraDirector.debug_aurora_ignore_night = true`), so it is reviewable now but not shippable until
-those three values are restored to `0.0`, `0.0`, and `false` respectively.
+cumulative playtime, gated to past 130s into a run (`MIN_RUN_TIME_SECONDS` — the flat is cut at
+`MAX_SPEED` but ends on a clock, so an accelerating player leaves dead flat behind) and by enough
+remaining night for the full encounter. The current scene is
+intentionally in **TEMP preview mode**. The three knobs are committed as SOURCE defaults, not as
+scene properties — `main.tscn` holds none of them, because all three are plain vars the editor
+cannot serialise. They are `BiomeDirector.debug_biome_seconds = 10.0` (`biome_director.gd`),
+`AuroraDirector.debug_aurora_interval_override = 10.0` and
+`AuroraDirector.debug_aurora_ignore_night = true` (`aurora_director.gd`). It is reviewable now but
+not shippable until those three are restored to `0.0`, `0.0`, and `false` respectively.
 
 One director clock owns the entire presentation: protected write-ahead flat and recovery; new
 obstacle/boost/glide suppression; night/lake arbitration; curtains, world wash and ice response;

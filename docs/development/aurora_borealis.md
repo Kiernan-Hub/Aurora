@@ -3,8 +3,21 @@
 ## Current implementation, verification, and release gate — 2026-09-11
 
 Aurora is fully implemented on `claude/aurora-reconcile` through `9db1fb9` (pushed to `origin`).
-It is a 61-second, once-per-run experience due every 30 minutes of cumulative playtime and can
-begin only when the full presentation has enough remaining night (`star_density >= 0.8`). A single
+It is a 61-second, once-per-run experience due every 30 minutes of cumulative playtime, gated to
+**past 130s into a run** (`MIN_RUN_TIME_SECONDS`, the lake's number), and able to begin only when
+the full presentation has enough remaining night (`star_density >= 0.8`). The run-time gate is
+about the SPEED RAMP, not pacing: the reserved flat is cut at `MAX_SPEED` while the event ends on a
+clock, so a still-accelerating player covers less of it than it was sized for and rides the rest as
+dead flat. A preview interval bypasses the gate so review sessions need no second knob.
+
+**A protected flat is always longer than its event, by design.** At cap the reservation is
+~59,846px (~80s) against ~45,750px of presentation, so roughly **12 seconds of empty, obstacle-free
+flat follows the fade** and ~3s precedes it. `ENTRY_WAIT_DISTANCE` (10,000px) is budget for an
+existing 3-second boost to expire before entry; when no boost is running, that budget becomes tail.
+A failed entry (night lapsed, conflict) spends the whole reservation with no event at all — rare,
+since reserve and entry are ~3s apart and share `is_sky_ready()`, and unfixable after the fact
+because the terrain is immutable once armed. Trimming the tail means trimming
+`ENTRY_WAIT_DISTANCE`, not shortening a flat that has already been written. A single
 `AuroraDirector` clock drives the protected write-ahead flat/recovery and every presentation
 consumer: curtains, wash, ice response, camera, blade glow, snow, rear wisps, wings, guided
 flight, and ambience. It also owns the completion signal; `AchievementManager` remains the sole

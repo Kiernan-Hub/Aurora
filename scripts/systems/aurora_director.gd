@@ -10,6 +10,13 @@ const AURORA_INTERVAL_SECONDS: float = 1800.0
 const AURORA_DURATION_SECONDS: float = 45.0
 const AURORA_FADE_SECONDS: float = 8.0
 const NIGHT_THRESHOLD: float = 0.8
+# Same gate FrozenLakeDirector puts on the lake, and here it is about the SPEED RAMP rather
+# than pacing. The reserved flat is sized at MAX_SPEED while the event ends on a 61-second
+# CLOCK, so a player who is still accelerating covers less of it than it was cut for and rides
+# the remainder as dead flat: entering at t=20s (~530px/s) leaves roughly 28,000px of empty
+# protected ground after the ribbons fade. MAX_SPEED lands at t=120s; 130 matches the lake's
+# number and leaves margin, because entry happens a few seconds after this first passes.
+const MIN_RUN_TIME_SECONDS: float = 130.0
 # Space to let an existing glide/boost finish and land before the presentation starts.
 # A failed/late entry skips the appearance without undoing the immutable flat.
 const ENTRY_WAIT_DISTANCE: float = 10000.0
@@ -242,6 +249,11 @@ func schedule_if_unscheduled() -> void:
 func is_aurora_due() -> bool:
 	if debug_aurora_interval_override > 0.0:
 		return main_node.elapsed_time >= debug_aurora_interval_override
+	# Deliberately BELOW the preview branch, not above it: a review session sets the interval
+	# to 10s precisely so it does not have to survive two minutes first, and bypassing the gate
+	# there needs no second knob for shipping_values_check to watch.
+	if main_node.elapsed_time < MIN_RUN_TIME_SECONDS:
+		return false
 	var deadline: float = services.save_store.next_aurora_due_seconds
 	return deadline >= 0.0 and get_total_playtime_seconds() >= deadline
 
