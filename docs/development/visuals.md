@@ -113,6 +113,11 @@ base ÷ zoom = **1382 × 778 world px**. Changing either alone changes the field
 an auto-runner is how much warning the player gets. Terrain constants are unaffected either way —
 `GROUND_Y`, `ICE_BAND_DEPTH`, `FILL_GRADIENT_DEPTH` and `CHASM_LEAD_IN_LENGTH` are all world px.
 
+Aurora is the one bounded exception: inside its protected obstacle-free passage, the existing
+appearance ramp eases to 1.055× the captured authored zoom and lifts the ice line to 0.59 of screen
+height. It returns to the authored zoom before hazards resume; glide takes priority, and the camera
+never rotates.
+
 ### What `expand` actually does
 
 `scale = min(window.x / base.x, window.y / base.y)`, then the viewport is sized to

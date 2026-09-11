@@ -3,7 +3,7 @@ extends SceneTree
 # Geometry proof plus explicitly enabled live lifecycle cases. Geometry traversals
 # detach Services; integration cases inject an in-memory SaveStore. Never use a real
 # save for lifecycle tests. Obstacles/powerups stay ON in the integration cases.
-# Camera/flight are not yet implemented or covered here.
+# The live cases also prove Aurora camera scale, framing, restoration and glide priority.
 # godot --headless --fixed-fps 60 --path . --script res://scripts/debug/aurora_calm_probe.gd
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 const SEEDS: Array[int] = [941462462, 2160065702, 3188032853, 222894852, 12345, 987654321, 1, 683407368]
@@ -411,6 +411,10 @@ func check_live_encounter(preview: bool) -> void:
 	expect(director.phase == AuroraDirector.Phase.ACTIVE, "Safe grounded entry never started")
 	expect(counts[0] == 1 and not director.player.is_boosting and not director.player.is_glide_active,
 		"Active event has movement powerup or repeated start")
+	var authored_zoom: Vector2 = main.camera_authored_zoom
+	main.is_glide_vertical_follow_active = true
+	expect(main.get_aurora_camera_blend() == 0.0, "Aurora camera overrode glide priority")
+	main.is_glide_vertical_follow_active = false
 	var frozen_time: float = director.active_elapsed
 	main.game_manager.set_state(GameManager.State.PAUSED)
 	for frame: int in range(10):
@@ -430,16 +434,33 @@ func check_live_encounter(preview: bool) -> void:
 		await physics_frame
 	expect(not director.player.is_on_floor(), "Aurora suppressed normal jump input")
 	frames = 0
+	var max_zoom_ratio: float = 1.0
+	var settled_surface_fraction: float = 0.0
 	while frames < 4000 and director.phase == AuroraDirector.Phase.ACTIVE and not director.player.is_dead:
 		await physics_frame
 		resume_external_pause(context)
 		frames += 1
+		max_zoom_ratio = maxf(max_zoom_ratio, main.camera_2d.zoom.x / authored_zoom.x)
+		var surface_y: float = terrain.get_surface_world_y(director.player.global_position.x)
+		var surface_fraction: float = 0.5 + (surface_y - main.camera_2d.global_position.y) \
+			* main.camera_2d.zoom.y / main.get_viewport_rect().size.y
+		if director.get_aurora_blend() >= 0.999 and director.player.is_on_floor():
+			settled_surface_fraction = surface_fraction
 		expect(not director.has_existing_conflict(), "Live spawner placed a hazard/movement pickup during Aurora")
 		expect(not director.player.is_boosting and not director.player.is_glide_active, "Live movement effect escaped exclusion")
+		expect(main.camera_2d.rotation == 0.0, "Aurora tilted the gameplay camera")
 	expect(director.phase == AuroraDirector.Phase.RECOVERY and not director.player.is_dead, "Live encounter did not finish safely")
+	expect(max_zoom_ratio >= 1.05 and max_zoom_ratio <= Main.AURORA_CAMERA_ZOOM_MULTIPLIER + 0.001,
+		"Aurora camera zoom was absent or exceeded its cap")
+	expect(settled_surface_fraction >= 0.58 \
+		and settled_surface_fraction <= Main.AURORA_HORIZON_FRACTION + 0.01,
+		"Aurora camera framing missed its bounded sky composition")
+	expect(main.camera_2d.zoom.distance_to(authored_zoom) <= 0.002,
+		"Aurora camera did not restore before recovery")
 	print("AURORA_LIVE_FINISH preview=", preview, " phase=", director.phase, " dead=", director.player.is_dead,
 		" elapsed=", director.active_elapsed, " frames=", frames, " x=", director.player.global_position.x,
-		" end=", director.flat_end_x, " speed=", director.player.speed_manager.current_speed)
+		" end=", director.flat_end_x, " speed=", director.player.speed_manager.current_speed,
+		" max_zoom=", max_zoom_ratio, " settled_surface_fraction=", settled_surface_fraction)
 	expect(director.flat_end_x - director.player.global_position.x >= director.recovery_distance,
 		"Encounter ran past recovery margin")
 	expect(main.game_manager.coin_count > coins_before + main.game_manager.TRICK_COIN_REWARD, "Coins did not keep spawning/collecting")

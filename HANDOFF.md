@@ -1,5 +1,18 @@
 # Handoff
 
+## Latest — slice 9: Aurora camera composition
+
+Aurora now eases the authored camera into a restrained 1.055× zoom while lifting the terrain line
+from its ordinary ~0.55 position to 0.59 of screen height. The director's existing appearance
+ramp drives both changes; Main remains the sole camera writer, captures the scene-authored zoom,
+and restores it before the protected recovery ends. Glide has explicit priority. There is no
+rotation, shake, input change or second camera controller.
+
+The complete calm probe passes 159,415 assertions and directly measures the zoom cap, 0.590
+settled framing, zero rotation, glide priority and restoration. The 20,000-frame camera-shake gate
+and windowed Aurora composition gate also pass. Fast gates pass except the three intentional TEMP
+preview values. Owner motion/taste and device review remain owed.
+
 ## Latest — slice 8: sparse rear wisps
 
 Three small tapered `Line2D` arcs now drift near the skater, structurally behind Player,

@@ -1,5 +1,19 @@
 # Aurora borealis — the plan and the state
 
+## Slice 9 — restrained camera composition implemented
+
+Aurora now eases the existing camera into a 1.055× zoom and lifts the flat terrain line to 0.59 of
+screen height. Both ride the director's single appearance ramp. `Main` remains the sole camera
+writer, captures the authored scene zoom at startup instead of duplicating its literal, and
+restores it before the protected recovery ends. Ordinary horizontal follow/lead remains intact;
+glide has explicit priority. Rotation, shake, letterboxing, input locks and a second controller
+were deliberately excluded.
+
+The live calm probe directly measures a 1.054999× peak, 0.590000 settled terrain fraction, zero
+rotation, glide priority and authored-zoom restoration across preview and real encounters. The
+full probe passes 159,415 assertions. The established 20,000-frame camera-shake gate and the
+windowed Aurora composition gate also pass. Owner motion/taste and Android review remain owed.
+
 ## Slice 8 — sparse rear wisps implemented
 
 Three small tapered arcs now drift around the skater during the Aurora. They are code-built
@@ -1150,9 +1164,9 @@ number is a count of compositing passes. The bake uses 576 KiB of raw LA8 data (
 
 ## The camera
 
-Planned, not built. **The frozen lake does not zoom** — `main.gd:331 apply_lake_framing()` lerps the
-camera's *target y* so the shore sits at `LAKE_HORIZON_FRACTION` (0.56). `Camera2D.zoom` is
-untouched anywhere in the project. The aurora wants both, in the same shape, blended by
+Implemented in slice 9. **The frozen lake still does not zoom** — `apply_lake_framing()` only
+lerps the camera's target Y so the shore sits at `LAKE_HORIZON_FRACTION` (0.56). Aurora adds a
+separate restrained 1.055× zoom and target-Y framing at 0.59, both blended by
 `get_aurora_blend()`.
 
 **A framing lift does not lower the mountains.** Every `motion_scale` in `main.tscn` is `(x, 0)` —
@@ -1168,15 +1182,11 @@ Cheaper than expected: the three live readers of `camera.zoom` (`main.gd:340`,
 `lake_reflection.gd:149`, `glide_coin_spawner.gd:218`) all re-read per frame, so an animated zoom
 needs no invalidation anywhere.
 
-Three things not to forget. **Glide already owns the camera** — `is_glide_vertical_follow_active`
-follows a gliding player upward, and an aurora override anchored to the terrain will fight it and
-can pull them off screen; **glide takes precedence**, define that rather than discovering it.
-**Capture and restore the authored zoom explicitly** rather than assuming the literal in
-`main.tscn`. And **the follow has smoothing lag** — blend 0 means the *target* is back, not that the
-camera has arrived, so the protected band must outlast the settle, not just the fade.
-
-`camera_shake_probe` is owed on that commit. Note it measures camera *position*, so it does not by
-itself see screen motion caused by a zoom change; that half is an owner look.
+The implementation preserves all three constraints: glide forces the Aurora camera blend to zero;
+the authored zoom is captured in `_ready()`; and the extra zoom filter settles inside the protected
+recovery span. `camera_shake_probe` passes on the commit. Because that probe measures position, the
+live calm probe separately measures zoom/framing/restoration; owner review still owes the final
+motion judgment.
 
 ## The headless contract
 
