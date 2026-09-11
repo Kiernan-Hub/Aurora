@@ -2,8 +2,10 @@ extends Node2D
 
 class_name AuroraWisps
 
-# Three quiet arcs behind gameplay. They are rebuilt from the current player/surface and
-# Aurora clock each frame, so there is no trail history to repair during a world rebase.
+# Three quiet arcs behind gameplay. The geometry is immutable -- built once in _ready() and
+# never touched again; the Aurora clock only moves and fades them. Each frame this node is
+# re-anchored to the current player/surface, so nothing holds a world-space point and there is
+# no trail history to repair during a world rebase.
 const WISP_COUNT: int = 3
 const POINT_COUNT: int = 9
 const TRAVEL_SPAN: float = 760.0
