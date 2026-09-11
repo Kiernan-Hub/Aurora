@@ -348,6 +348,7 @@ func check_aurora() -> void:
 	var blade_glow: Node2D = main.get_node_or_null("AuroraBladeGlow") as Node2D
 	var snow: GPUParticles2D = main.get_node_or_null("SnowDrift/SnowParticles") as GPUParticles2D
 	var wisps: Node2D = main.get_node_or_null("AuroraWisps") as Node2D
+	var wings: Node2D = main.get_node_or_null("AuroraWings") as Node2D
 	if wash == null or wash.layer != -45:
 		aurora_failures.append("Aurora wash is missing or not structurally behind gameplay at layer -45")
 	elif wash.get_node_or_null("Wash") == null \
@@ -363,6 +364,10 @@ func check_aurora() -> void:
 			or wisps.get_index() > main.get_node("Player").get_index() \
 			or wisps.get_index() > main.get_node("TerrainGenerator").get_index():
 		aurora_failures.append("Aurora wisps are missing or not structurally behind gameplay")
+	if wings == null or wings.get_child_count() != 6 \
+			or wings.get_index() > main.get_node("Player").get_index() \
+			or wings.get_index() > main.get_node("TerrainGenerator").get_index():
+		aurora_failures.append("Aurora wings are missing or not structurally behind gameplay")
 	director.set_physics_process(false)
 	var original_size: Vector2i = root.size
 	for width: int in [1152, 1440]:
@@ -376,6 +381,7 @@ func check_aurora() -> void:
 					or (wash != null and (wash.get_node("Wash") as TextureRect).visible) \
 					or (blade_glow != null and blade_glow.visible) \
 					or (wisps != null and wisps.visible) \
+					or (wings != null and wings.visible) \
 					or (snow != null and not is_zero_approx(float(snow.get("aurora_density_blend")))):
 				aurora_failures.append("Aurora world response does not restore its zero state")
 			var snow_baseline_ratio: float = float(snow.call("get_target_amount_ratio")) if snow != null else 0.0
@@ -441,6 +447,30 @@ func check_aurora() -> void:
 				if measure_peak(wisps_motion_a, wisps_motion_b) == 0:
 					aurora_failures.append("Aurora wisp clock does not produce visible drift")
 			director.push_blend(0.0)
+			# The wing apparition is brief, ground-only, deterministic, and behind gameplay.
+			director.active_elapsed = 30.0
+			director.push_blend(1.0)
+			var wings_on: Image = await capture_aurora_frame()
+			var wings_held: Image = await capture_aurora_frame()
+			if measure_peak(wings_on, wings_held) != 0:
+				aurora_failures.append("Aurora wings move while their clock is paused")
+			if wings != null:
+				wings.visible = false
+			var wings_off: Image = await capture_aurora_frame()
+			var wings_peak: int = measure_peak(wings_off, wings_on)
+			print("AURORA_WINGS width=%d palette=%s peak=%d floor=%d" % [
+				width, palette.resource_path.get_file(), wings_peak, MIN_PEAK_CONTRIBUTION])
+			if wings_peak < MIN_PEAK_CONTRIBUTION:
+				aurora_failures.append("Aurora wings are too faint at width=%d: %d < %d" % [
+					width, wings_peak, MIN_PEAK_CONTRIBUTION])
+			if wings != null:
+				wings.call("apply_aurora", 1.0, 10.0)
+				if wings.visible:
+					aurora_failures.append("Aurora wings appear before their brief crest window")
+				wings.call("apply_aurora", 1.0, 55.0)
+				if wings.visible:
+					aurora_failures.append("Aurora wings remain after their brief crest window")
+			director.push_blend(0.0)
 			# Arrival must begin on the right, then reach the left. Whole-screen fading
 			# (or a reveal tied to drifting texture UV) must not pass on brightness alone.
 			backdrop.apply_aurora(1.0, 4.0)
@@ -473,6 +503,7 @@ func check_aurora() -> void:
 					arrival.save_png(prefix + "-arrival.png")
 					unfolded.save_png(prefix + "-unfolded.png")
 					wisps_on.save_png(prefix + "-wisps.png")
+					wings_on.save_png(prefix + "-wings.png")
 			# Measure each band separately at full strength; the green carries the event.
 			for selected: int in range(3):
 				backdrop.apply_aurora(1.0, 8.0)

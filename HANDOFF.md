@@ -1,5 +1,19 @@
 # Handoff
 
+## Latest — slice 10: visual Aurora wings
+
+A brief six-feather light apparition now opens behind the grounded skater from 20–51 seconds,
+reaching full strength for the Aurora crest. It is deliberately visual only: no levitation,
+movement state, collision, input, speed, particles, trail history or independent timer. The
+immutable `Line2D` geometry is built once and the existing Aurora clock changes only transform and
+opacity. It stays structurally behind Player and TerrainGenerator and hides while airborne.
+
+The rendered gate passes at both widths/night palettes, measuring 65/255 isolated visibility,
+paused-frame identity, bounded timing, draw order and cleanup. Captures are in
+`art_source/audits/aurora-wings-slice/`. The full calm probe still passes 159,415 assertions; fast
+gates pass except the three intentional TEMP preview values. Actual flight remains unbuilt and
+should not be attempted unless this safer visual is accepted first. Audio still needs an asset.
+
 ## Latest — slice 9: Aurora camera composition
 
 Aurora now eases the authored camera into a restrained 1.055× zoom while lifting the terrain line

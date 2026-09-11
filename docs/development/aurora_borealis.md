@@ -1,5 +1,19 @@
 # Aurora borealis — the plan and the state
 
+## Slice 10 — visual wing apparition implemented
+
+A brief six-feather light fan now appears behind the grounded skater from 20–51 seconds, reaching
+full strength for the broad Aurora crest. This is the safe wing-visual fallback, not flight: it
+does not touch position, velocity, collision, speed, input or player state, and it hides whenever
+the skater is airborne. Six immutable `Line2D` shapes are built once; the existing event clock
+changes only their transform and opacity. There are no particles, trails, timers or rebase state.
+
+The windowed gate proves behind-gameplay ordering, zero cleanup, bounded timing, paused-frame
+identity and 65/255 isolated visibility at 1152×648 and 1440×648 across both night palettes.
+Captures are in `art_source/audits/aurora-wings-slice/`. The complete calm probe remains green at
+159,415 assertions. Actual controlled flight remains unbuilt and is now an explicit optional
+follow-up, contingent on accepting this visual direction before taking on movement risk.
+
 ## Slice 9 — restrained camera composition implemented
 
 Aurora now eases the existing camera into a 1.055× zoom and lifts the flat terrain line to 0.59 of
@@ -174,8 +188,8 @@ Keep sky/world/ice light, camera, snow and achievement. Explore a reserved **fla
 passage, suppress boost and ordinary glide during the encounter (including trick-earned boost
 and existing effects/pickups at entry), and develop the signature as skating → brief controlled
 Aurora-wing flight → skating. Controlled flight is still an unbuilt, separately proved candidate;
-wing visuals while skating remain the fallback. Existing normal glide is not a stable-height
-flight implementation. Obstacle-only event protection is a possible alternative to suppression,
+the safer wing-visual fallback while skating was implemented in slice 10. Existing normal glide
+is not a stable-height flight implementation. Obstacle-only event protection is a possible alternative to suppression,
 not repeated grants of the consumable/tinting shield; chasm safety still requires terrain work.
 
 **Slice 1 implemented: directional sky arrival and internal curtain folds only.**

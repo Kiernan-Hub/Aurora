@@ -25,6 +25,7 @@ Front-to-back, as wired in `scenes/main.tscn`:
 | `TerrainGenerator` chunks, pickups, obstacles | world | `0` | `terrain_generator.gd` |
 | `TerrainGenerator/GroundTreeSpawner` | world | `0` | `ground_tree_spawner.gd` |
 | `Player` | world | `0` | `player.gd` |
+| `AuroraWings` | world | `0`, before player/terrain | `aurora_wings.gd` |
 | `AuroraWisps` | world | `0`, before player/terrain | `aurora_wisps.gd` |
 | `AuroraWash/Wash` | `TextureRect` | `-45` | `aurora_wash.gd` |
 | `SnowDrift/SnowParticles` | `GPUParticles2D` | `-50` | `snow_drift.gd` |

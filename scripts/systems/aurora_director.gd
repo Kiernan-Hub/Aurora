@@ -5,7 +5,7 @@ class_name AuroraDirector
 # Owns timing and the single cosmetic ramp; SkyBackdrop owns the curtains.
 # One event per run, due 30 minutes after the last completed event, with enough night
 # remaining for the entire event. Reserves a future flat, then waits for safe entry.
-# Spawners and PowerupManager own exclusion; camera and flight are still unbuilt.
+# Spawners and PowerupManager own exclusion; actual Aurora flight is still unbuilt.
 const AURORA_INTERVAL_SECONDS: float = 1800.0
 const AURORA_DURATION_SECONDS: float = 45.0
 const AURORA_FADE_SECONDS: float = 8.0
@@ -37,6 +37,7 @@ var aurora_wash: Node
 var blade_glow: Node
 var snow: Node
 var wisps: Node
+var wings: Node
 var main_node: Main
 var services: GameServices
 var is_headless: bool = false
@@ -79,6 +80,7 @@ func resolve_dependencies() -> bool:
 	blade_glow = get_node_or_null("../AuroraBladeGlow")
 	snow = get_node_or_null("../SnowDrift/SnowParticles")
 	wisps = get_node_or_null("../AuroraWisps")
+	wings = get_node_or_null("../AuroraWings")
 	main_node = get_parent() as Main
 	services = GameServices.resolve(self)
 	terrain = get_node_or_null("../TerrainGenerator") as TerrainGenerator
@@ -286,6 +288,8 @@ func push_blend(blend: float) -> void:
 		snow.call("apply_aurora", get_aurora_snow_blend(blend), active_elapsed)
 	if wisps != null and wisps.has_method("apply_aurora"):
 		wisps.call("apply_aurora", blend, active_elapsed)
+	if wings != null and wings.has_method("apply_aurora"):
+		wings.call("apply_aurora", blend, active_elapsed)
 	if terrain != null:
 		terrain.set_aurora_ice_blend(blend)
 
