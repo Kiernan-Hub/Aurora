@@ -1,5 +1,20 @@
 # Aurora borealis — the plan and the state
 
+## Slice 12 — dedicated Aurora ambience implemented
+
+Aurora now owns a quiet 12-second seamless stereo bed generated locally from periodic harmonics
+(24kHz PCM, 1.10MiB), avoiding licensing and network dependencies. A dedicated `AuroraAudio` node
+uses one long-form player on the existing Music bus; it never occupies the six-voice one-shot SFX
+pool. The director's existing appearance ramp controls gain, capped at 0.55 linear over a source
+measuring −14.5dBFS peak / −21.6dBFS RMS. The already-wired saved Music volume control is now visible
+on the pause screen.
+
+The native gate proves runtime forward looping, bounded crest gain, pause/resume, exact zero state
+and death cleanup. The last-to-first sample step matches ordinary sample progression because every
+carrier and amplitude envelope completes an integer number of cycles in the file. The headless
+contract remains intact: no audio player or AudioServer access occurs there. Final sound taste and
+Android speaker/headphone balance remain owner/device review rather than a numeric claim.
+
 ## Slice 11 — bounded guided crest flight implemented
 
 The wing apparition now accompanies one guided flight arc inside the already protected flat. From
@@ -202,7 +217,8 @@ Do not simply call the flat API at visual onset. Camera and Aurora-wing flight f
 This checkpoint supersedes the planning-only status and older recommendations below.
 The owner authorized incremental implementation, explicitly asking not to build it all at once.
 
-**Updated direction:** no actual speed reduction; audio deferred until the owner supplies it.
+**Updated direction:** no actual speed reduction. Audio was initially deferred; slice 12 later added
+an original, locally generated ambient bed with no external licensing dependency.
 Keep sky/world/ice light, camera, snow and achievement. Explore a reserved **flat** protected
 passage, suppress boost and ordinary glide during the encounter (including trick-earned boost
 and existing effects/pickups at entry), and develop the signature as skating → brief controlled

@@ -43,6 +43,7 @@ var blade_glow: Node
 var snow: Node
 var wisps: Node
 var wings: Node
+var aurora_audio: Node
 var main_node: Main
 var services: GameServices
 var is_headless: bool = false
@@ -86,6 +87,7 @@ func resolve_dependencies() -> bool:
 	snow = get_node_or_null("../SnowDrift/SnowParticles")
 	wisps = get_node_or_null("../AuroraWisps")
 	wings = get_node_or_null("../AuroraWings")
+	aurora_audio = get_node_or_null("../AuroraAudio")
 	main_node = get_parent() as Main
 	services = GameServices.resolve(self)
 	terrain = get_node_or_null("../TerrainGenerator") as TerrainGenerator
@@ -297,6 +299,8 @@ func push_blend(blend: float) -> void:
 		wisps.call("apply_aurora", blend, active_elapsed)
 	if wings != null and wings.has_method("apply_aurora"):
 		wings.call("apply_aurora", blend, active_elapsed)
+	if aurora_audio != null and aurora_audio.has_method("apply_aurora"):
+		aurora_audio.call("apply_aurora", blend, active_elapsed)
 	if terrain != null:
 		terrain.set_aurora_ice_blend(blend)
 

@@ -1,5 +1,18 @@
 # Handoff
 
+## Latest — slice 12: Aurora ambient bed
+
+Aurora now has a dedicated 12-second seamless stereo ambient loop generated locally from periodic
+harmonics (24kHz PCM, 1.10MiB), so it has no licensing dependency. `AuroraAudio` owns one player on
+the existing Music bus rather than occupying the six-voice SFX pool. The director's existing ramp
+controls gain, capped at 0.55 linear over a source measuring −14.5dBFS peak / −21.6dBFS RMS. The
+pause screen's already-wired Music control is now visible.
+
+The native gate proves forward looping, bounded crest gain, pause/resume, exact zero state and
+death cleanup. The WAV's last-to-first sample step matches its ordinary sample progression because
+every carrier and amplitude envelope completes an integer number of cycles. Final sound taste and
+Android speaker/headphone balance remain owner/device review, not something numeric gates settle.
+
 ## Latest — slice 11: bounded Aurora crest flight
 
 The wing apparition now carries the skater through one guided crest arc over the already protected

@@ -349,6 +349,7 @@ func check_aurora() -> void:
 	var snow: GPUParticles2D = main.get_node_or_null("SnowDrift/SnowParticles") as GPUParticles2D
 	var wisps: Node2D = main.get_node_or_null("AuroraWisps") as Node2D
 	var wings: Node2D = main.get_node_or_null("AuroraWings") as Node2D
+	var aurora_audio: AuroraAudio = main.get_node_or_null("AuroraAudio") as AuroraAudio
 	if wash == null or wash.layer != -45:
 		aurora_failures.append("Aurora wash is missing or not structurally behind gameplay at layer -45")
 	elif wash.get_node_or_null("Wash") == null \
@@ -368,6 +369,14 @@ func check_aurora() -> void:
 			or wings.get_index() > main.get_node("Player").get_index() \
 			or wings.get_index() > main.get_node("TerrainGenerator").get_index():
 		aurora_failures.append("Aurora wings are missing or not structurally behind gameplay")
+	if aurora_audio == null or aurora_audio.audio_player == null:
+		aurora_failures.append("Aurora dedicated audio player is missing")
+	else:
+		var audio_stream: AudioStreamWAV = aurora_audio.audio_player.stream as AudioStreamWAV
+		if aurora_audio.audio_player.bus != AuroraAudio.MUSIC_BUS:
+			aurora_failures.append("Aurora ambience does not use the existing Music volume bus")
+		if audio_stream == null or audio_stream.loop_mode != AudioStreamWAV.LOOP_FORWARD:
+			aurora_failures.append("Aurora ambience is not imported as a forward loop")
 	director.set_physics_process(false)
 	var original_size: Vector2i = root.size
 	for width: int in [1152, 1440]:
@@ -377,6 +386,9 @@ func check_aurora() -> void:
 			if snow != null:
 				snow.call("apply_palette", palette)
 			director.push_blend(0.0)
+			if aurora_audio != null and (aurora_audio.audio_player.playing \
+					or aurora_audio.applied_linear_gain != 0.0):
+				aurora_failures.append("Aurora ambience does not restore its zero state")
 			if not is_zero_approx(terrain.aurora_ice_blend) \
 					or (wash != null and (wash.get_node("Wash") as TextureRect).visible) \
 					or (blade_glow != null and blade_glow.visible) \
@@ -411,6 +423,16 @@ func check_aurora() -> void:
 			# Isolate the blade contribution from the much larger sky/wash/ice changes.
 			director.active_elapsed = 30.0
 			director.push_blend(1.0)
+			if aurora_audio != null:
+				if not aurora_audio.audio_player.playing \
+						or absf(aurora_audio.applied_linear_gain - AuroraAudio.MAX_LINEAR_GAIN) > 0.001:
+					aurora_failures.append("Aurora ambience does not play at its bounded crest gain")
+				aurora_audio._on_game_state_changed(GameManager.State.PAUSED)
+				if not aurora_audio.audio_player.stream_paused:
+					aurora_failures.append("Aurora ambience does not pause with gameplay")
+				aurora_audio._on_game_state_changed(GameManager.State.PLAYING)
+				if aurora_audio.audio_player.stream_paused:
+					aurora_failures.append("Aurora ambience does not resume with gameplay")
 			var blade_on: Image = await capture_aurora_frame()
 			if blade_glow != null:
 				blade_glow.visible = false
@@ -516,6 +538,8 @@ func check_aurora() -> void:
 				if peak < required:
 					aurora_failures.append("Aurora band %d is obscured/too faint at width=%d: %d < %d" % [selected, width, peak, required])
 			director._on_player_died()
+			if aurora_audio != null and aurora_audio.audio_player.playing:
+				aurora_failures.append("Aurora death cleanup left ambience playing")
 			var cleared: Image = await capture_aurora_frame()
 			if measure_peak(clean, cleared) != 0:
 				aurora_failures.append("Aurora death cleanup changed the baseline")

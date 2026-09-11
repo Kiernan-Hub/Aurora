@@ -33,6 +33,8 @@ Main (Node2D, scripts/main.gd)
 ├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP }
 ├── PowerupManager    effect timers; drives Player.start_boost etc.
 ├── FrozenLakeDirector  owns WHEN a lake happens; returns early under --headless
+├── AuroraDirector    owns Aurora lifecycle and the single presentation clock
+├── AuroraAudio       one event-only loop on the Music bus; absent under --headless
 ├── AchievementManager  the ONLY writer of SaveStore.achievements; triggers come to it
 ├── SfxPlayer         6-voice AudioStreamPlayer pool on the SFX bus
 └── CanvasLayer       Start/Pause/Death/ShopScreen (all process_mode=ALWAYS),
@@ -59,6 +61,11 @@ too.
 
 `BackgroundGenerator` falls back to `/root/Main/Player` if `player_path` is unset.
 (Ignore any older doc claiming `GameState.gd` exists — it doesn't.)
+
+Aurora's long-form bed is scene-local because it must stop with the encounter/run. It uses its own
+`AudioStreamPlayer` rather than the one-shot SFX pool, while the Music bus remains the sole owner of
+saved user volume. `AuroraAudio` explicitly pauses/resumes from `GameManager.state_changed` and
+stops on every non-playing terminal/menu state.
 
 ## The spawners live under TerrainGenerator on purpose
 
