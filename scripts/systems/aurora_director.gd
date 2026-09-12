@@ -62,6 +62,9 @@ var biome_director: BiomeDirector
 var sky_backdrop: Node
 var aurora_wash: Node
 var aurora_reflection: Node
+# The four ParallaxBackground layers, collected once. Duck-typed like every other consumer, so
+# a layer without apply_aurora() is simply skipped rather than being a wiring error.
+var background_layers: Array[Node] = []
 var blade_glow: Node
 var snow: Node
 var wisps: Node
@@ -107,6 +110,12 @@ func resolve_dependencies() -> bool:
 	sky_backdrop = get_node_or_null(sky_backdrop_path)
 	aurora_wash = get_node_or_null("../AuroraWash")
 	aurora_reflection = get_node_or_null("../AuroraReflection")
+	background_layers.clear()
+	var parallax: Node = get_node_or_null("../ParallaxBackground")
+	if parallax != null:
+		for layer: Node in parallax.get_children():
+			if layer.has_method("apply_aurora"):
+				background_layers.append(layer)
 	blade_glow = get_node_or_null("../AuroraBladeGlow")
 	snow = get_node_or_null("../SnowDrift/SnowParticles")
 	wisps = get_node_or_null("../AuroraWisps")
@@ -322,6 +331,10 @@ func push_blend(blend: float) -> void:
 		aurora_wash.call("apply_aurora", blend, active_elapsed)
 	# Before the blade glow in this list only for readability; the two are independent. Draw
 	# order is tree order in main.tscn, not push order.
+	# The midground. Without these the sky and the ice were both lit and the band between them
+	# was not, which is what broke the chain in the owner's screenshot.
+	for layer: Node in background_layers:
+		layer.call("apply_aurora", blend, active_elapsed)
 	if aurora_reflection != null and aurora_reflection.has_method("apply_aurora"):
 		aurora_reflection.call("apply_aurora", blend, active_elapsed)
 	if blade_glow != null and blade_glow.has_method("apply_aurora"):

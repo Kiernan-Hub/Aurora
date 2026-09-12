@@ -128,6 +128,22 @@ const HASH_INDEX_MULTIPLIER: int = 374761393
 const HASH_MIX_MULTIPLIER: int = 668265263
 const HASH_UNIT_RESOLUTION: int = 100000
 
+# --- Aurora response --------------------------------------------------------------------------
+# modulate MULTIPLIES, so this is chosen to shift hue toward aurora green while keeping the
+# layer's luminance: green goes to 1.0 and red/blue drop, rather than every channel rising,
+# which would just wash the ridges out to white.
+const AURORA_SCENERY_COLOR: Color = Color(0.45, 1.0, 0.78)
+const AURORA_SCENERY_WEIGHT: float = 0.55
+const AURORA_BREATH_PERIOD: float = 19.0
+const AURORA_BREATH_DEPTH: float = 0.35
+# The haze reads as lit mist rather than as a green filter, so it goes toward a paler, cooler
+# value than the ridges do, and at a fraction of their weight.
+const AURORA_HAZE_COLOR: Color = Color(0.62, 1.0, 0.88)
+const AURORA_HAZE_RATIO: float = 0.55
+
+# Composed with silhouette_color by refresh_silhouette(); never written by apply_palette().
+var aurora_blend: float = 0.0
+
 
 func _ready() -> void:
 	player = resolve_player()
@@ -164,16 +180,56 @@ func apply_palette(palette: BiomePalette) -> void:
 	silhouette_color = palette.get_scenery_color(depth_t)
 	haze_color = palette.get_haze_color(depth_t)
 
-	if ridges_root != null:
-		ridges_root.modulate = silhouette_color
-	if haze_texture != null and haze_texture.gradient != null:
-		# Offsets are untouched: where the band reaches full opacity is a function of
-		# haze_rise and the viewport, not of the biome. Only the colours move.
-		haze_texture.gradient.colors = PackedColorArray([
-			Color(haze_color.r, haze_color.g, haze_color.b, 0.0),
-			haze_color,
-			haze_color,
-		])
+	refresh_silhouette()
+	refresh_haze()
+
+
+# Pushed by AuroraDirector.push_blend(), duck-typed like every other Aurora consumer. The
+# ridges were flat dark silhouettes for the whole encounter -- the owner's screenshot showed
+# a lit sky and a lit ice sheet with an unlit band between them, which broke the chain.
+func apply_aurora(blend: float, elapsed: float) -> void:
+	var strength: float = clampf(blend, 0.0, 1.0)
+	# One slow breath so the midground moves with the sky rather than sitting at a fixed tint.
+	var breath: float = 1.0 - AURORA_BREATH_DEPTH * (0.5 - 0.5 * cos(
+		TAU * elapsed / AURORA_BREATH_PERIOD))
+	var target: float = strength * AURORA_SCENERY_WEIGHT * breath
+	if is_equal_approx(target, aurora_blend):
+		return
+	aurora_blend = target
+	refresh_silhouette()
+	refresh_haze()
+
+
+# THE ONE WRITER of ridges_root.modulate, so the biome and the Aurora compose instead of
+# clobbering each other -- the same reason TerrainGenerator.refresh_ice_appearance() exists.
+# silhouette_color stays the PURE palette value and is never overwritten by the Aurora, so a
+# biome transition landing mid-encounter recomputes from both inputs rather than baking one in.
+func refresh_silhouette() -> void:
+	if ridges_root == null:
+		return
+	ridges_root.modulate = silhouette_color.lerp(AURORA_SCENERY_COLOR, aurora_blend)
+
+
+# THE ONE WRITER of the shared haze gradient's colours, for the same compose-don't-clobber
+# reason as refresh_silhouette(). haze_color stays the pure palette value.
+#
+# Offsets are untouched here: where the band reaches full opacity is a function of haze_rise and
+# the viewport, not of the biome or the Aurora. Only the colours move. Every haze band in this
+# layer shares ONE GradientTexture2D, so this recolours all of them, including later ones.
+#
+# Weaker than the silhouette weight on purpose. The haze is what carries the scene's depth, and
+# pushing a big translucent field this far toward one hue is how a night landscape goes muddy.
+func refresh_haze() -> void:
+	if haze_texture == null or haze_texture.gradient == null:
+		return
+	var lit: Color = haze_color.lerp(AURORA_HAZE_COLOR, aurora_blend * AURORA_HAZE_RATIO)
+	# Alpha stays the palette's: the Aurora changes the fog's COLOUR, never how much there is.
+	lit.a = haze_color.a
+	haze_texture.gradient.colors = PackedColorArray([
+		Color(lit.r, lit.g, lit.b, 0.0),
+		lit,
+		lit,
+	])
 
 
 func resolve_player() -> CharacterBody2D:
