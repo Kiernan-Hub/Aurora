@@ -1,5 +1,55 @@
 # Aurora borealis — the plan and the state
 
+## Owner review and the visual answer — 2026-09-12
+
+The 2026-09-11 owner review rejected the encounter's reach, not its correctness: **"it just reads
+as an aurora borealis on top"**. Two screenshots made the cause plain. The sky carried the whole
+event while roughly **45% of the frame** — the protected flat — sat as a dead dark slab, and the
+midground band between them was unlit. Verdicts were: light must reach the world (**keep the
+curtains as-is**), wisps read as plain static lines, wings need a rework against a reference the
+owner is supplying, and **the grounded blade glow is right — do not touch it**.
+
+**What the light now lands on, sky downward:**
+
+| Consumer | What it does | Where |
+|---|---|---|
+| Curtains | Unchanged, by owner instruction | `sky_backdrop.gd` |
+| Four parallax layers | Silhouettes lerp toward an aurora green on one slow breath | `background_generator.gd`, `background_strip.gd` |
+| Wash | Reaches the screen floor, drifts and breathes | `aurora_wash.gd` |
+| Wisps | Six ribbons undulating on two travelling waves | `aurora_wisps.gd` |
+| **Reflection** | **The sky mirrored into the ice** | `aurora_reflection.gd` |
+| Blade glow | Unchanged, by owner instruction | `aurora_blade_glow.gd` |
+
+**`AuroraReflection` is the centrepiece and it added no shader.** It runs the existing
+`shaders/frozen_lake_reflection.gdshader` — already a measured screen-reading mirror with depth
+fade, a weighted three-tap blur, a sqrt-perspective ripple and a world-x mapping — because
+everything lake-specific about that shader lives in its uniforms. It is a **sibling node, not a
+second mode on `lake_reflection.gd`**: that file derives visibility from one director's phase
+deliberately, so two call sites cannot disagree about whether the mirror is up. Aurora and Frozen
+Lake reserve non-overlapping spans, so only one quad is ever visible and the forced backbuffer
+copy is only ever paid once.
+
+**`reflection_compression` 3.0 is the load-bearing number**, against the lake's 1.0. The lake
+mirrors 1:1 because it reflects pines standing at its own shore. The Aurora reflects the SKY, at
+screen y 0.05–0.25 while the ice line sits near 0.55 — at 1:1 a pixel would have to be at y
+0.85–1.05 to catch it, i.e. off the bottom of the frame. **Do not "restore" it to 1.0.**
+
+**It sits BEFORE `AuroraBladeGlow` in tree order**, where `LakeReflection` sits after. The glow is
+a halo centred on the real contact point, so its lower half is below the ice line — the one band
+this quad paints. Reordering those two siblings eats the glow the owner asked to keep.
+
+**Both background layers compose, never clobber.** `silhouette_color` stays the pure palette value
+and `refresh_silhouette()` is the sole writer of `modulate`, so a biome transition landing
+mid-encounter recomputes from both inputs — the same rule, and the same reason, as
+`TerrainGenerator.refresh_ice_appearance()`.
+
+The wash's ceiling moved 0.11 → 0.15 → 0.34. **The 0.15 pass was measured off a screenshot as
+doing nothing visible at all**; it is a back layer at CanvasLayer -45, behind every gameplay
+object, so it cannot affect coin or obstacle contrast at any value.
+
+Still open: the wings rework (blocked on the owner's reference image), and owner acceptance of
+this pass. The release gate below is unchanged.
+
 ## Current implementation, verification, and release gate — 2026-09-11
 
 Aurora is fully implemented on `claude/aurora-reconcile` through `9db1fb9` (pushed to `origin`).

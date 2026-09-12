@@ -1,5 +1,50 @@
 # Handoff
 
+## Visual pass — 2026-09-12, READ THIS FIRST
+
+The 2026-09-11 audit closed the Aurora's *correctness*. The owner then reviewed it and rejected
+its *reach*: **"it just reads as an aurora borealis on top"**. Two screenshots showed why — the
+sky carried the whole event while ~45% of the frame (the protected flat) was a dead dark slab,
+with an unlit band between them. Nothing was broken; the light simply stopped at the horizon.
+
+**Owner verdicts, and they are binding:**
+
+| Verdict | Status |
+|---|---|
+| Light must reach the world — **keep the curtains as-is** | Done, this pass |
+| Wisps read as plain static lines | Done, this pass |
+| Wings need a rework and should sway | **BLOCKED on the owner's reference image — do not start** |
+| **The grounded blade glow is right — do not touch it** | Honoured; see the tree-order note below |
+
+| Commit | What |
+|---|---|
+| `ea2a932` | Comment-only: the wisps were never "rebuilt each frame" |
+| `5bcfdc4` | Wash reaches the screen floor, drifts and breathes |
+| `00e521f` | **`AuroraReflection` — the sky mirrored into the ice** |
+| `401a4d8` | Wash ceiling 0.15 → 0.34 |
+| `00c469f` | Six undulating wisp ribbons |
+
+**The reflection added NO shader.** It reuses `shaders/frozen_lake_reflection.gdshader`, whose
+lake-specific behaviour was already entirely in uniforms. It is a sibling node, **not** a second
+mode on `lake_reflection.gd` — that file derives visibility from one director's phase on purpose.
+
+**Two numbers not to "fix" later:**
+- **`AURORA_COMPRESSION` 3.0**, against the lake's 1.0. The lake mirrors 1:1 because it reflects
+  pines at its own shore; the Aurora reflects the SKY, which at 1:1 lands at screen y 0.85–1.05 —
+  off the bottom of the frame. Restoring 1.0 makes the reflection invisible.
+- **`AuroraReflection` sits BEFORE `AuroraBladeGlow`** in `main.tscn`, where `LakeReflection` sits
+  after. The glow's lower half is below the ice line, the one band the quad paints. Swapping those
+  two siblings eats the glow the owner explicitly asked to keep.
+
+**The `project.godot` strip recurred on 2026-09-11**, from an owner play session — not from a gate.
+`check.sh` and `--script` runs were both measured clean again in this pass. `git status` after ANY
+play session, still.
+
+Verified this pass: `aurora_calm_probe` **PASS, 163,746 assertions**, identical to baseline, both
+live cases, flight and camera metrics unchanged. `check.sh` 4/5, failing only on the three declared
+TEMP knobs. **Both gates are headless and `AuroraReflection` disables itself there** — they prove
+the lifecycle is intact, not that the mirror renders. That remains owner review.
+
 ## Audit pass — 2026-09-11, READ THIS FIRST
 
 The Aurora branch was audited end to end against `CLAUDE.md`, this file, `aurora_borealis.md` and
