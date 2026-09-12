@@ -21,11 +21,14 @@ class_name AuroraReflection
 # backbuffer copy that hint_screen_texture forces is only ever paid once.
 #
 # COMPRESSION IS THE NUMBER THAT MATTERS HERE, and it is the one place this diverges hard from
-# the lake's authored intent. The lake mirrors 1:1 because it reflects tall pines standing at
-# its own shore. The Aurora reflects THE SKY, which is 0.05-0.25 down the screen while the ice
-# line sits near 0.55 -- and at 1:1 a pixel would have to be at screen y 0.85-1.05 to catch it,
-# i.e. off the bottom of the frame. Compression squashes the reflection toward the ice line,
-# which is also what a real receding plane does to a distant sky. See AURORA_COMPRESSION.
+# the lake's authored intent. The lake mirrors a fixed 1:1 because it reflects tall pines
+# standing at its own shore. The Aurora reflects THE SKY, so its compression is DERIVED from
+# where the ice line currently sits -- get_fill_compression() -- and is the largest value that
+# still reaches the bottom of the frame.
+#
+# Do not replace it with a constant. A constant was tried (3.0) and failed the owner review in
+# both directions at once: squashed reflection, empty lower quarter. The arithmetic is in the
+# comment on COMPRESSION_MIN.
 #
 # A Node2D placed as a sibling AFTER TerrainGenerator in main.tscn, for exactly the reason
 # lake_reflection.gd documents: a later sibling CanvasItem draws over the world and under the UI
@@ -46,16 +49,30 @@ const REFLECTION_SHADER: Shader = preload("res://shaders/frozen_lake_reflection.
 const QUAD_MARGIN: float = 8.0
 
 # --- Where this departs from the lake's authored uniforms, and why each one moves -------------
-# The sky is far away and the ice is a plane going away from the camera, so the reflection
-# belongs squashed against the ice line rather than spread 1:1 down the sheet. At 3.0 a pixel
-# 0.15 below the line samples 0.45 above it, which is where the curtains actually are.
-const AURORA_COMPRESSION: float = 3.0
+# COMPRESSION IS COMPUTED PER FRAME, NOT A CONSTANT. See get_fill_compression().
+#
+# It was a constant 3.0 for exactly one owner review, and that was wrong in both directions at
+# once: the reflection was visibly squashed into the top of the slab AND the bottom of the
+# screen was empty. Both are the same arithmetic. The shader samples
+#     mirror_uv.y = waterline - depth * compression
+# so the mirror runs out of frame to sample at depth = waterline / compression. At waterline
+# 0.59 and compression 3.0 that is depth 0.197 -- the reflection cannot exist below screen y
+# 0.79 no matter what the fade or the strength say, and `inside` zeroes it with a hard step,
+# which is the pale seam the owner saw at the cutoff.
+#
+# The fill condition is therefore: waterline / compression >= 1 - waterline.
+# The value that makes the mirror exactly fill the visible ice is waterline / (1 - waterline).
+const COMPRESSION_MIN: float = 0.8
+const COMPRESSION_MAX: float = 2.0
 # Far stronger than the lake's 0.55: this is the whole point of the node, and the surface under
 # it is dark night ice rather than a bright daylit sheet.
 const AURORA_REFLECTION_STRENGTH: float = 0.85
 # The lake's 0.22 is tuned to die by the lower third. The Aurora wants the light to carry down
-# the whole slab -- that dead bottom half is the complaint this node exists to answer.
-const AURORA_FADE_DEPTH: float = 0.62
+# the whole slab -- that dead bottom half is the complaint this node exists to answer. Raised
+# from 0.62 once the fill fix meant the bottom of the frame actually had a reflection to keep:
+# at 0.62 the far end was down to exp(-0.41/0.62) = 0.52 of strength, and the brightest part of
+# the sky lands there.
+const AURORA_FADE_DEPTH: float = 0.80
 # A touch softer than the lake's 0.0022. Compressed reflections concentrate detail, and the
 # curtains are broad soft shapes that survive -- and want -- more blur than pine tips do.
 const AURORA_BLUR: float = 0.0034
@@ -168,6 +185,10 @@ func apply_aurora(blend: float, _elapsed: float) -> void:
 	material_ref.set_shader_parameter(
 		"world_left_x", camera.global_position.x - view_world_size.x * 0.5)
 	material_ref.set_shader_parameter("world_width", view_world_size.x)
+	# Recomputed every frame because the ice line MOVES: AuroraDirector's camera ramp lifts the
+	# terrain from ~0.55 to 0.59 across the encounter, and aspect="expand" changes it per device.
+	# A constant cannot satisfy the fill condition at every one of those values.
+	material_ref.set_shader_parameter("reflection_compression", get_fill_compression(ice_line))
 	material_ref.set_shader_parameter("waterline", ice_line)
 	material_ref.set_shader_parameter("lake_amount", amount)
 	material_ref.set_shader_parameter("wobble_time", wobble_time)
@@ -176,7 +197,6 @@ func apply_aurora(blend: float, _elapsed: float) -> void:
 # Everything that never changes over an encounter, written once. Only the frame-varying
 # uniforms are pushed per frame.
 func apply_static_uniforms() -> void:
-	material_ref.set_shader_parameter("reflection_compression", AURORA_COMPRESSION)
 	material_ref.set_shader_parameter("reflection_strength", AURORA_REFLECTION_STRENGTH)
 	material_ref.set_shader_parameter("reflection_fade_depth", AURORA_FADE_DEPTH)
 	material_ref.set_shader_parameter("reflection_blur", AURORA_BLUR)
@@ -188,6 +208,17 @@ func apply_static_uniforms() -> void:
 	material_ref.set_shader_parameter("wobble_frequency", AURORA_WOBBLE_FREQUENCY)
 	material_ref.set_shader_parameter("wobble_speed", AURORA_WOBBLE_SPEED)
 	material_ref.set_shader_parameter("band_strength", AURORA_BAND_STRENGTH)
+
+
+# The compression that makes the mirror exactly reach the bottom of the frame, so there is no
+# starved band below it and no hard `inside` cutoff on screen. Clamped only to keep a degenerate
+# ice line (one near the top or bottom of the frame, which the camera ramp never produces) from
+# asking for an absurd value.
+#
+# This is ALSO the un-squish: it is the largest compression that still fills, so it is the
+# closest this can get to a true 1:1 mirror without leaving the bottom of the screen empty.
+func get_fill_compression(ice_line: float) -> float:
+	return clampf(ice_line / maxf(1.0 - ice_line, 0.001), COMPRESSION_MIN, COMPRESSION_MAX)
 
 
 # World-space size of what the camera can see. Derived from the viewport and the zoom rather
