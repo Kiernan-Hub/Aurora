@@ -31,6 +31,7 @@
 [ext_resource type="Script" path="res://scripts/systems/aurora_wisps.gd" id="30_aurora_wisps"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_wings.gd" id="31_aurora_wings"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_audio.gd" id="32_aurora_audio"]
+[ext_resource type="Script" path="res://scripts/systems/aurora_reflection.gd" id="33_aurora_reflection"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -146,6 +147,10 @@ script = ExtResource("16_glide_coins")
 
 [node name="RareCoinSpawner" type="Node2D" parent="TerrainGenerator"]
 script = ExtResource("18_rare_coins")
+
+[node name="AuroraReflection" type="Node2D" parent="."]
+visible = false
+script = ExtResource("33_aurora_reflection")
 
 [node name="AuroraBladeGlow" type="Node2D" parent="."]
 visible = false

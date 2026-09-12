@@ -61,6 +61,7 @@ var player: Player
 var biome_director: BiomeDirector
 var sky_backdrop: Node
 var aurora_wash: Node
+var aurora_reflection: Node
 var blade_glow: Node
 var snow: Node
 var wisps: Node
@@ -105,6 +106,7 @@ func resolve_dependencies() -> bool:
 	biome_director = get_node_or_null(biome_director_path) as BiomeDirector
 	sky_backdrop = get_node_or_null(sky_backdrop_path)
 	aurora_wash = get_node_or_null("../AuroraWash")
+	aurora_reflection = get_node_or_null("../AuroraReflection")
 	blade_glow = get_node_or_null("../AuroraBladeGlow")
 	snow = get_node_or_null("../SnowDrift/SnowParticles")
 	wisps = get_node_or_null("../AuroraWisps")
@@ -318,6 +320,10 @@ func push_blend(blend: float) -> void:
 		sky_backdrop.call("apply_aurora", blend, active_elapsed)
 	if aurora_wash != null and aurora_wash.has_method("apply_aurora"):
 		aurora_wash.call("apply_aurora", blend, active_elapsed)
+	# Before the blade glow in this list only for readability; the two are independent. Draw
+	# order is tree order in main.tscn, not push order.
+	if aurora_reflection != null and aurora_reflection.has_method("apply_aurora"):
+		aurora_reflection.call("apply_aurora", blend, active_elapsed)
 	if blade_glow != null and blade_glow.has_method("apply_aurora"):
 		blade_glow.call("apply_aurora", blend, active_elapsed)
 	if snow != null and snow.has_method("apply_aurora"):
