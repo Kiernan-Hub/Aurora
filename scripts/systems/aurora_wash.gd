@@ -4,8 +4,13 @@ class_name AuroraWash
 
 # A single, restrained screen-space light wash between the background weather/ridges
 # and every gameplay object. AuroraDirector owns the clock; this node owns only the look.
+# Raised from 0.11 to 0.15 and then to 0.34 across two passes. The first raise was measured off
+# a screenshot as doing nothing at all: at 0.15 the midground spires carried no aurora colour a
+# viewer could name. This is a back layer -- it sits at CanvasLayer -45, in front of the
+# background (-60) and behind every gameplay object -- so it cannot touch coin or obstacle
+# contrast no matter how far it goes, and the biome_schedule_check floor is unaffected.
 const WASH_COLOR: Color = Color(0.12, 0.86, 0.56, 1.0)
-const MAX_OPACITY: float = 0.15
+const MAX_OPACITY: float = 0.34
 const TEXTURE_HEIGHT: int = 128
 const TEXTURE_WIDTH: int = 96
 # What the floor of the gradient keeps, as a fraction of the horizon peak. The old curve fell
