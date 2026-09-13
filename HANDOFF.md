@@ -1,5 +1,86 @@
 # Handoff
 
+## Aurora look pass — 2026-09-13, READ THIS FIRST
+
+The Aurora is **correct and gated green; what has been iterating is its LOOK**, across six owner
+review rounds. Nothing below changed the lifecycle, the terrain reservation, the flight or the
+camera. `aurora_calm_probe` last ran PASS at **163,746 assertions** and every `check.sh` in this
+pass was 4/5, failing only on the three declared TEMP knobs.
+
+**`art_source/aurora_reference/` (four images) is now the design authority.** The owner generated
+them; they are committed. When a look question comes up, open those before guessing — three
+separate wrong turns below were settled by them in one look.
+
+### Commits, newest first
+
+| Commit | What |
+|---|---|
+| `2e158ca` | **`AuroraStreaks`** — occasional light ribbons crossing the view |
+| `9383637` | Scenery DARKENS into silhouette; haze alpha rises to kill the sky/ridge seam |
+| `8c17299` | Curtain hems back above the scenery (fixes `b22a815`) |
+| `b22a815` | Curtain bands given real height; reference images land |
+| `e05351b` | Aurora light gets colour range; **wisps switched OFF** |
+| `eb72534` | Reflection becomes a true 1:1 mirror |
+| `130bf78` | Reflection compression derived per frame so it fills the ice |
+
+### The traps, all earned the hard way
+
+- **`AuroraReflection` compression is DERIVED PER FRAME, never a constant** (`get_fill_compression`).
+  The shader samples `mirror_uv.y = waterline - depth * compression`, so the mirror runs out of
+  frame at `depth = waterline / compression`. A constant 3.0 meant no reflection could exist below
+  screen y 0.79 — an empty lower quarter AND a squashed mirror, from one number. The fill ceiling
+  is `waterline / (1 - waterline)`; **1.0 is the target**, not the ceiling — any value at or below
+  fills, so take the least squashed one. Ice line moves (camera ramp 0.55→0.59, `expand` per
+  device), which is why it cannot be a constant.
+- **Curtain hem position and band height are INDEPENDENT.** The hem sits at `AURORA_HEM_BASE`
+  (0.84) of the rect measured from its TOP, so **a band is grown by moving its TOP up, never its
+  bottom down**. Growing downward dragged all three hems behind the background haze and ice
+  panorama, which draw in FRONT of the sky layer — the curtains rendered fine and were simply
+  invisible. Keep `T + 0.84 * (B - T)` at 0.176 / 0.117 / 0.077, or re-measure **with the
+  background present**.
+- **The scenery response is a DARKEN, and this took three tries.** `starlit_night` authors
+  `scenery_far` (0.38, 0.44, 0.62) against `sky_horizon` (0.46, 0.52, 0.68) — nearly identical, so
+  ridges normally melt into the sky. The Aurora adds green to the SKY LAYER ONLY, so equal
+  brightness in different hues meets on a hard polygon edge. Tinting the ridges green (v1) put the
+  aurora's hue on rock; brightening them (v2) made a pale lavender slab. The references are
+  unanimous: **peaks are DARK silhouettes against a bright sky.** Dark-against-bright reads as
+  intentional; equal-brightness-different-hue reads as a seam.
+- **Haze ALPHA rises during the Aurora** (0.38 → 0.59, capped 0.78). Deliberate exception to
+  `refresh_haze()`'s own "colour only" rule — the thickening veil is what actually dissolves the
+  ridge tops. `AURORA_HAZE_ALPHA_GAIN` is the dial for edge softness alone.
+- **A hash that passes a distribution test can still be biased where it is USED.**
+  `AuroraStreaks` hashed sweep direction: 111/200 below 0.5 over many indices, but an encounter
+  only ever plays the **first eight**, and there it gave seven leftward and one rightward — in
+  every aurora, forever, since the indices are fixed. Direction now strictly alternates. Check the
+  range you actually consume, not the population.
+
+### Disabled, and why — do not just switch it back on
+
+**`AuroraWisps` is OFF** (`WISPS_ENABLED = false`). Owner: "those wisps r terrible". The problem is
+the CONCEPT, not the parameters: persistent ribbons hanging at mid-screen belong to nothing — they
+never touch the ice, never descend from the curtains, and neither occlude nor are occluded. Tuning
+them (three static arcs → six undulating ones) made it worse by drawing the eye. The node is kept
+because the likely rework is **vertical shafts descending from the curtains to the ice**, which
+reuses its entire structure. `AuroraStreaks` is the counter-example that may work: a streak is an
+EVENT that crosses and leaves, not decoration that sits there.
+
+### Open
+
+1. **The wings are still untouched and still blocked** — the owner said a reference image was
+   coming and it never arrived. It is the element they have been least happy with. **Ask for it.**
+2. **Bloom is an unanswered question, asked twice.** There is **no `WorldEnvironment` anywhere in
+   this project** — no glow, no post-process. It is the single biggest remaining "make it GLOW"
+   lever and the only item needing an owner decision, because it is screen-space over the WHOLE
+   game and the Mobile renderer's most expensive feature. Mitigation is clean: `AuroraDirector`
+   flips `glow_enabled` at entry/exit so it costs nothing the other 29 minutes.
+3. **Two more reference findings unbuilt:** the ice should be BRIGHTER (pale cyan, sometimes
+   lighter than the sky), and the reflection should read as a soft vertical smear of colour rather
+   than a crisp mirror of shapes.
+4. **`sky_layer_check` is OWED** — on the curtain geometry and on the streaks. It needs a window
+   and cannot run headless, so nothing but arithmetic has verified either.
+5. The three TEMP knobs are still on. Ship order is unchanged: owner accepts the look → restore
+   knobs → `check.sh` 5/5 → three windowed gates → merge.
+
 ## Visual pass — 2026-09-12, READ THIS FIRST
 
 The 2026-09-11 audit closed the Aurora's *correctness*. The owner then reviewed it and rejected
