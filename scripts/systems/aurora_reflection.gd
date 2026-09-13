@@ -62,8 +62,19 @@ const QUAD_MARGIN: float = 8.0
 #
 # The fill condition is therefore: waterline / compression >= 1 - waterline.
 # The value that makes the mirror exactly fill the visible ice is waterline / (1 - waterline).
+# 1.0 is a TRUE 1:1 MIRROR and is the target, not a compromise: a reflection is only squashed
+# because compression is above 1. The fill constraint is a CEILING, not a value to sit on --
+# taking the maximum that fills (1.44 here) was the second version of this and the owner's
+# verdict was still "a little squished". Any value at or below the ceiling fills, so the right
+# choice is the LEAST squashed one that fits, which is 1.0 wherever the ceiling allows it.
+#
+# At waterline 0.59 a 1:1 mirror reaches screen y 0.59 - 0.41 = 0.18 at the bottom of the
+# frame, which is still inside the curtains -- so nothing is given up by not compressing.
+# The ceiling only bites if the ice line ever sits above mid-screen, which the camera ramp
+# does not do; the min() is there so that case degrades to "fills, slightly squashed" rather
+# than to an empty band.
+const COMPRESSION_TRUE_MIRROR: float = 1.0
 const COMPRESSION_MIN: float = 0.8
-const COMPRESSION_MAX: float = 2.0
 # Far stronger than the lake's 0.55: this is the whole point of the node, and the surface under
 # it is dark night ice rather than a bright daylit sheet.
 const AURORA_REFLECTION_STRENGTH: float = 0.85
@@ -215,10 +226,11 @@ func apply_static_uniforms() -> void:
 # ice line (one near the top or bottom of the frame, which the camera ramp never produces) from
 # asking for an absurd value.
 #
-# This is ALSO the un-squish: it is the largest compression that still fills, so it is the
-# closest this can get to a true 1:1 mirror without leaving the bottom of the screen empty.
+# This is ALSO the un-squish: it returns a true 1:1 mirror whenever the frame allows one, and
+# only compresses when a high ice line would otherwise leave a starved band at the bottom.
 func get_fill_compression(ice_line: float) -> float:
-	return clampf(ice_line / maxf(1.0 - ice_line, 0.001), COMPRESSION_MIN, COMPRESSION_MAX)
+	var fill_ceiling: float = ice_line / maxf(1.0 - ice_line, 0.001)
+	return clampf(minf(COMPRESSION_TRUE_MIRROR, fill_ceiling), COMPRESSION_MIN, COMPRESSION_TRUE_MIRROR)
 
 
 # World-space size of what the camera can see. Derived from the viewport and the zoom rather
