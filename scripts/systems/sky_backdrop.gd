@@ -147,11 +147,26 @@ const AURORA_BAND_COLORS: Array[Color] = [
 # clipped, and that remainder is the brightest pixels of the hem itself, where a white-hot core
 # is what an aurora actually looks like. Raise any of these three and re-measure both palettes.
 const AURORA_BAND_WEIGHTS: PackedFloat32Array = [0.70, 0.28, 0.24]
-# The bright hems must sit ABOVE the opaque ridges, not merely the rect tops.
-# These bounds keep the green hem near y=0.18 and the other hems higher; the
-# soft upper tails can extend offscreen. Verified with scenery present.
-const AURORA_BAND_TOPS: PackedFloat32Array = [-0.11, -0.16, -0.20]
-const AURORA_BAND_BOTTOMS: PackedFloat32Array = [0.23, 0.17, 0.13]
+# The bright hems must sit ABOVE the opaque ridges, not merely the rect tops. The soft upper
+# tails can extend offscreen.
+#
+# THESE WERE A THIN STRIP IN THE TOP QUARTER AND THAT WAS THE SINGLE BIGGEST GAP against the
+# owner's reference set (art_source/ChatGPT Image Sep 13 2026, four variations). In every one
+# the aurora hangs from the top of the frame ALL THE WAY DOWN to the horizon, and the vertical
+# rays are the defining feature -- they need that full height to be rays rather than texture.
+# At the old bounds band 0 spanned y -0.11..0.23, so the curtain was a band across the top and
+# the owner's verdict was that the aurora "just reads as an aurora borealis on top".
+#
+# Height is what moves the hem: it sits at AURORA_HEM_BASE (0.84) of the rect, so band 0's hem
+# goes from y 0.18 to ~0.37 -- just above the ridgeline, which is where every reference pools
+# its brightest light. The three hems now descend 0.37 / 0.29 / 0.23, front lowest, which is
+# also the order they were already authored in.
+#
+# Partial occlusion by the peaks below that is CORRECT and wanted: the references all show the
+# light pooling behind and between the silhouettes. What must not happen is the hem sinking
+# BELOW the ridgeline entirely, which hides the brightest part of the effect.
+const AURORA_BAND_TOPS: PackedFloat32Array = [-0.20, -0.26, -0.32]
+const AURORA_BAND_BOTTOMS: PackedFloat32Array = [0.48, 0.40, 0.33]
 # Seconds per full horizontal drift cycle, and per brightness breath. Deliberately coprime-ish
 # and none of them a divisor of another: bands that share a period visibly pulse together, which
 # reads as one object flickering rather than three curtains moving independently.
@@ -210,8 +225,16 @@ const AURORA_RAY_BANDS: Array[Vector2] = [
 	Vector2(51.0, 68.0),
 ]
 const AURORA_RAY_AMPLITUDES: PackedFloat32Array = [0.42, 0.28, 0.19, 0.11]
-# How much of a column's brightness survives in the darkest gap between rays.
-const AURORA_RAY_FLOOR: float = 0.28
+# How much of a column's brightness survives in the darkest gap between rays. Lowered from 0.28
+# once the bands got their real height: deeper gaps are what make the rays read AS rays instead
+# of as a faint texture on a ribbon, and the references are emphatic that the vertical columns
+# are the defining feature of the whole effect.
+#
+# This is the safe lever for ray contrast. AURORA_RAY_AMPLITUDES and AURORA_BAND_WEIGHTS are
+# NOT -- both were measured against the two night palettes for clipping (see the note on
+# AURORA_BAND_WEIGHTS: peak 1.03, 0.02% clipped), and lowering a floor deepens the dark gaps
+# without touching the peak at all.
+const AURORA_RAY_FLOOR: float = 0.12
 
 # --- Stars -------------------------------------------------------------------------------
 # Built in code rather than shipped as a PNG, the same way snow_drift.gd builds its flake dot

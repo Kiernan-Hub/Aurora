@@ -133,27 +133,34 @@ const HASH_UNIT_RESOLUTION: int = 100000
 # the dominant channel goes to 1.0 and the others drop, rather than every channel rising, which
 # would just wash the ridges out to white.
 #
-# TWO COLOURS, NOT ONE, AND THAT IS THE WHOLE POINT. The first version of this lerped every
-# layer toward a single green and the owner's verdict was "just like a single green colour,
-# it's very mid" -- correct, because the palettes' own depth separation (four distinct blues
-# and violets) was being collapsed onto one hue. Real aurora light also does not arrive as one
-# flat colour: it runs green through cyan into violet. So the target is sampled per layer by
-# depth_t -- far layers cool, near layers green -- which restores the separation instead of
-# erasing it, and gives the band some colour range to look at.
-const AURORA_SCENERY_COLOR_FAR: Color = Color(0.42, 0.74, 1.0)
-const AURORA_SCENERY_COLOR_NEAR: Color = Color(0.52, 1.0, 0.70)
+# THE TERRAIN DOES NOT GO GREEN. This was wrong twice before the reference images settled it
+# (art_source/ChatGPT Image Sep 13 2026, four variations): in every one of them the ice peaks
+# stay BLUE-VIOLET and merely catch a pale, cool rim of light, while the green lives in the
+# SKY and in the ICE REFLECTION. Tinting the ridges green -- first toward one flat mint, then
+# toward a green/cyan sweep -- is what produced the owner's "just like a single green colour,
+# it's very mid": it collapsed four authored depths onto one hue AND put the aurora's colour
+# on the one surface the reference keeps cool.
+#
+# So the response is now a BRIGHTEN, not a hue shift. The target is a pale cool white-blue,
+# which under multiply lifts the layer toward its own lit version instead of recolouring it.
+# The far/near split is kept only so distance still reads: far layers stay cooler.
+const AURORA_SCENERY_COLOR_FAR: Color = Color(0.82, 0.92, 1.0)
+const AURORA_SCENERY_COLOR_NEAR: Color = Color(0.90, 1.0, 1.0)
 # depth_t tops out at 0.45 across the four authored layers (see CLAUDE.md), so that is the
 # divisor that maps the real range onto the full far->near sweep rather than only its first
 # half.
 const SCENERY_DEPTH_MAX: float = 0.45
 # Lowered from 0.55. At that weight the palette underneath stopped reading at all, which is the
-# other half of why the band went flat.
-const AURORA_SCENERY_WEIGHT: float = 0.42
+# other half of why the band went flat. It can stay modest now that the target is a brighten
+# rather than a recolour -- the point is a lit rim, not a wash.
+const AURORA_SCENERY_WEIGHT: float = 0.38
 const AURORA_BREATH_PERIOD: float = 19.0
 const AURORA_BREATH_DEPTH: float = 0.35
 # The haze reads as lit mist rather than as a green filter, so it goes toward a paler, cooler
 # value than the ridges do, and at a fraction of their weight.
-const AURORA_HAZE_COLOR: Color = Color(0.62, 1.0, 0.88)
+# The haze is the one place a little green still belongs -- it is airborne light, not rock --
+# but it stays pale, and at the low ratio below.
+const AURORA_HAZE_COLOR: Color = Color(0.72, 1.0, 0.92)
 # Lowered from 0.55. The haze covers the largest area of any of these, so it was doing most of
 # the flattening: one translucent field of a single green laid over every depth at once.
 const AURORA_HAZE_RATIO: float = 0.34
