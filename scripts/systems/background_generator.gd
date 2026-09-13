@@ -133,27 +133,26 @@ const HASH_UNIT_RESOLUTION: int = 100000
 # the dominant channel goes to 1.0 and the others drop, rather than every channel rising, which
 # would just wash the ridges out to white.
 #
-# THE TERRAIN DOES NOT GO GREEN. This was wrong twice before the reference images settled it
-# (art_source/ChatGPT Image Sep 13 2026, four variations): in every one of them the ice peaks
-# stay BLUE-VIOLET and merely catch a pale, cool rim of light, while the green lives in the
-# SKY and in the ICE REFLECTION. Tinting the ridges green -- first toward one flat mint, then
-# toward a green/cyan sweep -- is what produced the owner's "just like a single green colour,
-# it's very mid": it collapsed four authored depths onto one hue AND put the aurora's colour
-# on the one surface the reference keeps cool.
+# THE TERRAIN DOES NOT GO GREEN, AND IT DOES NOT BRIGHTEN EITHER. Both were tried and both
+# were wrong, for the same underlying reason -- the palettes already tune scenery against sky.
 #
-# So the response is now a BRIGHTEN, not a hue shift. The target is a pale cool white-blue,
-# which under multiply lifts the layer toward its own lit version instead of recolouring it.
-# The far/near split is kept only so distance still reads: far layers stay cooler.
-const AURORA_SCENERY_COLOR_FAR: Color = Color(0.82, 0.92, 1.0)
-const AURORA_SCENERY_COLOR_NEAR: Color = Color(0.90, 1.0, 1.0)
-# depth_t tops out at 0.45 across the four authored layers (see CLAUDE.md), so that is the
-# divisor that maps the real range onto the full far->near sweep rather than only its first
-# half.
+# In starlit_night, scenery_far is (0.38, 0.44, 0.62) and sky_horizon is (0.46, 0.52, 0.68):
+# nearly identical, so the far ridges normally melt into the sky. The Aurora then adds green
+# light to the SKY LAYER ONLY. The sky goes bright green, the ridges stay lavender, and two
+# masses of similar brightness in different hues meet along a hard polygon edge -- the owner's
+# 2026-09-13 verdict, "theres a hard contrast in purple here ... the color just perfectly ends".
+#
+# Tinting them green (v1) put the aurora's hue on rock. Brightening them (v2) lifted them into
+# a pale lavender slab that clashed harder still. The reference set settles it: in all four,
+# the peaks are DARK silhouettes against a bright sky. Dark-against-bright reads as an
+# intentional silhouette; equal-brightness-different-hue reads as a seam.
+#
+# So the Aurora DARKENS and cools the scenery, deepening the silhouette as the sky brightens
+# behind it. The far/near split is kept so distance still reads, with far staying lighter.
+const AURORA_SCENERY_COLOR_FAR: Color = Color(0.20, 0.26, 0.50)
+const AURORA_SCENERY_COLOR_NEAR: Color = Color(0.10, 0.14, 0.32)
 const SCENERY_DEPTH_MAX: float = 0.45
-# Lowered from 0.55. At that weight the palette underneath stopped reading at all, which is the
-# other half of why the band went flat. It can stay modest now that the target is a brighten
-# rather than a recolour -- the point is a lit rim, not a wash.
-const AURORA_SCENERY_WEIGHT: float = 0.38
+const AURORA_SCENERY_WEIGHT: float = 0.45
 const AURORA_BREATH_PERIOD: float = 19.0
 const AURORA_BREATH_DEPTH: float = 0.35
 # The haze reads as lit mist rather than as a green filter, so it goes toward a paler, cooler
@@ -161,6 +160,13 @@ const AURORA_BREATH_DEPTH: float = 0.35
 # The haze is the one place a little green still belongs -- it is airborne light, not rock --
 # but it stays pale, and at the low ratio below.
 const AURORA_HAZE_COLOR: Color = Color(0.72, 1.0, 0.92)
+# THE HAZE IS THE THING THAT KILLS THE HARD EDGE, so during an Aurora there is simply more of
+# it. This is the one place the effect changes how MUCH fog there is rather than its colour:
+# a veil thick enough to dissolve the ridge tops is the difference between a silhouette that
+# sits in the air and one that is cut out of it. Capped so the far layers never become opaque
+# walls that hide the ridgeline entirely.
+const AURORA_HAZE_ALPHA_GAIN: float = 0.55
+const AURORA_HAZE_ALPHA_CAP: float = 0.78
 # Lowered from 0.55. The haze covers the largest area of any of these, so it was doing most of
 # the flattening: one translucent field of a single green laid over every depth at once.
 const AURORA_HAZE_RATIO: float = 0.34
@@ -256,8 +262,10 @@ func refresh_haze() -> void:
 	if haze_texture == null or haze_texture.gradient == null:
 		return
 	var lit: Color = haze_color.lerp(AURORA_HAZE_COLOR, aurora_blend * AURORA_HAZE_RATIO)
-	# Alpha stays the palette's: the Aurora changes the fog's COLOUR, never how much there is.
-	lit.a = haze_color.a
+	# Alpha RISES with the Aurora -- see AURORA_HAZE_ALPHA_GAIN. This is the deliberate
+	# exception to "colour only": the thickening veil is what softens the sky/ridge boundary.
+	lit.a = minf(haze_color.a * (1.0 + AURORA_HAZE_ALPHA_GAIN * aurora_blend),
+		AURORA_HAZE_ALPHA_CAP)
 	haze_texture.gradient.colors = PackedColorArray([
 		Color(lit.r, lit.g, lit.b, 0.0),
 		lit,

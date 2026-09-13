@@ -88,12 +88,12 @@ class_name BackgroundStrip
 @export var silhouette_color: Color = Color(0.74, 0.81, 0.9)
 
 # --- Aurora response. See background_generator.gd for why this is a sweep and not one colour. -
-const AURORA_SCENERY_COLOR_FAR: Color = Color(0.82, 0.92, 1.0)
-const AURORA_SCENERY_COLOR_NEAR: Color = Color(0.90, 1.0, 1.0)
+const AURORA_SCENERY_COLOR_FAR: Color = Color(0.20, 0.26, 0.50)
+const AURORA_SCENERY_COLOR_NEAR: Color = Color(0.10, 0.14, 0.32)
 const SCENERY_DEPTH_MAX: float = 0.45
 # A touch stronger than the ridges': this layer is nearest the player, so it catches most.
 # Lowered from 0.62 alongside them.
-const AURORA_SCENERY_WEIGHT: float = 0.44
+const AURORA_SCENERY_WEIGHT: float = 0.45
 const AURORA_BREATH_PERIOD: float = 19.0
 const AURORA_BREATH_DEPTH: float = 0.35
 
