@@ -32,6 +32,7 @@
 [ext_resource type="Script" path="res://scripts/systems/aurora_wings.gd" id="31_aurora_wings"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_audio.gd" id="32_aurora_audio"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_reflection.gd" id="33_aurora_reflection"]
+[ext_resource type="Script" path="res://scripts/systems/aurora_streaks.gd" id="34_aurora_streaks"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -117,6 +118,10 @@ script = ExtResource("28_aurora_wash")
 [node name="AuroraWisps" type="Node2D" parent="."]
 visible = false
 script = ExtResource("30_aurora_wisps")
+
+[node name="AuroraStreaks" type="Node2D" parent="."]
+visible = false
+script = ExtResource("34_aurora_streaks")
 
 [node name="AuroraWings" type="Node2D" parent="."]
 visible = false

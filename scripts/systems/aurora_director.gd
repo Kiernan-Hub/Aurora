@@ -62,6 +62,7 @@ var biome_director: BiomeDirector
 var sky_backdrop: Node
 var aurora_wash: Node
 var aurora_reflection: Node
+var aurora_streaks: Node
 # The four ParallaxBackground layers, collected once. Duck-typed like every other consumer, so
 # a layer without apply_aurora() is simply skipped rather than being a wiring error.
 var background_layers: Array[Node] = []
@@ -110,6 +111,7 @@ func resolve_dependencies() -> bool:
 	sky_backdrop = get_node_or_null(sky_backdrop_path)
 	aurora_wash = get_node_or_null("../AuroraWash")
 	aurora_reflection = get_node_or_null("../AuroraReflection")
+	aurora_streaks = get_node_or_null("../AuroraStreaks")
 	background_layers.clear()
 	var parallax: Node = get_node_or_null("../ParallaxBackground")
 	if parallax != null:
@@ -335,6 +337,10 @@ func push_blend(blend: float) -> void:
 	# was not, which is what broke the chain in the owner's screenshot.
 	for layer: Node in background_layers:
 		layer.call("apply_aurora", blend, active_elapsed)
+	# Pushed BEFORE the reflection only for readability. Draw order is tree order in main.tscn:
+	# streaks sit ahead of AuroraReflection there, which is what gets them mirrored in the ice.
+	if aurora_streaks != null and aurora_streaks.has_method("apply_aurora"):
+		aurora_streaks.call("apply_aurora", blend, active_elapsed)
 	if aurora_reflection != null and aurora_reflection.has_method("apply_aurora"):
 		aurora_reflection.call("apply_aurora", blend, active_elapsed)
 	if blade_glow != null and blade_glow.has_method("apply_aurora"):
