@@ -129,17 +129,34 @@ const HASH_MIX_MULTIPLIER: int = 668265263
 const HASH_UNIT_RESOLUTION: int = 100000
 
 # --- Aurora response --------------------------------------------------------------------------
-# modulate MULTIPLIES, so this is chosen to shift hue toward aurora green while keeping the
-# layer's luminance: green goes to 1.0 and red/blue drop, rather than every channel rising,
-# which would just wash the ridges out to white.
-const AURORA_SCENERY_COLOR: Color = Color(0.45, 1.0, 0.78)
-const AURORA_SCENERY_WEIGHT: float = 0.55
+# modulate MULTIPLIES, so these are chosen to shift hue while keeping the layer's luminance:
+# the dominant channel goes to 1.0 and the others drop, rather than every channel rising, which
+# would just wash the ridges out to white.
+#
+# TWO COLOURS, NOT ONE, AND THAT IS THE WHOLE POINT. The first version of this lerped every
+# layer toward a single green and the owner's verdict was "just like a single green colour,
+# it's very mid" -- correct, because the palettes' own depth separation (four distinct blues
+# and violets) was being collapsed onto one hue. Real aurora light also does not arrive as one
+# flat colour: it runs green through cyan into violet. So the target is sampled per layer by
+# depth_t -- far layers cool, near layers green -- which restores the separation instead of
+# erasing it, and gives the band some colour range to look at.
+const AURORA_SCENERY_COLOR_FAR: Color = Color(0.42, 0.74, 1.0)
+const AURORA_SCENERY_COLOR_NEAR: Color = Color(0.52, 1.0, 0.70)
+# depth_t tops out at 0.45 across the four authored layers (see CLAUDE.md), so that is the
+# divisor that maps the real range onto the full far->near sweep rather than only its first
+# half.
+const SCENERY_DEPTH_MAX: float = 0.45
+# Lowered from 0.55. At that weight the palette underneath stopped reading at all, which is the
+# other half of why the band went flat.
+const AURORA_SCENERY_WEIGHT: float = 0.42
 const AURORA_BREATH_PERIOD: float = 19.0
 const AURORA_BREATH_DEPTH: float = 0.35
 # The haze reads as lit mist rather than as a green filter, so it goes toward a paler, cooler
 # value than the ridges do, and at a fraction of their weight.
 const AURORA_HAZE_COLOR: Color = Color(0.62, 1.0, 0.88)
-const AURORA_HAZE_RATIO: float = 0.55
+# Lowered from 0.55. The haze covers the largest area of any of these, so it was doing most of
+# the flattening: one translucent field of a single green laid over every depth at once.
+const AURORA_HAZE_RATIO: float = 0.34
 
 # Composed with silhouette_color by refresh_silhouette(); never written by apply_palette().
 var aurora_blend: float = 0.0
@@ -190,8 +207,10 @@ func apply_palette(palette: BiomePalette) -> void:
 func apply_aurora(blend: float, elapsed: float) -> void:
 	var strength: float = clampf(blend, 0.0, 1.0)
 	# One slow breath so the midground moves with the sky rather than sitting at a fixed tint.
+	# Phase-offset by depth so the four layers do not brighten and dim in lockstep, which reads
+	# as the whole background being on one dimmer switch.
 	var breath: float = 1.0 - AURORA_BREATH_DEPTH * (0.5 - 0.5 * cos(
-		TAU * elapsed / AURORA_BREATH_PERIOD))
+		TAU * (elapsed / AURORA_BREATH_PERIOD + depth_t)))
 	var target: float = strength * AURORA_SCENERY_WEIGHT * breath
 	if is_equal_approx(target, aurora_blend):
 		return
@@ -207,7 +226,14 @@ func apply_aurora(blend: float, elapsed: float) -> void:
 func refresh_silhouette() -> void:
 	if ridges_root == null:
 		return
-	ridges_root.modulate = silhouette_color.lerp(AURORA_SCENERY_COLOR, aurora_blend)
+	ridges_root.modulate = silhouette_color.lerp(get_aurora_scenery_color(), aurora_blend)
+
+
+# The aurora colour THIS layer catches, by its own depth. See the constants for why this is a
+# sweep rather than one value.
+func get_aurora_scenery_color() -> Color:
+	return AURORA_SCENERY_COLOR_FAR.lerp(
+		AURORA_SCENERY_COLOR_NEAR, clampf(depth_t / SCENERY_DEPTH_MAX, 0.0, 1.0))
 
 
 # THE ONE WRITER of the shared haze gradient's colours, for the same compose-don't-clobber

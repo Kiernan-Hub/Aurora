@@ -87,10 +87,13 @@ class_name BackgroundStrip
 # returns early having applied nothing.
 @export var silhouette_color: Color = Color(0.74, 0.81, 0.9)
 
-# --- Aurora response. See background_generator.gd for why this colour is shaped this way. -----
-const AURORA_SCENERY_COLOR: Color = Color(0.45, 1.0, 0.78)
+# --- Aurora response. See background_generator.gd for why this is a sweep and not one colour. -
+const AURORA_SCENERY_COLOR_FAR: Color = Color(0.42, 0.74, 1.0)
+const AURORA_SCENERY_COLOR_NEAR: Color = Color(0.52, 1.0, 0.70)
+const SCENERY_DEPTH_MAX: float = 0.45
 # A touch stronger than the ridges': this layer is nearest the player, so it catches most.
-const AURORA_SCENERY_WEIGHT: float = 0.62
+# Lowered from 0.62 alongside them.
+const AURORA_SCENERY_WEIGHT: float = 0.48
 const AURORA_BREATH_PERIOD: float = 19.0
 const AURORA_BREATH_DEPTH: float = 0.35
 
@@ -134,7 +137,7 @@ func apply_palette(palette: BiomePalette) -> void:
 func apply_aurora(blend: float, elapsed: float) -> void:
 	var strength: float = clampf(blend, 0.0, 1.0)
 	var breath: float = 1.0 - AURORA_BREATH_DEPTH * (0.5 - 0.5 * cos(
-		TAU * elapsed / AURORA_BREATH_PERIOD))
+		TAU * (elapsed / AURORA_BREATH_PERIOD + depth_t)))
 	var target: float = strength * AURORA_SCENERY_WEIGHT * breath
 	if is_equal_approx(target, aurora_blend):
 		return
@@ -147,7 +150,12 @@ func apply_aurora(blend: float, elapsed: float) -> void:
 func refresh_silhouette() -> void:
 	if strip_sprite == null:
 		return
-	strip_sprite.modulate = silhouette_color.lerp(AURORA_SCENERY_COLOR, aurora_blend)
+	strip_sprite.modulate = silhouette_color.lerp(get_aurora_scenery_color(), aurora_blend)
+
+
+func get_aurora_scenery_color() -> Color:
+	return AURORA_SCENERY_COLOR_FAR.lerp(
+		AURORA_SCENERY_COLOR_NEAR, clampf(depth_t / SCENERY_DEPTH_MAX, 0.0, 1.0))
 
 
 # Desktop window resize only -- handheld orientation is pinned to landscape.

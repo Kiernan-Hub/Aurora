@@ -18,6 +18,19 @@ class_name AuroraWisps
 # recomputed from scratch each frame, so nothing here stores a world coordinate and there is
 # still no trail history to repair during a world rebase. The node is re-anchored to the
 # current player/surface each frame exactly as before.
+#
+# OFF PENDING A REWORK. Owner review 2026-09-13: "those wisps r terrible". They are, and the
+# problem is not the parameters -- it is the concept. Detached ribbons hanging at mid-screen
+# read as squiggles drawn over the scene, because they belong to nothing: they do not touch the
+# ice, they do not descend from the curtains, and they do not occlude or get occluded by
+# anything. Six of them undulating made that worse, not better, by drawing the eye to it.
+#
+# Left disabled rather than deleted because a reference image is coming and the likely rework
+# is to turn these into VERTICAL SHAFTS descending from the curtains to the ice -- which would
+# reuse this node's whole structure (immutable Line2D geometry, the travel/edge-fade cycle, the
+# additive material, the rebase-safe local points) and would also answer the owner's separate
+# request for "beams of light streaking". Flip this to true to see the old behaviour.
+const WISPS_ENABLED: bool = false
 const WISP_COUNT: int = 6
 const POINT_COUNT: int = 13
 const TRAVEL_SPAN: float = 900.0
@@ -66,7 +79,7 @@ var disabled: bool = false
 
 func _ready() -> void:
 	visible = false
-	if DisplayServer.get_name() == "headless":
+	if not WISPS_ENABLED or DisplayServer.get_name() == "headless":
 		disabled = true
 		return
 
