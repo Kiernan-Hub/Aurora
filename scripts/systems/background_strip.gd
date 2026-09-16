@@ -87,16 +87,8 @@ class_name BackgroundStrip
 # returns early having applied nothing.
 @export var silhouette_color: Color = Color(0.74, 0.81, 0.9)
 
-# --- Aurora response. See background_generator.gd for why this is a sweep and not one colour. -
-const AURORA_SCENERY_COLOR_FAR: Color = Color(0.20, 0.26, 0.50)
-const AURORA_SCENERY_COLOR_NEAR: Color = Color(0.10, 0.14, 0.32)
-const SCENERY_DEPTH_MAX: float = 0.45
-# A touch stronger than the ridges': this layer is nearest the player, so it catches most.
-# Lowered from 0.62 alongside them.
-const AURORA_SCENERY_WEIGHT: float = 0.45
-const AURORA_BREATH_PERIOD: float = 19.0
-const AURORA_BREATH_DEPTH: float = 0.35
-
+# Aurora response weight, composed with silhouette_color. The response itself is shared with
+# background_generator.gd, which owns its constants and the reasoning behind them.
 var aurora_blend: float = 0.0
 
 var strip_sprite: Sprite2D
@@ -135,10 +127,7 @@ func apply_palette(palette: BiomePalette) -> void:
 # the FRONTMOST background layer -- the big ice shapes in the owner's screenshot -- so it is the
 # one that most visibly failed to catch the light.
 func apply_aurora(blend: float, elapsed: float) -> void:
-	var strength: float = clampf(blend, 0.0, 1.0)
-	var breath: float = 1.0 - AURORA_BREATH_DEPTH * (0.5 - 0.5 * cos(
-		TAU * (elapsed / AURORA_BREATH_PERIOD + depth_t)))
-	var target: float = strength * AURORA_SCENERY_WEIGHT * breath
+	var target: float = BackgroundGenerator.get_aurora_scenery_weight(blend, elapsed, depth_t)
 	if is_equal_approx(target, aurora_blend):
 		return
 	aurora_blend = target
@@ -150,12 +139,8 @@ func apply_aurora(blend: float, elapsed: float) -> void:
 func refresh_silhouette() -> void:
 	if strip_sprite == null:
 		return
-	strip_sprite.modulate = silhouette_color.lerp(get_aurora_scenery_color(), aurora_blend)
-
-
-func get_aurora_scenery_color() -> Color:
-	return AURORA_SCENERY_COLOR_FAR.lerp(
-		AURORA_SCENERY_COLOR_NEAR, clampf(depth_t / SCENERY_DEPTH_MAX, 0.0, 1.0))
+	strip_sprite.modulate = silhouette_color.lerp(
+		BackgroundGenerator.get_aurora_scenery_color(depth_t), aurora_blend)
 
 
 # Desktop window resize only -- handheld orientation is pinned to landscape.

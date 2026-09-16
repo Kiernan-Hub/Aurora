@@ -218,13 +218,7 @@ func apply_palette(palette: BiomePalette) -> void:
 # ridges were flat dark silhouettes for the whole encounter -- the owner's screenshot showed
 # a lit sky and a lit ice sheet with an unlit band between them, which broke the chain.
 func apply_aurora(blend: float, elapsed: float) -> void:
-	var strength: float = clampf(blend, 0.0, 1.0)
-	# One slow breath so the midground moves with the sky rather than sitting at a fixed tint.
-	# Phase-offset by depth so the four layers do not brighten and dim in lockstep, which reads
-	# as the whole background being on one dimmer switch.
-	var breath: float = 1.0 - AURORA_BREATH_DEPTH * (0.5 - 0.5 * cos(
-		TAU * (elapsed / AURORA_BREATH_PERIOD + depth_t)))
-	var target: float = strength * AURORA_SCENERY_WEIGHT * breath
+	var target: float = get_aurora_scenery_weight(blend, elapsed, depth_t)
 	if is_equal_approx(target, aurora_blend):
 		return
 	aurora_blend = target
@@ -239,14 +233,23 @@ func apply_aurora(blend: float, elapsed: float) -> void:
 func refresh_silhouette() -> void:
 	if ridges_root == null:
 		return
-	ridges_root.modulate = silhouette_color.lerp(get_aurora_scenery_color(), aurora_blend)
+	ridges_root.modulate = silhouette_color.lerp(get_aurora_scenery_color(depth_t), aurora_blend)
 
 
-# The aurora colour THIS layer catches, by its own depth. See the constants for why this is a
+# Static so BackgroundStrip shares the one scenery response instead of copying its constants.
+# One slow breath so the midground moves with the sky rather than sitting at a fixed tint,
+# phase-offset by depth so the layers do not brighten and dim in lockstep.
+static func get_aurora_scenery_weight(blend: float, elapsed: float, layer_depth: float) -> float:
+	var breath: float = 1.0 - AURORA_BREATH_DEPTH * (0.5 - 0.5 * cos(
+		TAU * (elapsed / AURORA_BREATH_PERIOD + layer_depth)))
+	return clampf(blend, 0.0, 1.0) * AURORA_SCENERY_WEIGHT * breath
+
+
+# The aurora colour a layer catches, by its own depth. See the constants for why this is a
 # sweep rather than one value.
-func get_aurora_scenery_color() -> Color:
+static func get_aurora_scenery_color(layer_depth: float) -> Color:
 	return AURORA_SCENERY_COLOR_FAR.lerp(
-		AURORA_SCENERY_COLOR_NEAR, clampf(depth_t / SCENERY_DEPTH_MAX, 0.0, 1.0))
+		AURORA_SCENERY_COLOR_NEAR, clampf(layer_depth / SCENERY_DEPTH_MAX, 0.0, 1.0))
 
 
 # THE ONE WRITER of the shared haze gradient's colours, for the same compose-don't-clobber
