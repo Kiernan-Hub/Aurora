@@ -244,7 +244,8 @@ func spawn_powerup(scene: PackedScene, world_x: float, effect: StringName) -> vo
 	if terrain_generator.is_lake_world_x(world_x):
 		return
 	if PowerupManager.is_aurora_excluded_effect(effect) \
-			and terrain_generator.overlaps_aurora_flat(world_x - 128.0, world_x + 128.0):
+			and terrain_generator.overlaps_aurora_flat(
+				world_x - AuroraDirector.BODY_CLEARANCE, world_x + AuroraDirector.BODY_CLEARANCE):
 		return
 	var world_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - POWERUP_SURFACE_CLEARANCE
 	var powerup: Powerup = scene.instantiate() as Powerup
