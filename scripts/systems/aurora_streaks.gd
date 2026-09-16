@@ -7,7 +7,7 @@ class_name AuroraStreaks
 # all -- that is the point. Owner request, 2026-09-13, against a screensaver-style reference:
 # "how like light flashes across the screen for a second ... one at a time here and there".
 #
-# WHY THIS IS NOT THE WISPS AGAIN. The wisps failed (and are disabled) because they were
+# WHY THIS IS NOT THE WISPS AGAIN. The wisps (removed 2026-09-16) failed because they were
 # PERSISTENT decoration: six ribbons hanging at mid-screen for the whole encounter, belonging to
 # nothing. A streak is an EVENT -- it appears, crosses, and leaves. Nothing lingers to be
 # scrutinised, and an occasional flash of motion reads as energy rather than as scribble. If
@@ -152,8 +152,8 @@ func apply_aurora(blend: float, elapsed: float) -> void:
 
 
 # A long, shallow bow. Flat enough to read as a streak of light rather than as a drawn arc --
-# ARC_RATIO is deliberately an order of magnitude below the wisps' curvature, which is part of
-# why those read as squiggles.
+# ARC_RATIO is deliberately an order of magnitude below the removed wisps' curvature, which is
+# part of why those read as squiggles.
 func build_streak_points(length: float, arc: float) -> PackedVector2Array:
 	var points: PackedVector2Array = PackedVector2Array()
 	points.resize(POINT_COUNT)

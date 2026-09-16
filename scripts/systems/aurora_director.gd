@@ -68,7 +68,6 @@ var aurora_streaks: Node
 var background_layers: Array[Node] = []
 var blade_glow: Node
 var snow: Node
-var wisps: Node
 var wings: Node
 var aurora_audio: Node
 var main_node: Main
@@ -120,7 +119,6 @@ func resolve_dependencies() -> bool:
 				background_layers.append(layer)
 	blade_glow = get_node_or_null("../AuroraBladeGlow")
 	snow = get_node_or_null("../SnowDrift/SnowParticles")
-	wisps = get_node_or_null("../AuroraWisps")
 	wings = get_node_or_null("../AuroraWings")
 	aurora_audio = get_node_or_null("../AuroraAudio")
 	main_node = get_parent() as Main
@@ -347,8 +345,6 @@ func push_blend(blend: float) -> void:
 		blade_glow.call("apply_aurora", blend, active_elapsed)
 	if snow != null and snow.has_method("apply_aurora"):
 		snow.call("apply_aurora", get_aurora_snow_blend(blend), active_elapsed)
-	if wisps != null and wisps.has_method("apply_aurora"):
-		wisps.call("apply_aurora", blend, active_elapsed)
 	if wings != null and wings.has_method("apply_aurora"):
 		wings.call("apply_aurora", blend, active_elapsed)
 	if aurora_audio != null and aurora_audio.has_method("apply_aurora"):

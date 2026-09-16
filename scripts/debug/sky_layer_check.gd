@@ -347,7 +347,6 @@ func check_aurora() -> void:
 	var wash: CanvasLayer = main.get_node_or_null("AuroraWash") as CanvasLayer
 	var blade_glow: Node2D = main.get_node_or_null("AuroraBladeGlow") as Node2D
 	var snow: GPUParticles2D = main.get_node_or_null("SnowDrift/SnowParticles") as GPUParticles2D
-	var wisps: Node2D = main.get_node_or_null("AuroraWisps") as Node2D
 	var wings: Node2D = main.get_node_or_null("AuroraWings") as Node2D
 	var aurora_audio: AuroraAudio = main.get_node_or_null("AuroraAudio") as AuroraAudio
 	if wash == null or wash.layer != -45:
@@ -361,10 +360,6 @@ func check_aurora() -> void:
 	if snow == null or not snow.has_method("apply_aurora") \
 			or not snow.has_method("get_target_amount_ratio"):
 		aurora_failures.append("Snow does not expose one composed Aurora density target")
-	if wisps == null or wisps.get_child_count() != 3 \
-			or wisps.get_index() > main.get_node("Player").get_index() \
-			or wisps.get_index() > main.get_node("TerrainGenerator").get_index():
-		aurora_failures.append("Aurora wisps are missing or not structurally behind gameplay")
 	if wings == null or wings.get_child_count() != 6 \
 			or wings.get_index() > main.get_node("Player").get_index() \
 			or wings.get_index() > main.get_node("TerrainGenerator").get_index():
@@ -392,7 +387,6 @@ func check_aurora() -> void:
 			if not is_zero_approx(terrain.aurora_ice_blend) \
 					or (wash != null and (wash.get_node("Wash") as TextureRect).visible) \
 					or (blade_glow != null and blade_glow.visible) \
-					or (wisps != null and wisps.visible) \
 					or (wings != null and wings.visible) \
 					or (snow != null and not is_zero_approx(float(snow.get("aurora_density_blend")))):
 				aurora_failures.append("Aurora world response does not restore its zero state")
@@ -443,31 +437,6 @@ func check_aurora() -> void:
 			if blade_peak < MIN_PEAK_CONTRIBUTION:
 				aurora_failures.append("Aurora blade glow is too faint at width=%d: %d < %d" % [
 					width, blade_peak, MIN_PEAK_CONTRIBUTION])
-			director.push_blend(0.0)
-			# Same isolation for the sparse rear wisps. Held frames must be byte-identical:
-			# their drift is a function of the director clock, not a private timer.
-			director.active_elapsed = 30.0
-			director.push_blend(1.0)
-			var wisps_on: Image = await capture_aurora_frame()
-			var wisps_held: Image = await capture_aurora_frame()
-			if measure_peak(wisps_on, wisps_held) != 0:
-				aurora_failures.append("Aurora wisps move while their clock is paused")
-			if wisps != null:
-				wisps.visible = false
-			var wisps_off: Image = await capture_aurora_frame()
-			var wisps_peak: int = measure_peak(wisps_off, wisps_on)
-			print("AURORA_WISPS width=%d palette=%s peak=%d floor=%d" % [
-				width, palette.resource_path.get_file(), wisps_peak, MIN_PEAK_CONTRIBUTION])
-			if wisps_peak < MIN_PEAK_CONTRIBUTION:
-				aurora_failures.append("Aurora wisps are too faint at width=%d: %d < %d" % [
-					width, wisps_peak, MIN_PEAK_CONTRIBUTION])
-			if wisps != null:
-				wisps.call("apply_aurora", 1.0, 20.0)
-				var wisps_motion_a: Image = await capture_aurora_frame()
-				wisps.call("apply_aurora", 1.0, 21.0)
-				var wisps_motion_b: Image = await capture_aurora_frame()
-				if measure_peak(wisps_motion_a, wisps_motion_b) == 0:
-					aurora_failures.append("Aurora wisp clock does not produce visible drift")
 			director.push_blend(0.0)
 			# The wing apparition is brief, ground-only, deterministic, and behind gameplay.
 			director.active_elapsed = 30.0
@@ -524,7 +493,6 @@ func check_aurora() -> void:
 					clean.save_png(prefix + "-baseline.png")
 					arrival.save_png(prefix + "-arrival.png")
 					unfolded.save_png(prefix + "-unfolded.png")
-					wisps_on.save_png(prefix + "-wisps.png")
 					wings_on.save_png(prefix + "-wings.png")
 			# Measure each band separately at full strength; the green carries the event.
 			for selected: int in range(3):
