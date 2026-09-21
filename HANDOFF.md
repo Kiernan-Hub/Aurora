@@ -1,5 +1,16 @@
 # Handoff
 
+## Aurora — 2026-09-20, shipping defaults and streak coverage
+
+Restored the three preview defaults to shipping values (`0.0`, `0.0`, `false`).
+`sky_layer_check` now isolates both streak directions at 6.575 s and 13.575 s,
+checks visible sky contribution and reflected ice contribution, pause stability,
+zero-blend cleanup and the quiet interval. The windowed gate passed at both widths
+and both night palettes. `check.sh` **5/5 PASS**; `aurora_calm_probe` **182,974 assertions PASS**.
+
+Remaining: other windowed gates, shipping-pace playtest, Android review, and owner look decisions.
+Earlier TEMP-default and 4/5 notes below describe the previous state.
+
 ## Aurora — 2026-09-20, audit #2
 
 **Audit of the whole feature, second pass. No defect in the gameplay logic** — the schedule, the

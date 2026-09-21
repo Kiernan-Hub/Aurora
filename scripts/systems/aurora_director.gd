@@ -45,8 +45,8 @@ const FLIGHT_RELEASE_END_SECONDS: float = 45.0
 
 # Plain vars, never exported. shipping_values_check protects the defaults.
 # Preview completions never grant progress or change an existing deadline.
-var debug_aurora_interval_override: float = 10.0
-var debug_aurora_ignore_night: bool = true
+var debug_aurora_interval_override: float = 0.0
+var debug_aurora_ignore_night: bool = false
 
 @export var player_path: NodePath = NodePath("../Player")
 @export var biome_director_path: NodePath = NodePath("../BiomeDirector")

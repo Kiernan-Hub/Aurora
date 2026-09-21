@@ -414,6 +414,7 @@ func check_aurora() -> void:
 					aurora_failures.append("Aurora does not restore the baseline at t=%s, width=%d" % [elapsed, width])
 				elif elapsed > 0.0 and elapsed < 61.0 and peak < MIN_PEAK_CONTRIBUTION:
 					aurora_failures.append("Aurora ramp is not visible at t=%s, width=%d" % [elapsed, width])
+			await check_aurora_streaks(director, width)
 			# Isolate the blade contribution from the much larger sky/wash/ice changes.
 			director.active_elapsed = 30.0
 			director.push_blend(1.0)
@@ -543,3 +544,42 @@ func capture_rendered_frame() -> Image:
 	# continues. Force a render so captures cannot repeatedly read a stale image.
 	RenderingServer.force_draw()
 	return root.get_texture().get_image()
+
+
+# Toggle only the streak at a fixed clock: differences below the waterline must
+# come from its reflection, rather than from the rest of the Aurora ramp.
+func check_aurora_streaks(director: AuroraDirector, width: int) -> void:
+	var streaks: AuroraStreaks = main.get_node_or_null("AuroraStreaks") as AuroraStreaks
+	var reflection: AuroraReflection = main.get_node_or_null("AuroraReflection") as AuroraReflection
+	if streaks == null or reflection == null or reflection.material_ref == null:
+		aurora_failures.append("Aurora streaks or reflection missing")
+		return
+	# Exercise both crossing directions through the real director dispatch.
+	for elapsed: float in [6.575, 13.575]:
+		director.active_elapsed = elapsed
+		director.push_blend(director.get_aurora_blend())
+		var streak_on: Image = await capture_aurora_frame()
+		var held: Image = await capture_aurora_frame()
+		if measure_peak(streak_on, held) != 0:
+			aurora_failures.append("Aurora streak moves while paused")
+		streaks.visible = false
+		var streak_off: Image = await capture_aurora_frame()
+		var waterline: float = float(reflection.material_ref.get_shader_parameter("waterline"))
+		var split: int = clampi(int(ceil(waterline * streak_on.get_height())) + 2,
+			1, streak_on.get_height() - 1)
+		var sky_rect: Rect2i = Rect2i(0, 0, streak_on.get_width(), split)
+		var ice_rect: Rect2i = Rect2i(0, split, streak_on.get_width(), streak_on.get_height() - split)
+		if measure_peak(streak_off.get_region(sky_rect), streak_on.get_region(sky_rect)) < MIN_PEAK_CONTRIBUTION:
+			aurora_failures.append("Aurora streak is not visible at t=%s width=%d" % [elapsed, width])
+		if measure_peak(streak_off.get_region(ice_rect), streak_on.get_region(ice_rect)) == 0:
+			aurora_failures.append("Aurora streak is not reflected at t=%s width=%d" % [elapsed, width])
+		# Restore an active streak before each cleanup path so a no-op cannot pass.
+		director.push_blend(director.get_aurora_blend())
+		director.push_blend(0.0)
+		if streaks.visible:
+			aurora_failures.append("Aurora streak survives zero blend")
+		director.push_blend(director.get_aurora_blend())
+		director.active_elapsed = elapsed + 2.0
+		director.push_blend(director.get_aurora_blend())
+		if streaks.visible:
+			aurora_failures.append("Aurora streak remains between crossings")

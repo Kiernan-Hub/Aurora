@@ -11,7 +11,7 @@ design that led here is in `docs/research/aurora_borealis.md` — history, not r
 |---|---|
 | Lifecycle, reservation, flight, camera, save, achievement | **Built, gated green.** `aurora_calm_probe` PASS, 182,974 assertions — now including the schedule and the night window |
 | Look | Six owner review rounds (09-11 → 09-13). Blade glow **finished**; curtains keep their character |
-| Left before ship | Restore the three TEMP knobs → `check.sh` 5/5 → the three windowed gates → a shipping-pace playtest → Android review → merge |
+| Left before ship | Remaining windowed gates → a shipping-pace playtest → Android review → merge |
 | Needs an owner decision | Wings reference image (rework blocked on it); bloom yes/no; brighter ice + softer smear reflection, or accept as-is |
 
 **`art_source/aurora_reference/` (four owner-generated images) is the design authority for the
@@ -183,8 +183,8 @@ Every gate instantiates `main.tscn`, so all of this runs there.
   `check_night_gate()` runs the real cycle maths on a **bare `BiomeDirector`** that is never added
   to the tree, so the headless early-return never happens. Visuals remain covered only by
   `sky_layer_check`, which needs a window.
-- **A bare director still carries the TEMP knobs**, because they are plain vars read from source.
-  `check_night_gate()` pins `debug_biome_seconds` to 0.0 for that reason: left at the committed
+- **A bare director reads debug defaults from source.** Shipping defaults were restored on 2026-09-20.
+  `check_night_gate()` pins `debug_biome_seconds` to 0.0 for that reason: if set to the former
   review default of 10.0, `get_cycle_world_x()` stops reading the player at all and the lookahead
   reaches 457,000 px, which never clears — the check then reports a night opening of zero for
   every rotation. `make_case()` pins the same field on `ControlledNight`.
@@ -192,7 +192,7 @@ Every gate instantiates `main.tscn`, so all of this runs there.
 ## Things that break silently
 
 - **Debug knobs are plain `var`, never `@export`**, each with a `shipping_values_check` row in the
-  same commit. The three TEMP defaults live in **source**, not `main.tscn`.
+  same commit. The debug defaults live in **source**, not `main.tscn`.
 - **Never let a debug override reach the code that writes the persisted deadline.**
 - **Achievement ids are save data** — renaming un-earns it for everyone.
 - **`git status` after ANY engine run** — a settings save strips `project.godot` pins and scene
@@ -203,8 +203,8 @@ Every gate instantiates `main.tscn`, so all of this runs there.
 - **Rarity at shipping pace** — measured above, never playtested. Wait for a natural aurora.
 - **Android**: fill rate with the full event (curtains, wash, reflection backbuffer, snow) and
   speaker/headphone balance. Cannot be answered on desktop.
-- **`sky_layer_check` is owed** on the curtain geometry and the streaks; its wisps assertions were
-  removed with the wisps, and it has not been run since.
+- **`sky_layer_check` passed 2026-09-20**, including isolated streak visibility, reflection, pause
+  and cleanup checks in both directions, at both widths and both night palettes.
 - **Music slider**: now visible, but the only thing on the Music bus is this bed — a player moving
   it outside an aurora hears nothing.
 - **Bloom**: there is no `WorldEnvironment` in the project. It is the largest remaining glow lever,
