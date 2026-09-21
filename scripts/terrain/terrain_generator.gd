@@ -275,10 +275,26 @@ const LAKE_ICE_GLOSS_DEPTH: float = 0.1
 const LAKE_ICE_GLOSS_SOFTNESS: float = 0.14
 # Aurora keeps the tile and depth structure; these are restrained light targets, not a
 # second fixed ice palette like the lake.
-const AURORA_ICE_SURFACE: Color = Color(0.34, 0.82, 0.68)
-const AURORA_ICE_DEPTH: Color = Color(0.12, 0.31, 0.34)
+#
+# BOTH TARGETS LIFT, AND NEITHER IS GREEN. Until 2026-09-20 they were (0.34, 0.82, 0.68) and
+# (0.12, 0.31, 0.34) -- a green-cyan hue shift that pulled blue DOWN from the ~1.0 both night
+# palettes author, so the aurora rendered the ice FLAT in starlit_night (0.615 -> 0.634 surface,
+# body 0.122 -> 0.117) and DARKER in twilight_blue (0.698 -> 0.682, body 0.163 -> 0.151). The
+# owner's reference is the opposite on both counts: its ice plane measures lum ~0.40 at b - r
+# +0.56, level with its own sky, and every green in the frame lives in the REFLECTION, not in
+# the ice body. AuroraReflection already mirrors the curtains down the ice, so a green tint here
+# was paying twice for the same read and spending the ice's brightness to do it.
+#
+# These are MULTIPLIERS against the greyscale tile (see biome_palette.gd), so blue stays at 1.0
+# and the lift comes from raising r and g under it -- pale cyan, not white.
+const AURORA_ICE_SURFACE: Color = Color(0.52, 0.88, 1.0)
+const AURORA_ICE_DEPTH: Color = Color(0.4, 0.76, 1.0)
 const AURORA_SURFACE_WEIGHT: float = 0.42
-const AURORA_DEPTH_WEIGHT: float = 0.18
+# 0.18 could not move the body: it is multiplied by ICE_TILE_DEPTH_FLOOR, so the deep fill lands
+# at 0.38 x the tint whatever the tint is. 0.34 spends what that ceiling allows -- starlit_night
+# 0.122 -> 0.168, twilight_blue 0.163 -> 0.195 -- and going past it means raising the floor the
+# way the lake's flatten does, which replaces the tile and costs the ice its texture.
+const AURORA_DEPTH_WEIGHT: float = 0.34
 const AURORA_HUE_VARIANCE: float = 0.015
 const AURORA_GLOSS_STRENGTH: float = 0.16
 
@@ -2199,7 +2215,9 @@ func set_aurora_ice_blend(blend: float) -> void:
 func refresh_ice_appearance() -> void:
 	effective_ice_surface = ice_surface_tint.lerp(get_lake_tint(LAKE_ICE_SURFACE), lake_ice_blend)
 	effective_ice_depth = ice_depth_tint.lerp(get_lake_tint(LAKE_ICE_DEPTH), lake_ice_blend)
-	# Upper ice catches the Aurora while the deep body stays dark enough to retain depth.
+	# Both rows catch the Aurora, at different rates: the surface at AURORA_SURFACE_WEIGHT and
+	# the body at the larger AURORA_DEPTH_WEIGHT, which is what keeps the gradient between them
+	# from closing even though the body has further to travel.
 	effective_ice_surface = effective_ice_surface.lerp(
 		AURORA_ICE_SURFACE, aurora_ice_blend * AURORA_SURFACE_WEIGHT)
 	effective_ice_depth = effective_ice_depth.lerp(
