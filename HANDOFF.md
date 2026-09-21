@@ -1,5 +1,37 @@
 # Handoff
 
+## Aurora — 2026-09-20, audit #2
+
+**Audit of the whole feature, second pass. No defect in the gameplay logic** — the schedule, the
+reservation, entry/recovery, arbitration and the exclusion rules all re-read clean, and the two
+things that came out of it were a documented-open flicker and a coverage hole.
+
+| What | Detail |
+|---|---|
+| **Wings flicker — FIXED** | They hid on `not is_on_floor()`, but the crest releases at t = 45 s and the wings run to t = 51 s, so they blinked out for the frames the body spent falling back to the ice. `is_aurora_flight_landing` already names exactly that window; it is now part of the test. No timer, no new state |
+| **The schedule and the night gate now have a gate** | `aurora_calm_probe` grew `check_schedule()` and `check_night_gate()`. PASS at **182,974** assertions (was 163,746), and the whole integration half still runs in ~2.5 s |
+
+**What the night check is actually for.** The gate needs one *contiguous* night band longer than
+the 61 s lookahead. The arc gives **142,125 px** against 61,000 px, an opening of **108.3 s in
+every 800 s cycle** — which reproduces the 2026-09-16 hand measurement exactly, in all eight
+rotations. One palette edit can close that, and **nothing else in the project would report it**:
+taking `twilight_blue` from 0.85 to 0.75 leaves a band still wide enough to fit the event, drops
+the opening to 20 s per cycle, and every other gate stays green. Verified by doing it.
+
+**Two things the check does NOT prove, stated so a PASS is not over-read.** The over-report
+assertion (`get_minimum_night_ahead` vs a 25 px scan) **cannot currently fail** — the arc has a
+single night band, so no window can hold night at both ends and day in the middle. Deleting the
+boundary loop from `get_minimum_night_ahead` leaves the probe green; it is kept as the guard for
+a future second night pocket or shorter cycle, not as a live proof. And rarity is still
+**measured, never played**.
+
+**Worth knowing:** a bare `BiomeDirector` still carries the committed TEMP `debug_biome_seconds =
+10.0`, and at that value the night lookahead reaches 457,000 px and never clears — the first
+version of this check reported a night opening of zero for every rotation. `check_night_gate()`
+pins the shipping values, the way `make_case()` already does for `ControlledNight`.
+
+`check.sh` is unchanged at 4/5 — still only the three declared TEMP knobs. The list below stands.
+
 ## Aurora — 2026-09-16, READ THIS FIRST
 
 **The current state is `docs/development/aurora_borealis.md`** — short, and rewritten this day to

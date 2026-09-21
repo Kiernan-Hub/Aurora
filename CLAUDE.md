@@ -44,11 +44,11 @@ directory answers "is this a gate?". `check.sh` runs four; the other nine take m
 | freeze-replay, **freeze-search**, floor-flicker | any player/collision/segment change. Freeze-search is the one that actually finds stalls — replay alone isn't sufficient |
 | camera-shake | any change to the camera follow in `main.gd` |
 | chasm | anything touching voids, fall death or the boost velocity model |
-| `aurora_calm_probe.gd` | Aurora flat reservation, live entry/recovery, spawn suppression and lake arbitration |
+| `aurora_calm_probe.gd` | Aurora flat reservation, live entry/recovery, spawn suppression, lake arbitration — **plus the stored deadline and the night window**, the only gate reaching either |
 | `sky_layer_check.gd`, `ice_look_capture.gd`, `biome_contact_sheet.gd` | any visual change. **These three must run WITHOUT `--headless`** — they diff or save rendered frames |
 
 **Every headless gate is blind to biome code** (`BiomeDirector` returns early under `--headless`) — the only
-reason the visual three exist. And `shipping_values_check` is the only thing watching the debug knobs: each is
+reason the visual three exist; a bare off-tree director, as in `aurora_calm_probe`, is the one way in. And `shipping_values_check` is the only thing watching the debug knobs: each is
 a plain `var` the editor can't serialise, so no other gate sees one left flipped. It fails on all of them, on any
 `debug_*` override reaching `main.tscn`, and on a pinned engine setting going missing from `project.godot`;
 `--allow-temp` downgrades it to a warning. A 14th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing;

@@ -5,11 +5,11 @@ hazards stand down, the sky fills with light, the world and the ice catch it, an
 once at the crest. **This file is the current state.** Every plan, slice record and superseded
 design that led here is in `docs/research/aurora_borealis.md` — history, not required reading.
 
-## Status — 2026-09-16
+## Status — 2026-09-20
 
 | | |
 |---|---|
-| Lifecycle, reservation, flight, camera, save, achievement | **Built, gated green.** `aurora_calm_probe` PASS, 163,746 assertions |
+| Lifecycle, reservation, flight, camera, save, achievement | **Built, gated green.** `aurora_calm_probe` PASS, 182,974 assertions — now including the schedule and the night window |
 | Look | Six owner review rounds (09-11 → 09-13). Blade glow **finished**; curtains keep their character |
 | Left before ship | Restore the three TEMP knobs → `check.sh` 5/5 → the three windowed gates → a shipping-pace playtest → Android review → merge |
 | Needs an owner decision | Wings reference image (rework blocked on it); bloom yes/no; brighter ice + softer smear reflection, or accept as-is |
@@ -68,11 +68,19 @@ due  <=>  run_time >= 130 s  and  saved_playtime + unbanked_this_run >= next_aur
 `is_sky_ready()`: night now ≥ 0.8 **and** `BiomeDirector.get_minimum_night_ahead(61, SPEED_BOOST_SPEED)`
 ≥ 0.8 (endpoints plus every biome boundary; each transition is monotonic). Rechecked at entry.
 
-**Measured 2026-09-16, not yet playtested:** with the eight-biome cycle at `MAX_SPEED`, the gate is
-open for only **~108 s of every 800 s** (~13%). Combined with the 130 s run gate, a real sighting
-is likely well over 30 min apart for a player with short runs. If playtesting says too rare, the
-cheapest lever is the lookahead speed — at `MAX_SPEED` instead of boost speed the window is ~129 s
-(boost cannot be active *during* the event, but can be before entry, so check that first).
+**Measured, and now re-measured by `aurora_calm_probe` on every run** (`check_night_gate`, which
+prints `AURORA_NIGHT_GATE`): with the eight-biome cycle at `MAX_SPEED` the gate is open for
+**108.3 s of every 800 s** (~13.5%), identically in all eight rotations — a rotation moves the
+entry point, not the arc. The one contiguous night band is **142,125 px** against a 61,000 px
+lookahead. Combined with the 130 s run gate, a real sighting is likely well over 30 min apart for
+a player with short runs. **Still not playtested.** If playtesting says too rare, the cheapest
+lever is the lookahead speed — at `MAX_SPEED` instead of boost speed the window is ~129 s (boost
+cannot be active *during* the event, but can be before entry, so check that first).
+
+**That opening is one palette edit from closing, and nothing else would say so.** The check now
+holds it inside a deliberately wide 30–300 s band: taking `twilight_blue` from 0.85 to 0.75 —
+still a night band wide enough to fit the event — drops it to 20 s per cycle, and every other
+gate stays green through that.
 
 ### The protected flat
 
@@ -127,12 +135,16 @@ still spends the reservation.
 | Ice | Tint/gloss composed with biome and lake in `refresh_ice_appearance()` | `terrain_generator.gd` |
 | Reflection | The sky mirrored into the ice, reusing the lake's shader | `aurora_reflection.gd` |
 | Blade glow | Halo + core at the real contact point, grounded only. **Finished** | `aurora_blade_glow.gd` |
-| Wings | Six feather lines, 20–51 s. **Rework blocked** on the owner's reference | `aurora_wings.gd` |
+| Wings | Six feather lines, 20–51 s. Visible while grounded, in flight **or in the landing gap**. **Rework blocked** on the owner's reference | `aurora_wings.gd` |
 | Ambience | 12 s generated loop on the Music bus, gain cap 0.55, pauses with the game | `aurora_audio.gd` |
 | Achievement | `under_the_aurora`, granted by `AchievementManager` on `aurora_finished` | `achievement_manager.gd` |
 
 Every visual consumer toggles `visible` rather than fading to alpha 0 — a hidden full-screen item
 costs nothing, which is what keeps the reflection's backbuffer copy free for the other 29 minutes.
+**A consumer that hides on `not is_on_floor()` must accept `is_aurora_flight_landing` too**: the
+crest releases at t = 45 s and the wings run to t = 51 s, so without it they blink out for the
+frames the body spends falling the last pixels back to the ice, in the middle of their own fade.
+That was the wings' documented flicker, fixed 2026-09-20.
 
 ## The traps, all earned
 
@@ -164,10 +176,18 @@ Every gate instantiates `main.tscn`, so all of this runs there.
   the developer's own `save.dat`. Every consumer computes headless locally from
   `DisplayServer.get_name()`, never `Services.is_headless`.
 - Dependencies are `get_node_or_null` + null-guarded; a missing one disables a layer, never the game.
-- **So no headless gate reaches the schedule, the night gate or any visual.** `aurora_calm_probe`
-  drives the lifecycle by injecting an in-memory save and the lake's fields by hand (which is why
-  `FrozenLakeDirector` looks the Aurora up in `try_arm()`, not `_ready()`). Visuals are covered
-  only by `sky_layer_check`, which needs a window.
+- **No gate reaches any of it through the director's own `_ready()`.** `aurora_calm_probe` gets
+  there by construction instead: it drives the lifecycle from an injected in-memory save and sets
+  the lake's fields by hand (which is why `FrozenLakeDirector` looks the Aurora up in `try_arm()`,
+  not `_ready()`), `check_schedule()` calls the deadline arithmetic directly, and
+  `check_night_gate()` runs the real cycle maths on a **bare `BiomeDirector`** that is never added
+  to the tree, so the headless early-return never happens. Visuals remain covered only by
+  `sky_layer_check`, which needs a window.
+- **A bare director still carries the TEMP knobs**, because they are plain vars read from source.
+  `check_night_gate()` pins `debug_biome_seconds` to 0.0 for that reason: left at the committed
+  review default of 10.0, `get_cycle_world_x()` stops reading the player at all and the lookahead
+  reaches 457,000 px, which never clears — the check then reports a night opening of zero for
+  every rotation. `make_case()` pins the same field on `ControlledNight`.
 
 ## Things that break silently
 
@@ -187,7 +207,6 @@ Every gate instantiates `main.tscn`, so all of this runs there.
   removed with the wisps, and it has not been run since.
 - **Music slider**: now visible, but the only thing on the Music bus is this bed — a player moving
   it outside an aurora hears nothing.
-- **Wings** may flicker for a few frames in the landing gap around t = 45 s.
 - **Bloom**: there is no `WorldEnvironment` in the project. It is the largest remaining glow lever,
   whole-screen and the Mobile renderer's most expensive feature — owner call, recommended no unless
   the look falls short without it.
