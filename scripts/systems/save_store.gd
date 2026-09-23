@@ -116,32 +116,33 @@ func load_from_disk() -> void:
 		return
 
 	var data: Dictionary = parsed as Dictionary
-	var version: int = int(data.get("version", 0))
+	var version: int = int(_read_number(data, "version", 0.0))
 
 	# v0 -> v1: the pre-versioning file carried best_score and nothing else. Every
 	# other field simply keeps its default, so there is no explicit conversion step --
 	# reading the fields that exist IS the migration. The upgraded shape lands on disk
 	# the next time save_to_disk() runs.
-	best_score = int(data.get("best_score", 0))
+	best_score = int(_read_number(data, "best_score", 0.0))
 
 	if version >= 1:
-		best_time = float(data.get("best_time", 0.0))
-		var settings: Dictionary = data.get("settings", {}) as Dictionary
-		music_volume = clampf(float(settings.get("music_volume", DEFAULT_MUSIC_VOLUME)), 0.0, 1.0)
-		sfx_volume = clampf(float(settings.get("sfx_volume", DEFAULT_SFX_VOLUME)), 0.0, 1.0)
+		best_time = _read_number(data, "best_time", 0.0)
+		var settings: Dictionary = _read_dictionary(data, "settings")
+		music_volume = clampf(_read_number(settings, "music_volume", DEFAULT_MUSIC_VOLUME), 0.0, 1.0)
+		sfx_volume = clampf(_read_number(settings, "sfx_volume", DEFAULT_SFX_VOLUME), 0.0, 1.0)
 
 	# v1 -> v2: same idiom as v0 -> v1 above. A v1 file has no wallet and no upgrades, so
 	# the defaults (0 coins, level 0 everywhere) are exactly the correct new-player state
 	# and there is nothing to convert.
 	if version >= 2:
-		coin_wallet = maxi(int(data.get("coin_wallet", 0)), 0)
+		coin_wallet = maxi(int(_read_number(data, "coin_wallet", 0.0)), 0)
 		# Copied key by key on purpose. JSON.parse_string returns an UNTYPED Dictionary,
 		# and assigning one straight into a Dictionary[String, int] fails at runtime.
 		# The int() casts are equally load-bearing: JSON round-trips every number as a
 		# float, so the values arrive as 2.0, not 2.
-		var stored_levels: Dictionary = data.get("upgrades", {}) as Dictionary
+		var stored_levels: Dictionary = _read_dictionary(data, "upgrades")
 		for upgrade_id: Variant in stored_levels.keys():
-			upgrade_levels[String(upgrade_id)] = maxi(int(stored_levels[upgrade_id]), 0)
+			if _is_number(stored_levels[upgrade_id]):
+				upgrade_levels[String(upgrade_id)] = maxi(int(stored_levels[upgrade_id]), 0)
 
 	# v2 -> v3: same idiom again. A v2 file has never played a set piece, so 0 seconds
 	# banked, 0 lakes seen and no achievements is the correct state for it -- an existing
@@ -151,21 +152,40 @@ func load_from_disk() -> void:
 		# maxf, and float() rather than int(): this is seconds, and a negative value could
 		# only come from a hand-edited or corrupt file, where it would push the next lake
 		# unreachably far away.
-		total_playtime_seconds = maxf(float(data.get("total_playtime_seconds", 0.0)), 0.0)
-		frozen_lake_count = maxi(int(data.get("frozen_lake_count", 0)), 0)
+		total_playtime_seconds = maxf(_read_number(data, "total_playtime_seconds", 0.0), 0.0)
+		frozen_lake_count = maxi(int(_read_number(data, "frozen_lake_count", 0.0)), 0)
 		# Read inside `version >= 3` rather than under a version of its own -- see the field's
 		# note. Absent in a pre-aurora v3 file, where the 0 default is correct.
-		aurora_count = maxi(int(data.get("aurora_count", 0)), 0)
+		aurora_count = maxi(int(_read_number(data, "aurora_count", 0.0)), 0)
 		# NO maxf CLAMP TO 0 HERE, unlike the seconds field above, because -1.0 is the
 		# UNSCHEDULED sentinel and clamping it to 0.0 would mean "due immediately" -- the
 		# backlog bug the sentinel exists to prevent. Absent in a pre-aurora save, where -1.0
 		# is exactly right: AuroraDirector schedules it at load from where the player is.
-		next_aurora_due_seconds = float(data.get("next_aurora_due_seconds", -1.0))
+		next_aurora_due_seconds = _read_number(data, "next_aurora_due_seconds", -1.0)
 		# Copied key by key for the same reason upgrade_levels above is -- JSON hands back
 		# an UNTYPED Dictionary, which cannot be assigned into a Dictionary[String, bool].
-		var stored_achievements: Dictionary = data.get("achievements", {}) as Dictionary
+		var stored_achievements: Dictionary = _read_dictionary(data, "achievements")
 		for achievement_id: Variant in stored_achievements.keys():
-			achievements[String(achievement_id)] = bool(stored_achievements[achievement_id])
+			if typeof(stored_achievements[achievement_id]) == TYPE_BOOL:
+				achievements[String(achievement_id)] = stored_achievements[achievement_id]
+
+
+# FIELD-BY-FIELD VALIDATION, NEVER A CAST. A cast of the wrong type (`[] as Dictionary`,
+# `int([])`) aborts load_from_disk halfway, so one bad field used to skip every field after
+# it -- and the next save then wrote those defaults over recoverable progress. Each reader
+# returns its fallback for a wrong type, so only the bad field is lost.
+static func _is_number(value: Variant) -> bool:
+	return typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT
+
+
+static func _read_number(source: Dictionary, key: String, fallback: float) -> float:
+	var value: Variant = source.get(key, fallback)
+	return float(value) if _is_number(value) else fallback
+
+
+static func _read_dictionary(source: Dictionary, key: String) -> Dictionary:
+	var value: Variant = source.get(key, {})
+	return value if typeof(value) == TYPE_DICTIONARY else {}
 
 
 # WRITES VIA A TEMP FILE AND A RENAME, NEVER STRAIGHT OVER THE LIVE SAVE.
