@@ -560,11 +560,7 @@ func _on_player_died() -> void:
 	var is_new_best: bool = false
 	var best_score: int = 0
 	var wallet: int = 0
-	# Session state, not save state, and so deliberately outside the services block below:
-	# where this run ended is where the next one picks the day arc up, but only until the
-	# process exits. See BiomeDirector.session_biome_phase for why it is not persisted.
-	if biome_director != null:
-		BiomeDirector.session_biome_phase = biome_director.get_persisted_phase(player.global_position.x)
+	bank_biome_phase()
 	# Script harnesses can have a real Services autoload. bank_playtime() already
 	# skips headless, but record_run() itself writes coins/bests even when banking
 	# returned false. A regression probe's deliberate death must never save a run.
@@ -578,6 +574,15 @@ func _on_player_died() -> void:
 	var best_suffix: String = " (New Best!)" if is_new_best else ""
 	death_stats_label.text = "Coins: %d\nTime: %s\nBest: %d%s\nWallet: %d" % [coin_count, main.format_elapsed_time(main.elapsed_time), best_score, best_suffix, wallet]
 	set_state(State.DEAD)
+
+
+# Session state, not save state: where this run ended is where the next one picks the day
+# arc up, but only until the process exits. See BiomeDirector.session_biome_phase for why it
+# is not persisted. Called on death AND on both pause-menu reloads -- banking only on death
+# let a mid-run Restart/Home rewind the day arc and replay the one-shot opening biome.
+func bank_biome_phase() -> void:
+	if biome_director != null:
+		BiomeDirector.session_biome_phase = biome_director.get_persisted_phase(player.global_position.x)
 
 
 func _on_pause_pressed() -> void:
@@ -617,6 +622,9 @@ func _on_sfx_volume_changed(value: float) -> void:
 # reload_current_scene() does -- see require_start_screen.
 func _on_restart_pressed() -> void:
 	sfx_player.play_click()
+	# From DEAD, _on_player_died already banked it.
+	if state == State.PAUSED:
+		bank_biome_phase()
 	if services != null:
 		services.save_settings()
 	# Unpause before the reload: the tree-wide paused flag is not reset by
@@ -631,6 +639,8 @@ func _on_restart_pressed() -> void:
 # static flag that survives it -- see pending_quick_restart.
 func _on_quick_restart_pressed() -> void:
 	sfx_player.play_click()
+	if state == State.PAUSED:
+		bank_biome_phase()
 	if services != null:
 		services.save_settings()
 	GameManager.pending_quick_restart = true
