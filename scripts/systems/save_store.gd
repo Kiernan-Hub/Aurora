@@ -205,10 +205,19 @@ func save_to_disk() -> void:
 			"sfx_volume": sfx_volume,
 		},
 	}
-	file.store_string(JSON.stringify(payload))
+	# The rename only protects the SWAP, not the payload: a short write (full disk, a killed
+	# write) renamed over the live save is the exact truncation the temp file exists to stop.
+	# So a failed store or flush abandons the save and leaves the live file alone.
+	var stored: bool = file.store_string(JSON.stringify(payload))
+	file.flush()
+	var write_error: Error = file.get_error()
 	# Explicit, not left to the RefCounted going out of scope: the rename below must not
 	# race a buffer that has not been flushed yet.
 	file.close()
+	if not stored or write_error != OK:
+		push_error("SaveStore failed to write %s (error %d). The save on disk is unchanged."
+				% [TEMP_SAVE_PATH, write_error])
+		return
 
 	var rename_result: Error = DirAccess.rename_absolute(TEMP_SAVE_PATH, SAVE_PATH)
 	if rename_result != OK:
