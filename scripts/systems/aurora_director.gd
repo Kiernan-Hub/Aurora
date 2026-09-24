@@ -10,8 +10,30 @@ const AURORA_INTERVAL_SECONDS: float = 1800.0
 const AURORA_DURATION_SECONDS: float = 45.0
 const AURORA_FADE_SECONDS: float = 8.0
 const NIGHT_THRESHOLD: float = 0.8
+# Same gate FrozenLakeDirector puts on the lake, and here it is about the SPEED RAMP rather
+# than pacing. The reserved flat is sized at MAX_SPEED while the event ends on a 61-second
+# CLOCK, so a player who is still accelerating covers less of it than it was cut for and rides
+# the remainder as dead flat: entering at t=20s (~530px/s) leaves roughly 28,000px of empty
+# protected ground after the ribbons fade. MAX_SPEED lands at t=120s; 130 matches the lake's
+# number and leaves margin, because entry happens a few seconds after this first passes.
+const MIN_RUN_TIME_SECONDS: float = 130.0
 # Space to let an existing glide/boost finish and land before the presentation starts.
 # A failed/late entry skips the appearance without undoing the immutable flat.
+#
+# THE GLIDE SETS THIS FLOOR, NOT THE BOOST, and reading the wrong one is how you talk yourself
+# into halving it. SPEED_BOOST_DURATION is 3s, but GLIDE_DURATION is 7s and glide leaves
+# velocity.x = current_speed untouched -- so 7 x MAX_SPEED is 5250px, plus up to ~750px more
+# because begin_aurora() also needs is_on_floor() and a glide can expire at altitude with
+# GLIDE_MAX_FALL_SPEED 550. Worst case is ~6000px; this is ~1.7x that.
+#
+# A glide powerup can also be collected AFTER the reservation but before the flat -- suppression
+# only covers overlaps_aurora_flat() -- so refusing to reserve mid-effect would not remove the
+# need for this budget. It has to be here.
+#
+# WHAT IT COSTS, since it is also the reason the tail is long: unused budget becomes flat the
+# player rides with nothing on it (~12s at cap). Cutting it does NOT shorten a flat already
+# armed, and undershooting fails has_duration_room() at entry, which skips the aurora AND still
+# spends the whole reservation. Trim only against a re-measured worst case.
 const ENTRY_WAIT_DISTANCE: float = 10000.0
 const MIN_RECOVERY_DISTANCE: float = 2048.0
 const BODY_CLEARANCE: float = 128.0
@@ -23,8 +45,8 @@ const FLIGHT_RELEASE_END_SECONDS: float = 45.0
 
 # Plain vars, never exported. shipping_values_check protects the defaults.
 # Preview completions never grant progress or change an existing deadline.
-var debug_aurora_interval_override: float = 10.0
-var debug_aurora_ignore_night: bool = true
+var debug_aurora_interval_override: float = 0.0
+var debug_aurora_ignore_night: bool = false
 
 @export var player_path: NodePath = NodePath("../Player")
 @export var biome_director_path: NodePath = NodePath("../BiomeDirector")
@@ -39,9 +61,13 @@ var player: Player
 var biome_director: BiomeDirector
 var sky_backdrop: Node
 var aurora_wash: Node
+var aurora_reflection: Node
+var aurora_streaks: Node
+# The four ParallaxBackground layers, collected once. Duck-typed like every other consumer, so
+# a layer without apply_aurora() is simply skipped rather than being a wiring error.
+var background_layers: Array[Node] = []
 var blade_glow: Node
 var snow: Node
-var wisps: Node
 var wings: Node
 var aurora_audio: Node
 var main_node: Main
@@ -83,9 +109,16 @@ func resolve_dependencies() -> bool:
 	biome_director = get_node_or_null(biome_director_path) as BiomeDirector
 	sky_backdrop = get_node_or_null(sky_backdrop_path)
 	aurora_wash = get_node_or_null("../AuroraWash")
+	aurora_reflection = get_node_or_null("../AuroraReflection")
+	aurora_streaks = get_node_or_null("../AuroraStreaks")
+	background_layers.clear()
+	var parallax: Node = get_node_or_null("../ParallaxBackground")
+	if parallax != null:
+		for layer: Node in parallax.get_children():
+			if layer.has_method("apply_aurora"):
+				background_layers.append(layer)
 	blade_glow = get_node_or_null("../AuroraBladeGlow")
 	snow = get_node_or_null("../SnowDrift/SnowParticles")
-	wisps = get_node_or_null("../AuroraWisps")
 	wings = get_node_or_null("../AuroraWings")
 	aurora_audio = get_node_or_null("../AuroraAudio")
 	main_node = get_parent() as Main
@@ -242,6 +275,11 @@ func schedule_if_unscheduled() -> void:
 func is_aurora_due() -> bool:
 	if debug_aurora_interval_override > 0.0:
 		return main_node.elapsed_time >= debug_aurora_interval_override
+	# Deliberately BELOW the preview branch, not above it: a review session sets the interval
+	# to 10s precisely so it does not have to survive two minutes first, and bypassing the gate
+	# there needs no second knob for shipping_values_check to watch.
+	if main_node.elapsed_time < MIN_RUN_TIME_SECONDS:
+		return false
 	var deadline: float = services.save_store.next_aurora_due_seconds
 	return deadline >= 0.0 and get_total_playtime_seconds() >= deadline
 
@@ -291,12 +329,22 @@ func push_blend(blend: float) -> void:
 		sky_backdrop.call("apply_aurora", blend, active_elapsed)
 	if aurora_wash != null and aurora_wash.has_method("apply_aurora"):
 		aurora_wash.call("apply_aurora", blend, active_elapsed)
+	# Before the blade glow in this list only for readability; the two are independent. Draw
+	# order is tree order in main.tscn, not push order.
+	# The midground. Without these the sky and the ice were both lit and the band between them
+	# was not, which is what broke the chain in the owner's screenshot.
+	for layer: Node in background_layers:
+		layer.call("apply_aurora", blend, active_elapsed)
+	# Pushed BEFORE the reflection only for readability. Draw order is tree order in main.tscn:
+	# streaks sit ahead of AuroraReflection there, which is what gets them mirrored in the ice.
+	if aurora_streaks != null and aurora_streaks.has_method("apply_aurora"):
+		aurora_streaks.call("apply_aurora", blend, active_elapsed)
+	if aurora_reflection != null and aurora_reflection.has_method("apply_aurora"):
+		aurora_reflection.call("apply_aurora", blend, active_elapsed)
 	if blade_glow != null and blade_glow.has_method("apply_aurora"):
 		blade_glow.call("apply_aurora", blend, active_elapsed)
 	if snow != null and snow.has_method("apply_aurora"):
 		snow.call("apply_aurora", get_aurora_snow_blend(blend), active_elapsed)
-	if wisps != null and wisps.has_method("apply_aurora"):
-		wisps.call("apply_aurora", blend, active_elapsed)
 	if wings != null and wings.has_method("apply_aurora"):
 		wings.call("apply_aurora", blend, active_elapsed)
 	if aurora_audio != null and aurora_audio.has_method("apply_aurora"):

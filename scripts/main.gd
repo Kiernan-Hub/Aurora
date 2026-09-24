@@ -99,8 +99,10 @@ var has_previous_player_x: bool = false
 var total_world_rebase_shift: float = 0.0
 var elapsed_time: float = 0.0
 # Held-state for Player's glide (Phase 3): touch has no "ui_accept" action edge to poll,
-# the same reason buffer_jump() exists below, so Player reads this instead.
-var is_touch_currently_held: bool = false
+# the same reason buffer_jump() exists below, so Player reads this instead. A SET of touch
+# indices, not one bool: with a bool, lifting a second finger cleared the hold while the
+# first was still down, cutting glide thrust mid-air.
+var held_touch_indices: Dictionary[int, bool] = {}
 # Latches on when a glide starts, and stays on for the rest of the airborne arc even
 # after the glide effect itself ends (input released, or the timed effect expires) --
 # only clears on landing. Without that latch, releasing mid-fall would hand off to the
@@ -124,7 +126,7 @@ func _ready() -> void:
 		push_warning("World rebasing is DISABLED - the terrain freeze bug will return.")
 	(player as Player).debug_stuck_detected.connect(_on_player_stuck_detected)
 	# A touch that ends while paused (e.g. the pause button itself, or backgrounding the
-	# app mid-hold) must not leave is_touch_currently_held stuck true -- that would glide
+	# app mid-hold) must not leave a touch index stuck held -- that would glide
 	# the player the instant PLAYING resumes with no finger on the screen.
 	if game_manager != null:
 		game_manager.state_changed.connect(_on_game_manager_state_changed)
@@ -186,20 +188,22 @@ func _input(event: InputEvent) -> void:
 	var touch_event: InputEventScreenTouch = event as InputEventScreenTouch
 	if touch_event == null:
 		return
-	is_touch_currently_held = touch_event.pressed
 	if touch_event.pressed:
+		held_touch_indices[touch_event.index] = true
 		(player as Player).buffer_jump()
+	else:
+		held_touch_indices.erase(touch_event.index)
 
 
 # Read by Player.is_glide_input_held() -- see buffer_jump()'s comment above for why touch
 # can't go through the "ui_accept" action at all.
 func is_touch_held() -> bool:
-	return is_touch_currently_held
+	return not held_touch_indices.is_empty()
 
 
 func _on_game_manager_state_changed(new_state: GameManager.State) -> void:
 	if new_state != GameManager.State.PLAYING:
-		is_touch_currently_held = false
+		held_touch_indices.clear()
 
 
 # True for a press (not a release) of either pointer kind landing inside the pause

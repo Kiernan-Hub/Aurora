@@ -81,6 +81,8 @@ var debug_lake_min_run_time_override: float = 0.0
 
 @export var player_path: NodePath = NodePath("../Player")
 @export var terrain_generator_path: NodePath = NodePath("../TerrainGenerator")
+# Looked up in try_arm(), not _ready(): aurora_calm_probe injects this node's fields by hand.
+@export var aurora_director_path: NodePath = NodePath("../AuroraDirector")
 
 # ONE LAKE PER RUN, MAXIMUM, and that is intended rather than a missed reset: DONE is
 # terminal, so a 45-minute run that crosses two 20-minute thresholds still gets one lake.
@@ -215,7 +217,7 @@ func is_lake_due() -> bool:
 # player_x + 1500 -- inside that window. So entry is made HARMLESS rather than conditional;
 # see begin_lake().
 func try_arm() -> void:
-	var aurora: AuroraDirector = get_node_or_null("../AuroraDirector") as AuroraDirector
+	var aurora: AuroraDirector = get_node_or_null(aurora_director_path) as AuroraDirector
 	if aurora != null and aurora.blocks_lake_arming():
 		return
 	if not player.is_on_floor() or player.is_jump_ascending:

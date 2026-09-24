@@ -147,11 +147,29 @@ const AURORA_BAND_COLORS: Array[Color] = [
 # clipped, and that remainder is the brightest pixels of the hem itself, where a white-hot core
 # is what an aurora actually looks like. Raise any of these three and re-measure both palettes.
 const AURORA_BAND_WEIGHTS: PackedFloat32Array = [0.70, 0.28, 0.24]
-# The bright hems must sit ABOVE the opaque ridges, not merely the rect tops.
-# These bounds keep the green hem near y=0.18 and the other hems higher; the
-# soft upper tails can extend offscreen. Verified with scenery present.
-const AURORA_BAND_TOPS: PackedFloat32Array = [-0.11, -0.16, -0.20]
-const AURORA_BAND_BOTTOMS: PackedFloat32Array = [0.23, 0.17, 0.13]
+# The bright hems must sit ABOVE the opaque ridges, not merely the rect tops. The soft upper
+# tails can extend offscreen.
+#
+# HEM POSITION AND BAND HEIGHT ARE INDEPENDENT, AND CONFLATING THEM COSTS THE WHOLE EFFECT.
+# The hem sits at AURORA_HEM_BASE (0.84) of the rect, measured from its TOP -- so a band is
+# grown by moving its TOP up, never its bottom down. Moving the bottoms down drags the hems
+# down with them, and on 2026-09-13 that put all three hems (0.18/0.12/0.08 -> 0.37/0.29/0.23)
+# behind the background haze and ice panorama, which draw in FRONT of the sky layer. The
+# curtains were still being rendered; they were simply occluded, and the owner's verdict was
+# "whered the aurora borealis on top go". That is exactly what the first line of this comment
+# has always warned about.
+#
+# So the hems are back where they were measured -- 0.176 / 0.117 / 0.077, all clear of the
+# scenery -- and the HEIGHT is what changed: 0.34 -> 0.62 for band 0, with the extra taken
+# entirely off the top. That matters because AURORA_RISE is a fraction of the band's height,
+# so the rays now climb 0.36 of the viewport above the hem instead of 0.20: they fill the whole
+# visible sky rather than a strip, which is what the owner's reference set
+# (art_source/aurora_reference/) shows and why the bands were being grown in the first place.
+#
+# If these are ever retuned: keep T + 0.84 * (B - T) at the hem values above, or measure new
+# ones against the scenery WITH the background present.
+const AURORA_BAND_TOPS: PackedFloat32Array = [-0.345, -0.370, -0.377]
+const AURORA_BAND_BOTTOMS: PackedFloat32Array = [0.275, 0.210, 0.163]
 # Seconds per full horizontal drift cycle, and per brightness breath. Deliberately coprime-ish
 # and none of them a divisor of another: bands that share a period visibly pulse together, which
 # reads as one object flickering rather than three curtains moving independently.
@@ -210,8 +228,16 @@ const AURORA_RAY_BANDS: Array[Vector2] = [
 	Vector2(51.0, 68.0),
 ]
 const AURORA_RAY_AMPLITUDES: PackedFloat32Array = [0.42, 0.28, 0.19, 0.11]
-# How much of a column's brightness survives in the darkest gap between rays.
-const AURORA_RAY_FLOOR: float = 0.28
+# How much of a column's brightness survives in the darkest gap between rays. Lowered from 0.28
+# once the bands got their real height: deeper gaps are what make the rays read AS rays instead
+# of as a faint texture on a ribbon, and the references are emphatic that the vertical columns
+# are the defining feature of the whole effect.
+#
+# This is the safe lever for ray contrast. AURORA_RAY_AMPLITUDES and AURORA_BAND_WEIGHTS are
+# NOT -- both were measured against the two night palettes for clipping (see the note on
+# AURORA_BAND_WEIGHTS: peak 1.03, 0.02% clipped), and lowering a floor deepens the dark gaps
+# without touching the peak at all.
+const AURORA_RAY_FLOOR: float = 0.12
 
 # --- Stars -------------------------------------------------------------------------------
 # Built in code rather than shipped as a PNG, the same way snow_drift.gd builds its flake dot

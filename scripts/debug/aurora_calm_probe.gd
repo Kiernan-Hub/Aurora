@@ -11,6 +11,24 @@ const EVENT_SECONDS: float = 61.0
 const MARGIN: float = 4096.0
 const LENGTH: float = EVENT_SECONDS * PowerupManager.SPEED_BOOST_SPEED + MARGIN * 2.0
 const MAX_FRAMES: int = 7000
+# --- Night-gate scan ---------------------------------------------------------------------
+# Step of the fine profile the window queries are answered from. 25px is ~0.03s at MAX_SPEED
+# and divides NIGHT_START_STEP and the lookahead exactly, so every window lands on samples
+# rather than between them.
+const NIGHT_SCAN_STEP: float = 25.0
+# How often a window START is tested. Coarser than the scan on purpose: the profile has to be
+# fine enough to catch a dip, the starts only fine enough to measure the opening.
+const NIGHT_START_STEP: float = 250.0
+# Absolute cycle index 0 is first_light, substituted for whatever the rotation would put
+# there, so the steady-state cycle only begins after it. Scanning from index 8 measures the
+# arc every later biome actually plays.
+const NIGHT_SCAN_ORIGIN: float = BiomeDirector.BIOME_DISTANCE * 8.0
+# The opening the authored palettes give, as seconds of an 800s cycle at MAX_SPEED. Measured
+# at 108s on 2026-09-16 and reproduced by this check. The band is wide because it is not a
+# tuning target -- it is there to fail loudly if a palette edit closes the window (no aurora
+# can ever start, silently) or throws it open (the set piece stops being rare).
+const NIGHT_OPEN_SECONDS_MIN: float = 30.0
+const NIGHT_OPEN_SECONDS_MAX: float = 300.0
 var failures: Array[String] = []
 var assertions: int = 0
 
@@ -50,6 +68,8 @@ func run() -> void:
 			await check_traversal(seed_value, true)
 		if DisplayServer.get_name() == "headless":
 			await check_headless_death_isolation()
+	await check_schedule()
+	check_night_gate()
 	await check_entry_failures()
 	await check_live_encounter(true)
 	await check_live_encounter(false)
@@ -356,6 +376,182 @@ func check_entry_failures() -> void:
 		expect(not (context["save"] as MemorySaveStore).achievements.get(
 			AchievementManager.UNDER_THE_AURORA, false), "Partial/dead encounter awarded achievement")
 		await close_case(context)
+
+
+# THE HALF NO LIVE CASE REACHES. make_case() hands the director a deadline that is already
+# due, so everything upstream of that -- the unscheduled sentinel, the write-once scheduling,
+# the run-time gate and the preview bypass -- is proved by nothing else in the project, and
+# AuroraDirector hard-skips headless so no other gate constructs it at all. Every write here
+# lands in MemorySaveStore; the real save.dat is never opened.
+func check_schedule() -> void:
+	var context: Dictionary = make_case(false)
+	var director: AuroraDirector = context["director"]
+	var save: MemorySaveStore = context["save"]
+	var main: Main = context["main"]
+
+	# -1.0 is UNSCHEDULED and must not read as due at any banked total. 0.0 is a real
+	# deadline meaning "now", which is exactly why the sentinel had to be negative -- both
+	# halves of that choice, or the next person picks 0.0 again.
+	save.next_aurora_due_seconds = -1.0
+	expect(not director.is_aurora_due(), "Unscheduled sentinel read as due")
+	save.next_aurora_due_seconds = 0.0
+	expect(director.is_aurora_due(), "A zero deadline did not read as due")
+
+	# Scheduling writes BANKED + one interval, persists once, and never revisits a deadline
+	# it already wrote. Re-scheduling every IDLE frame would postpone the first event forever.
+	save.next_aurora_due_seconds = -1.0
+	save.total_playtime_seconds = 1234.0
+	save.writes = 0
+	director.schedule_if_unscheduled()
+	expect(save.next_aurora_due_seconds == 1234.0 + AuroraDirector.AURORA_INTERVAL_SECONDS,
+		"Deadline was not the banked total plus one interval")
+	expect(save.writes == 1, "Scheduling did not persist exactly once")
+	director.schedule_if_unscheduled()
+	expect(save.writes == 1, "Scheduling rewrote a deadline that already existed")
+
+	# A preview session must leave the sentinel alone, or eyeballing the look writes a real
+	# deadline into the player's progression.
+	save.next_aurora_due_seconds = -1.0
+	save.writes = 0
+	director.debug_aurora_ignore_night = true
+	director.schedule_if_unscheduled()
+	expect(save.next_aurora_due_seconds == -1.0 and save.writes == 0,
+		"Preview mode scheduled a real deadline")
+	director.debug_aurora_ignore_night = false
+
+	# The run-time gate, and the deadline it sits in front of.
+	save.total_playtime_seconds = 36000.0
+	save.next_aurora_due_seconds = 100.0
+	main.elapsed_time = AuroraDirector.MIN_RUN_TIME_SECONDS - 1.0
+	expect(not director.is_aurora_due(), "A due deadline fired before the run-time gate")
+	main.elapsed_time = AuroraDirector.MIN_RUN_TIME_SECONDS
+	expect(director.is_aurora_due(), "A due deadline did not fire at the run-time gate")
+	save.next_aurora_due_seconds = director.get_total_playtime_seconds() + 1.0
+	expect(not director.is_aurora_due(), "A deadline in the future read as due")
+
+	# The interval override is a read-side bypass and deliberately sits ABOVE the run-time
+	# gate, so a review session does not have to survive two minutes first.
+	main.elapsed_time = 1.0
+	director.debug_aurora_interval_override = 10.0
+	expect(not director.is_aurora_due(), "Interval override fired before its own threshold")
+	main.elapsed_time = 10.0
+	expect(director.is_aurora_due(), "Interval override did not bypass the run-time gate")
+	director.debug_aurora_interval_override = 0.0
+	await close_case(context)
+
+
+# THE NIGHT GATE, against the real palettes rather than the probe's ControlledNight stub.
+#
+# Two separate claims, and only the second one has teeth against the arc as authored today.
+#
+#   1. get_minimum_night_ahead() may not OVER-REPORT. It checks endpoints plus biome
+#      boundaries on the argument that each transition is monotonic; if that ever stopped
+#      holding, an aurora would start and run into daylight. Answered here against a 25px
+#      scan of the same window, which assumes no monotonicity at all.
+#
+#      THIS ONE CANNOT CURRENTLY FAIL, AND THAT IS WORTH SAYING. The arc has exactly ONE
+#      contiguous night band, ~142,000px, with ~458,000px of daylight between repeats -- so
+#      no 61,000px window can have night at both ends and day in the middle, which is the
+#      only shape the boundary loop exists to catch. Verified 2026-09-20 by deleting that
+#      loop from get_minimum_night_ahead(): this probe stayed green. It is kept as the guard
+#      that starts working the moment a second night pocket, or a shorter cycle, is authored
+#      -- not as a live proof of the shortcut. Do not read a PASS here as one.
+#
+#   2. THE WINDOW HAS TO EXIST, and this is the live claim. The gate needs one CONTIGUOUS
+#      night span longer than the 61s lookahead -- 61,000px at boost speed -- and the arc
+#      gives ~142,000px, an opening of 108s in every 800s cycle. Lowering one palette's
+#      star_density below the threshold, or shortening night by one biome, narrows that
+#      opening and NOTHING ELSE REPORTS IT: every other gate stays green and the feature
+#      simply appears less, or never. Verified 2026-09-20 by taking twilight_blue from 0.85
+#      to 0.75 -- still a wide enough span to fit the event, but the opening falls from 108s
+#      to 20s per cycle and this check goes red.
+#
+# Runs on a bare BiomeDirector -- never added to the tree, so _ready() and its headless
+# early-return are both out of the picture and only the pure cycle maths is exercised.
+func check_night_gate() -> void:
+	var restore_rotation: int = BiomeDirector.session_cycle_rotation
+	var biome: BiomeDirector = BiomeDirector.new()
+	var carrier: CharacterBody2D = CharacterBody2D.new()
+	biome.player = carrier
+	# SHIPPING VALUES, pinned the way make_case() pins them on ControlledNight. These are plain
+	# vars carrying whatever default is in source, and the accelerated one does not merely speed
+	# the scan up: get_cycle_world_x() stops reading the player at all and get_minimum_night_ahead
+	# looks a whole 457,000px ahead, which never clears. Measured against the review defaults this
+	# check reports a night opening of zero for every rotation.
+	biome.debug_biome_seconds = 0.0
+	biome.debug_pin_intro_biome = false
+
+	var event_seconds: float = AuroraDirector.AURORA_DURATION_SECONDS \
+		+ AuroraDirector.AURORA_FADE_SECONDS * 2.0
+	# The same speed is_sky_ready() looks ahead at: a boost cannot run during the event but
+	# can be live on the way in, so the lookahead is sized for the faster of the two.
+	var lookahead: float = event_seconds * PowerupManager.SPEED_BOOST_SPEED
+	var cycle_length: float = BiomeDirector.BIOME_DISTANCE * float(BiomeDirector.BIOME_CYCLE.size())
+	var window_samples: int = int(lookahead / NIGHT_SCAN_STEP)
+	var start_count: int = int(cycle_length / NIGHT_START_STEP)
+	var starts_per_step: int = int(NIGHT_START_STEP / NIGHT_SCAN_STEP)
+	# TWO cycles, not one, and only for the contiguous-span measurement below. The night band
+	# falls at a different phase in every rotation, so a one-cycle scan clips whichever band
+	# straddles the end of the array and reports a span ~9,000px short of the real one. The
+	# window queries only ever read the first cycle's worth of starts.
+	var sample_count: int = 2 * start_count * starts_per_step + window_samples + 2
+	var min_open_seconds: float = INF
+	var max_open_seconds: float = 0.0
+	var min_span_px: float = INF
+
+	# Only the ENTRY POINT rotates, so every rotation sees the same arc from a different
+	# phase -- and each is a real shipping session, so each is measured.
+	for rotation: int in range(BiomeDirector.BIOME_CYCLE.size()):
+		BiomeDirector.session_cycle_rotation = rotation
+		# Running count of samples BELOW the threshold, so "is this whole window night"
+		# is one subtraction instead of a re-scan per window.
+		var daylight_before: PackedInt32Array = PackedInt32Array()
+		daylight_before.resize(sample_count + 1)
+		daylight_before[0] = 0
+		var longest_run: int = 0
+		var run: int = 0
+		for index: int in range(sample_count):
+			var scan_x: float = NIGHT_SCAN_ORIGIN + float(index) * NIGHT_SCAN_STEP
+			var is_night: bool = biome.get_night_amount_at_world_x(scan_x) >= AuroraDirector.NIGHT_THRESHOLD
+			daylight_before[index + 1] = daylight_before[index] + (0 if is_night else 1)
+			run = (run + 1) if is_night else 0
+			longest_run = maxi(longest_run, run)
+		var span_px: float = maxf(float(longest_run - 1), 0.0) * NIGHT_SCAN_STEP
+		expect(span_px > lookahead, "Night is too short to fit the event: %.0fpx of %.0fpx needed" \
+			% [span_px, lookahead])
+		min_span_px = minf(min_span_px, span_px)
+
+		var open_starts: int = 0
+		for start: int in range(start_count):
+			var start_index: int = start * starts_per_step
+			carrier.global_position.x = NIGHT_SCAN_ORIGIN + float(start_index) * NIGHT_SCAN_STEP
+			var claimed: bool = biome.get_minimum_night_ahead(
+				event_seconds, PowerupManager.SPEED_BOOST_SPEED) >= AuroraDirector.NIGHT_THRESHOLD
+			var scanned: bool = daylight_before[start_index + window_samples + 1] \
+				- daylight_before[start_index] == 0
+			expect(not claimed or scanned,
+				"Night lookahead cleared a window a full scan finds daylight in, rotation=%d x=%.0f" \
+				% [rotation, carrier.global_position.x])
+			if claimed:
+				open_starts += 1
+		# As seconds of the cycle at MAX_SPEED, which is what a player at cap experiences.
+		var open_seconds: float = float(open_starts) / float(start_count) \
+			* cycle_length / SpeedManager.MAX_SPEED
+		min_open_seconds = minf(min_open_seconds, open_seconds)
+		max_open_seconds = maxf(max_open_seconds, open_seconds)
+		expect(open_seconds >= NIGHT_OPEN_SECONDS_MIN and open_seconds <= NIGHT_OPEN_SECONDS_MAX,
+			"Night opening is %.0fs per cycle, outside the %.0f-%.0fs band, rotation=%d" \
+			% [open_seconds, NIGHT_OPEN_SECONDS_MIN, NIGHT_OPEN_SECONDS_MAX, rotation])
+
+	print("AURORA_NIGHT_GATE open=", min_open_seconds, "..", max_open_seconds,
+		"s per ", cycle_length / SpeedManager.MAX_SPEED, "s cycle",
+		" narrowest_night=", min_span_px, "px lookahead=", lookahead, "px")
+	# Restored rather than left pinned: a later case in this same process would otherwise
+	# inherit rotation 7 instead of drawing its own. -1 is the unrolled sentinel and restores
+	# cleanly as itself. The director goes first, since it holds the carrier.
+	BiomeDirector.session_cycle_rotation = restore_rotation
+	biome.free()
+	carrier.free()
 
 
 func check_live_encounter(preview: bool) -> void:

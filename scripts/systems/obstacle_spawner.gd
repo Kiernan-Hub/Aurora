@@ -192,7 +192,8 @@ func spawn_cluster() -> void:
 func spawn_obstacle(world_x: float) -> void:
 	# Include collision extent and a little approach clearance at both seams.
 	# Keep this in the final placement path so every caller obeys the reservation.
-	if terrain_generator.overlaps_aurora_flat(world_x - 128.0, world_x + 128.0):
+	if terrain_generator.overlaps_aurora_flat(
+			world_x - AuroraDirector.BODY_CLEARANCE, world_x + AuroraDirector.BODY_CLEARANCE):
 		return
 	var world_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - OBSTACLE_HALF_HEIGHT
 	var obstacle: Obstacle = OBSTACLE_SCENE.instantiate() as Obstacle

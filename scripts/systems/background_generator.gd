@@ -128,6 +128,52 @@ const HASH_INDEX_MULTIPLIER: int = 374761393
 const HASH_MIX_MULTIPLIER: int = 668265263
 const HASH_UNIT_RESOLUTION: int = 100000
 
+# --- Aurora response --------------------------------------------------------------------------
+# modulate MULTIPLIES, so these are chosen to shift hue while keeping the layer's luminance:
+# the dominant channel goes to 1.0 and the others drop, rather than every channel rising, which
+# would just wash the ridges out to white.
+#
+# THE TERRAIN DOES NOT GO GREEN, AND IT DOES NOT BRIGHTEN EITHER. Both were tried and both
+# were wrong, for the same underlying reason -- the palettes already tune scenery against sky.
+#
+# In starlit_night, scenery_far is (0.38, 0.44, 0.62) and sky_horizon is (0.46, 0.52, 0.68):
+# nearly identical, so the far ridges normally melt into the sky. The Aurora then adds green
+# light to the SKY LAYER ONLY. The sky goes bright green, the ridges stay lavender, and two
+# masses of similar brightness in different hues meet along a hard polygon edge -- the owner's
+# 2026-09-13 verdict, "theres a hard contrast in purple here ... the color just perfectly ends".
+#
+# Tinting them green (v1) put the aurora's hue on rock. Brightening them (v2) lifted them into
+# a pale lavender slab that clashed harder still. The reference set settles it: in all four,
+# the peaks are DARK silhouettes against a bright sky. Dark-against-bright reads as an
+# intentional silhouette; equal-brightness-different-hue reads as a seam.
+#
+# So the Aurora DARKENS and cools the scenery, deepening the silhouette as the sky brightens
+# behind it. The far/near split is kept so distance still reads, with far staying lighter.
+const AURORA_SCENERY_COLOR_FAR: Color = Color(0.20, 0.26, 0.50)
+const AURORA_SCENERY_COLOR_NEAR: Color = Color(0.10, 0.14, 0.32)
+const SCENERY_DEPTH_MAX: float = 0.45
+const AURORA_SCENERY_WEIGHT: float = 0.45
+const AURORA_BREATH_PERIOD: float = 19.0
+const AURORA_BREATH_DEPTH: float = 0.35
+# The haze reads as lit mist rather than as a green filter, so it goes toward a paler, cooler
+# value than the ridges do, and at a fraction of their weight.
+# The haze is the one place a little green still belongs -- it is airborne light, not rock --
+# but it stays pale, and at the low ratio below.
+const AURORA_HAZE_COLOR: Color = Color(0.72, 1.0, 0.92)
+# THE HAZE IS THE THING THAT KILLS THE HARD EDGE, so during an Aurora there is simply more of
+# it. This is the one place the effect changes how MUCH fog there is rather than its colour:
+# a veil thick enough to dissolve the ridge tops is the difference between a silhouette that
+# sits in the air and one that is cut out of it. Capped so the far layers never become opaque
+# walls that hide the ridgeline entirely.
+const AURORA_HAZE_ALPHA_GAIN: float = 0.55
+const AURORA_HAZE_ALPHA_CAP: float = 0.78
+# Lowered from 0.55. The haze covers the largest area of any of these, so it was doing most of
+# the flattening: one translucent field of a single green laid over every depth at once.
+const AURORA_HAZE_RATIO: float = 0.34
+
+# Composed with silhouette_color by refresh_silhouette(); never written by apply_palette().
+var aurora_blend: float = 0.0
+
 
 func _ready() -> void:
 	player = resolve_player()
@@ -164,16 +210,70 @@ func apply_palette(palette: BiomePalette) -> void:
 	silhouette_color = palette.get_scenery_color(depth_t)
 	haze_color = palette.get_haze_color(depth_t)
 
-	if ridges_root != null:
-		ridges_root.modulate = silhouette_color
-	if haze_texture != null and haze_texture.gradient != null:
-		# Offsets are untouched: where the band reaches full opacity is a function of
-		# haze_rise and the viewport, not of the biome. Only the colours move.
-		haze_texture.gradient.colors = PackedColorArray([
-			Color(haze_color.r, haze_color.g, haze_color.b, 0.0),
-			haze_color,
-			haze_color,
-		])
+	refresh_silhouette()
+	refresh_haze()
+
+
+# Pushed by AuroraDirector.push_blend(), duck-typed like every other Aurora consumer. The
+# ridges were flat dark silhouettes for the whole encounter -- the owner's screenshot showed
+# a lit sky and a lit ice sheet with an unlit band between them, which broke the chain.
+func apply_aurora(blend: float, elapsed: float) -> void:
+	var target: float = get_aurora_scenery_weight(blend, elapsed, depth_t)
+	if is_equal_approx(target, aurora_blend):
+		return
+	aurora_blend = target
+	refresh_silhouette()
+	refresh_haze()
+
+
+# THE ONE WRITER of ridges_root.modulate, so the biome and the Aurora compose instead of
+# clobbering each other -- the same reason TerrainGenerator.refresh_ice_appearance() exists.
+# silhouette_color stays the PURE palette value and is never overwritten by the Aurora, so a
+# biome transition landing mid-encounter recomputes from both inputs rather than baking one in.
+func refresh_silhouette() -> void:
+	if ridges_root == null:
+		return
+	ridges_root.modulate = silhouette_color.lerp(get_aurora_scenery_color(depth_t), aurora_blend)
+
+
+# Static so BackgroundStrip shares the one scenery response instead of copying its constants.
+# One slow breath so the midground moves with the sky rather than sitting at a fixed tint,
+# phase-offset by depth so the layers do not brighten and dim in lockstep.
+static func get_aurora_scenery_weight(blend: float, elapsed: float, layer_depth: float) -> float:
+	var breath: float = 1.0 - AURORA_BREATH_DEPTH * (0.5 - 0.5 * cos(
+		TAU * (elapsed / AURORA_BREATH_PERIOD + layer_depth)))
+	return clampf(blend, 0.0, 1.0) * AURORA_SCENERY_WEIGHT * breath
+
+
+# The aurora colour a layer catches, by its own depth. See the constants for why this is a
+# sweep rather than one value.
+static func get_aurora_scenery_color(layer_depth: float) -> Color:
+	return AURORA_SCENERY_COLOR_FAR.lerp(
+		AURORA_SCENERY_COLOR_NEAR, clampf(layer_depth / SCENERY_DEPTH_MAX, 0.0, 1.0))
+
+
+# THE ONE WRITER of the shared haze gradient's colours, for the same compose-don't-clobber
+# reason as refresh_silhouette(). haze_color stays the pure palette value.
+#
+# Offsets are untouched here: where the band reaches full opacity is a function of haze_rise and
+# the viewport, not of the biome or the Aurora. Only the colours move. Every haze band in this
+# layer shares ONE GradientTexture2D, so this recolours all of them, including later ones.
+#
+# Weaker than the silhouette weight on purpose. The haze is what carries the scene's depth, and
+# pushing a big translucent field this far toward one hue is how a night landscape goes muddy.
+func refresh_haze() -> void:
+	if haze_texture == null or haze_texture.gradient == null:
+		return
+	var lit: Color = haze_color.lerp(AURORA_HAZE_COLOR, aurora_blend * AURORA_HAZE_RATIO)
+	# Alpha RISES with the Aurora -- see AURORA_HAZE_ALPHA_GAIN. This is the deliberate
+	# exception to "colour only": the thickening veil is what softens the sky/ridge boundary.
+	lit.a = minf(haze_color.a * (1.0 + AURORA_HAZE_ALPHA_GAIN * aurora_blend),
+		AURORA_HAZE_ALPHA_CAP)
+	haze_texture.gradient.colors = PackedColorArray([
+		Color(lit.r, lit.g, lit.b, 0.0),
+		lit,
+		lit,
+	])
 
 
 func resolve_player() -> CharacterBody2D:

@@ -1,233 +1,73 @@
 # Handoff
 
-## Current Aurora state — 2026-09-11
+## Aurora — 2026-09-20, shipping defaults and streak coverage
 
-The complete Aurora encounter is implemented on `claude/aurora-reconcile` through
-`9db1fb9` and pushed to `origin`. It is a 61-second, once-per-run event due every 30 minutes of
-cumulative playtime, gated by enough remaining night for the full encounter. The current scene is
-intentionally in **TEMP preview mode** (`BiomeDirector.debug_biome_seconds = 10.0`,
-`AuroraDirector.debug_aurora_interval_override = 10.0`,
-`AuroraDirector.debug_aurora_ignore_night = true`), so it is reviewable now but not shippable until
-those three values are restored to `0.0`, `0.0`, and `false` respectively.
+Restored the three preview defaults to shipping values (`0.0`, `0.0`, `false`).
+`sky_layer_check` now isolates both streak directions at 6.575 s and 13.575 s,
+checks visible sky contribution and reflected ice contribution, pause stability,
+zero-blend cleanup and the quiet interval. The windowed gate passed at both widths
+and both night palettes. `check.sh` **5/5 PASS**; `aurora_calm_probe` **182,974 assertions PASS**.
 
-One director clock owns the entire presentation: protected write-ahead flat and recovery; new
-obstacle/boost/glide suppression; night/lake arbitration; curtains, world wash and ice response;
-camera framing; blade glow; snow; rear wisps; six-feather wings; one bounded 96px crest flight;
-the Music-bus ambient bed; and the once-only `under_the_aurora` achievement. Existing visible
-objects are never removed; coins and non-movement powerups continue. The player returns to normal
-grounded input before recovery ends.
+Remaining: other windowed gates, shipping-pace playtest, Android review, and owner look decisions.
+Earlier TEMP-default and 4/5 notes below describe the previous state.
 
-Latest evidence: `aurora_calm_probe.gd` passes 163,746 assertions across preview and credited
-encounters; `sky_layer_check.gd` passes native at 1152×648 and 1440×648; the 20,000-frame ordinary
-camera/movement regression passes. `shipping_values_check.gd -- --allow-temp` reports only the
-three deliberate preview values. Remaining work is owner motion/audio taste review and Android
-speaker/headphone/frame-input testing, then restoring the shipping defaults and running the clean
-shipping gate. Do not add another Aurora subsystem until that acceptance pass identifies a concrete
-issue.
+## Aurora — 2026-09-20, audit #2
 
-## Latest — slice 12: Aurora ambient bed
+**Audit of the whole feature, second pass. No defect in the gameplay logic** — the schedule, the
+reservation, entry/recovery, arbitration and the exclusion rules all re-read clean, and the two
+things that came out of it were a documented-open flicker and a coverage hole.
 
-Aurora now has a dedicated 12-second seamless stereo ambient loop generated locally from periodic
-harmonics (24kHz PCM, 1.10MiB), so it has no licensing dependency. `AuroraAudio` owns one player on
-the existing Music bus rather than occupying the six-voice SFX pool. The director's existing ramp
-controls gain, capped at 0.55 linear over a source measuring −14.5dBFS peak / −21.6dBFS RMS. The
-pause screen's already-wired Music control is now visible.
+| What | Detail |
+|---|---|
+| **Wings flicker — FIXED** | They hid on `not is_on_floor()`, but the crest releases at t = 45 s and the wings run to t = 51 s, so they blinked out for the frames the body spent falling back to the ice. `is_aurora_flight_landing` already names exactly that window; it is now part of the test. No timer, no new state |
+| **The schedule and the night gate now have a gate** | `aurora_calm_probe` grew `check_schedule()` and `check_night_gate()`. PASS at **182,974** assertions (was 163,746), and the whole integration half still runs in ~2.5 s |
 
-The native gate proves forward looping, bounded crest gain, pause/resume, exact zero state and
-death cleanup. The WAV's last-to-first sample step matches its ordinary sample progression because
-every carrier and amplitude envelope completes an integer number of cycles. Final sound taste and
-Android speaker/headphone balance remain owner/device review, not something numeric gates settle.
+**What the night check is actually for.** The gate needs one *contiguous* night band longer than
+the 61 s lookahead. The arc gives **142,125 px** against 61,000 px, an opening of **108.3 s in
+every 800 s cycle** — which reproduces the 2026-09-16 hand measurement exactly, in all eight
+rotations. One palette edit can close that, and **nothing else in the project would report it**:
+taking `twilight_blue` from 0.85 to 0.75 leaves a band still wide enough to fit the event, drops
+the opening to 20 s per cycle, and every other gate stays green. Verified by doing it.
 
-## Latest — slice 11: bounded Aurora crest flight
+**Two things the check does NOT prove, stated so a PASS is not over-read.** The over-report
+assertion (`get_minimum_night_ahead` vs a 25 px scan) **cannot currently fail** — the arc has a
+single night band, so no window can hold night at both ends and day in the middle. Deleting the
+boundary loop from `get_minimum_night_ahead` leaves the probe green; it is kept as the guard for
+a future second night pocket or shorter cycle, not as a live proof. And rarity is still
+**measured, never played**.
 
-The wing apparition now carries the skater through one guided crest arc over the already protected
-flat: five seconds rising, roughly eight near 96px altitude, and five seconds descending. Horizontal
-speed and the base speed ramp continue unchanged. This is a dedicated Player state, not ordinary
-glide or a powerup; it has a hard 96px target, 260px/s vertical cap, no collision bypass and no
-invulnerability. Jump input is neutral only during flight/landing, then ordinary input resumes.
+**Worth knowing:** a bare `BiomeDirector` still carries the committed TEMP `debug_biome_seconds =
+10.0`, and at that value the night lookahead reaches 457,000 px and never clears — the first
+version of this check reported a night opening of zero for every rotation. `check_night_gate()`
+pins the shipping values, the way `make_case()` already does for `ControlledNight`.
 
-The complete calm probe passes 163,746 assertions across preview and credited encounters. It
-measures 1,079 bounded flight frames, 95.999px peak altitude, exactly one landing, buffered-input
-rejection, unchanged horizontal speed, safe camera placement, death cleanup, continued coins,
-camera framing and fully restored grounded movement
-before recovery. Fast gates pass except the three intentional TEMP preview values; the rendered
-gate passes at both widths/night palettes. Owner feel and Android testing are still required.
-The established 20,000-frame ordinary camera/movement regression also passes unchanged.
+`check.sh` is unchanged at 4/5 — still only the three declared TEMP knobs. The list below stands.
 
-## Latest — slice 10: visual Aurora wings
+## Aurora — 2026-09-16, READ THIS FIRST
 
-A brief six-feather light apparition now opens behind the grounded skater from 20–51 seconds,
-reaching full strength for the Aurora crest. It is deliberately visual only: no levitation,
-movement state, collision, input, speed, particles, trail history or independent timer. The
-immutable `Line2D` geometry is built once and the existing Aurora clock changes only transform and
-opacity. It stays structurally behind Player and TerrainGenerator and hides while airborne.
+**The current state is `docs/development/aurora_borealis.md`** — short, and rewritten this day to
+match the code. Every earlier Aurora entry from this file (2026-09-07 → 09-13) moved verbatim to
+the end of `docs/research/aurora_borealis.md`; they are history and several contradict the code.
 
-The rendered gate passes at both widths/night palettes, measuring 65/255 isolated visibility,
-paused-frame identity, bounded timing, draw order and cleanup. Captures are in
-`art_source/audits/aurora-wings-slice/`. The full calm probe passed 159,415 assertions at this
-slice. The controlled flight and ambient bed were deliberately added in later, separately verified
-slices 11 and 12.
+**Audit + lean pass, 2026-09-16.** Gameplay logic re-read end to end, no defect found.
+`aurora_calm_probe` PASS at **163,746** assertions after the changes; `check.sh` 4/5, failing only
+on the three declared TEMP knobs.
 
-## Latest — slice 9: Aurora camera composition
+| Commit | What |
+|---|---|
+| `2f19ff8` | `BackgroundStrip` no longer copies `BackgroundGenerator`'s Aurora constants — shared statics |
+| `f8c9adb` | **Wisps deleted** (script, node, director push, and `sky_layer_check`'s wisp assertions, which would have failed with them disabled) |
+| `111b780` | Spawners use `AuroraDirector.BODY_CLEARANCE`; lake director's Aurora lookup is an `@export` path |
+| this | Docs condensed; history moved to `docs/research/` |
 
-Aurora now eases the authored camera into a restrained 1.055× zoom while lifting the terrain line
-from its ordinary ~0.55 position to 0.59 of screen height. The director's existing appearance
-ramp drives both changes; Main remains the sole camera writer, captures the scene-authored zoom,
-and restores it before the protected recovery ends. Glide has explicit priority. There is no
-rotation, shake, input change or second camera controller.
-
-The complete calm probe passes 159,415 assertions and directly measures the zoom cap, 0.590
-settled framing, zero rotation, glide priority and restoration. The 20,000-frame camera-shake gate
-and windowed Aurora composition gate also pass. Fast gates pass except the three intentional TEMP
-preview values. Owner motion/taste and device review remain owed.
-
-## Latest — slice 8: sparse rear wisps
-
-Three small tapered `Line2D` arcs now drift near the skater, structurally behind Player,
-TerrainGenerator and every gameplay object. Shapes are immutable and built once; the existing
-Aurora clock changes only line position/alpha, with edge fading at the bounded wrap. No particles,
-textures, shaders, trail history, per-frame arrays or rebase state were added.
-
-The windowed gate proves draw order, cleanup, pause stability, drift and 43/255 isolated visibility
-at both widths/night palettes. Captures are in `art_source/audits/aurora-wisps-slice/`. Foreground
-wisps were deliberately skipped to protect pickup/player readability. Owner/device review is owed.
-
-## Latest — slice 7: Aurora completion achievement
-
-The first complete, non-preview encounter now grants `under_the_aurora` (“Under the Aurora”).
-`AchievementManager` listens to the existing `aurora_finished` signal and remains the only
-achievement writer; AuroraDirector has no achievement dependency. The existing toast displays it,
-and the open v3 achievement dictionary needs no version bump.
-
-The isolated lifecycle probe proves preview, partial and death cases grant nothing, a real finish
-persists/emits once, and repeated finish is idempotent: 152,095 assertions pass. Fast functional
-gates pass except the three intentional TEMP preview values. No gallery or reward was added.
-
-## Latest — slice 6: snow gathers and releases
-
-The existing snow emitter now composes biome, glide and Aurora into one bounded density target.
-Aurora adds a broad clock-derived crest, peaking at 1.45× the active night biome (roughly 81 or 102
-visible flakes) within the already allocated 126-flake pool. There is no new emitter, allocation,
-material, velocity mutation or timer. Snow stays on `CanvasLayer -50`, behind all gameplay objects.
-
-The windowed gate checks cleanup and the 1.3–1.6× target bound at both widths/night palettes; fast
-functional gates pass except the three intentional TEMP preview values. Owner/device motion and
-fill-rate review remain owed. Wisps, camera, flight, achievement and sound are still separate.
-
-## Latest — slice 5: grounded blade glow
-
-Aurora now has one local connection to the skater: a compact code-built cyan-green halo and short
-core at the real terrain contact, aligned to the slope and hidden whenever the player is airborne.
-It uses the existing Aurora ramp and adds no shader, particles, trail history, timer or movement
-state. The rendered gate isolates its pixels from the sky/world response and checks cleanup at both
-widths and both night palettes. Captures are in `art_source/audits/aurora-blade-slice/`.
-
-Wisps and snow remain separate because they add overlap and GPU/particle cost. Camera and flight
-remain the highest bug-surface candidates. TEMP preview values remain on for owner review.
-
-## Latest — slice 4: the light reaches the world
-
-Aurora's existing ramp now drives one `CanvasLayer -45` vertical wash and a composed ice response.
-The wash remains behind every gameplay object; the ice change stays inside
-`TerrainGenerator.refresh_ice_appearance()`, alongside biome and lake inputs. It adds no shader,
-timer, movement change or per-chunk state. The upper ice catches emerald/cyan while the deep body,
-tile, cracks and rolling terrain remain readable.
-
-The windowed sky gate passes at both widths with sky, wash and ice active, including restoration,
-draw-layer and input-transparency assertions. Fast gates pass except for the three intentional TEMP
-preview knobs. Captures are in `art_source/audits/aurora-world-slice/`. Owner/device review is still
-owed. Camera, snow, blade/wisp atmosphere, wings/flight, achievement and sound are still separate;
-camera/flight remain the highest bug-surface options and should not be bundled into this slice.
-
-## Latest — slice 3: live calm safety is in
-
-The Aurora now reserves a write-ahead flat passage and enters it through a small lifecycle:
-`PENDING_ENTRY` waits until there is room for the whole 61-second presentation, then `ACTIVE`
-runs it, and `RECOVERY` carries the player safely beyond the reserved boundary. A late entry,
-daylight, a visible conflicting hazard, boost, or glide skips the appearance without changing
-already-written terrain.
-
-The reservation starts beyond the actual collision extents of existing obstacles and powerups;
-those visible objects are never removed. New obstacles and boost/glide pickups are suppressed
-inside the passage. Existing boost or glide is allowed to end before entry; trick boosts use the
-same guard. Coins, other powerups and jumping remain available. Aurora wins when it is due at
-night, while an already armed or active lake blocks Aurora; later lake/Aurora reservations choose
-non-overlapping spans.
-
-`aurora_calm_probe.gd` now proves geometry, entry rejection, death handling, two full live
-encounters (preview and real credit), pause stability, spawn resumption and lake arbitration:
-152,086 assertions headless and 14,708 native. The windowed sky gate also passes. Native shutdown
-still reports its existing audio-harness resource warning. Camera, ice/world lighting, snowfall,
-wings/flight, achievement and sound remain separate future slices. TEMP preview switches remain on.
-
-## Latest — slice 2: flat foundation, not live yet
-
-Owner accepted the sky slice. Added `arm_aurora_flat(length)` and `aurora_calm_probe.gd`.
-One immutable future flat segment; no sampled terrain changes. Eight geometry seeds / four
-ordinary-and-boosted collision traversals pass, including both seams, duration coverage, Y rebase,
-and bounded chunks. Freeze search/replay, floor contact and chasm regressions pass.
-Live Aurora still uses ordinary terrain: safe entry, obstacle/powerup policy and arbitration are
-next. Geometry currently permits only one of lake/Aurora per scene, conservatively.
-
-Found and fixed headless death saving run stats despite playtime banking being disabled. The
-void mutation test may have changed live coins/best stats; user informed, no pre-test copy to
-restore. New probe detaches Services and tests the headless guard with an in-memory save; final
-checks use a separate test project/user directory. Details and results are in the latest section
-of `docs/development/aurora_borealis.md`. TEMP and project settings are unchanged.
-
-## Latest Aurora slice — directional sky arrival
-
-Owner authorized incremental implementation after the experience brainstorm. First slice adds
-`shaders/aurora_curtain.gdshader`: right-to-left reveal and internal folds using existing curtain
-textures. Windowed sky check passes with new reveal/pause/deformation assertions at both widths.
-Four fast checks pass; shipping-values reports the three intentional TEMP overrides plus four
-project pins already missing at turn start. Project settings were not changed.
-
-Updated direction: no slowdown; sound deferred; flat protected passage and brief Aurora-wing
-flight are the proposed next safety/design work, with boost/normal glide excluded during the
-encounter. Terrain, camera, flight, ice light and local VFX are not implemented by this slice.
-See the current checkpoint in `docs/development/aurora_borealis.md`; older plans below are history.
-Owner motion review and Android performance are still required; do not treat rendered visibility
-as acceptance of the completed look. TEMP remains on.
-
-## Aurora — current state and next work, 2026-09-09
-
-The audit-fix implementation is complete but **uncommitted**. It fixes curtain occlusion,
-night-window eligibility, preview progression writes, reset rescheduling, completion clock
-banking, and missing rendered coverage. Temporary preview defaults and diagnostic prints are
-gone. The current tree passes the fast five; the rendered sky gate now includes the curtains at
-1152×648 and 1440×648; 76 native lifecycle/prediction assertions also pass. See
-`docs/review/2026-09-09-aurora-audit.md` and its `art_source/audits/` evidence.
-
-The visual core is now ready for an owner look and a device check. The calm, wash, ice light,
-camera, and achievement are **not built**. This is deliberate: the calm would touch terrain and
-must not be folded into a visual follow-up.
-
-### What the owner should test now
-
-1. Review the curtain composition in a running game: the green hem should sit above the opaque
-   ridge line, with readable rays rather than a flat glow. Judge its height, strength, and motion
-   on a real night palette. The rendered captures are evidence, not final taste.
-2. Run the current build on the target Android device through several appearances and watch frame
-   pacing and heat. Desktop rendering established visibility, not mobile fill-rate safety.
-3. If using a temporary preview knob, remember it is now progression-isolated: an event started
-   under interval/night/biome preview settings cannot initialize or advance aurora progress. A
-   night bypass is useful for checking state flow, not for judging colors authored over night.
-
-### Recommended next steps
-
-1. Accept the current visual/scheduling fixes and commit them as their own reviewable change.
-   Do not mix the pending calm work into that commit.
-2. Make a **design-and-probe pass only** for the calm. Route B, waiting for a naturally clear
-   stretch, was measured at 0.000239% eligible distance before recovery margin and is not viable.
-   Route A needs a write-once, write-ahead terrain reservation, safe entry, existing-obstacle
-   handling, and lake arbitration designed and tested together.
-3. Only after that proof is accepted, implement the calm in one terrain-focused slice with its
-   probe and physics regression tier. The wash, ice light, camera, and achievement then remain
-   separate, low-coupling visual/product slices.
-
-Do not treat the old “What to do next” section below as current; it predates the audit fixes and
-gap measurement. It is retained as history.
+**Next, in order:**
+1. Owner decisions: wings reference image, bloom (recommended no), brighter ice / smear reflection.
+2. Restore the TEMP knobs: `BiomeDirector.debug_biome_seconds` → `0.0`,
+   `AuroraDirector.debug_aurora_interval_override` → `0.0`, `debug_aurora_ignore_night` → `false`.
+3. `check.sh` 5/5, then `sky_layer_check`, `ice_look_capture`, `biome_contact_sheet` in a window.
+4. A shipping-pace playtest that waits for a natural aurora — **rarity is measured, not played**:
+   the night gate is open ~108 s of every 800 s, on top of the 130 s run gate.
+5. Android: fill rate and audio. Then merge.
 
 ## Start here
 
@@ -238,91 +78,6 @@ running log of *where the work is*, newest section first.
 As of **2026-09-06**, branch head `245ad80` — the merge of `main` into this branch. The core
 loop, chasms, coins, powerups, upgrades, achievements, the frozen lake and the background are all
 shipped and working. Gameplay art is still placeholder rects.
-
-> ## 🌌 THE AURORA BOREALIS — TWO BRANCHES RECONCILED 2026-09-09. Read this first.
->
-> **Branch: `claude/aurora-reconcile`**, cut from `claude/aurora-borealis-audit-fqbpzh` with
-> `claude/aurora-borealis-design-1rpnt8` merged into it. Both of those had independently planned
-> AND part-built the aurora, with different plans, different phase numbering and two different
-> "phase 1"s. **Neither is the trunk any more. Do not commit to either.**
->
-> **The plan is `docs/development/aurora_borealis.md` (464 lines), rewritten as one document.**
-> Read it before touching aurora code. Any older copy that reasons about a third `.gdshader`, an
-> `AuroraSky` CanvasLayer at −190, or eligibility by *palette identity across cycle slots 5–7* is
-> superseded — those were real designs on one branch and the other branch built something better.
->
-> ### What is built, and what it does
->
-> | | State |
-> |---|---|
-> | `AuroraDirector` — clock, phase machine, one ramp | **BUILT** |
-> | Three code-built curtains in `SkyBackdrop`, additive `CanvasItemMaterial` | **BUILT.** Nobody has seen them in the engine |
-> | Schedule — stored deadline, 30 min, night gate | **BUILT**, reconciled today |
-> | The calm — no obstacles, no chasms | **IN SCOPE, NOT BUILT.** The live work |
-> | Wash + ground catching the light | **IN SCOPE, NOT BUILT** |
-> | Camera, achievement | Planned, not built |
->
-> ### The owner decisions that settled the merge, 2026-09-09
->
-> - **30 minutes**, not 60. The other branch's "three times the lake's twenty" reasoning is gone.
-> - **The hazards stand down** during an aurora — obstacles and chasms both. One branch had built
->   the feature around *"the aurora must never arm terrain"*; that rule is real but narrower than
->   it was written, and the plan now splits the calm into its two very different halves.
-> - **The light should reach the whole frame** — "everything bright and beautiful". Sky, then the
->   mountains via a wash at `CanvasLayer −45`, then the ground via the `set_lake_ice_blend()`
->   precedent. **Never coins, obstacles or the player**, and the wash never rises above layer 0.
->
-> ### Two real defects were fixed in the merge, not carried
->
-> 1. **The schedule would have paid out a backlog.** `(aurora_count + 1) × INTERVAL` is safe for
->    the lake only because `frozen_lake_count` and `total_playtime_seconds` were born together at
->    v3. The aurora lands in saves that **already hold hours**, so every threshold up to the
->    player's lifetime total was already crossed — roughly one aurora per run, back to back, until
->    the count caught up. Replaced by a stored deadline, `SaveStore.next_aurora_due_seconds`, with
->    `-1.0` as an explicit UNSCHEDULED sentinel because `0.0` reads as "due now". **No version bump
->    needed** — absence resolves correctly.
-> 2. **The playtime sum had been written twice.** `AuroraDirector` carried a verbatim copy of the
->    lake's old function. Both now call `GameManager.get_total_playtime_seconds()`.
->
-> Also fixed while merging: the interval override used to be consulted by the code that WRITES the
-> deadline, which would have persisted a playtest cadence into a real save — and would not even
-> have worked, since an already-scheduled save ignores a shortened interval. It is a read-side
-> bypass now.
->
-> ### Gates — RUN, 2026-09-09, on this Mac
->
-> **The project import their branch owed is done**, and `project.godot` came back
-> **byte-identical** (consistent with the 2026-08-26 measurement that import is not the stripping
-> trigger). The new `aurora_director.gd.uid` is committed — the repo tracks all 67 of them, and
-> that branch shipped a `.gd` without one because it had no Godot.
->
-> **`./scripts/check.sh` — 5/5 PASS**, including `shipping_values` now instantiating
-> `AuroraDirector` for its two knobs.
->
-> **Godot IS available to a session running on the owner's Mac** (`/Applications/Godot.app/...`).
-> The older note here saying every gate is owed to the owner because the session has no binary is
-> true of a *container* session only — **check before assuming**, and discharge in-session.
->
-> ### What to do next
->
-> 1. **Look at the ribbons in the engine, and run `sky_layer_check.gd` WITHOUT `--headless`.**
->    This is the one owed thing, it is cheap, and everything later is composed against it. The
->    curtains were validated by a Python render of the real palettes — good enough to catch two
->    real defects, not good enough to judge a sky.
-> 2. **Measure the chasm-gap question** before building the calm's second half. It decides between
->    a second write-once terrain range (Route A) and simply not starting unless the stretch ahead
->    is already chasm-free (Route B, which touches the height field not at all). The plan has the
->    arithmetic sketch; **do not pick by argument.**
-> 3. Then the calm's free half (obstacles), then the wash, then the ground.
->
-> ### How this work runs
->
-> - **One numbered step at a time, committed alone, then stop for an explicit "go."**
-> - **No headless gate reaches the aurora's schedule at all** — the director hard-skips headless,
->   so `get_total_playtime_seconds()`, the deadline and the night gate are invisible to the fast
->   five. Green proves the feature broke nothing; it proves nothing about the feature.
-> - **Verify claims, don't inherit them.** Every number that turned out wrong across both branches
->   was wrong because someone reasoned from a plausible constant instead of reading it.
 
 **The working tree is clean and `./scripts/check.sh` passes all five gates** (re-verified
 2026-09-09, 5/5, on the commit that carries this note). Everything below is a loose end, not a break.
@@ -343,284 +98,6 @@ shipped and working. Gameplay art is still placeholder rects.
 > **Scene files still have no such cover.** `git status` showed `project.godot` as the only
 > modified file this time, so nothing else was touched — but that was verified, not assumed, and
 > the standing rule is unchanged: **`git status` after ANY engine run.**
-
-## Latest session — 2026-09-07, aurora Phase 2a (the ribbons)
-
-> ### ✅ RUN 2026-09-09 — import and the fast five are done; the windowed gate is not
->
-> Written without a Godot binary, then discharged on the owner's Mac during the branch
-> reconciliation: **project import done** (`project.godot` byte-identical afterwards),
-> **`check.sh` 5/5 PASS**. **Still genuinely owed:**
-> **`sky_layer_check.gd` WITHOUT `--headless`**, because this is a sky change the owner has not
-> seen and that gate is the one built for a new soft layer in this exact stack (it caught a glow
-> contributing 11/255 and being invisible). `git status` after the import.
-
-Three curtains as `TextureRect`s in `SkyBackdrop`, between `SkyStars` and `SkyGlow`, driven only
-by `apply_aurora(blend, elapsed)` — the seam Phase 1 left. `AuroraDirector` passes both values;
-**`sky_backdrop.gd` still has no `_process`**, which is what keeps it free inside the six
-headless gates.
-
-**The shape was measured before it was written.** The bake was ported to Python and rendered
-against the two night palettes' real gradients. Not a substitute for the engine — it cannot see
-draw order, the material, or `expand` on a device — but it caught two defects that would each
-have cost a play session:
-
-- **The rays were invisible.** Averaging three sines from one narrow frequency range converges
-  on a constant (~0.81 flat), so there was no striation at all — a smooth ribbon, which reads as
-  fog. A product of them fails the other way and goes muddy. Four octaves with amplitude falling
-  as frequency rises is what works.
-- **It blew out to white.** The first weights looked right against a *guessed* dark sky. Against
-  the palettes as authored — `twilight_blue`'s `sky_top` is `(0.26, 0.28, 0.50)`, much brighter
-  than assumed — **4.6% of the screen clipped**. Shipped values measure peak 1.03, 0.02% clipped,
-  and that remainder is the hem's own core.
-
-**A ceiling worth knowing before anyone tries to make it greener:** additive light cannot reduce
-the sky's blue, and the upper night sky is blue 0.42–0.54. A fully saturated green is unreachable
-over these palettes by construction. Pulling blue out of the green's own colour got the hem from
-G/B 1.26 to 1.53; brightness does not help, it clips. The only remaining lever is the palette,
-which is a biome change, not a sky one.
-
-**Additive is a `CanvasItemMaterial`, NOT a third `.gdshader`** — the two-shader budget is
-untouched. It is also why the night gate is load-bearing rather than cosmetic: additive over a
-bright sky blows out, so `debug_aurora_ignore_night` shows a composition the game never ships.
-
-**One cost fix:** the bake is ~295,000 pixels against the starfield's 300, so the whole
-construction is **skipped under `--headless`** (gate output is byte-identical either way — the
-bands are built `visible = false` and the director hard-skips headless) and the image is filled as
-a `PackedByteArray` through `create_from_data()` rather than per-pixel `set_pixel()`.
-
-**Phase 2b (a shader) is expected, not avoided** — the owner said so explicitly. 2a is a first
-draft whose job is to be judged. `aurora_borealis.md` records the three rules that keep 2b a
-drop-in: timing stays in the director, `apply_aurora()` stays the only seam, and the layout stays
-data on the node rather than baked into the texture.
-
-**Phase 3 (the achievement) is next and is two edits**, both in `achievement_manager.gd`.
-
-## Latest session — 2026-09-07, aurora Phase 1 (no visuals)
-
-> ### ⚠️ NOTHING HERE HAD BEEN RUN — **discharged 2026-09-09, see the top of this page**
->
-> Kept as the record of how it shipped. The container this was written in had no Godot binary, so
-> **`./scripts/check.sh` did not execute and the engine had never parsed any of it.** Both steps
-> below were done during the branch reconciliation: import clean, `check.sh` 5/5. The two steps
-> were:
->
-> 1. **A project import.** `class_name AuroraDirector` is new, and `shipping_values_check.gd`
->    now does `AuroraDirector.new()` — which cannot resolve until the class is registered.
->    CLAUDE.md keeps import as a manual step for exactly this. `scripts/systems/aurora_director.gd.uid`
->    will be generated by that import; it is not in the commit.
-> 2. **`./scripts/check.sh`.** Expect `shipping_values` to be the one that moves — it gained two
->    knobs.
->
-> **`git status` after the import**, per the standing rule: a settings save rewrites
-> `project.godot` *and* scene files, and this commit adds a node to `main.tscn`.
->
-> The physics tier is **not** owed — nothing here touches physics, collision or spawning. The
-> visual tier is not owed either: Phase 1 draws nothing.
-
-Phase 1 is the director and its bookkeeping, deliberately with **no visuals at all**, so the
-schedule can be proven before any pixel is argued about.
-
-| File | Change |
-|---|---|
-| `scripts/systems/aurora_director.gd` | New, ~250 lines, modelled closely on `frozen_lake_director.gd` so the pair reads as siblings |
-| `scripts/systems/save_store.gd` | `aurora_count` — read, written, reset. **No version bump**; reasoning on the field |
-| `scripts/systems/biome_director.gd` | `get_night_amount()`, one line, its only new public surface |
-| `scenes/main.tscn` | `AuroraDirector` node under `Main` |
-| `scripts/debug/shipping_values_check.gd` | Both new debug knobs, same commit as the knobs |
-
-**The four owner decisions it was built to** (2026-09-07): sky-only with no forced terrain
-segment; **night only**, gated on blended `star_density` >= 0.8; a fixed green/violet identity,
-never per-biome; and **code-built ribbon textures first with a shader explicitly still on the
-table** — the owner's words were that they are willing to spend time and usage on this part, so
-the cheap version is a first draft to be judged, not the intended end state. Phase 2 in
-`aurora_borealis.md` says how to build 2a so 2b can replace it without touching anything else.
-
-**Two things were dropped from the plan as unnecessary, and both are simplifications:** the
-proposed chasm-proximity check and the airborne check in the arm condition. The lake needs its
-equivalents because it commits geometry *and* locks input; this locks nothing, so a bad moment
-to start just means the player looks up a second later — and the 8s fade-in is longer than a
-chasm takes to clear. Adding them would have meant new `TerrainGenerator` API for a problem
-that does not exist.
-
-**`push_blend()` is the only seam Phase 2 arrives through.** It calls `apply_aurora(blend)` on
-`SkyBackdrop` if that method exists and does nothing otherwise — so **Phase 1 landed without
-editing `sky_backdrop.gd` at all**, and a Phase 1 regression cannot be hiding in the sky stack.
-
-**Where the numbers are soft:** `AURORA_DURATION_SECONDS` (45) and `AURORA_FADE_SECONDS` (8) are
-proposed, not measured. Judge them in play. Their ceiling is the biome — a night biome holds
-~100s at cap, so the 61s total fits inside one comfortably, and much past ~90s risks the sky
-brightening underneath the ribbons.
-
-## Latest session — 2026-09-07, aurora planning pass
-
-**No code changed. Docs only.** `docs/development/aurora_borealis.md` was rewritten from a
-sketch with three open questions into a four-phase implementation order. What the audit found,
-shortest first:
-
-- **The record was wrong in three places.** This file and `background_differentiation.md` both
-  called the aurora "fully planned"; its own doc ended on three unresolved questions and a
-  sequencing note. Both claims are corrected.
-- **The sequencing prerequisite is stale and is now closed on evidence.** It said the "ice
-  canyon walls / shard spires" background work had to land first. The background shipped
-  2026-08-24 as the baked panorama, the iceberg line was deleted the same day, the raster route
-  failed three times, and the only live remaining option (procedural ridge reshaping) changes
-  the **silhouette**, not the sky. `SkyBackdrop` is layer -200 and `ParallaxBackground` is -100,
-  so the ribbons sit behind every silhouette by construction. **The two are independent and can
-  be done in either order.** Worth one line of owner confirmation, not a blocker.
-- **One question the old plan missed, and it is the important one: night-only or not.** The
-  trigger is cumulative playtime; sky colour is a function of distance. They are independent, so
-  as designed the first aurora can fire over `pale_morning` — which reads as a rendering bug,
-  not a spectacle. The recommended gate needs no new data: `star_density` is already authored
-  per palette and already blended every frame, and a threshold of >= 0.8 on the blended value is
-  exactly the two night biomes.
-- **The "forced flat segment like the lake's" question is settled by architecture, not taste.**
-  `CLAUDE.md` makes `arm_lake()` the sole writer of `get_terrain_height`'s one permitted runtime
-  input. A second terrain-arming set piece puts a second writer on that invariant. Sky-only
-  means `terrain_generator.gd` is not in the diff at all, which is what makes this the cheapest
-  major feature left.
-- **Recommended against starting with a third shader.** `SkyBackdrop` already builds three of
-  its four layers in code as `Gradient`/`Image` bakes; ribbons are the same class of object as
-  the glow. Try code-built LA8 bands moved by anchor first — no new shader, no imported asset,
-  no art pipeline. If the owner says it reads flat, shader #3 then has a real justification and
-  a reference to beat.
-
-**Gates: none run this session, and none could be** — this container had no Godot binary
-(`/Applications/Godot.app/...` is a macOS path). No code changed here, so nothing was owed, but do
-not read "docs only" as "verified". **A desktop session CAN run them; the fast five were run on
-2026-09-09** — see the top of this page.
-
-**All four Phase 0 decisions were answered the same day, and Phase 1 was written** — see the
-section directly below.
-
-> ## THE REVIEW LISTS ARE CLOSED — 2026-09-03
->
-> **Both of them.** There is no outstanding review debt, and the next session should pick a
-> feature rather than go looking for one here.
->
-> - **The 2026-08-24 review is finished.** Two items were killed on evidence rather than done
->   (#9 Godot 4.7.2, #8 process priorities), and the last one, **#7 segment-cache pruning, is
->   closed won't-fix on a measurement**: ~1.06 KB per segment, ~3.7 MB per hour, and bounded by
->   the *run* rather than the session because restart reloads the scene and clears all four
->   caches. Pruning would re-derive baselines by backward subtraction, which is not bit-identical
->   to the forward addition that built them — a `get_terrain_height` purity violation traded for
->   3.7 MB/hr. The table and the one safe future option are in that review under #7.
-> - **The 2026-09-02 audit is finished.** #1–#10 closed on 2026-09-03, **#12's four minor items
->   closed** the same day, and **#13/#14 are recommended to stay open permanently** — they are
->   size observations with no defect behind them, and both put a load-bearing file
->   (`terrain_generator.gd`, `main.tscn`) in the blast radius of a pure tidying change. Do them
->   bundled with work that already touches those files, never as a cleanup pass. Reasoning is
->   under "Why 13 and 14 should stay open" in the audit.
-> - **Still genuinely open, and tiny:** two run clocks, `Main.elapsed_time` and
->   `SpeedManager.elapsed_time` (audit #11's other half).
->
-> The audit found one real shipped defect — both coin spawners placing 192px too high — and the
-> gate shape that hid it. That is written up below and is the most useful thing either list
-> produced.
-
-> ## ✅ FINISH THIS FIRST — what is actually left
->
-> Nothing here is broken; `check.sh` is green. Two of the four loose ends from the 2026-08-27
-> visual session are **done** and are recorded that way so nobody redoes them:
->
-> - ~~1. `debug_biome_seconds` left at `10.0` in the working tree~~ — **DONE.** It is back at
->   `0.0`, the tree is clean, and `shipping_values_check` passes.
-> - ~~4. The open night-length decision (A/B/C)~~ — **DONE, option A shipped** in `e3beb3a`.
->   Night is 2/8 of the arc. See "CLOSED decision — how much night", below, which is kept for
->   its reasoning and its disc rule, not as an open item.
->
-> **What remains, in order:**
->
-> 1. ~~**`sky_layer_check.gd` is OWED**~~ — **SETTLED 2026-09-02 by the owner in-game.** They
->    played the arc and called the visuals good: night reads as night, the two night biomes stay
->    distinct, the emerald ice is green at depth, the moon is a clean full disc on the right, and
->    the silhouettes followed the sky down. **That is the project's accepted verification for
->    visuals** — the owner judges in-game faster than any capture, and the gate's own doc says the
->    owner judges the final look. Re-run the gate only if a sky/palette change lands that the
->    owner has *not* seen. The original entry, and what to suspect if it ever goes red, follows.
->
->    It is a gate
->    (exits non-zero), it **must run without `--headless`** (`debugging.md`), and it has not run
->    since 2026-08-26. Five commits landed after that run — `glacier_teal`'s emerald ice, three
->    moon fixes, and `twilight_blue`'s night rewrite — and **every headless gate is blind to
->    biome code**, because `BiomeDirector` returns early under `--headless`. `check.sh` being
->    green says nothing here.
->
->    ```
->    /Applications/Godot.app/Contents/MacOS/Godot --path . --script res://scripts/debug/sky_layer_check.gd
->    ```
->
->    **What to suspect if it fails:** `twilight_blue` walked straight at this gate's documented
->    failure mode. Option A turned the glow into *cool moonlight* and darkened the sky it sits
->    on, in the same commit. If those two colours converged, the glow now contributes under
->    24/255 and is invisible — which is exactly the defect (11/255) this gate was built for.
->
-> 2. **`ice_look_capture.gd` and `biome_contact_sheet.gd` are NOT owed in the same sense.**
->    Neither asserts anything; both just save PNGs for a human to look at. The owner judges the
->    final look in-game and has `debug_biome_seconds` for the whole-cycle view, which does the
->    contact sheet's job better. Run them to catch gross breakage before handing over a visual
->    change — not as a gate.
->
-> 3. **Nothing is unpushed** as of 2026-09-03 — `origin/main` and `main` are level at `07b9060`.
->    **Never trust this line; run `git rev-list --left-right --count origin/main...main`.** It has
->    gone stale three times now, because it is the one claim here that a fresh session acts on
->    immediately and the one that expires the moment anybody pushes.
->
-> After those, the project is genuinely clean. The next real feature is the aurora, which needs
-> a planning pass before any code — see "Still in view".
-
-> ## ✅ THE PLAYTEST PHASE IS CLOSED — 2026-09-03
->
-> It ran from 2026-08-26 and every finding it produced is fixed: four visual ones on 08-27 (the
-> green, the moon, the night sky) and the coin-height defect on 09-03, all owner-verified in
-> play. **It is no longer a standing phase that outranks other work** — the project is back to
-> "pick something and do it".
->
-> **What it taught is the part to keep, and it held every single time:** these arrive sounding
-> like taste complaints and were *all* measurable causes. Sample the colours, profile the
-> texture, print the radial falloff, measure where the node actually lands — do not tune by eye
-> and do not reason from the constant. Twice the obvious reading of the symptom was wrong ("the
-> green looks bad" was **not** a hue problem; the disc under the moon was **not** the sky), and
-> both times the first fix had to be redone.
->
-> **If the owner starts reporting findings again, that outranks everything here again** — it is
-> observed-broken behaviour and the rest of this file is review debt. Ask which items are
-> reproducible if it isn't stated; `FREEZE_REPRO` in `debugging.md` is the standing rule for
-> anything that smells like a stall.
-
-**What is actually next — the list is one item long now:**
-
-1. ~~Godot 4.7.2 (review #9)~~ — **DECLINED 2026-08-26**, see below. Don't re-raise it.
-2. ~~**#8, `main.gd` process priorities**~~ — **downgraded 2026-08-26**, close to a no-op.
-   Read the finding below before spending the physics gate suite on it.
-3. **The aurora borealis** — the game's namesake, and with both review lists closed it is the
-   only thing left in view. **The planning pass is DONE (2026-09-07)** —
-   `docs/development/aurora_borealis.md` is now a phased implementation order, and its stale
-   background prerequisite was checked and closed on evidence (see the 2026-09-07 section at the
-   top of this file). **It is still not ready to code**: four decisions in that doc's "Phase 0"
-   are the owner's and they change what gets built. Get those four answered, then Phase 1.
-
-**Two live hazards, both cost a session if you don't know them:**
-
-- **An engine run can silently rewrite `project.godot` AND scene files**, dropping authored
-  values and every comment. **Corrected 2026-08-26:** it is *not* caused by `--editor` or the
-  APK exports (both measured byte-clean) — the trigger is a project-setting **save**. As of
-  2026-08-27 `shipping_values_check` text-scans `project.godot`, so a dropped pin goes red;
-  **scene files still have no such cover**, so run **`git status`** after any engine run and
-  revert what you did not change on purpose. Full table: `docs/development/debugging.md`,
-  "Engine commands that rewrite `project.godot`".
-- **`./aura.apk` at the repo root is from 2026-08-03** — three weeks and ~20 commits stale, kept
-  only because it is gitignored. `debugging.md`'s Android instructions say to re-export before
-  installing; do that rather than trusting the file sitting there.
-
-**Working agreement, in force:** one numbered sub-step at a time, commit it alone, stop and wait
-for an explicit "go". Flag anything with real bug potential, or with a much cheaper alternative,
-before building it. Don't self-verify visuals with screenshots — the owner checks in-game faster.
-
----
-
-The sections below run newest first. The older ones are all background work, which is **parked
-in a shippable state, not finished** — read "Where things actually stand" before touching it.
 
 ## Last session — 2026-09-03: the audit's one real bug, and the gate shape that missed it
 
@@ -1211,10 +688,5 @@ which **must run without `--headless`** and so can never join the runner.
 
 ## Still in view
 
-The **aurora borealis** (`docs/development/aurora_borealis.md`, CLAUDE.md build-order #12) is
-planned to a phased implementation order as of 2026-09-07 (it was described here as "fully
-planned" before that, which was wrong -- its doc ended on three unresolved questions). Not
-started, and the feature the game is named after. Sky-only, purely
-cosmetic, rides its own blend ramp like the frozen lake. It was deliberately sequenced *after*
-the background settles the composition its ribbons sit against — which, with the panorama
-shipped, is closer to true than it was.
+The **aurora borealis** is built and in owner review — see the top of this file and
+`docs/development/aurora_borealis.md`.

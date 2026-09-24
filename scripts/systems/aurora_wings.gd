@@ -62,7 +62,13 @@ func apply_aurora(blend: float, elapsed: float) -> void:
 	if disabled:
 		return
 	var strength: float = get_wing_strength(blend, elapsed)
-	if strength <= 0.0 or (not player.is_on_floor() and not player.is_aurora_flight_active):
+	# is_aurora_flight_landing is part of this test, not a nicety. The crest flight releases at
+	# t=45s and these run to t=51s, so without it the wings blink out for the handful of frames
+	# the body spends falling the last few pixels back to the ice -- visible as a flicker right
+	# in the middle of their fade. That flag means exactly "released from the crest, no floor
+	# contact yet", so it closes the gap without a timer or a second window to keep in sync.
+	if strength <= 0.0 or not (player.is_on_floor() or player.is_aurora_flight_active \
+			or player.is_aurora_flight_landing):
 		visible = false
 		return
 	global_position = player.global_position + Vector2(-2.0, -8.0).rotated(player.animated_sprite.rotation)

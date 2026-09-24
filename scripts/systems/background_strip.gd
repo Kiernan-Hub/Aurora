@@ -87,6 +87,10 @@ class_name BackgroundStrip
 # returns early having applied nothing.
 @export var silhouette_color: Color = Color(0.74, 0.81, 0.9)
 
+# Aurora response weight, composed with silhouette_color. The response itself is shared with
+# background_generator.gd, which owns its constants and the reasoning behind them.
+var aurora_blend: float = 0.0
+
 var strip_sprite: Sprite2D
 
 
@@ -116,8 +120,27 @@ func _ready() -> void:
 # Called by biome_director.gd only. Never called under --headless.
 func apply_palette(palette: BiomePalette) -> void:
 	silhouette_color = palette.get_scenery_color(depth_t)
-	if strip_sprite != null:
-		strip_sprite.modulate = silhouette_color
+	refresh_silhouette()
+
+
+# Pushed by AuroraDirector.push_blend(), duck-typed like every other Aurora consumer. This is
+# the FRONTMOST background layer -- the big ice shapes in the owner's screenshot -- so it is the
+# one that most visibly failed to catch the light.
+func apply_aurora(blend: float, elapsed: float) -> void:
+	var target: float = BackgroundGenerator.get_aurora_scenery_weight(blend, elapsed, depth_t)
+	if is_equal_approx(target, aurora_blend):
+		return
+	aurora_blend = target
+	refresh_silhouette()
+
+
+# THE ONE WRITER of strip_sprite.modulate, so the biome and the Aurora compose rather than
+# clobber. silhouette_color stays the pure palette value; see background_generator.gd.
+func refresh_silhouette() -> void:
+	if strip_sprite == null:
+		return
+	strip_sprite.modulate = silhouette_color.lerp(
+		BackgroundGenerator.get_aurora_scenery_color(depth_t), aurora_blend)
 
 
 # Desktop window resize only -- handheld orientation is pinned to landscape.

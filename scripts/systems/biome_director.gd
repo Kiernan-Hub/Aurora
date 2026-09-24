@@ -230,7 +230,7 @@ var debug_pin_intro_biome: bool = false
 #
 # get_persisted_phase() still uses the real world_x, so a review session cannot write a bogus
 # phase into the shipping path either.
-var debug_biome_seconds: float = 10.0
+var debug_biome_seconds: float = 0.0
 
 # Static, so a restart resumes the accelerated arc instead of snapping back to the intro biome.
 # See the note above -- this mirrors session_biome_phase deliberately.
