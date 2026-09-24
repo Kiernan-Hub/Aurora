@@ -77,6 +77,9 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
   *save*, not the command**: a fresh import and a full `--export-debug` both measured clean
   (2026-08-26). `shipping_values_check` now text-scans for all eight pins, so a stripped one goes
   red; scene files still have no such cover, so `git status` after ANY engine run.
+  **It recurs nearly every session — standing fix, no need to ask:** if `git diff project.godot` is
+  only removed pins/comments and reordered keys, `git checkout -- project.godot`, then `./scripts/check.sh`,
+  and tell the owner it happened. If the diff also *adds* a real setting, keep that line and flag it; never auto-restore a scene file.
 - **World rebasing must stay on.** `Main.world_rebase_enabled` isn't `@export`ed — exporting it
   once serialised to `false` and reintroduced the freeze for weeks. (`freeze_bug.md`)
 - **Spawners under `TerrainGenerator` must not read `session_seed` in `_ready()`** — children ready
