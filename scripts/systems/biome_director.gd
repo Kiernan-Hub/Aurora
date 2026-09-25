@@ -108,7 +108,10 @@ const CHANNEL_CURVES: Array[Vector2] = [
 
 # Below this change in blend progress, re-pushing the palette would be invisible. Outside a
 # transition progress is pinned at exactly 0, so this is what makes the steady state free.
-const PROGRESS_EPSILON: float = 0.002
+# 0.004, not 0.002: on a Galaxy S26 each push cost ~3 ms of GDScript against a 8.3 ms frame,
+# and ~12 a second was what made transitions hitch (2026-09-25). A 0.4% colour step is still
+# far below visible, and it halves the pushes.
+const PROGRESS_EPSILON: float = 0.004
 
 @export var player_path: NodePath = NodePath("../Player")
 @export var sky_backdrop_path: NodePath = NodePath("../SkyBackdrop")
@@ -142,6 +145,12 @@ var blended: BiomePalette = BiomePalette.new()
 var channel_weights: PackedFloat32Array = PackedFloat32Array()
 var applied_biome_index: int = -1
 var applied_progress: float = -1.0
+# The terrain-ice half of a push that _process deferred to the next frame -- see push_palette().
+# `blended` needs no copy: nothing rewrites it until this has been flushed.
+var has_pending_ice: bool = false
+var pending_ice_from: Texture2D
+var pending_ice_to: Texture2D
+var pending_ice_weight: float = 0.0
 
 # Where the previous run in THIS SESSION left off, in world px. GameManager banks it on
 # death; the next run adds it to world_x before the cycle maths and so resumes the colour
@@ -300,7 +309,13 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if debug_biome_seconds > 0.0:
 		debug_biome_elapsed += delta
-	apply_palette_for_world_x(get_cycle_world_x())
+	# A push is split over two frames: scenery on one, terrain ice on the next. Each half is
+	# ~1.5 ms on a phone, and one frame paying both is what missed the 120 Hz deadline.
+	if has_pending_ice:
+		has_pending_ice = false
+		push_ice(blended, pending_ice_from, pending_ice_to, pending_ice_weight)
+	else:
+		apply_palette_for_world_x(get_cycle_world_x(), true)
 
 
 # The world_x the palette cycle is driven from: normally the player's position plus the phase
@@ -315,8 +330,9 @@ func get_cycle_world_x() -> float:
 
 
 # Pure in world_x, which is the whole point -- see the header. Split out from _process so
-# a headless check can drive it directly without a running game.
-func apply_palette_for_world_x(world_x: float) -> void:
+# a headless check can drive it directly without a running game. `defer_ice` is _process's
+# alone; every other caller gets the whole push synchronously.
+func apply_palette_for_world_x(world_x: float, defer_ice: bool = false) -> void:
 	# floor(), not int(), so a negative x (the player starts at 64 but the camera and the
 	# background both address negative world space) still walks the cycle backwards in
 	# order rather than folding around zero.
@@ -337,7 +353,7 @@ func apply_palette_for_world_x(world_x: float) -> void:
 	# The ice PATTERN is the one thing `blended` cannot carry -- a crossfade between two tiles
 	# needs both endpoints and the weight, not a single value. So they ride alongside it to the
 	# one consumer that renders ice. See BiomePalette.ice_texture.
-	push_palette(blended, from_palette.ice_texture, to_palette.ice_texture, channel_weights[BiomePalette.CHANNEL_ICE])
+	push_palette(blended, from_palette.ice_texture, to_palette.ice_texture, channel_weights[BiomePalette.CHANNEL_ICE], defer_ice)
 
 
 # What GameManager banks into session_biome_phase on death, so the next run resumes this
@@ -565,15 +581,21 @@ func get_channel_weight(channel_index: int, progress: float) -> float:
 	return smoothstep(curve.x, curve.y, progress)
 
 
-func push_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_texture: Texture2D, ice_weight: float) -> void:
+func push_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_texture: Texture2D, ice_weight: float, defer_ice: bool = false) -> void:
 	if sky_backdrop != null:
 		sky_backdrop.apply_palette(palette)
 	for background_layer: BackgroundGenerator in background_layers:
 		background_layer.apply_palette(palette)
 	for background_strip: BackgroundStrip in background_strips:
 		background_strip.apply_palette(palette)
-	if terrain_generator != null:
-		terrain_generator.apply_ice_palette(palette, from_ice_texture, to_ice_texture, ice_weight)
+	# The terrain walk repaints every chunk on screen -- half the cost of a push.
+	if defer_ice:
+		has_pending_ice = true
+		pending_ice_from = from_ice_texture
+		pending_ice_to = to_ice_texture
+		pending_ice_weight = ice_weight
+	else:
+		push_ice(palette, from_ice_texture, to_ice_texture, ice_weight)
 	if snow != null:
 		snow.apply_palette(palette)
 	# Trees and birds need no script change at all: a biome's effect on a foreground object
@@ -599,3 +621,8 @@ func push_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_tex
 		glide_coin_spawner.apply_biome_color(palette.coin_color)
 	if obstacle_spawner != null:
 		obstacle_spawner.apply_biome_color(palette.obstacle_color)
+
+
+func push_ice(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_texture: Texture2D, ice_weight: float) -> void:
+	if terrain_generator != null:
+		terrain_generator.apply_ice_palette(palette, from_ice_texture, to_ice_texture, ice_weight)

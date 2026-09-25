@@ -112,6 +112,29 @@ airtime including the brief upward hop a bump imparts.
   directly to `MAX_SPEED` right after spawn. A formula keyed on `elapsed_time` would
   silently overwrite that pin on the next frame.
 
+## Render rate on phones (2026-09-25)
+
+**Biome transitions hitched on a phone — FIXED.** Galaxy S26 (120 Hz, Adreno 840), measured
+with temporary per-second logging to logcat plus `dumpsys SurfaceFlinger --latency`:
+
+- **GPU is not the bottleneck**: ~5.5 ms of the 8.3 ms frame, unchanged in a transition. Don't
+  reach for render-resolution scaling on the strength of "it's a big screen".
+- **The cost was `BiomeDirector.push_palette`**: ~3 ms of GDScript per push, split evenly between
+  sky/background layers and `TerrainGenerator`'s repaint of every on-screen chunk, ~12 pushes/s.
+  Late frames went 0.1/s → 2.1/s inside a transition.
+- **Fix:** `PROGRESS_EPSILON` 0.002 → 0.004 (half the pushes), and `_process` defers the terrain
+  half to the next frame (worst push frame ~1.7 ms). Transition late frames 2.1/s → 0.53/s, the same
+  as outside one. Direct callers of `apply_palette_for_world_x()` still get a synchronous push.
+- **Still open, small:** ~0.5 late frames/s everywhere, cause unmeasured. Moving the ice
+  recolour into `ice.gdshader` uniforms is the next lever if transitions ever hitch again.
+- **`application/run/max_fps.mobile=60` was tried and REVERTED — worse** (a clockwork beat every
+  0.9 s). Godot's surface still requests 120 Hz and `max_fps` is a sleep timer, not vsync-aligned.
+  Don't retry without getting Swappy (`display/window/frame_pacing/android/*`) to present at 60.
+  **90 Hz** is worse still — 60 doesn't divide it.
+- **True 120 Hz motion = physics interpolation**, never a higher tick rate (the tick rate is level
+  geometry). Cost: `reset_physics_interpolation()` on every teleport — world rebasing, restart,
+  respawn, spawner placement — and every probe and the camera were measured with it off.
+
 ## Jump reach, and the rare coin (2026-08-13)
 
 Apex is `v² / 2g` with `v = JUMP_VELOCITY(640) × upgrade multiplier`, so it goes as the
