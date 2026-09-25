@@ -1,5 +1,78 @@
 # Handoff
 
+## Android device review — 2026-09-25, READ THIS FIRST
+
+**Where we are:** on `main`, clean, pushed (`1caf2d7`). Mid-way through the Android device
+review (the last item before calling the Aurora work done). The biome-transition stutter is
+FIXED. **The very next step is the audio + back-button checklist below. The owner has not
+reported results yet.** Ask them for results; don't assume a pass.
+
+### Next step: owner runs this on the phone and reports back
+
+1. **Sound:** tap Start, play ~20 s. Jump and coin SFX audible? (Music is only the Aurora's
+   ambient loop, so silence between SFX during a normal run is expected.)
+2. **Volume slider:** pause, slider to zero, resume. SFX gone? Then restore it.
+3. **Back mid-run:** should PAUSE, not quit. Back again resumes (`GameManager`, `NOTIFICATION_WM_GO_BACK_REQUEST`).
+4. **Back on START/DEAD:** app closes. That's intended. On SHOP, back closes the shop.
+
+To confirm audio from the Mac while they play: `adb shell dumpsys audio`, then look for the app's
+players in the playback configurations (package `com.kiernan.aura`).
+
+**After that, remaining (from the 2026-09-20 notes below):** owner look decisions (wings
+reference image, bloom, ice/reflection), a shipping-pace playtest that waits for a natural
+aurora (rarity is measured, never played), and the three windowed visual gates.
+
+### Device setup (all working as of this session)
+
+| Thing | Value |
+|---|---|
+| Phone | Galaxy S26 Ultra, `SM-S948U`, serial `R3GL20AE8BK`, 1440×3120 @ 120 Hz, Adreno 840, Vulkan |
+| adb | `~/Library/Android/sdk/platform-tools/adb`, **not on PATH** |
+| Export | `/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --export-debug "Android" ./aura.apk` (headless, doesn't touch `project.godot`; `aura.apk` is git-ignored) |
+| Install | `adb install -r aura.apk`, then `adb shell monkey -p com.kiernan.aura -c android.intent.category.LAUNCHER 1` |
+| USB | Phone must be on **"Transferring files"**. Samsung sometimes flips back to "charging only" after an install. adb kept working anyway |
+
+- **Java path was blank → export failed.** The 2026-09-23 `ulimit` accident truncated the global
+  `editor_settings-4.7.tres`. Fixed by setting `export/android/java_sdk_path` to
+  `/Applications/Android Studio.app/Contents/jbr/Contents/Home` (backup of the old file in the
+  session scratchpad; the truncated original is `editor_settings-4.7.tres.broken`).
+  **A Godot editor (PID 37609) has been open since 2026-09-24 12:30 with the blank value in
+  memory. Quitting it may write the blank back.** If the export says "A valid Java SDK path is
+  required", re-set that line with the editor closed.
+- **Relaunching right after `am force-stop`** once failed with "Failed to create vulkan window".
+  It was a race; the next launch was fine. Wait a second between them.
+- **The app sits PAUSED on the Start screen**, so `_process`-driven code does nothing until the
+  owner taps Start.
+
+### `project.godot` strip, 2026-09-24: restored, and now a standing rule
+
+Stripped again at 12:30 (all four default-equal pins plus every comment). It coincided with that
+editor opening. Restored with `git checkout -- project.godot`; `CLAUDE.md` now says to do
+exactly that without asking whenever the diff is only removed pins/comments. **Also:** the
+owner's ChatGPT/Codex app was launching Godot on this project at the same time. Four macOS
+crash reports at 12:33, `com.openai.codex` coalition. Two agents opening Godot on one project
+is a plausible repeat trigger. Mentioned to the owner; nothing done about it.
+
+### Stutter investigation: what was measured (full write-up in `physics.md`, "Render rate on phones")
+
+- Uncapped 120 Hz: ~1 late frame/s normally, **~7/s through a biome transition**, one ~120 ms freeze.
+- **`application/run/max_fps.mobile=60` tried and REVERTED, it was worse.** The surface still
+  requests 120 Hz and `max_fps` is a sleep timer, so it beat every 0.9 s. Owner also asked
+  about 90 Hz (worse, 60 doesn't divide it) and true 120 Hz (needs physics interpolation,
+  a big change, flagged and not started).
+- Temporary per-second logcat profiling (removed before commit): **GPU ~5.5 ms of 8.3, never
+  the bottleneck.** `BiomeDirector.push_palette` cost ~3 ms/push × ~12/s, half sky/background,
+  half the terrain chunk repaint.
+- **Fix `1caf2d7`:** `PROGRESS_EPSILON` 0.002 → 0.004, plus `_process` defers the terrain-ice half
+  to the next frame. **Transition late frames 2.1/s → 0.53/s, the same as outside a transition.**
+- **Still open, small:** ~0.5 slightly-late frames/s everywhere, cause unmeasured. Restarts
+  cost ~80–90 ms (expected). Next lever if transitions ever hitch again: move the ice recolour
+  into `ice.gdshader` uniforms.
+- **Method, reusable:** frame timing = `adb shell "dumpsys SurfaceFlinger --latency '<layer>'"`,
+  where `<layer>` is the full `... SurfaceView[com.kiernan.aura/...]@0(BLAST)#NNN` name from
+  `dumpsys SurfaceFlinger --list` (it changes every launch). It only holds ~128 frames, so poll
+  every ~0.5 s and dedupe. `adb logcat -G 16M` (caps at 5 MiB) so a long run isn't lost.
+
 ## Aurora — 2026-09-20, shipping defaults and streak coverage
 
 Restored the three preview defaults to shipping values (`0.0`, `0.0`, `false`).
