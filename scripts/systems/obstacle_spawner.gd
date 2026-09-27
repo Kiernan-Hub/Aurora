@@ -15,7 +15,7 @@ class_name ObstacleSpawner
 # false) -- that call does not reliably suppress this node's _physics_process in
 # the headless debug-harness contexts that need it (verified: is_physics_processing()
 # reported false while _physics_process kept firing every frame regardless).
-# Harnesses that run long enough to reach a cluster's trigger time
+# Harnesses that run long enough to reach a pattern's trigger time
 # (freeze_search.gd, freeze_ab_runner.gd, stall_recovery_probe.gd,
 # camera_shake_probe.gd, floor_flicker_probe.gd, freeze_replay_runner.gd) set this
 # to true before add_child(main).
@@ -31,35 +31,36 @@ const OBSTACLE_HALF_HEIGHT: float = 16.0
 # window. get_slope_angle_at_x is the analytic (cosmetic) angle -- fine here,
 # unlike Player.get_slope_tangent(), since nothing physical rides on this value.
 const OBSTACLE_MAX_SLOPE_ANGLE: float = deg_to_rad(6.0)
-# Chasm exclusion around an obstacle slot. AHEAD covers the maximum jump reach (600px at
-# MAX_SPEED) plus margin, because an obstacle that forces a jump into a void is unavoidable
-# death. BEHIND only has to stop an obstacle sitting on the landing side of a far lip.
-const OBSTACLE_VOID_CLEARANCE_AHEAD: float = 700.0
+# How finely the footprint guard walks a pattern's span for slope and lake. Half a hitbox,
+# so no piece can sit on a sample-free stretch.
+const FOOTPRINT_SAMPLE_STEP: float = 16.0
+# Chasm exclusion around a pattern's span. AHEAD covers the longest jump a player can take off
+# the last piece: max upgrade with the sqrt(2) jump powerup, 1.13s of airtime, 848px at
+# MAX_SPEED, plus margin. It was 700 until 2026-09-27, which covered only the unboosted 600px,
+# so a late boosted jump over an obstacle 700-850px before a void could land in it. BEHIND only
+# has to stop a piece sitting on the landing side of a far lip.
+const OBSTACLE_VOID_CLEARANCE_AHEAD: float = 950.0
 const OBSTACLE_VOID_CLEARANCE_BEHIND: float = 200.0
-# Clamp on how close to spawn a cluster can ever land: the old hand-placed
+# Clamp on how close to spawn a pattern can ever land: the old hand-placed
 # obstacle at (68,56) killed the player mid-jump at t=0.10s
 # (docs/development/dead_code.md) because it sat inside the player's very
-# first few physics steps. FIRST_CLUSTER_TIME being 20s already keeps well
+# first few physics steps. FIRST_PATTERN_TIME being 20s already keeps well
 # clear of this in practice; this is just a floor.
 const MIN_SAFE_START_WORLD_X: float = 900.0
 
-# Cluster cadence is timed against Player.speed_manager.elapsed_time, not a
+# Pattern cadence is timed against Player.speed_manager.elapsed_time, not a
 # fixed world_x spacing: with the two-phase speed ramp (SpeedManager), a fixed
 # world_x interval would take wildly different real time to reach depending on
 # when in the ramp it falls, which is exactly the "not actually once a minute"
 # bug this replaces.
 #
-# Every "cluster" is exactly one obstacle -- multi-obstacle groups (formerly
-# 1-5 with a tight/wide gap between them) were cut in favor of frequent
-# singles, which reads as a harder, steadier stream of hazards rather than a
-# quiet stretch followed by a wall of boxes. FIRST_CLUSTER_TIME is left
-# untouched: terrain_invariant_check's check_obstacle_clearance() derives the
-# slowest speed an obstacle is ever judged against from this constant, and
-# lowering it tightens that jump-clearance window rather than loosening it.
-const FIRST_CLUSTER_TIME: float = 20.0
-# Cadence ramps up in OBSTACLE_RAMP_WINDOW-second steps: ~1 obstacle in the
+# FIRST_PATTERN_TIME is left untouched: terrain_invariant_check derives the slowest speed a
+# pattern is ever judged against from this constant (check_obstacle_clearance() and
+# check_pattern_fairness()), and lowering it tightens those windows rather than loosening them.
+const FIRST_PATTERN_TIME: float = 20.0
+# Cadence ramps up in OBSTACLE_RAMP_WINDOW-second steps: ~1 pattern in the
 # first window, ~2 in the second, ~3 in the third, and so on, each window's
-# obstacles spread by a randomized interval (not evenly spaced) drawn around
+# patterns spread by a randomized interval (not evenly spaced) drawn around
 # that window's average. target_count is clamped at OBSTACLE_RAMP_MAX_COUNT
 # so the density stops climbing once it's already denser than the speed ramp
 # (which caps at t=120s, MAX_SPEED) can justify -- otherwise an endless run
@@ -67,28 +68,59 @@ const FIRST_CLUSTER_TIME: float = 20.0
 const OBSTACLE_RAMP_WINDOW: float = 30.0
 const OBSTACLE_RAMP_MAX_COUNT: int = 6
 # Absolute floor under the random interval regardless of how dense the ramp
-# above wants to go, so a jittered-down roll can never land two obstacles
-# closer together than a player has time to react to.
-const RECURRING_CLUSTER_MIN_INTERVAL_FLOOR: float = 4.0
+# above wants to go, so a jittered-down roll can never land two patterns
+# closer together than a player has time to react to. terrain_invariant_check asserts it stays
+# above the longest jump, so the end of one pattern can never land the player in the next.
+const RECURRING_PATTERN_MIN_INTERVAL_FLOOR: float = 4.0
+# How long an illegal footprint waits before trying again, from 2026-09-27. Until then a slot
+# that failed the guard was simply LOST, and the guard fails ~60% of the time (measured over
+# three seeds: 37-41% of x positions pass), so most scheduled obstacles never appeared. Same
+# retry shape as RareCoinSpawner's, which found the same problem first.
+const FOOTPRINT_RETRY_DELAY: float = 1.0
 
-# Beyond the forward view, so a cluster is never seen popping into existence. 800 was
+# Beyond the forward view, so a pattern is never seen popping into existence. 800 was
 # already short of a 20:9 phone's ~860px, and Main.PLAYER_SCREEN_X_FRACTION now shows
 # ~1,270px ahead on 21:9. terrain_invariant_check's check_spawn_lookahead() asserts it.
 const SPAWN_LOOKAHEAD_WORLD_X: float = 1500.0
-# Well behind the player is safe to free -- a cluster this far back is done
+# Well behind the player is safe to free -- a pattern this far back is done
 # regardless of whether it was cleared or hit.
 const DESPAWN_BEHIND_WORLD_X: float = 1500.0
+
+# WHAT CAN BE PLACED. A piece kind is a scene plus the two numbers that place it: half its
+# hitbox width (its footprint along the ground) and how high its CENTRE sits above the surface.
+# half_height is the hitbox's own, and only terrain_invariant_check reads it -- the fairness
+# model needs the full rect, and check_spawn_placement() compares both against the real shape.
+const PIECE_SPIKE: StringName = &"spike"
+const PIECE_KINDS: Dictionary = {
+	PIECE_SPIKE: {"scene": OBSTACLE_SCENE, "half_width": 16.0, "half_height": OBSTACLE_HALF_HEIGHT,
+		"center_height": OBSTACLE_HALF_HEIGHT},
+}
+
+# WHAT ARRIVES TOGETHER. A pattern is a few pieces timed in SECONDS from the first, placed
+# at the current speed. On flat ground a jump's height over time does not depend on speed, so
+# terrain_invariant_check's check_pattern_fairness() can prove every row beatable at every jump
+# level from this table alone -- a new row is only legal once it passes there.
+#
+# The multi-obstacle "clusters" this replaces (1-5 boxes with a tight/wide gap) were cut in
+# favour of frequent singles, because they were spaced in pixels and nothing proved them
+# beatable. A row here is the same idea with the proof attached.
+const PATTERNS: Array[Dictionary] = [
+	{"id": &"spike", "tier": 1, "weight": 1, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}]},
+]
+
 const HASH_MASK: int = 0x7fffffff
 # Distinct multiplier pair from both TerrainGenerator.get_segment_hash and
 # CoinSpawner.get_slot_hash so none of the hash sequences correlate, even
 # though all three ultimately key off the same session_seed.
 const HASH_INDEX_MULTIPLIER: int = 2654435761
 const HASH_MIX_MULTIPLIER: int = 1274126177
+const HASH_CHANNEL_INTERVAL: int = 0
+const HASH_CHANNEL_PATTERN: int = 1
 
 var terrain_generator: TerrainGenerator
 var player: Player
-var next_cluster_time: float = FIRST_CLUSTER_TIME
-var next_cluster_index: int = 0
+var next_pattern_time: float = FIRST_PATTERN_TIME
+var next_pattern_index: int = 0
 var active_obstacles: Array[Node2D] = []
 
 # The current biome's obstacle colour, pushed by BiomeDirector.push_palette(). Same contract
@@ -120,20 +152,24 @@ func _physics_process(_delta: float) -> void:
 		return
 
 	# not player.is_boosting: a boost forces the grounded model and suppresses jump
-	# input for its full 3s (player.gd, is_boosting), so a cluster landing inside one
-	# is unavoidable death (CLAUDE.md Known Issues). Withholding next_cluster_time's
-	# advance, rather than skipping the cluster outright, means the wait ends the
-	# instant the boost does -- and spawn_cluster always places its obstacle
+	# input for its full 3s (player.gd, is_boosting), so a pattern landing inside one
+	# is unavoidable death (CLAUDE.md Known Issues). Withholding next_pattern_time's
+	# advance, rather than skipping the pattern outright, means the wait ends the
+	# instant the boost does -- and try_place_pattern always places
 	# SPAWN_LOOKAHEAD_WORLD_X ahead of wherever the player currently is, so one
 	# spawned right as the boost ends still gets the same reaction-time lookahead as
-	# any other. A boost (3s) can never span two trigger times (12-30s apart), so
-	# this doesn't need the catch-up a `while` gives the despawn loop below.
-	if player.speed_manager.elapsed_time >= next_cluster_time and not player.is_boosting:
-		spawn_cluster()
-		next_cluster_index += 1
-		var interval_bounds: Vector2 = get_interval_bounds(player.speed_manager.elapsed_time)
-		var interval: float = interval_bounds.x + (get_cluster_hash(next_cluster_index) * (interval_bounds.y - interval_bounds.x))
-		next_cluster_time += interval
+	# any other.
+	var elapsed_time: float = player.speed_manager.elapsed_time
+	if elapsed_time >= next_pattern_time and not player.is_boosting:
+		# The pattern is drawn from next_pattern_index, which only advances on success, so a
+		# retry asks for the SAME pattern further along rather than re-rolling past it.
+		if try_place_pattern(get_pattern(next_pattern_index)):
+			next_pattern_index += 1
+			var interval_bounds: Vector2 = get_interval_bounds(elapsed_time)
+			var interval_roll: float = get_pattern_hash(next_pattern_index, HASH_CHANNEL_INTERVAL)
+			next_pattern_time += interval_bounds.x + (interval_roll * (interval_bounds.y - interval_bounds.x))
+		else:
+			next_pattern_time += FOOTPRINT_RETRY_DELAY
 
 	var despawn_world_x: float = player.global_position.x - DESPAWN_BEHIND_WORLD_X
 	for index: int in range(active_obstacles.size() - 1, -1, -1):
@@ -152,52 +188,92 @@ func _physics_process(_delta: float) -> void:
 # The randomized interval band for the window elapsed_time currently falls in --
 # see the ramp comment above OBSTACLE_RAMP_WINDOW. +/-30% jitter around the
 # window's average keeps the cadence from reading as a metronome while still
-# landing roughly the target obstacle count per window.
+# landing roughly the target pattern count per window.
 func get_interval_bounds(elapsed_time: float) -> Vector2:
 	var window: int = int(elapsed_time / OBSTACLE_RAMP_WINDOW)
 	var target_count: int = mini(window + 1, OBSTACLE_RAMP_MAX_COUNT)
 	var average_interval: float = OBSTACLE_RAMP_WINDOW / float(target_count)
-	var min_interval: float = maxf(RECURRING_CLUSTER_MIN_INTERVAL_FLOOR, average_interval * 0.7)
+	var min_interval: float = maxf(RECURRING_PATTERN_MIN_INTERVAL_FLOOR, average_interval * 0.7)
 	var max_interval: float = maxf(min_interval + 0.1, average_interval * 1.3)
 	return Vector2(min_interval, max_interval)
 
 
-# Places (up to) one obstacle. Takes no index now that count/gap randomization is gone
-# (multi-obstacle groups were cut, see the comment above FIRST_CLUSTER_TIME) -- kept as
-# a distinct function from spawn_obstacle() because it's the one that applies the
-# slope/chasm placement rules, where spawn_obstacle() is the unconditional placer.
-func spawn_cluster() -> void:
-	var world_x: float = maxf(MIN_SAFE_START_WORLD_X, player.global_position.x + SPAWN_LOOKAHEAD_WORLD_X)
-	# Skip (don't reposition) a slot that lands on a slope -- a missed obstacle
-	# this cycle is fine, an obstacle glued to a slope isn't (see
-	# OBSTACLE_MAX_SLOPE_ANGLE above).
-	if absf(terrain_generator.get_slope_angle_at_x(world_x)) > OBSTACLE_MAX_SLOPE_ANGLE:
-		return
-	# Second reason to skip, and this one is safety-critical rather than cosmetic. An
-	# obstacle within one jump reach BEFORE a chasm's near lip is unavoidable death:
-	# clearing the obstacle commits the player to a landing, and that landing is in the
-	# void. Max reach is 0.8s airtime * MAX_SPEED 750 = 600px, so the exclusion runs
-	# OBSTACLE_VOID_CLEARANCE_AHEAD past the obstacle and a shorter margin behind it.
-	if not terrain_generator.has_ground_over_world_x_span(world_x - OBSTACLE_VOID_CLEARANCE_BEHIND, world_x + OBSTACLE_VOID_CLEARANCE_AHEAD):
-		return
-	# Third reason to skip, and safety-critical for the same shape of reason as the chasm
-	# rule above: jumping is disabled across the frozen lake, so an obstacle there is
-	# unavoidable death rather than a hazard. Skipped rather than rescheduled, matching the
-	# two checks above -- next_cluster_time has already advanced, so the cluster is simply
-	# lost, which is exactly the gap the set piece wants.
-	if terrain_generator.is_lake_world_x(world_x):
-		return
-	spawn_obstacle(world_x)
+# Weighted draw over PATTERNS, a pure function of (session_seed, pattern_index).
+func get_pattern(pattern_index: int) -> Dictionary:
+	var total_weight: int = 0
+	for pattern: Dictionary in PATTERNS:
+		total_weight += int(pattern["weight"])
+	var remaining_weight: int = int(get_pattern_hash(pattern_index, HASH_CHANNEL_PATTERN) * float(total_weight))
+	for pattern: Dictionary in PATTERNS:
+		remaining_weight -= int(pattern["weight"])
+		if remaining_weight < 0:
+			return pattern
+	return PATTERNS[PATTERNS.size() - 1]
 
 
-func spawn_obstacle(world_x: float) -> void:
+# Places every piece of the pattern or none of them. Returns false when the footprint guard
+# rejects the span, so the caller retries instead of losing the pattern.
+func try_place_pattern(pattern: Dictionary) -> bool:
+	var speed: float = player.speed_manager.current_speed
+	var start_x: float = maxf(MIN_SAFE_START_WORLD_X, player.global_position.x + SPAWN_LOOKAHEAD_WORLD_X)
+	var span: Vector2 = get_pattern_span(pattern, start_x, speed)
+	if not is_footprint_legal(terrain_generator, span.x, span.y):
+		return false
+	for piece: Dictionary in pattern["pieces"]:
+		spawn_obstacle(start_x + float(piece["at"]) * speed, piece["kind"])
+	return true
+
+
+# World-x extent of every piece's hitbox, for a pattern whose first piece sits at start_x.
+static func get_pattern_span(pattern: Dictionary, start_x: float, speed: float) -> Vector2:
+	var span: Vector2 = Vector2(INF, -INF)
+	for piece: Dictionary in pattern["pieces"]:
+		var piece_x: float = start_x + float(piece["at"]) * speed
+		var half_width: float = float(PIECE_KINDS[piece["kind"]]["half_width"])
+		span.x = minf(span.x, piece_x - half_width)
+		span.y = maxf(span.y, piece_x + half_width)
+	return span
+
+
+# THE ONE FOOTPRINT GUARD, for a whole pattern's span. It replaced four checks scattered over
+# spawn_cluster() that each looked at a single x. Static, so terrain_invariant_check measures
+# the real rule rather than a copy of it. Every clause is safety-critical except the slope one:
+#
+#   * SLOPE. A piece glued to a slope reads as unfair, and the fairness proof assumes flat
+#     ground (see OBSTACLE_MAX_SLOPE_ANGLE).
+#   * LAKE. Jumping is disabled across the frozen lake, so a hazard there is unavoidable death.
+#     Sampled with the slope, because the lake is far longer than any span.
+#   * GROUND. A piece within one jump reach BEFORE a chasm's near lip is unavoidable death:
+#     clearing it commits the player to a landing in the void.
+#   * AURORA. Its flat is a protected passage. spawn_obstacle() checks each piece again, so the
+#     rule holds for callers that bypass this guard.
+static func is_footprint_legal(terrain: TerrainGenerator, start_x: float, end_x: float) -> bool:
+	var sample_x: float = start_x
+	while true:
+		if absf(terrain.get_slope_angle_at_x(sample_x)) > OBSTACLE_MAX_SLOPE_ANGLE:
+			return false
+		if terrain.is_lake_world_x(sample_x):
+			return false
+		if sample_x >= end_x:
+			break
+		sample_x = minf(sample_x + FOOTPRINT_SAMPLE_STEP, end_x)
+	if not terrain.has_ground_over_world_x_span(start_x - OBSTACLE_VOID_CLEARANCE_BEHIND, end_x + OBSTACLE_VOID_CLEARANCE_AHEAD):
+		return false
+	return not terrain.overlaps_aurora_flat(start_x - AuroraDirector.BODY_CLEARANCE, end_x + AuroraDirector.BODY_CLEARANCE)
+
+
+# The unconditional placer: one piece at world_x, no guard but the Aurora's. Probes call it
+# directly with the default kind.
+func spawn_obstacle(world_x: float, kind: StringName = PIECE_SPIKE) -> void:
 	# Include collision extent and a little approach clearance at both seams.
 	# Keep this in the final placement path so every caller obeys the reservation.
 	if terrain_generator.overlaps_aurora_flat(
 			world_x - AuroraDirector.BODY_CLEARANCE, world_x + AuroraDirector.BODY_CLEARANCE):
 		return
-	var world_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - OBSTACLE_HALF_HEIGHT
-	var obstacle: Obstacle = OBSTACLE_SCENE.instantiate() as Obstacle
+	var kind_spec: Dictionary = PIECE_KINDS[kind]
+	var world_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) \
+		- float(kind_spec["center_height"])
+	var obstacle: Obstacle = (kind_spec["scene"] as PackedScene).instantiate() as Obstacle
 	obstacle.position = Vector2(world_x, world_y)
 	if has_biome_color:
 		obstacle.set_visual_color(biome_obstacle_color)
@@ -220,13 +296,13 @@ func apply_biome_color(color: Color) -> void:
 			obstacle.set_visual_color(color)
 
 
-# Pure function of (session_seed, cluster_index) -> [0, 1), used to draw the next
-# recurrence interval. Same style as TerrainGenerator.get_segment_hash /
-# CoinSpawner.get_slot_hash, with its own multiplier pair so this sequence doesn't
-# correlate with either.
-func get_cluster_hash(cluster_index: int) -> float:
+# Pure function of (session_seed, pattern_index, channel) -> [0, 1). Same style as
+# TerrainGenerator.get_segment_hash / CoinSpawner.get_slot_hash, with its own multiplier pair
+# so this sequence doesn't correlate with either; channel separates the interval draw from the
+# pattern draw, the way PowerupSpawner separates interval from kind.
+func get_pattern_hash(pattern_index: int, channel: int) -> float:
 	var session_seed: int = terrain_generator.get_session_seed()
-	var mixed_value: int = (session_seed ^ (cluster_index * HASH_INDEX_MULTIPLIER)) & HASH_MASK
+	var mixed_value: int = (session_seed ^ (((pattern_index * 2 + channel) + 1) * HASH_INDEX_MULTIPLIER)) & HASH_MASK
 	mixed_value = (mixed_value ^ (mixed_value >> 13)) & HASH_MASK
 	mixed_value = (mixed_value * HASH_MIX_MULTIPLIER) & HASH_MASK
 	mixed_value = (mixed_value ^ (mixed_value >> 15)) & HASH_MASK

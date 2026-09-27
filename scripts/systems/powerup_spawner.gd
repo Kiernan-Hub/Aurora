@@ -123,7 +123,7 @@ const SPAWN_LOOKAHEAD_WORLD_X: float = 1500.0
 const DESPAWN_BEHIND_WORLD_X: float = 1500.0
 const HASH_MASK: int = 0x7fffffff
 # Distinct multiplier pair from TerrainGenerator.get_segment_hash,
-# CoinSpawner.get_slot_hash, and ObstacleSpawner.get_cluster_hash so this
+# CoinSpawner.get_slot_hash, and ObstacleSpawner.get_pattern_hash so this
 # sequence doesn't correlate with any of them, even though all key off the
 # same session_seed.
 const HASH_INDEX_MULTIPLIER: int = 40503
@@ -261,7 +261,7 @@ func _on_powerup_collected(effect: StringName) -> void:
 
 
 # Pure function of (session_seed, powerup_index, channel) -> [0, 1).
-# Same style as ObstacleSpawner.get_cluster_hash; channel separates the interval draw
+# Same style as ObstacleSpawner.get_pattern_hash; channel separates the interval draw
 # from the kind draw so the two sequences are independent.
 func get_powerup_hash(powerup_index: int, channel: int) -> float:
 	var session_seed: int = terrain_generator.get_session_seed()

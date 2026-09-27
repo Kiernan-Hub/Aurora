@@ -347,6 +347,23 @@ places off the camera's own right edge, so it isn't a row.
 Baseline `forward_view=1270.1 required=1334.1`. Mutation-tested: obstacle lookahead 1500 → 800 ⇒
 `SPAWN_LOOKAHEAD_INSIDE_VIEW ObstacleSpawner lookahead=800.0px`.
 
+### `check_pattern_fairness()` and the footprint density (2026-09-27)
+
+Every `ObstacleSpawner.PATTERNS` row is simulated at 60 Hz on flat ground: 5 jump levels × {plain,
+√2 powerup} × {speed at `FIRST_PATTERN_TIME`, 750}. The only input is when to leave the ground. A
+backward pass over frames finds whether any line survives, and a binary search finds the **tightest
+take-off window** the best line needs. It must be ≥ `PATTERN_MIN_WINDOW_FRAMES` (7). The player is
+its capsule's bounding rect, and hazards are grown by 1px, so both errors are conservative.
+It also asserts the minimum gap between patterns outlasts the longest jump (1.13 s) + 0.3 s.
+
+Per seed, `PATTERN_FOOTPRINT` reports the share of starts each pattern's footprint guard accepts,
+measured through `ObstacleSpawner.is_footprint_legal()` itself, and fails under 25%.
+
+Baseline: `spike window=7 frames (level 0 at 522.7 px/s)`, footprint 0.32–0.36 per seed. The
+spike's 7 is 8.57 continuous, which is the "~8.6 frames" `upgrade_store.gd` always quoted.
+Mutation-tested: spikes 0.3 s apart ⇒ `window 0 … no surviving input exists`; interval floor 4 → 1 ⇒
+`PATTERN_BREATHING_ROOM`; spikes 1.6 s apart ⇒ `PATTERN_FOOTPRINT_STARVED` at 0.013.
+
 **One number is printed but deliberately NOT asserted.** `upgrade_store.gd` quotes "~8.6 frames"
 of window at 0.60 and "~3.7" at 0.55; the plain projectile derivation of *time spent above 32px*
 gives **15.9 and 11.0**. Those figures came from a derivation nobody has reproduced, so the gate

@@ -108,6 +108,32 @@ const CHASM_DROP_CROSSING_MARGIN: float = 96.0
 # Player capsule half-height, from player.tscn's CapsuleShape2D -- the same 24 the manual
 # spawn-position invariant in CLAUDE.md is derived from.
 const PLAYER_CAPSULE_HALF_HEIGHT: float = 24.0
+# Its radius, i.e. half its width, from the same shape.
+const PLAYER_CAPSULE_RADIUS: float = 16.0
+# check_pattern_fairness()'s model. It steps at the game's own 60 Hz and gives the player a
+# grounded run-up longer than the longest jump (1.13s) before the first piece, so an early
+# take-off is always on the table. Hazards are grown by a pixel so a graze that the discrete
+# frames happen to straddle still counts as a hit.
+const FAIRNESS_FRAME_TIME: float = 1.0 / 60.0
+const FAIRNESS_LEAD_SECONDS: float = 1.5
+const FAIRNESS_HAZARD_MARGIN: float = 1.0
+# Every pattern's tightest take-off window must be at least this many frames, at every jump
+# level, with and without the jump powerup, at the slowest and the fastest speed it meets. The
+# lone spike, today's game, sets the bar: level 0 at 20s measures 7 frames here. Continuous and
+# without the pixel of margin it is 8.57, which is the "~8.6 frames" upgrade_store.gd quotes and
+# check_obstacle_clearance() could not reproduce, because that check ignores the player's own
+# 32px width. 4 frames (67ms) is the absolute floor any tier may lower this to.
+const PATTERN_MIN_WINDOW_FRAMES: int = 7
+# Windows are searched up to here and reported as ">=" beyond it: a pattern that needs no jump
+# at all (stay down) has an unlimited one.
+const PATTERN_WINDOW_CAP_FRAMES: int = 60
+# How far beyond the longest jump the gap between two patterns must reach, so the landing from
+# one pattern's last jump is always back on the ground before the next pattern asks anything.
+const BREATHING_ROOM_MARGIN: float = 0.3
+# A guard that rejects everything reads as an easy, empty game rather than a failure, so each
+# seed measures the share of candidate starts every pattern's footprint accepts.
+const PATTERN_FOOTPRINT_SAMPLE_STEP: float = 250.0
+const PATTERN_FOOTPRINT_MIN_ACCEPTANCE: float = 0.25
 # How much clear air the rare coin must keep on BOTH sides of its reachability window. The
 # window itself is only ~24px wide (the gap between the top two jump levels' ceilings), so
 # this is deliberately small; it exists to stop the clearance being tuned to the exact edge,
@@ -214,6 +240,7 @@ func _init() -> void:
 	variant_violations.append_array(check_upgrade_curve())
 	variant_violations.append_array(check_obstacle_clearance())
 	variant_violations.append_array(check_spawn_lookahead())
+	variant_violations.append_array(check_pattern_fairness())
 
 	# Needs a scene (the generator must be in the tree to have a seed), so it cannot join the
 	# three constant-only checks above -- but it is still seed-independent in everything it
@@ -283,6 +310,7 @@ func check_session_seed(session_seed: int, start_world_x: float, end_world_x: fl
 	var chasm_report: Dictionary = check_chasms(terrain_generator, start_world_x, end_world_x)
 	var coin_spawner: CoinSpawner = main.get_node("TerrainGenerator/CoinSpawner") as CoinSpawner
 	var coin_report: Dictionary = measure_coin_density(terrain_generator, coin_spawner, start_world_x, end_world_x)
+	var footprint_violations: Array[String] = measure_pattern_footprints(terrain_generator, session_seed, start_world_x, end_world_x)
 	print_seed_report(session_seed, report, max_slope_angle)
 	print_chasm_report(session_seed, chasm_report)
 	var coin_violations: Array[String] = coin_report["violations"]
@@ -295,7 +323,8 @@ func check_session_seed(session_seed: int, start_world_x: float, end_world_x: fl
 
 	main.queue_free()
 	await process_frame
-	return int(report["violation_count"]) == 0 and int(chasm_report["violation_count"]) == 0 and coin_violations.is_empty()
+	return int(report["violation_count"]) == 0 and int(chasm_report["violation_count"]) == 0 \
+		and coin_violations.is_empty() and footprint_violations.is_empty()
 
 
 # The frozen lake set piece: a runtime-injected 7500px flat segment that suppresses every
@@ -1119,7 +1148,7 @@ func check_upgrade_curve() -> Array[String]:
 #   1. VERTICAL. Apex must clear the obstacle's height with room to spare.
 #   2. HORIZONTAL. The player must cross the obstacle's WIDTH while still above its height --
 #      at the slowest speed an obstacle is ever met at, which obstacle_spawner.gd documents as
-#      deriving from FIRST_CLUSTER_TIME.
+#      deriving from FIRST_PATTERN_TIME.
 #
 # NOTE ON A NUMBER NOT ASSERTED HERE. upgrade_store.gd quotes "~8.6 frames" of window at 0.60
 # and "~3.7" at 0.55; the plain projectile derivation gives 15.9 and 11.0, so those came from a
@@ -1155,7 +1184,7 @@ func check_obstacle_clearance() -> Array[String]:
 	var discriminant: float = (launch_speed * launch_speed) - (2.0 * Player.GRAVITY * obstacle_height)
 	var window_seconds: float = 0.0
 	var window_px: float = 0.0
-	var slowest_speed: float = get_speed_at_time(ObstacleSpawner.FIRST_CLUSTER_TIME)
+	var slowest_speed: float = get_speed_at_time(ObstacleSpawner.FIRST_PATTERN_TIME)
 	if discriminant > 0.0:
 		window_seconds = 2.0 * sqrt(discriminant) / Player.GRAVITY
 		window_px = window_seconds * slowest_speed
@@ -1208,6 +1237,206 @@ func check_spawn_lookahead() -> Array[String]:
 
 	print("TERRAIN_INVARIANT_SPAWN_LOOKAHEAD forward_view=%.1f required=%.1f" % [forward_view, required],
 		" status=", "PASS" if violations.is_empty() else "FAIL")
+	for violation: String in violations:
+		print("    ", violation)
+	return violations
+
+
+# ================= PATTERN FAIRNESS (2026-09-27) =================
+#
+# Every row of ObstacleSpawner.PATTERNS is proven beatable by a player who owns nothing, at
+# every jump level, with and without the sqrt(2) jump powerup (which a player cannot turn off),
+# at the slowest speed the pattern can meet and at MAX_SPEED. A HIGHER jump is not automatically
+# safer: it stays up longer, so it can carry the player into a piece a lower jump lands before.
+#
+# THE MODEL. Flat ground, which the footprint guard's slope rule approximates, and the player's
+# own 60 Hz integration order: the take-off frame already applies one frame of gravity, exactly
+# as player.gd does. The capsule is modelled as its bounding rect, which contains it, so a clean
+# rect is a clean capsule. The only input is WHEN to leave the ground, and a new jump can fire on
+# the first frame after a landing (the jump buffer).
+#
+# THE SEARCH is a backward pass over frames. From "grounded at frame f" the player may walk on
+# while the ground is safe, or take off on any frame they can reach; a take-off counts only if its
+# arc is clean AND the landing leads somewhere survivable. Every jump actually used must sit in a
+# run of at least W consecutive usable take-off frames, and W is binary-searched, so the result is
+# the tightest window the best line through the pattern ever asks of the player.
+func check_pattern_fairness() -> Array[String]:
+	var violations: Array[String] = []
+	var boost_multipliers: Array[float] = [1.0, PowerupManager.JUMP_BOOST_VELOCITY_MULTIPLIER]
+	var slowest_speed: float = get_speed_at_time(ObstacleSpawner.FIRST_PATTERN_TIME)
+	var longest_pattern_seconds: float = 0.0
+
+	for pattern: Dictionary in ObstacleSpawner.PATTERNS:
+		var tightest_window: int = PATTERN_WINDOW_CAP_FRAMES
+		var tightest_case: String = "no jump needed"
+		for speed: float in [slowest_speed, SpeedManager.MAX_SPEED]:
+			for level: int in range(UpgradeStore.JUMP_MULTIPLIERS.size()):
+				for boost_multiplier: float in boost_multipliers:
+					var jump_multiplier: float = UpgradeStore.JUMP_MULTIPLIERS[level] * boost_multiplier
+					var window: int = get_pattern_takeoff_window(pattern, speed, jump_multiplier)
+					if window < tightest_window:
+						tightest_window = window
+						tightest_case = "level %d%s at %.1f px/s" % [level, " +boost" if boost_multiplier > 1.0 else "", speed]
+		for piece: Dictionary in pattern["pieces"]:
+			longest_pattern_seconds = maxf(longest_pattern_seconds, float(piece["at"]))
+
+		if tightest_window < PATTERN_MIN_WINDOW_FRAMES:
+			violations.append("PATTERN_UNFAIR %s tightest take-off window %d frames (%s) < %d -- %s" % [
+				pattern["id"], tightest_window, tightest_case, PATTERN_MIN_WINDOW_FRAMES,
+				"no surviving input exists" if tightest_window == 0 else "fix the timing in ObstacleSpawner.PATTERNS",
+			])
+		print("TERRAIN_INVARIANT_PATTERN id=%s window=%s%d frames (%s) min=%d" % [
+			pattern["id"], ">=" if tightest_window >= PATTERN_WINDOW_CAP_FRAMES else "", tightest_window,
+			tightest_case, PATTERN_MIN_WINDOW_FRAMES,
+			], " status=", "PASS" if tightest_window >= PATTERN_MIN_WINDOW_FRAMES else "FAIL")
+
+	# The gap between patterns has to outlast the longest jump, or the end of one pattern lands
+	# the player inside the next and the per-pattern proofs above stop composing.
+	var max_multiplier: float = UpgradeStore.JUMP_MULTIPLIERS.max()
+	var longest_airtime: float = get_jump_airtime(0.0, max_multiplier * PowerupManager.JUMP_BOOST_VELOCITY_MULTIPLIER)
+	var breathing_room: float = ObstacleSpawner.RECURRING_PATTERN_MIN_INTERVAL_FLOOR - longest_pattern_seconds
+	if breathing_room < longest_airtime + BREATHING_ROOM_MARGIN:
+		violations.append("PATTERN_BREATHING_ROOM %.2fs < longest jump %.2fs + margin %.2fs" % [
+			breathing_room, longest_airtime, BREATHING_ROOM_MARGIN,
+		])
+	print("TERRAIN_INVARIANT_PATTERN_BREATHING_ROOM min=%.2fs longest_jump=%.2fs" % [breathing_room, longest_airtime],
+		" status=", "PASS" if breathing_room >= longest_airtime + BREATHING_ROOM_MARGIN else "FAIL")
+	for violation: String in violations:
+		print("    ", violation)
+	return violations
+
+
+# The tightest take-off window, in frames, the best line through this pattern needs at this
+# speed and jump strength. 0 means no line survives; PATTERN_WINDOW_CAP_FRAMES means none is tight
+# (or no jump is needed at all).
+func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multiplier: float) -> int:
+	# Hazard rects in pattern space: x from the first piece, y = height above the ground.
+	var hazards: Array[Rect2] = []
+	var last_hazard_x: float = 0.0
+	for piece: Dictionary in pattern["pieces"]:
+		var kind: Dictionary = ObstacleSpawner.PIECE_KINDS[piece["kind"]]
+		var half_width: float = float(kind["half_width"]) + FAIRNESS_HAZARD_MARGIN
+		var half_height: float = float(kind["half_height"]) + FAIRNESS_HAZARD_MARGIN
+		var center: Vector2 = Vector2(float(piece["at"]) * speed, float(kind["center_height"]))
+		hazards.append(Rect2(center.x - half_width, center.y - half_height, half_width * 2.0, half_height * 2.0))
+		last_hazard_x = maxf(last_hazard_x, center.x + half_width)
+
+	var frame_step: float = speed * FAIRNESS_FRAME_TIME
+	var first_x: float = -FAIRNESS_LEAD_SECONDS * speed
+	# Past the last frame the player's back edge has cleared every hazard; nothing can hit.
+	var frame_count: int = int(ceil((last_hazard_x + PLAYER_CAPSULE_RADIUS - first_x) / frame_step)) + 1
+
+	var grounded_safe: Array[bool] = []
+	for frame: int in range(frame_count):
+		grounded_safe.append(not does_player_hit(hazards, first_x + frame * frame_step, 0.0))
+
+	# One arc per take-off frame. landing == frame_count means it came down past everything.
+	var arc_clean: Array[bool] = []
+	var landing: Array[int] = []
+	var launch_speed: float = -Player.JUMP_VELOCITY * jump_multiplier
+	for takeoff: int in range(frame_count):
+		var vertical_speed: float = launch_speed
+		var height: float = 0.0
+		var frame: int = takeoff
+		var clean: bool = true
+		while frame < frame_count:
+			vertical_speed -= Player.GRAVITY * FAIRNESS_FRAME_TIME
+			height += vertical_speed * FAIRNESS_FRAME_TIME
+			if height <= 0.0:
+				break
+			if does_player_hit(hazards, first_x + frame * frame_step, height):
+				clean = false
+				break
+			frame += 1
+		arc_clean.append(clean)
+		landing.append(mini(frame, frame_count))
+
+	# next_unsafe[f]: the first frame at or after f that is deadly to stand on.
+	var next_unsafe: Array[int] = []
+	next_unsafe.resize(frame_count + 1)
+	next_unsafe[frame_count] = frame_count
+	for frame: int in range(frame_count - 1, -1, -1):
+		next_unsafe[frame] = next_unsafe[frame + 1] if grounded_safe[frame] else frame
+
+	if not is_pattern_survivable(1, frame_count, next_unsafe, arc_clean, landing):
+		return 0
+	if is_pattern_survivable(PATTERN_WINDOW_CAP_FRAMES, frame_count, next_unsafe, arc_clean, landing):
+		return PATTERN_WINDOW_CAP_FRAMES
+	var low: int = 1
+	var high: int = PATTERN_WINDOW_CAP_FRAMES - 1
+	while low < high:
+		var middle: int = (low + high + 1) / 2
+		if is_pattern_survivable(middle, frame_count, next_unsafe, arc_clean, landing):
+			low = middle
+		else:
+			high = middle - 1
+	return low
+
+
+# Can a player grounded at frame 0 get through, using only take-offs that sit in a run of at
+# least min_window consecutive usable take-off frames? Frames run backward so that every landing
+# (always later than its take-off) is already decided when a take-off is judged.
+func is_pattern_survivable(min_window: int, frame_count: int, next_unsafe: Array[int], arc_clean: Array[bool], landing: Array[int]) -> bool:
+	var survivable: Array[bool] = []
+	survivable.resize(frame_count + 1)
+	survivable[frame_count] = true
+	var usable_takeoff: Array[bool] = []
+	usable_takeoff.resize(frame_count + 1)
+	usable_takeoff[frame_count] = false
+	for frame: int in range(frame_count - 1, -1, -1):
+		# The last frame that can be stood on walking from here; a take-off may fire on any frame
+		# up to one past it, since it needs only the ground of the frame before.
+		var last_standing: int = next_unsafe[frame] - 1
+		if last_standing >= frame_count - 1:
+			survivable[frame] = true
+		else:
+			var run: int = 0
+			var found: bool = false
+			for takeoff: int in range(frame + 1, last_standing + 2):
+				if usable_takeoff[takeoff]:
+					run += 1
+					if run >= min_window:
+						found = true
+						break
+				else:
+					run = 0
+			survivable[frame] = found
+		usable_takeoff[frame] = arc_clean[frame] and survivable[landing[frame]]
+	return survivable[0]
+
+
+# The player's bounding rect, feet at feet_height above the ground, against every hazard rect.
+func does_player_hit(hazards: Array[Rect2], player_x: float, feet_height: float) -> bool:
+	var body: Rect2 = Rect2(player_x - PLAYER_CAPSULE_RADIUS, feet_height,
+		PLAYER_CAPSULE_RADIUS * 2.0, PLAYER_CAPSULE_HALF_HEIGHT * 2.0)
+	for hazard: Rect2 in hazards:
+		if body.intersects(hazard):
+			return true
+	return false
+
+
+# Share of candidate starts where each pattern's footprint is legal, per seed, measured through
+# ObstacleSpawner.is_footprint_legal() itself. Spans are taken at MAX_SPEED, their longest.
+func measure_pattern_footprints(terrain_generator: TerrainGenerator, session_seed: int, start_world_x: float, end_world_x: float) -> Array[String]:
+	var violations: Array[String] = []
+	var line: String = "TERRAIN_INVARIANT_PATTERN_FOOTPRINT seed=%d" % session_seed
+	for pattern: Dictionary in ObstacleSpawner.PATTERNS:
+		var sample_count: int = 0
+		var accepted_count: int = 0
+		var start_x: float = start_world_x + ObstacleSpawner.MIN_SAFE_START_WORLD_X
+		while start_x < end_world_x - ObstacleSpawner.OBSTACLE_VOID_CLEARANCE_AHEAD:
+			var span: Vector2 = ObstacleSpawner.get_pattern_span(pattern, start_x, SpeedManager.MAX_SPEED)
+			sample_count += 1
+			if ObstacleSpawner.is_footprint_legal(terrain_generator, span.x, span.y):
+				accepted_count += 1
+			start_x += PATTERN_FOOTPRINT_SAMPLE_STEP
+		var acceptance: float = float(accepted_count) / maxf(float(sample_count), 1.0)
+		line += " %s=%.3f" % [pattern["id"], acceptance]
+		if acceptance < PATTERN_FOOTPRINT_MIN_ACCEPTANCE:
+			violations.append("PATTERN_FOOTPRINT_STARVED %s accepts %.3f of starts < %.2f -- the guard would leave the run nearly empty" % [
+				pattern["id"], acceptance, PATTERN_FOOTPRINT_MIN_ACCEPTANCE,
+			])
+	print(line, " status=", "PASS" if violations.is_empty() else "FAIL")
 	for violation: String in violations:
 		print("    ", violation)
 	return violations

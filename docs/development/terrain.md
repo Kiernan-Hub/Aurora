@@ -199,7 +199,15 @@ seed-independent `check_chasm_variant_table()` pass that runs once before the se
 | `CHASM_VARIANT_BELOW_GLOBAL_MIN` | a silently unreachable (dead) variant |
 | `CHASM_TRIVIALLY_CLEARABLE` | *(per chasm)* a drop crossable by running off the edge. **Inert at `exit_drop` 0**, i.e. today |
 | `UPGRADE_CEILING_EXCEEDS_CHASM_LEAD_IN` | a jump upgrade curve whose maximum outruns the run-up |
-| `OBSTACLE_APEX_TOO_LOW` / `OBSTACLE_WINDOW_TOO_TIGHT` | a jump upgrade curve whose *minimum* cannot clear a 32×32 obstacle at the first cluster |
+| `OBSTACLE_APEX_TOO_LOW` / `OBSTACLE_WINDOW_TOO_TIGHT` | a jump upgrade curve whose *minimum* cannot clear a 32×32 obstacle at the first pattern |
+| `PATTERN_UNFAIR` | an `ObstacleSpawner.PATTERNS` row with no surviving input, or a tightest take-off window under `PATTERN_MIN_WINDOW_FRAMES`, at any jump level ± the jump powerup (`debugging.md`) |
+| `PATTERN_BREATHING_ROOM` | a gap between patterns shorter than the longest jump + margin |
+| `PATTERN_FOOTPRINT_STARVED` | *(per seed)* a pattern whose footprint guard accepts under 25% of starts |
+
+**The obstacle chasm clearance is 950px ahead of a pattern's span** (`OBSTACLE_VOID_CLEARANCE_AHEAD`,
+2026-09-27): a max-upgrade jump with the √2 powerup reaches 848px at 750 px/s. It was 700, which
+covered only the unboosted 600px, so a late boosted jump over an obstacle 700–850px before a void
+could land in it.
 
 **Jump strength is a range now, so clearability is asserted in two bands** (2026-08-04,
 meta-progression). This file used to evaluate reach at a hardcoded multiplier of 1.0 and

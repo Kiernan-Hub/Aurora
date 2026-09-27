@@ -17,7 +17,7 @@ Main (Node2D, scripts/main.gd)
 ├── Player            position (64,136), safe_margin 1.0  ← player.tscn
 ├── TerrainGenerator  player_path = ../Player
 │   ├── CoinSpawner       per-chunk coin slots
-│   ├── ObstacleSpawner   timed clusters; a hit calls Player.absorb_hit()
+│   ├── ObstacleSpawner   timed patterns (PATTERNS table); a hit calls Player.absorb_hit()
 │   ├── PowerupSpawner    timed pickups, one weighted table
 │   ├── GlideCoinSpawner  air coins, only while Player.is_glide_active
 │   └── RareCoinSpawner   one 25-value coin ~every 60s, at MAX-JUMP-ONLY height
@@ -84,7 +84,7 @@ first `_physics_process`, never in `_ready()`.
 
 `CoinSpawner` (`has_initialized_coin_groups`), `PowerupSpawner` and `RareCoinSpawner`
 (`has_initialized_schedule` in both) all do this. `ObstacleSpawner` sidesteps it — its first
-cluster time is a plain constant, and every later draw happens during
+pattern time is a plain constant, and every later draw happens during
 `_physics_process`. `GlideCoinSpawner` sidesteps it differently: it never reads
 `session_seed` at all — a glide is powerup-timed and player-steered, not a function of
 `(session_seed, world_x)`, so there is nothing to precompute. It spawns coins ahead of the

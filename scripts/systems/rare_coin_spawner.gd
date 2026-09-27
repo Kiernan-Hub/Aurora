@@ -111,7 +111,8 @@ const MAX_SLOPE_ANGLE: float = deg_to_rad(6.0)
 const FLAT_TAKEOFF_SPAN: float = 320.0
 # A max jump is 0.8s of airtime -- 600px at MAX_SPEED -- so the player who goes for this coin
 # commits to a landing that far ahead. Ground must exist across the whole arc or the reward is
-# a trap. Same shape and same margin as OBSTACLE_VOID_CLEARANCE_AHEAD.
+# a trap. Same shape as ObstacleSpawner.OBSTACLE_VOID_CLEARANCE_AHEAD, whose larger margin covers
+# a late boosted jump taken right at an obstacle; one aimed at this coin peaks near it instead.
 const VOID_CLEARANCE: float = 700.0
 
 const HASH_MASK: int = 0x7fffffff
@@ -233,7 +234,7 @@ func despawn_trailing_coins() -> void:
 
 
 # Pure function of (session_seed, coin_index) -> [0, 1), same style as CoinSpawner.
-# get_slot_hash and ObstacleSpawner.get_cluster_hash.
+# get_slot_hash and ObstacleSpawner.get_pattern_hash.
 func get_coin_hash(coin_index: int) -> float:
 	var session_seed: int = terrain_generator.get_session_seed()
 	var mixed_value: int = (session_seed ^ ((coin_index + 1) * HASH_INDEX_MULTIPLIER)) & HASH_MASK

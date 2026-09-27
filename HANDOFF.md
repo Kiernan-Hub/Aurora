@@ -2,9 +2,50 @@
 
 ## 2026-09-27 — Obstacles + air moves: the approved plan
 
-**Step 1 (camera) is BUILT** on branch `claude/implementation-t58fc3`, not merged to `main` yet.
-**Next action: the owner looks at it on the phone (list below), then says "go" for step 2.** Older
-sessions live in `docs/history.md`; none of that is a to-do.
+**Steps 1–2 are BUILT** on branch `claude/implementation-t58fc3`, not merged to `main` yet. The
+owner said to keep going through the obstacle steps (2–5) and stop before the air moves (6–7).
+Older sessions live in `docs/history.md`; none of that is a to-do.
+
+### Step 2 — built 2026-09-27: pattern scheduler + fairness check
+
+- `obstacle_spawner.gd` is a pattern scheduler. **`PATTERNS`**: pieces timed in seconds. **`PIECE_KINDS`**:
+  scene, half width, half height, centre height above the surface. Spikes only, today's interval
+  ramp. "cluster" is renamed to "pattern" throughout (`FIRST_PATTERN_TIME`, `get_pattern_hash`).
+- **One footprint guard for the whole span**, static `is_footprint_legal()`: ≤6° sampled every 16px,
+  not the lake, ground over `[start − 200, end + 950]`, off the Aurora flat. The void clearance is
+  **700 → 950**, fixing the √2 miss. `spawn_obstacle()` keeps its own Aurora check.
+- **A failed footprint now retries 1s later instead of being dropped. This is a play change.**
+  The guard rejects ~60% of slots, so today most scheduled obstacles never appeared. Measured on real
+  terrain over 5-min runs, 3 seeds: **18–25 obstacles → 30–33**, mean gap after 2:30 **8.6–10.7s →
+  6.7–8.4s**. The audit's "one every 5s" was the *scheduled* rate, never the real one.
+- **`check_pattern_fairness()`** (in `check.sh`): 60 Hz flat-ground model, 5 levels × ±powerup ×
+  {speed at 20s, 750}. The backward search finds the tightest take-off window. The lone spike measures
+  **7 frames**, and that is now `PATTERN_MIN_WINDOW_FRAMES`. Plus the breathing room vs the longest
+  jump, and a per-seed **footprint acceptance** (spike 0.32–0.36, floor 0.25). All mutation-tested.
+- Gates: `check.sh` 5/5, freeze-search 40 trials 0 stalls, chasm 48/48, `aurora_calm_probe` PASS 182,974.
+
+**Found while building, and it decides step 5:** long patterns rarely fit this terrain. Share
+of start positions where a span stays ≤6° with ground ahead, 3 seeds: 400px 15–19%, 800px 6–8%,
+1,200px 3–4%. Even searching 1,500px forward, an 800px pattern fits only 22–31% of the time.
+Singles fit ~100% with that search. **See "Step 5 decision" below.**
+
+### Step 5 decision (owner): how to get combos onto hilly terrain
+
+The plan's tier 4–6 difficulty is 2–3-piece patterns, whose whole span must be flat for the
+fairness proof to hold. The terrain rarely has that (numbers above), so as planned those patterns
+would appear seldom and the late game would barely get harder. Options:
+
+- **A — Density first (recommended, lean).** Keep hazards mostly single pieces, which fit almost
+  anywhere. Get difficulty from mixing the four kinds and shrinking the gap between hazards toward
+  the floor (longest jump + margin, ~1.5s), so 2–3 hazards are on screen at once. Add only
+  **short** combos (≤ ~0.6s, ≤ ~450px, ~50% placeable with a forward search). When a combo doesn't
+  fit, fall back to a single rather than waiting. No terrain change, and the proof stays as is.
+- **B — Flatten the ground under patterns.** A write-ahead flat reservation, like the lake's. Every
+  combo fits, but it is a terrain change (priority #1), has to be armed ~3,000px ahead, and makes
+  the world visibly flatter. Bug-prone; not recommended.
+- **C — Prove fairness on the real hills at spawn time.** A runtime solver that must mirror
+  player physics exactly (slope speeds, snapping). Heavy on phones, and any mismatch is a false
+  "fair". Not recommended.
 
 ### Step 1 — built 2026-09-27 (cloud session)
 
@@ -255,7 +296,7 @@ Sizes are relative.
 - Gates: `check.sh`, `camera_shake_probe`, then **the owner looks on the phone**. Docs: `visuals.md`'s
   forward-view table, `physics.md` camera section.
 
-### Step 2 — Pattern scheduler + fairness check (medium; play feels identical)
+### Step 2 — Pattern scheduler + fairness check (medium) — **BUILT, see the top of this file**
 - Rewrite `obstacle_spawner.gd` as a pattern scheduler, **spikes only**, reproducing today's cadence,
   so nothing changes in play. That proves the plumbing.
   - **`PATTERNS` table** (data): `{id, tier, weight, pieces: [{kind, at_s, length_s}]}`.
