@@ -426,8 +426,9 @@ Expect `trials with a STALL : 0`:
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/freeze_search.gd -- --seed=941462462 --warp=175000 --to=178000 --phases=8 --phasestep=0.25 --scan=1 --trialframes=500 --rebase=1
 ```
-Run it a second time with `--slam=1` after any change to the slam or landing. It grants the slam,
-so every press the input schedules make in the air becomes a dive and a high-speed landing.
+After any change to an air move or landing, run it again with `--slam=1` and with `--double=1`.
+Each grants its move (`--slam=1` also makes every press slam-side), so the presses the input
+schedules make in the air become dives or second jumps.
 
 **Floor flicker probe** (`scripts/debug/floor_flicker_probe.gd`) — the permanent
 regression gate for the `is_on_floor()` flicker fix; per-segment-label flip-rate,
@@ -441,9 +442,11 @@ Other flags: `--seeds`, `--trace`, `--tracelines`, `--jump`.
 **Chasm probe** (`scripts/debug/chasm_probe.gd`) — the behavioural gate for chasms.
 `terrain_invariant_check` proves the *geometry* (lips level, void cut out of the collision
 shape, width clearable on paper) and runs no physics, so it cannot prove a chasm actually
-behaves. Six trials per chasm from the same warp onto the lead-in flat (72 at the gate's
-3 chasms × 4 phases). `slam_void`/`slam_lip` grant the slam and tap every frame, from the near
-lip or from take-off; the probe's header has what each one proves. Expect `status=PASS`:
+behaves. Ten trials per chasm from a warp onto the lead-in flat (120 at the gate's 3 chasms × 4
+phases). The four air-move trials are `slam_void`/`slam_lip` and `double_lip`/`double_rescue`/
+`double_boost`/`double_late`; the probe's header has what each one proves. `reset_player()` clears
+the jump buffer, because a tap-every-frame trial otherwise leaks a jump into the next one (it did,
+and read as five guardrail failures). Expect `status=PASS`:
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/chasm_probe.gd -- --seed=683407368 --chasms=3 --phases=4
 ```

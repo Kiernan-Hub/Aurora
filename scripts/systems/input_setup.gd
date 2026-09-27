@@ -42,3 +42,16 @@ static func configure() -> void:
 	var mouse_event: InputEventMouseButton = InputEventMouseButton.new()
 	mouse_event.button_index = MOUSE_BUTTON_LEFT
 	InputMap.action_add_event(&"ui_accept", mouse_event)
+
+	# The desktop twin of touch's LEFT half (Main._input): a tap on the slam side. On the ground
+	# it jumps like any tap; only the air-move site reads the side. S and the right mouse button,
+	# not an arrow key: debug builds already use the arrows for manual speed. Touch never reaches
+	# this action, for the same reason it never reaches ui_accept above.
+	if not InputMap.has_action(Player.SLAM_ACTION):
+		InputMap.add_action(Player.SLAM_ACTION)
+	var slam_key: InputEventKey = InputEventKey.new()
+	slam_key.physical_keycode = KEY_S
+	InputMap.action_add_event(Player.SLAM_ACTION, slam_key)
+	var slam_mouse: InputEventMouseButton = InputEventMouseButton.new()
+	slam_mouse.button_index = MOUSE_BUTTON_RIGHT
+	InputMap.action_add_event(Player.SLAM_ACTION, slam_mouse)

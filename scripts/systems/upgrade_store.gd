@@ -71,9 +71,12 @@ const JUMP_MULTIPLIERS: Array[float] = [0.60, 0.70, 0.80, 0.90, 1.00]
 # still tuned. terrain_invariant_check.measure_coin_density() MEASURES it per seed.
 const JUMP_UPGRADE_COSTS: Array[int] = [60, 150, 320, 600]
 
-# Air moves are one-level tracks: a single purchase unlocks them for good. Player.has_slam.
+# Air moves are one-level tracks: a single purchase unlocks them for good. Player.has_slam /
+# has_double_jump. In the air, the left half of the screen slams and the right half double-jumps.
 const SLAM_UPGRADE_ID: String = "slam"
 const SLAM_UPGRADE_COST: int = 300
+const DOUBLE_JUMP_UPGRADE_ID: String = "double_jump"
+const DOUBLE_JUMP_UPGRADE_COST: int = 900
 
 # THE SHOP, one row per track in display order; GameManager builds its rows from this, so a new
 # track is a row here plus its one line in GameManager.apply_upgrades(). "costs"[i] buys level
@@ -81,7 +84,8 @@ const SLAM_UPGRADE_COST: int = 300
 # keys on it): adding a track needs no version bump, renaming one un-buys it for everyone.
 const TRACKS: Array[Dictionary] = [
 	{"id": JUMP_UPGRADE_ID, "name": "Jump", "costs": JUMP_UPGRADE_COSTS, "hint": ""},
-	{"id": SLAM_UPGRADE_ID, "name": "Slam", "costs": [SLAM_UPGRADE_COST], "hint": "tap in the air to dive"},
+	{"id": SLAM_UPGRADE_ID, "name": "Slam", "costs": [SLAM_UPGRADE_COST], "hint": "tap left in the air to dive"},
+	{"id": DOUBLE_JUMP_UPGRADE_ID, "name": "Double Jump", "costs": [DOUBLE_JUMP_UPGRADE_COST], "hint": "tap right in the air"},
 ]
 
 const NO_COST: int = -1

@@ -47,6 +47,10 @@ class_name GameManager
 # the height field directly, without depending on player movement or GameManager
 # at all. Any NEW harness that steps many frames needs the same opt-out line.
 var require_start_screen: bool = true
+# TEMP knob for trying the air moves without buying them: true grants the slam and the double
+# jump in apply_upgrades() (a play session only; headless still skips). A plain var, not
+# @export, like require_start_screen; shipping_values_check fails the build if it is left true.
+var debug_unlock_air_moves: bool = false
 
 var player: Player
 var main: Main
@@ -545,7 +549,10 @@ func _on_player_trick_completed(spin_count: int) -> void:
 	# override, just from a different trigger. Obstacle.gd lets a boosting player break
 	# through instead of dying, so a trick landed right before a cluster pays off Alto's-
 	# style instead of being wasted.
-	if powerup_manager != null:
+	#
+	# GUARDRAIL B: not after a double jump. It buys up to 1.6s of air against a 0.9s flip, so
+	# nearly every one would otherwise be a free 3s of can't-die. The coins still pay.
+	if powerup_manager != null and not player.has_double_jumped:
 		powerup_manager.start_speed_boost()
 
 
@@ -703,7 +710,8 @@ func apply_upgrades() -> void:
 		return
 	var jump_level: int = services.upgrades.get_level(UpgradeStore.JUMP_UPGRADE_ID)
 	player.upgrade_jump_multiplier = UpgradeStore.get_jump_multiplier(jump_level)
-	player.has_slam = services.upgrades.get_level(UpgradeStore.SLAM_UPGRADE_ID) > 0
+	player.has_slam = debug_unlock_air_moves or services.upgrades.get_level(UpgradeStore.SLAM_UPGRADE_ID) > 0
+	player.has_double_jump = debug_unlock_air_moves or services.upgrades.get_level(UpgradeStore.DOUBLE_JUMP_UPGRADE_ID) > 0
 
 
 func _on_shop_pressed() -> void:

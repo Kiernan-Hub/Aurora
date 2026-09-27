@@ -958,7 +958,9 @@ func check_chasm_variant_table() -> Array[String]:
 # Reported alongside a CHASM_VARIANT_NOT_CLEARABLE failure so the fix is a number to paste
 # rather than an afternoon of solving the ramp by hand.
 # The rare coin's whole design is "only a fully upgraded jump reaches it", and that claim is
-# an arithmetic relationship between constants in FOUR files: RareCoinSpawner's clearance,
+# about a SINGLE jump. Since 2026-09-27 a double jump (a 900-coin unlock) reaches it from jump
+# level 1 (48 + 2 x 62.7 + 10 = 183 > 174); the owner accepted that, so it is not asserted
+# here. The single-jump claim is still an arithmetic relationship between constants in FOUR files: RareCoinSpawner's clearance,
 # Player's JUMP_VELOCITY/GRAVITY, UpgradeStore's last two JUMP_MULTIPLIERS, and the collision
 # radius inside rare_coin.tscn. Nothing about it is visible from any one of them, and both
 # ways of getting it wrong are silent in play -- a coin the second-best jump can reach looks
@@ -1135,7 +1137,10 @@ func measure_coin_density(terrain_generator: TerrainGenerator, spawner: CoinSpaw
 # join the other scene-free checks and cost nothing.
 
 
-# The ceiling on the jump upgrade curve, from upgrade_store.gd's own derivation:
+# The ceiling on the jump upgrade curve, from upgrade_store.gd's own derivation. It bounds a
+# SINGLE jump: a double jump (2026-09-27) reaches up to twice as far, 1,697px with the powerup,
+# and taking that into a chasm is the player's call -- the second tap is theirs, and guardrail A
+# in Player.try_double_jump keeps it from firing once they have sunk below a lip.
 #
 #   MAX_SPEED * airtime(M * JUMP_BOOST) + LEAD_IN_MARGIN  <=  CHASM_LEAD_IN_LENGTH
 #

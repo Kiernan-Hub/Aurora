@@ -20,9 +20,16 @@ gate is shared.
 
 ## The air-move site (2026-09-27)
 
-Shop-unlocked air moves (the slam now, the double jump in plan step 7) are decided at **one
-site in `Player._physics_process`**, right after the ground-jump branch, from the **same
-jump buffer** both paths above feed. There's no second input path to keep in sync.
+Shop-unlocked air moves (slam, double jump) are decided at **one site in
+`Player._physics_process`**, right after the ground-jump branch, from the **same jump buffer**
+both paths above feed. There's no second input path to keep in sync.
+
+**The tap's side picks the move.** Touch: the left half of the screen is the slam side, the right
+half the jump side (`Main._input` passes `buffer_jump(is_slam_side)`). Desktop: `ui_accept` (Space,
+Enter, left click) is the jump side, and the `slam` action (S, right click) is the slam side
+(`InputSetup`). The arrow keys stay off it because debug builds use them for manual speed.
+`Player.is_buffered_tap_slam` carries the side. **On the ground, and inside the landing window,
+any tap jumps**, so the side never matters for hopping.
 
 A buffered tap becomes an air move only when all of these hold:
 
@@ -34,14 +41,19 @@ A buffered tap becomes an air move only when all of these hold:
   live on the frame after touchdown is left alone and becomes the ordinary landing jump. That
   keeps thin ice's skip rhythm and every fairness proof unchanged. Landing is predicted by
   integrating the airborne model forward over the pure height field (`get_landing_frame`).
-- the move's own guard. The slam's is that its simulated dive has ground **all the way** down,
-  so a dive over a void, or one that would cross a near lip, is refused. A refused tap stays in
-  the buffer.
+- the move's own guard. The slam's: its simulated dive has ground **all the way** down, so a
+  dive over a void, or one that would cross a near lip, is refused. It's also refused when you're
+  already falling faster than the dive, since it would slow you. The double jump's: the feet are
+  above the lip (guardrail A, `physics.md`). A refused tap stays in the buffer.
 
-**A mid-air press is now two things for a slam owner.** Hold in the air still spins, but the
-press that starts the hold is also a tap, so it slams. A slam owner spins by holding *through*
-the jump from the ground. The owner was told; the alternative (slam on a short tap's
-*release*) adds latency and press-timing code to the touch path, which has broken twice.
+**A mid-air press on the slam side slams.** Hold in the air still spins, and a jump-side press
+starts one fine: it double-jumps, if owned, and the hold carries into a spin. But the press that
+starts a hold on the slam side is also a tap, so for a slam owner it dives. Spin from that side by
+holding *through* the jump from the ground. The alternative (slam on a short tap's *release*) adds
+latency and press-timing code to the touch path, which has broken twice.
+
+**Trying the moves without buying them:** set `GameManager.debug_unlock_air_moves = true` (a play
+session only). `shipping_values_check` fails while it's on.
 
 ## Why touch bypasses the action
 

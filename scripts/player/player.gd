@@ -65,6 +65,9 @@ const SLAM_MAX_FALL_SPEED: float = 1600.0
 # that apex down a drop chasm's far side (1,056px), in ~42.
 const SLAM_PREDICTION_FRAMES: int = 60
 const SLAM_LAND_SQUASH_SCALE: Vector2 = Vector2(1.6, 0.6)
+# The desktop slam-side input (InputSetup): S or the right mouse button. Touch uses the left half
+# of the screen instead (Main._input).
+const SLAM_ACTION: StringName = &"slam"
 # Aurora's brief automatic crest flight is a separate, bounded controller -- not a powerup and
 # not ordinary glide. The event only enables it over its write-ahead protected flat.
 const AURORA_FLIGHT_HEIGHT: float = 96.0
@@ -225,8 +228,16 @@ var upgrade_jump_multiplier: float = 1.0
 # Air-move unlocks, set once per run by GameManager.apply_upgrades() -- which skips headless, so
 # a probe that wants a slam sets this itself. False is the design baseline every gate measures.
 var has_slam: bool = false
+var has_double_jump: bool = false
 # From the slam until touchdown: caps the fall and makes the slam one per airtime.
 var is_slamming: bool = false
+# This airtime used the double jump. Cleared at the start of the first grounded frame, not at
+# touchdown, so GameManager's trick handler -- which runs on the landing frame -- can still read
+# it (guardrail B: a trick after a double jump pays coins but no boost).
+var has_double_jumped: bool = false
+# Which side the buffered tap came from: the slam side (touch's left half, the desktop slam
+# action) or the jump side. Only the air-move site reads it.
+var is_buffered_tap_slam: bool = false
 var debug_rotation_timer: float = 0.0
 var airborne_rotation: float = 0.0
 # Reset every time a new airborne arc begins (see update_visual_rotation()'s takeoff
@@ -313,10 +324,11 @@ func _ready() -> void:
 # Gated on is_jump_suppressed as well as the poll below, and BOTH are load-bearing:
 # gating only the "ui_accept" poll would leave touch jumps fully working on Android,
 # which is the platform this ships to.
-func buffer_jump() -> void:
+func buffer_jump(is_slam_side: bool = false) -> void:
 	if is_jump_suppressed or is_aurora_flight_active or is_aurora_flight_landing:
 		return
 	jump_buffer_timer = JUMP_BUFFER_DURATION
+	is_buffered_tap_slam = is_slam_side
 
 
 # Everything that blocks a ground jump blocks an air move, plus an active glide, where a tap is
@@ -353,6 +365,30 @@ func try_slam(delta: float) -> bool:
 	return true
 
 
+# The double jump, if owned and unused this airtime: a second ground-strength impulse
+# (upgrade and jump powerup included) that replaces the vertical speed. Its worst-case reach is
+# exactly 2x a single jump (fire it just before a landing, and it buys a second full arc).
+#
+# GUARDRAIL A: only while the feet are above the surface fall death measures against -- the
+# far lip's level inside a drop chasm, the lip's level inside a hazard one. Once a player has
+# sunk below a lip, a jump would drive them into its open chord end from underneath, which the
+# physics has never been tested against; above it, a rescue over a void is the player's call.
+# No double jump while slamming: a slam commits the rest of the airtime.
+func try_double_jump() -> bool:
+	if not has_double_jump or has_double_jumped or is_slamming:
+		return false
+	var reference_surface_y: float = terrain_generator.get_surface_world_y(global_position.x) \
+		+ terrain_generator.get_pending_exit_drop_at_world_x(global_position.x)
+	if global_position.y + capsule_half_height >= reference_surface_y:
+		return false
+	velocity.y = JUMP_VELOCITY * upgrade_jump_multiplier * jump_boost_multiplier
+	is_jump_ascending = true
+	has_double_jumped = true
+	jumped.emit()
+	play_squash_stretch(JUMP_STRETCH_SCALE)
+	return true
+
+
 # Frames until the feet reach the surface, integrating the way the airborne branch of
 # _physics_process does (gravity into velocity, then velocity into position), or -1 if not within
 # max_frames. The height field is pure, so this is a prediction rather than a guess. With
@@ -382,12 +418,16 @@ func _physics_process(delta: float) -> void:
 
 	if is_on_floor():
 		coyote_timer = COYOTE_TIME_DURATION
+		has_double_jumped = false
 	else:
 		coyote_timer = maxf(coyote_timer - delta, 0.0)
 
-	if Input.is_action_just_pressed("ui_accept") and not is_jump_suppressed \
+	var is_accept_pressed: bool = Input.is_action_just_pressed("ui_accept")
+	var is_slam_pressed: bool = Input.is_action_just_pressed(SLAM_ACTION)
+	if (is_accept_pressed or is_slam_pressed) and not is_jump_suppressed \
 			and not is_aurora_flight_active and not is_aurora_flight_landing:
 		jump_buffer_timer = JUMP_BUFFER_DURATION
+		is_buffered_tap_slam = is_slam_pressed and not is_accept_pressed
 	else:
 		jump_buffer_timer = maxf(jump_buffer_timer - delta, 0.0)
 
@@ -419,13 +459,16 @@ func _physics_process(delta: float) -> void:
 		is_jump_ascending = false
 
 	# THE AIR-MOVE SITE: the one place an air tap becomes a move, fed by the same jump buffer as
-	# the ground jump above, so the desktop poll and touch's buffer_jump() cannot diverge. A tap
-	# that will still be live when the player lands is LEFT ALONE -- the ordinary landing jump,
-	# exactly as before the moves existed (see will_buffered_jump_fire). That rule is what keeps
-	# thin ice's skip rhythm intact, and why a pattern proven fair without the moves stays fair.
+	# the ground jump above, so the desktop poll and touch's buffer_jump() cannot diverge. The
+	# tap's SIDE picks the move: slam side (touch's left half) dives, jump side double-jumps. A
+	# tap that will still be live when the player lands is LEFT ALONE -- the ordinary landing
+	# jump, exactly as before the moves existed (see will_buffered_jump_fire). That rule is what
+	# keeps thin ice's skip rhythm intact, and why a pattern proven fair without the moves stays
+	# fair with them. A refused tap also stays in the buffer.
 	if jump_buffer_timer > 0.0 and coyote_timer <= 0.0 and can_use_air_move() \
 			and not will_buffered_jump_fire(delta):
-		if try_slam(delta):
+		var has_moved: bool = try_slam(delta) if is_buffered_tap_slam else try_double_jump()
+		if has_moved:
 			jump_buffer_timer = 0.0
 
 	# The gate is "on the floor and not climbing out of a jump", NOT the former

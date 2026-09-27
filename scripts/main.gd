@@ -199,7 +199,9 @@ func _input(event: InputEvent) -> void:
 		return
 	if touch_event.pressed:
 		held_touch_indices[touch_event.index] = true
-		(player as Player).buffer_jump()
+		# The LEFT half of the screen is the slam side, the right half the jump side. On the
+		# ground any tap jumps; only an air move reads the side (Player's air-move site).
+		(player as Player).buffer_jump(touch_event.position.x < get_viewport().get_visible_rect().size.x * 0.5)
 	else:
 		held_touch_indices.erase(touch_event.index)
 

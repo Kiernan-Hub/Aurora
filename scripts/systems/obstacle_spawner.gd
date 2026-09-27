@@ -40,7 +40,9 @@ const FOOTPRINT_SAMPLE_STEP: float = 16.0
 # the last piece: max upgrade with the sqrt(2) jump powerup, 1.13s of airtime, 848px at
 # MAX_SPEED, plus margin. It was 700 until 2026-09-27, which covered only the unboosted 600px,
 # so a late boosted jump over an obstacle 700-850px before a void could land in it. BEHIND only
-# has to stop a piece sitting on the landing side of a far lip.
+# has to stop a piece sitting on the landing side of a far lip. It covers a SINGLE jump on
+# purpose: a double jump (up to 1,697px) off the last piece is a second tap the player chose,
+# the same call as taking one into a chasm (Player.try_double_jump).
 const OBSTACLE_VOID_CLEARANCE_AHEAD: float = 950.0
 const OBSTACLE_VOID_CLEARANCE_BEHIND: float = 200.0
 # Clamp on how close to spawn a pattern can ever land: the old hand-placed

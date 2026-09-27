@@ -2,60 +2,88 @@
 
 ## Where the project is — 2026-09-27, late. READ THIS FIRST
 
-**Obstacle plan steps 1–6 are BUILT** on branch `claude/implementation-t58fc3`, **not merged to
-`main`**. The owner confirmed all eight decisions below ("those decisions are good") and said go on
-the air moves. **Step 6 (the slam) is built and every gate is green, but its mandatory phone tap
-test has NOT been done.** **Step 7 (double jump) waits for the owner's "go"**, and should wait
-for step 6's phone test too, since both share the one air-move site.
-This session's cloud build log is at the top of `docs/history.md`; not required reading.
+**Obstacle plan steps 1–7 are BUILT** on branch `claude/implementation-t58fc3`, **not merged to
+`main`**, and every gate is green. The owner confirmed all eight decisions below and said to keep
+going. **Neither air move has had its mandatory phone tap test** (the owner can't reach the phone
+yet). Step 8 is the owner's art pass. This session's cloud build log is at the top of
+`docs/history.md`; not required reading.
 
 ### Next actions, in order
 
-1. **Owner: the step-6 phone test** (checklist in "Step 6 as built" below). Slam costs 300 coins,
-   so it needs a save with 300 in the wallet.
-2. **Owner: play the obstacle half** on desktop and phone ("Owner checklist" below).
-   - After opening the editor, run `git status`. It re-saves `HANDOFF.md` with tab indentation
-     (whitespace only; `git checkout -- HANDOFF.md`), and may strip `project.godot`'s pins
-     (standing rule in `CLAUDE.md`).
+1. **Owner: the phone tap test** for both air moves (checklist below). Needs coins: slam 300,
+double jump 900. On desktop, `GameManager.debug_unlock_air_moves = true` grants both without
+buying (`shipping_values_check` fails while it's on).
+2. **Owner: play the obstacle half** on desktop and phone ("Owner checklist" below). After opening
+the editor, run `git status`. The editor re-saves `HANDOFF.md` with tab indentation (whitespace
+only; `git checkout -- HANDOFF.md`) and may strip `project.godot`'s pins (standing rule in `CLAUDE.md`).
 3. **Tune by feel.** Every number is a starting value; the knobs are listed below. Any timing change
-   must still pass `./scripts/check.sh`. The fairness proof prints the tightest window per pattern and
-   fails if one goes below 7 frames.
+must still pass `./scripts/check.sh`. The fairness proof prints the tightest window per pattern and
+fails if one goes below 7 frames.
 4. **Merge to `main`** once happy: `git checkout main && git pull && git merge --ff-only
-   origin/claude/implementation-t58fc3 && git push`, or ask Claude to open a PR.
-5. **Step 7 (double jump)** on the owner's "go". The design is in "Remaining plan" below.
+origin/claude/implementation-t58fc3 && git push`, or ask Claude to open a PR.
 
-### Step 6 as built: shop rows + slam
+### The air moves as built (steps 6–7)
 
-- **Shop:** `UpgradeStore.TRACKS` (`id`, `name`, `costs`, `hint`) is the shop. `GameManager.build_shop_rows()`
-  makes one label + button per row under the wallet line; `JumpLabel`/`BuyJumpButton` were removed
-  from `main.tscn`. A track's max level is its cost count; ids are save data (no version bump to add
-  one, renaming one un-buys it). `apply_upgrades()` sets `Player.has_slam`.
-- **Slam:** `player.gd`. A buffered air tap, at the ONE air-move site after the ground-jump branch,
-  sets `velocity.y = 1200` down, then gravity capped at 1,600 until touchdown, one per airtime.
-  - **Landing-window rule:** a tap still live at touchdown stays the ordinary landing jump.
-  - **Void rule:** refused unless the simulated dive has ground all the way down.
-  - **Blocked** by lake, boost, Aurora flight/landing latch, glide, death.
-  - Landing gets a bigger squash; the snow burst waits for the art pass.
-- **Decision flagged to the owner: a mid-air press slams.** "Hold in the air = spin" starts with a
-  press, and for a slam owner that press is a tap, so it slams. They spin by holding *through* the
-  jump from the ground instead. The alternative (slam on a short tap's *release*) keeps mid-air
-  press-to-spin but adds latency and press-timing code to the touch path. Revisit only if it feels bad.
-- **Verified:**
-  - Gates: `check.sh` 5/5 (new `check_slam_limits()`: cap 1,600 = run-off 1,600), `chasm_probe`
-    **72/72** (new `slam_void` and `slam_lip` trials, 0 recoveries), `freeze_search` 0 stalls,
-    plain and `--slam=1`.
-  - A throwaway runtime test, because a passing slam trial could pass with a slam that never fires:
-    - a tap at frame 20 cuts airtime 48 → 26 frames;
-    - unowned, the same tap changes nothing;
-    - a tap 4 frames before landing gives no slam and a second jump;
-    - tapping every frame over a void gives 0 slams there and 1 after it, and the player lives.
-- **Phone test (mandatory, touch path):**
-  1. Buy Slam; the button shows OWNED.
-  2. Jump, tap at the top: a dive.
-  3. Tap just before landing: a normal re-jump, not a dive.
-  4. Tap over a chasm: nothing happens.
-  5. Hold through a jump: it still spins.
-  6. Without Slam, nothing changes.
+**Input.** One site in `player.gd` ("THE AIR-MOVE SITE"), fed by the shared jump buffer.
+- On the ground, and in the landing window, **any tap jumps**, exactly as before.
+- In the air, **the tap's side picks the move**: the left half of the screen slams, the right half
+double-jumps. The owner asked for this split. It replaced the plan's one-button sequence (tap = double
+jump, then tap = slam), under which an owner of both could never slam without double-jumping first.
+- Desktop: Space/Enter/left click is the jump side; **S or right click** is the slam side (arrows
+are debug speed control).
+- **Landing-window rule:** a tap still live at touchdown stays the ordinary landing jump, which keeps
+thin ice's rhythm and every fairness proof unchanged. A refused tap stays in the buffer.
+- **Blocked** by lake, boost, Aurora flight and its landing latch, glide, and death.
+- **Spin:** a jump-side press in the air still starts a spin (it double-jumps if owned, and the hold
+carries on). A slam-side press is a slam for a slam owner, so spin from that side by holding through
+the jump. The alternative, slam on a tap's release, adds latency and touch press-timing code. Revisit
+only if it feels bad.
+
+**Slam** (300). Sets `velocity.y` to 1,200 down, then gravity capped at 1,600 (the drop chasm's own
+run-off speed, `check_slam_limits()`). One per airtime; it can only shorten a jump. It is refused
+unless the simulated dive has ground all the way down, and refused when already falling faster
+than 1,200, since it would slow you.
+
+**Double jump** (900). A ground-strength impulse (upgrade and powerup included) replacing vertical
+speed, one per airtime, none while slamming. Reach is at most 2× a single jump.
+- **Guardrail A:** only while the feet are above the lip (the surface fall death measures against).
+- **Guardrail B:** a trick after a double jump pays coins, no boost.
+- A single jump's chasm, obstacle and rare-coin bounds are unchanged. A double jump carried into a
+void, or reaching the rare coin from level 1, is the player's call (owner default, accepted).
+- **Plan deviation:** no formula-only "2× bound" constant check. It would re-derive its own model
+and could not see the real code, so the chasm trials exercise the real double jump instead.
+
+**Shop.** `UpgradeStore.TRACKS` rows (`id`, `name`, `costs`, `hint`); `GameManager.build_shop_rows()`
+builds one label and button each, and `JumpLabel`/`BuyJumpButton` are gone from `main.tscn`. A
+track's max level is its cost count. Ids are save data: adding one needs no version bump, renaming one un-buys it.
+
+**Verified:**
+- `check.sh` 5/5.
+- `chasm_probe` **120/120**, 0 recoveries. Ten trials per chasm, including `slam_void`, `slam_lip`,
+`double_lip`, `double_rescue` (dies without a working double jump), `double_boost` and `double_late`
+(must die: guardrail A refusing below the lip).
+- `freeze_search` 0 stalls, plain, `--slam=1` and `--double=1`.
+- `floor_flicker_probe` (full 20,000 frames, 76s with `--fixed-fps`): 0 recoveries, 0 stuck,
+worst uphill flip rate 0.0000.
+- `aurora_calm_probe` PASS.
+- A throwaway runtime test of the real player:
+  - a slam tap cuts airtime 48 → 26 frames; unowned, nothing changes;
+  - a tap 4 frames before landing gives a landing jump, not a slam;
+  - over a void, 0 slams, then 1 after it;
+  - a double jump stretches airtime 53 → 81; a second tap is ignored; a slam-side tap with only the
+double jump owned does nothing;
+  - a flip after a double jump pays 5 coins and no boost, while the same handler without one boosts.
+- Found on the way: `chasm_probe`'s reset never cleared the jump buffer, so a tap-every-frame trial
+leaked a jump into the next one. It read as five guardrail failures. Fixed in `reset_player()`.
+
+**Phone test (mandatory; the touch path has shipped broken twice):**
+1. Buy both; each button shows OWNED.
+2. Jump, then tap the **right** half at the top: a second jump.
+3. Jump, then tap the **left** half: a dive.
+4. Tap either half just before landing: a normal re-jump.
+5. Tap left over a chasm: nothing. Fall off a lip, then tap right: nothing.
+6. Hold through a jump: it still spins.
+7. Without the unlocks, nothing changes.
 
 ### Commits on the branch
 
@@ -70,7 +98,8 @@ This session's cloud build log is at the top of `docs/history.md`; not required 
 | `5addd81` | 5 | `TIERS`, short proven combos, forward search, fallback to singles, first-appearance rule |
 | `4f4c2c5` | — | Cloud handoff; the session log moved to `docs/history.md` |
 | `91a64b5` | fix | Mac review: a gliding player passes through floe/shard (decision 8) |
-| this one | 6 | Shop rows from `UpgradeStore.TRACKS` + the slam; `check_slam_limits()`, `slam_*` chasm trials, `freeze_search --slam=1` |
+| `da4a857` | 6 | Shop rows from `UpgradeStore.TRACKS` + the slam; `check_slam_limits()`, `slam_*` chasm trials, `freeze_search --slam=1` |
+| this one | 7 | Double jump + the left/right side split; guardrails A and B; `double_*` chasm trials, `freeze_search --double=1`; `debug_unlock_air_moves` |
 
 Steps 1–5 were re-verified on the Mac: `check.sh` 5/5, freeze-search 0 stalls, `chasm_probe` 48/48,
 `aurora_calm_probe` PASS 182,974 assertions, `sky_layer_check` PASS. `camera_shake_probe` measured
@@ -172,11 +201,8 @@ that part is the owner's.
    terrain is rarely flat for long: 400px of ≤6° fits 15–19% of start positions, 800px 6–8%, 1,200px 3–4%
    (3 seeds). Long combos would almost never appear. So combos are short (0.5–1.0s), fall back to a
    single when they don't fit, and difficulty mostly comes from density. The alternatives, not built:
-   - **B, flatten the ground under patterns** (a write-ahead flat reservation like the lake). Every
-     combo fits, but it is a terrain change (priority #1) armed ~3,000px ahead, and the world looks flatter.
-     Bug-prone.
-   - **C, prove fairness on the real hills at spawn time.** A runtime solver that must mirror player
-     physics exactly. Heavy on phones, and a mismatch is a false "fair".
+   - **B, flatten the ground under patterns** (a write-ahead flat reservation like the lake). Every combo fits, but it is a terrain change (priority #1) armed ~3,000px ahead, and the world looks flatter. Bug-prone.
+   - **C, prove fairness on the real hills at spawn time.** A runtime solver that must mirror player physics exactly. Heavy on phones, and a mismatch is a false "fair".
 2. **Thin ice is exempt from the 6° slope rule** (plan deviation). Held to it, a 1.2s patch fits ~5%
    of the ground. The exemption is sound only while the `weakest_hop` check passes.
 3. **`PATTERN_MIN_WINDOW_FRAMES` = 7**, not the plan's ~8, because today's lone spike measures exactly 7.
@@ -228,77 +254,17 @@ that part is the owner's.
 
 ---
 
-## Remaining plan: steps 6–8 (approved design, unchanged)
+## Remaining plan: step 8
 
 ### Core rules (still hold)
 - **No hazard touches the player's physics**: overlap checks and span checks only.
 - **You don't control speed**, so the only decision is when to leave the ground (plus the air moves).
   Motion is decoration only.
 - **Patterns are authored in seconds** and proven on flat ground for a player who owns nothing. The
-  air moves only ever **add** options (the landing-window rule below), so "fair without them ⇒ fair with them".
+  air moves only ever **add** options (the landing-window rule), so "fair without them ⇒ fair with them".
 
-### Air moves (shop unlocks)
-
-**One button does everything.** The full input table once both moves exist:
-
-| Input | On the ground | In the air |
-|---|---|---|
-| **Tap** | Jump (unchanged) | ① If you'll land within 0.12s: a normal queued landing jump (unchanged) · ② else the first air tap = **double jump** (if owned, unused this airtime) · ③ else = **slam** (if owned, unused) · ④ else ignored (unchanged) |
-| **Hold** | Nothing | Spin (trick), or glide thrust while a glide is active (unchanged) |
-
-**Rule ① is the landing-window rule, and it's what makes the moves safe to add.** A tap just before
-touching down keeps today's behaviour exactly: it keeps the **thin-ice skip rhythm** intact, stops the
-double jump being burned by accident, and is why fairness carries over. Landing time is predicted from
-height above the surface, vertical speed and gravity (the height field is pure).
-
-**Both moves are decided at ONE site in `_physics_process`, from the shared jump buffer.** Both input
-paths already feed it (desktop polling; touch via `buffer_jump()`), so they can't diverge. Touch has
-shipped broken twice (`input.md`).
-
-**Both moves are blocked whenever a ground jump is**, plus while gliding: `is_jump_suppressed`
-(lake), `is_boosting`, Aurora crest flight and its landing latch, `is_glide_active`.
-
-**Slam**
-
-| | |
-|---|---|
-| Effect | `velocity.y` set to a dive speed (start ~1,200 px/s down), then normal gravity, **capped at 1,600 px/s** (the speed a drop chasm's run-off already reaches, so collision meets nothing new) |
-| Reach | Can only **shorten** a jump. Chasm math, rare coin and trick timing are untouched |
-| Over a void | **Disabled.** Slamming there is almost always accidental death |
-| Why | The partner to floating hazards: jump the spike, slam down under the floe |
-| Flair | Squash + snow burst on landing. **No screen shake**: the camera follow is measured and gated |
-
-**Double jump**
-
-| | |
-|---|---|
-| Effect | A second impulse mid-air: `JUMP_VELOCITY × upgrade × jump boost`, replacing vertical speed |
-| **Reach bound** | **Exactly 2× a single jump.** Airtime is largest when the second impulse fires just before landing. At 750 px/s: 1,200px at max upgrade, 1,697px with the boost. A new constant check asserts it by sweeping every firing frame |
-| Guardrail A | **Only while above the surface fall-death measures against** (`get_surface_world_y` + pending exit drop). This rules out hitting a chasm's far lip from underneath. It still allows double-jumping in a drop chasm's descent |
-| Guardrail B | **A trick landed in an airtime that used the double jump pays coins but no boost.** Otherwise it is a free 3s invincibility button |
-| Chasm policy | A single jump from before the 900px run-up still never reaches the void (asserted). A double jump can, and that's the player's call; the void is on screen by then |
-| Rare coin | Level 1 + double jump reaches it (48 + 2×62.7 + 10 = 183 > 174). **Default: accept.** `check_rare_coin_height` states the new rule |
-| Obstacle clearance | **New since the plan:** `OBSTACLE_VOID_CLEARANCE_AHEAD` (950) covers one boosted jump, not a double jump (up to 1,697px). A double jump off the last piece of a pattern can therefore land in a chasm. That is the player's call, same as the chasm policy, but restate it in the check or raise the clearance |
-
-**Shop:** upgrades are an open dictionary keyed by id (`save_store.gd:44`), so `"slam"` and
-`"double_jump"` need **no save-version bump**. The shop is hard-wired to the jump track
-(`shop_jump_label`/`shop_jump_button`); step 6 builds rows from an `UpgradeStore` table instead of adding
-NodePaths. **Placeholder prices: slam 300, double jump 900** (the jump track totals 1,130).
-
-### Step 6 — Shop rows + slam: BUILT
-See "Step 6 as built" at the top. One difference from the plan: the `double_jump` shop row is added
-with step 7, not before, so the shop never sells a move that does nothing.
-
-### Step 7 — Double jump (medium–large)
-- Same site (`player.gd`, "THE AIR-MOVE SITE"): try the double jump before `try_slam()`. Guardrails A and
-  B, all block flags; the landing-window rule and `can_use_air_move()` already exist. Add the
-  `double_jump` row to `UpgradeStore.TRACKS` and its `has_double_jump` line to `apply_upgrades()`.
-- Checks: the **2× reach bound** (sweep every firing frame); `check_rare_coin_height` restated;
-  `check_upgrade_curve()` comments restated to "single jump"; the obstacle-clearance note above;
-  `chasm_probe` trials (double jump at the lip, at max reach over each width, **refused below the
-  lip**, boosted, during a drop chasm).
-- Gates: `check.sh`, `chasm_probe`, `freeze_search`, `floor_flicker_probe`. **On-device input test.**
-- Docs: rewrite `physics.md`'s "Double jump — ruled out" and `CLAUDE.md`'s pointer to it.
+The air moves' design as built, including where it departs from the plan (the left/right split, no
+formula-only 2× check), is at the top of this file and in `input.md` / `physics.md`.
 
 ### Step 8 — Art (owner)
 Ice-crystal spike, floe + icicle (the island look must stay inside the 64–200px column, or the
@@ -307,16 +273,15 @@ hitbox and `PIECE_KINDS` change together), shard, thin-ice cracks, the crack SFX
 hazard. Mind the four art-swap couplings (`visuals.md`) and the contrast gate (hazards stay
 red-dominant unless that rule is revisited).
 
-### Open questions (owner). **Defaults in bold** get built unless the owner says otherwise
-1. Rare coin with the double jump: **accept that level 1+ reaches it**, or raise it for owners.
-2. Slam **smashes a spike you land on** (like the boost)? **Try it after step 6; off by default.**
-3. Unlock prices: **slam 300, double jump 900**.
-4. Trick boost: **keep**, except after a double jump (guardrail B).
-6. Should coins avoid floe columns? **No guard for now** (checklist item 6).
-7. Hazard colour stays red-family? **Yes, until the art pass.**
+### Open questions (owner). **Defaults in bold** are what's built unless the owner says otherwise
+1. Slam **smashes a spike you land on** (like the boost)? **Off**; try it once the slam has been played.
+2. Unlock prices: **slam 300, double jump 900**. Placeholders.
+3. Should coins avoid floe columns? **No guard for now** (checklist item 6).
+4. Hazard colour stays red-family? **Yes, until the art pass.**
 
 Answered and built: floating hazards wait out a glide; tier timings from the plan's table; step 5 as
-option A (owner confirmed).
+option A (owner confirmed); the rare coin stays reachable by a level-1 double jump; the trick boost stays,
+except after a double jump; the air moves split left (slam) / right (double jump) (owner).
 
 ### Ideas flagged and NOT planned (the owner's rule: bug-prone or much harder → flag it)
 

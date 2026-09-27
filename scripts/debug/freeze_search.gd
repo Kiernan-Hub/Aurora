@@ -28,6 +28,7 @@ const PATTERN_AUTO: int = 3
 
 var terrain_generator: TerrainGenerator
 var player: Player
+var press_action: StringName = &"ui_accept"
 
 
 func _init() -> void:
@@ -74,9 +75,13 @@ func _init() -> void:
 	# open chord end in a ConcavePolygonShape2D segment soup and therefore the highest-risk
 	# geometry in the feature. Warp onto the lead-in flat, never into the void.
 	(main.get_node("TerrainGenerator") as TerrainGenerator).debug_chasm_disabled = get_int_argument("--chasms", 0) == 0
-	# --slam=1 grants the slam (probes get no upgrades), so every press the input schedules make
-	# in the air becomes a dive and its landing: slam contacts swept over the same start phases.
+	# --slam=1 grants the slam (probes get no upgrades) and makes every press a slam-side one, so
+	# each press the input schedules make in the air becomes a dive and its landing: slam contacts
+	# swept over the same start phases. --double=1 grants the double jump the same way, on the
+	# ordinary jump-side press.
 	player.has_slam = get_int_argument("--slam", 0) == 1
+	player.has_double_jump = get_int_argument("--double", 0) == 1
+	press_action = Player.SLAM_ACTION if player.has_slam else &"ui_accept"
 	root.add_child(main)
 	await physics_frame
 
@@ -159,9 +164,9 @@ func run_trial(warp_x: float, end_x: float, pattern: int, param: int, session_se
 		elif pattern == PATTERN_AUTO:
 			want_jump = player.is_on_floor()
 		if want_jump:
-			Input.action_press("ui_accept")
+			Input.action_press(press_action)
 		else:
-			Input.action_release("ui_accept")
+			Input.action_release(press_action)
 
 		await physics_frame
 
@@ -188,7 +193,7 @@ func run_trial(warp_x: float, end_x: float, pattern: int, param: int, session_se
 		if player.global_position.x > end_x:
 			break
 
-	Input.action_release("ui_accept")
+	Input.action_release(press_action)
 	return {"min_motion_x": min_motion_x, "max_slides": max_slides, "stalled": stalled, "log": log}
 
 
@@ -201,6 +206,7 @@ func reset_player(warp_x: float) -> void:
 	player.coyote_timer = 0.0
 	player.jump_buffer_timer = 0.0
 	player.is_slamming = false
+	player.has_double_jumped = false
 	player.last_physics_displacement = Vector2.ZERO
 	var player_chunk: int = int(floor(warp_x / terrain_generator.chunk_width))
 	terrain_generator.next_chunk_index = player_chunk - terrain_generator.chunk_count_behind

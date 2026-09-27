@@ -4,7 +4,7 @@ extends SceneTree
 # (lips level, void cut out of the collision shape, width clearable on paper); nothing there
 # runs physics, so nothing there proves a chasm actually behaves.
 #
-# Six trials per chasm, each starting from the same warp onto the lead-in flat:
+# Ten trials per chasm, each starting from a warp onto the lead-in flat:
 #
 #   no_jump  -- the player must FALL IN AND DIE. If this passes trivially (player survives
 #               without jumping) the void is not actually cut out of the collision shape and
@@ -29,7 +29,7 @@ extends SceneTree
 #               it, a glide that expired mid-void would restore gravity at lip height with no
 #               way to jump, the exact unavoidable-death shape the speed boost's guard exists
 #               to prevent.
-#   slam_void -- the slam (2026-09-27), owned. Jumps as "jump" does, then taps on EVERY frame
+#   slam_void -- the slam (2026-09-27), owned. Jumps as "jump" does, then taps the SLAM side on EVERY frame
 #               from the near lip until landed: every slam whose dive would cross the void must
 #               be refused, so the jump carries on and clears it, and a slam once the dive has
 #               ground all the way lands on the far side.
@@ -38,6 +38,17 @@ extends SceneTree
 #               past the near lip, which must be refused. The torture test for the lip-side guard
 #               and the landing-window rule, and many high-speed slam landings for the
 #               recoveries=0 check.
+#   double_lip    -- the double jump, owned. Jumps as "jump" does, then taps the jump side on every
+#               frame over the void: the first tap double-jumps at the lip and must clear.
+#   double_rescue -- jumps TOO EARLY, so the single arc would come down mid-void, then taps on
+#               each descending frame whose feet are within one frame's fall above the lip: a
+#               double jump from the edge of guardrail A. Must clear. (Aiming at exactly the last
+#               frame above missed it on some phases to float rounding, hence a window, and a fixed
+#               one was skipped whole by the boosted arc's ~15px frames, hence one frame's fall.)
+#   double_boost  -- double_rescue with the sqrt(2) jump powerup, the longest reach there is.
+#   double_late   -- no ground jump; taps on every frame once coyote time is spent past the lip,
+#               when the body has already sunk below it. Guardrail A must refuse every one, so a
+#               hazard chasm kills exactly as no_jump does (a drop chasm is survived either way).
 #
 # Usage:
 #   godot --headless --path . --script res://scripts/debug/chasm_probe.gd -- \
@@ -99,7 +110,8 @@ func _init() -> void:
 		quit(1)
 		return
 
-	var trial_modes: Array[String] = ["no_jump", "jump", "late", "boost", "slam_void", "slam_lip"]
+	var trial_modes: Array[String] = ["no_jump", "jump", "late", "boost", "slam_void", "slam_lip",
+		"double_lip", "double_rescue", "double_boost", "double_late"]
 	if glide_enabled:
 		trial_modes.append("glide")
 
@@ -135,11 +147,23 @@ func find_void_spans(chasm_budget: int) -> Array[Dictionary]:
 func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: float) -> bool:
 	var near_lip_x: float = float(void_span["start_x"])
 	var far_lip_x: float = float(void_span["end_x"])
-	reset_player(near_lip_x - APPROACH_WORLD_X + phase_offset_world_x)
-	# Probes get no upgrades (GameManager.apply_upgrades() skips headless), so the slam trials
-	# grant it here and every other trial measures the player who owns nothing.
+	# Probes get no upgrades (GameManager.apply_upgrades() skips headless), so the air-move trials
+	# grant their move here and every other trial measures the player who owns nothing.
 	var is_slam_trial: bool = trial_mode.begins_with("slam")
+	var is_double_trial: bool = trial_mode.begins_with("double")
+	var is_rescue_trial: bool = trial_mode == "double_rescue" or trial_mode == "double_boost"
+	var jump_multiplier: float = PowerupManager.JUMP_BOOST_VELOCITY_MULTIPLIER if trial_mode == "double_boost" else 1.0
+	var trial_speed: float = speed_override if speed_override > 0.0 else get_min_speed_at_world_x(near_lip_x - APPROACH_WORLD_X)
+	# A rescue jump leaves one single-jump reach minus half the void before the lip, so its arc
+	# comes down mid-void -- further back than the usual approach when the powerup is on.
+	var rescue_trigger_x: float = near_lip_x - trial_speed * (2.0 * -Player.JUMP_VELOCITY * jump_multiplier / Player.GRAVITY) \
+		+ (far_lip_x - near_lip_x) * 0.5
+	var approach: float = maxf(APPROACH_WORLD_X, near_lip_x - rescue_trigger_x + 60.0) if is_rescue_trial else APPROACH_WORLD_X
+	reset_player(near_lip_x - approach + phase_offset_world_x)
 	player.has_slam = is_slam_trial
+	player.has_double_jump = is_double_trial
+	if jump_multiplier > 1.0:
+		player.start_jump_boost(jump_multiplier)
 
 	if trial_mode == "boost":
 		(main.get_node("PowerupManager") as PowerupManager).start_speed_boost()
@@ -157,17 +181,28 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 	var jump_trigger_x: float = near_lip_x - ((far_lip_x - near_lip_x) * 0.5)
 	if trial_mode == "late":
 		jump_trigger_x = near_lip_x + 1.0
+	elif is_rescue_trial:
+		jump_trigger_x = rescue_trigger_x
+	elif trial_mode == "double_late":
+		jump_trigger_x = INF
 
 	var has_jumped: bool = false
 	var has_released_glide: bool = false
 	var reached_x: float = player.global_position.x
 	var landed_past_far_lip: bool = false
 	for _frame_index: int in range(TRIAL_FRAME_BUDGET):
-		if (trial_mode == "jump" or trial_mode == "late" or is_slam_trial) and not has_jumped and player.global_position.x >= jump_trigger_x:
+		var player_x: float = player.global_position.x
+		var is_over_void: bool = player_x >= near_lip_x and player_x < far_lip_x
+		if (trial_mode == "jump" or trial_mode == "late" or is_slam_trial or is_double_trial) \
+				and not has_jumped and player_x >= jump_trigger_x:
 			player.buffer_jump()
 			has_jumped = true
-		elif (trial_mode == "slam_lip" and has_jumped) or (trial_mode == "slam_void" and player.global_position.x >= near_lip_x):
-			player.buffer_jump()
+		elif (trial_mode == "slam_lip" and has_jumped) or (trial_mode == "slam_void" and player_x >= near_lip_x):
+			player.buffer_jump(true)
+		elif (trial_mode == "double_lip" and is_over_void) \
+				or (trial_mode == "double_late" and player_x >= near_lip_x + trial_speed * Player.COYOTE_TIME_DURATION * 1.5) \
+				or (is_rescue_trial and is_over_void and is_just_above_lip()):
+			player.buffer_jump(false)
 		# Holding past the far lip forever is not what a real player does -- they release once
 		# clearly across, and gravity (unopposed by thrust) brings them back down to land. Without
 		# this release the player just keeps climbing at GLIDE_MAX_RISE_SPEED for the rest of the
@@ -203,7 +238,7 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 	terrain_generator.ensure_segment_cache_for_world_x(near_lip_x)
 	var chasm_spec: Dictionary = terrain_generator.get_segment_spec(terrain_generator.find_segment_index_at_x(near_lip_x))
 	var must_be_jumped: bool = bool(chasm_spec.get("must_be_jumped", true))
-	var expects_survival: bool = trial_mode != "no_jump" or not must_be_jumped
+	var expects_survival: bool = (trial_mode != "no_jump" and trial_mode != "double_late") or not must_be_jumped
 	var recoveries: int = player.debug_stall_recovery_count
 	# A stall recovery is a stop-ship regardless of the outcome: it means the body wedged and
 	# a watchdog papered over it, which is exactly the large_valley failure the lips are
@@ -249,7 +284,13 @@ func reset_player(world_x: float) -> void:
 	player.end_boost()
 	player.end_glide()
 	player.velocity = Vector2.ZERO
+	# A trial that taps every frame ends with a tap still buffered; left live, it fires a jump at
+	# the next trial's warp point and every result after it is measuring the wrong arc.
+	player.jump_buffer_timer = 0.0
+	player.coyote_timer = 0.0
 	player.is_slamming = false
+	player.has_double_jumped = false
+	player.end_jump_boost()
 	# Past PHASE1_DURATION so the ramp uses the slow phase-2 acceleration (2.27 px/s^2, ~15
 	# px/s over a whole trial) and the pin below stays effectively pinned.
 	player.speed_manager.elapsed_time = SpeedManager.PHASE1_DURATION + 1.0
@@ -271,6 +312,17 @@ func reset_player(world_x: float) -> void:
 	for chunk_index: int in terrain_generator.active_chunks.keys():
 		terrain_generator.remove_chunk(chunk_index)
 	terrain_generator.initialize_chunks()
+
+
+# Descending with the feet just above the surface fall death measures against: the edge of
+# Player.try_double_jump's guardrail A, from the side where it must still allow the jump.
+func is_just_above_lip() -> bool:
+	var reference_y: float = terrain_generator.get_surface_world_y(player.global_position.x) \
+		+ terrain_generator.get_pending_exit_drop_at_world_x(player.global_position.x)
+	var feet_y: float = player.global_position.y + player.capsule_half_height
+	var one_frame_fall: float = (player.velocity.y + Player.GRAVITY / float(Engine.physics_ticks_per_second)) \
+		/ float(Engine.physics_ticks_per_second)
+	return player.velocity.y > 0.0 and feet_y < reference_y and feet_y >= reference_y - one_frame_fall - 1.0
 
 
 func get_int_argument(argument_name: String, default_value: int) -> int:

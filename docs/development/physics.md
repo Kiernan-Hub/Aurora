@@ -36,22 +36,31 @@ can only **shorten** a jump, so no reach bound moves. It is refused unless the s
 ground all the way down (`input.md`, "The air-move site"). Gates: `chasm_probe`'s `slam_void` /
 `slam_lip` trials, `freeze_search --slam=1`. Flair beyond a bigger landing squash waits for the art pass.
 
-> **REOPENED 2026-09-27:** the owner wants a double jump as a shop unlock. The worst-case reach turned
-> out to be a simple bound (exactly 2× a single jump), and the plan + guardrails are in `HANDOFF.md`
-> (step 7). The reasoning below is why the guardrails exist; rewrite this section when it ships.
+**Double jump (shop unlock, 2026-09-27).** It was ruled out on 2026-08-06 because every chasm
+invariant bounds reach as one parabola from takeoff speed, and a second impulse makes reach depend
+on *when* it fires. That turned out to be a simple bound: airtime is largest when the second
+impulse fires just before landing, which buys one more full arc, so reach is **at most 2× a single
+jump** (1,200px at max upgrade, 1,697px with the powerup, at 750 px/s). It shipped under two
+guardrails instead of a new reach proof:
 
-**Double jump — ruled out (2026-08-06).** Every chasm invariant in
-`terrain_invariant_check.gd` (`CHASM_LEAD_IN_LENGTH`, `CHASM_MAX_REACH_FRACTION`,
-`check_chasm_variant_table()`) is built on reach as a pure function of takeoff speed —
-`get_jump_reach(speed, multiplier)`, one continuous parabola. A double jump makes reach a
-function of *when* the player fires the second impulse mid-arc, which none of that math
-represents; it isn't a bigger number to re-bound, it's a different shape of function.
-A cooldown doesn't help — it limits how often the mechanic fires per run, not what happens
-the one time it's used right at a chasm's lead-in edge, which is exactly when a player
-would use it. Proving it safe would mean deriving and asserting a worst-case two-impulse
-reach bound the way `check_chasm_variant_table()` does for one impulse today — real,
-non-trivial verification work, not a multiplier tweak. Airborne tricks (CLAUDE.md Build
-order §5) were built instead — same "more airtime = more fun" fantasy, zero reach risk.
+- **The chasm math stays about a single jump.** A single jump from before the 900px run-up still
+  never reaches a void (`check_upgrade_curve()`). Carrying a double jump into one is the player's
+  call, and the void is on screen by then. The same goes for `OBSTACLE_VOID_CLEARANCE_AHEAD` and
+  the rare coin, which a double jump reaches from level 1 (the owner accepted this).
+- **Guardrail A (`Player.try_double_jump`):** it only fires while the feet are above the surface
+  fall death measures against. That is lip level in a hazard void, far-lip level in a drop chasm. Once
+  a player has sunk below a lip, a jump would drive them into its open chord end from underneath,
+  which the physics has never met.
+- **Guardrail B (`GameManager._on_player_trick_completed`):** a trick landed in an airtime that
+  used the double jump pays coins but no speed boost (`Player.has_double_jumped`, cleared at the
+  start of the first grounded frame so the landing-frame handler can still read it). Otherwise
+  up to 1.6s of air against a 0.9s flip makes it a free 3s of can't-die.
+
+The impulse is a ground jump's (`JUMP_VELOCITY × upgrade × powerup`), replacing vertical speed; one
+per airtime, none while slamming. Gates: `chasm_probe`'s four `double_*` trials (the rescue ones die
+without a working double jump, and `double_late` must die, proving guardrail A refuses below a lip),
+and `freeze_search --double=1`. There is no constant check of the 2× bound: a formula-only sweep
+would re-derive its own model and could not see the real code, so the chasm trials exercise that instead.
 
 The gate is `is_on_floor() and not is_jump_ascending`, **not** the former
 `velocity.y >= 0.0`. That old test was trying to let a jump escape the grounded model,

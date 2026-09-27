@@ -128,6 +128,8 @@ func check_flag_defaults() -> void:
 
 	var game_manager: GameManager = GameManager.new()
 	expect_bool("GameManager.require_start_screen", game_manager.require_start_screen, true)
+	# Left true, every player owns both air moves without buying them, and the shop sells nothing.
+	expect_bool("GameManager.debug_unlock_air_moves", game_manager.debug_unlock_air_moves, false)
 	game_manager.free()
 
 	expect_float("BiomeDirector.BIOME_DISTANCE", BiomeDirector.BIOME_DISTANCE, 75000.0)
