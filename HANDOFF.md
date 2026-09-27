@@ -24,9 +24,44 @@ Older sessions live in `docs/history.md`; **none of that is a to-do**.
 - True 120 Hz on phones needs physics interpolation. That's a big change; flagged, not started.
 - Play Store release signing / store config.
 
-### Next: obstacles. The owner will describe what they want; ask, don't guess
+### Next: obstacles. Plan APPROVED by the owner 2026-09-27
 
-Current state, so the next chat doesn't have to rediscover it:
+**Diagnosis (why it's too easy):** two obstacles are never on screen together (≥4s apart =
+3000px+ at speed, screen shows ~1400–1700); one hazard with one answer; difficulty plateaus at
+~2:30 (speed caps 2:00, density 2:30); a stack of free passes (untimed shield, boost breaks
+through and defers spawns, glide landing shield, every landed trick = 3s invulnerable boost);
+the player sits mid-screen, so only ~0.9–1.15s of forward view at 750 px/s.
+
+**Structure:** tiers inside ONE endless run — a new hazard idea roughly every minute, each
+introduced alone with extra room the first time. Hazards come in **patterns** of 2–3 pieces
+inside one screen, with breathing room between. **Declined for now:** levels (scope, fights the
+seeded world), checkpoints (rewinding ~10 systems mid-run is a bug magnet), pick-a-difficulty
+(cheap later, once tiers exist).
+
+**Hazard vocabulary — every one an `Area2D`; none adds a floor, wall or velocity change:**
+ground spike (jump) · floating shard hanging off a floating ice floe (stay down; levels 3–4 can
+jump it) · thin ice (land and it cracks after ~0.2s — skip across it). **Flagged, not planned:**
+standable floating islands (the physics assumes the floor is the height field in ≥4 places;
+edges are walls), bounce floes (extra reach near chasms), wind (mid-air velocity change),
+biome-tied hazards (headless gates are blind to biomes). Moving hazards add no decisions — the
+player can't change arrival time — so motion is flair only.
+
+**Build order, one step per commit, stop after each:** 1) camera: player left of centre (~40%
+more forward view) + raise the 800px spawn lookaheads, which also fixes the on-screen pop-in on
+20:9 phones · 2) pattern scheduler + a frame-by-frame fairness check in `terrain_invariant_check`
+(patterns authored in SECONDS: on flat ground jump height over time is speed-independent), spikes
+only so play is unchanged · 3) floating shard/floe · 4) thin ice · 5) tiers + multi-piece
+patterns, tuned by play.
+
+**Known traps for this work:** thin-ice cracks can't be drawn by a spawner (chunks are added
+after the spawners and draw over the surface line; no `z_index`) · thin ice must let a boosting
+player through (no jumping while boosting) · the contrast gate forces red-dominant hazards.
+
+**Open question:** the owner asked for an unlockable permanent **double jump**. It was ruled out
+on 2026-08-06 (`physics.md`); the costs and a cheaper alternative were put to the owner — record
+the answer here.
+
+Current code state, so the next chat doesn't have to rediscover it:
 - **Code:** `scripts/systems/obstacle_spawner.gd` (232 lines, under `TerrainGenerator` like all
   five spawners), `scripts/obstacles/obstacle.gd` (39 lines, `Area2D`), `scenes/obstacles/obstacle.tscn`.
   Art is a **placeholder 32×32 `ColorRect`**.
