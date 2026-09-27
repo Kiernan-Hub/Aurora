@@ -28,8 +28,6 @@ class_name GameManager
 # The shop is wired OPTIONALLY -- see the note above its block in _ready().
 @export var shop_screen_path: NodePath = NodePath("../CanvasLayer/ShopScreen")
 @export var shop_wallet_label_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/WalletLabel")
-@export var shop_jump_label_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/JumpLabel")
-@export var shop_jump_button_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/BuyJumpButton")
 @export var shop_close_button_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/CloseButton")
 @export var death_shop_button_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/ShopButton")
 @export var reset_progress_button_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/ResetProgressButton")
@@ -103,8 +101,9 @@ var biome_director: BiomeDirector
 var sfx_player: SfxPlayer
 var shop_screen: Control
 var shop_wallet_label: Label
-var shop_jump_label: Label
-var shop_jump_button: Button
+# One {"label", "button"} per UpgradeStore.TRACKS row, keyed by track id. Built in code under the
+# wallet line (build_shop_rows), so a new track is a table row and never a new node or NodePath.
+var shop_rows: Dictionary[String, Dictionary] = {}
 var shop_close_button: Button
 var death_shop_button: Button
 var reset_progress_button: Button
@@ -323,17 +322,15 @@ func wire_scene() -> bool:
 	# be a bad trade. A missing shop costs the shop, not the game.
 	shop_screen = get_node_or_null(shop_screen_path) as Control
 	shop_wallet_label = get_node_or_null(shop_wallet_label_path) as Label
-	shop_jump_label = get_node_or_null(shop_jump_label_path) as Label
-	shop_jump_button = get_node_or_null(shop_jump_button_path) as Button
 	shop_close_button = get_node_or_null(shop_close_button_path) as Button
 	death_shop_button = get_node_or_null(death_shop_button_path) as Button
 	start_upgrades_button = get_node_or_null(start_upgrades_button_path) as Button
 	reset_progress_button = get_node_or_null(reset_progress_button_path) as Button
 	reset_confirm_dialog = get_node_or_null(reset_confirm_dialog_path) as ConfirmationDialog
-	if shop_screen == null or shop_wallet_label == null or shop_jump_label == null or shop_jump_button == null or shop_close_button == null or death_shop_button == null or start_upgrades_button == null or reset_progress_button == null or reset_confirm_dialog == null:
+	if shop_screen == null or shop_wallet_label == null or shop_close_button == null or death_shop_button == null or start_upgrades_button == null or reset_progress_button == null or reset_confirm_dialog == null:
 		push_error("GameManager could not wire the upgrade shop at %s; the game runs without it." % shop_screen_path)
 	else:
-		shop_jump_button.pressed.connect(_on_buy_jump_pressed)
+		build_shop_rows()
 		shop_close_button.pressed.connect(_on_shop_close_pressed)
 		death_shop_button.pressed.connect(_on_shop_pressed)
 		start_upgrades_button.pressed.connect(_on_start_shop_pressed)
@@ -706,6 +703,7 @@ func apply_upgrades() -> void:
 		return
 	var jump_level: int = services.upgrades.get_level(UpgradeStore.JUMP_UPGRADE_ID)
 	player.upgrade_jump_multiplier = UpgradeStore.get_jump_multiplier(jump_level)
+	player.has_slam = services.upgrades.get_level(UpgradeStore.SLAM_UPGRADE_ID) > 0
 
 
 func _on_shop_pressed() -> void:
@@ -730,10 +728,10 @@ func _on_shop_close_pressed() -> void:
 	set_state(shop_return_state)
 
 
-func _on_buy_jump_pressed() -> void:
+func _on_buy_pressed(upgrade_id: String) -> void:
 	if services == null:
 		return
-	if not services.upgrades.purchase(UpgradeStore.JUMP_UPGRADE_ID):
+	if not services.upgrades.purchase(upgrade_id):
 		return
 	sfx_player.play_powerup()
 	# Applied immediately even though the current run is over: keeping this next to the
@@ -743,29 +741,47 @@ func _on_buy_jump_pressed() -> void:
 	refresh_shop()
 
 
+# One row per UpgradeStore.TRACKS entry, inserted under the wallet line in table order. The
+# label's font size matches the one row main.tscn used to author by hand.
+func build_shop_rows() -> void:
+	var container: Node = shop_wallet_label.get_parent()
+	var insert_index: int = shop_wallet_label.get_index() + 1
+	for track: Dictionary in UpgradeStore.TRACKS:
+		var label: Label = Label.new()
+		label.add_theme_font_size_override(&"font_size", 13)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var button: Button = Button.new()
+		button.pressed.connect(_on_buy_pressed.bind(String(track["id"])))
+		container.add_child(label)
+		container.move_child(label, insert_index)
+		container.add_child(button)
+		container.move_child(button, insert_index + 1)
+		insert_index += 2
+		shop_rows[String(track["id"])] = {"label": label, "button": button}
+
+
 func refresh_shop() -> void:
-	if shop_screen == null:
+	if shop_screen == null or shop_rows.is_empty():
 		return
 
-	var wallet: int = 0
-	var jump_level: int = 0
-	var next_cost: int = UpgradeStore.NO_COST
-	var can_buy: bool = false
-	if services != null:
-		wallet = services.upgrades.get_wallet()
-		jump_level = services.upgrades.get_level(UpgradeStore.JUMP_UPGRADE_ID)
-		next_cost = services.upgrades.get_next_cost(UpgradeStore.JUMP_UPGRADE_ID)
-		can_buy = services.upgrades.can_purchase(UpgradeStore.JUMP_UPGRADE_ID)
-
-	var max_level: int = UpgradeStore.get_max_level(UpgradeStore.JUMP_UPGRADE_ID)
-	shop_wallet_label.text = "Wallet: %d" % wallet
-	shop_jump_label.text = "Jump  Lv %d/%d  (x%.2f)" % [jump_level, max_level, UpgradeStore.get_jump_multiplier(jump_level)]
-
-	if next_cost == UpgradeStore.NO_COST:
-		shop_jump_button.text = "Jump  MAX"
-	else:
-		shop_jump_button.text = "Jump  ->  x%.2f   (%d)" % [UpgradeStore.get_jump_multiplier(jump_level + 1), next_cost]
-	shop_jump_button.disabled = not can_buy
+	shop_wallet_label.text = "Wallet: %d" % (services.upgrades.get_wallet() if services != null else 0)
+	for track: Dictionary in UpgradeStore.TRACKS:
+		var upgrade_id: String = String(track["id"])
+		var level: int = services.upgrades.get_level(upgrade_id) if services != null else 0
+		var next_cost: int = UpgradeStore.get_upgrade_cost(upgrade_id, level)
+		var max_level: int = UpgradeStore.get_max_level(upgrade_id)
+		var label: Label = shop_rows[upgrade_id]["label"]
+		var button: Button = shop_rows[upgrade_id]["button"]
+		if upgrade_id == UpgradeStore.JUMP_UPGRADE_ID:
+			label.text = "Jump  Lv %d/%d  (x%.2f)" % [level, max_level, UpgradeStore.get_jump_multiplier(level)]
+			button.text = "Jump  MAX" if next_cost == UpgradeStore.NO_COST \
+				else "Jump  ->  x%.2f   (%d)" % [UpgradeStore.get_jump_multiplier(level + 1), next_cost]
+		else:
+			# A one-level track is an unlock.
+			label.text = "%s  (%s)" % [track["name"], track["hint"]]
+			button.text = "%s  OWNED" % track["name"] if next_cost == UpgradeStore.NO_COST \
+				else "Unlock %s   (%d)" % [track["name"], next_cost]
+		button.disabled = services == null or not services.upgrades.can_purchase(upgrade_id)
 
 
 # Just opens the confirmation -- the actual wipe is in _on_reset_progress_confirmed,
@@ -782,7 +798,7 @@ func _on_reset_progress_confirmed() -> void:
 	sfx_player.play_click()
 	if services != null:
 		services.save_store.reset_progress()
-		# Same reasoning as _on_buy_jump_pressed: sync the now-reset jump level onto
-		# the live player immediately rather than waiting for the next reload.
+		# Same reasoning as _on_buy_pressed: sync the now-reset levels onto the live
+		# player immediately rather than waiting for the next reload.
 		apply_upgrades()
 	refresh_shop()

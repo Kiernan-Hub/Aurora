@@ -244,6 +244,7 @@ func _init() -> void:
 	# The two that CLAUDE.md, upgrade_store.gd and obstacle_spawner.gd have all claimed existed
 	# since before they were written. Constant-only, so they join the group above.
 	variant_violations.append_array(check_upgrade_curve())
+	variant_violations.append_array(check_slam_limits())
 	variant_violations.append_array(check_obstacle_clearance())
 	variant_violations.append_array(check_spawn_lookahead())
 	variant_violations.append_array(check_pattern_fairness())
@@ -1173,8 +1174,45 @@ func check_upgrade_curve() -> Array[String]:
 			TerrainGenerator.CHASM_LEAD_IN_LENGTH, UPGRADE_CURVE_LEAD_IN_MARGIN, ceiling,
 		])
 
+	# The shop reads a track's max level off its cost list, so the jump track must list exactly
+	# one purchase per step of the curve, or the top multiplier becomes unbuyable (or a purchase
+	# buys nothing).
+	var jump_costs: Array = UpgradeStore.get_track(UpgradeStore.JUMP_UPGRADE_ID).get("costs", [])
+	if jump_costs.size() != multipliers.size() - 1:
+		violations.append("UPGRADE_JUMP_TRACK %d costs for %d multipliers -- expected %d" % [
+			jump_costs.size(), multipliers.size(), multipliers.size() - 1,
+		])
+
 	print("TERRAIN_INVARIANT_UPGRADE_CURVE max_multiplier=%.4f boosted_reach=%.1f budget=%.1f" % [
 		max_multiplier, reach, budget,
+		], " status=", "PASS" if violations.is_empty() else "FAIL")
+	for violation: String in violations:
+		print("    ", violation)
+	return violations
+
+
+# The slam's two limits (2026-09-27). It may only ever SHORTEN a jump, so it needs no reach
+# bound; what it adds is speed. Its dive starts downward and its cap is the fastest fall the
+# collision solver already meets in shipping play -- running off the deepest drop chasm's lip,
+# sqrt(2 * GRAVITY * exit_drop) -- so a slam landing is never a new speed for the terrain soup.
+func check_slam_limits() -> Array[String]:
+	var violations: Array[String] = []
+	var deepest_drop: float = 0.0
+	for variant: Dictionary in TerrainGenerator.CHASM_VARIANTS:
+		deepest_drop = maxf(deepest_drop, float(variant.get("exit_drop", 0.0)))
+	var run_off_speed: float = sqrt(2.0 * Player.GRAVITY * deepest_drop)
+
+	if Player.SLAM_VELOCITY <= 0.0 or Player.SLAM_VELOCITY > Player.SLAM_MAX_FALL_SPEED:
+		violations.append("SLAM_VELOCITY %.1f must be downward and within the cap %.1f" % [
+			Player.SLAM_VELOCITY, Player.SLAM_MAX_FALL_SPEED,
+		])
+	if Player.SLAM_MAX_FALL_SPEED > run_off_speed + 0.01:
+		violations.append("SLAM_MAX_FALL_SPEED %.1f exceeds the drop-chasm run-off %.1f px/s -- a slam would land faster than any tested fall" % [
+			Player.SLAM_MAX_FALL_SPEED, run_off_speed,
+		])
+
+	print("TERRAIN_INVARIANT_SLAM velocity=%.1f cap=%.1f run_off=%.1f" % [
+		Player.SLAM_VELOCITY, Player.SLAM_MAX_FALL_SPEED, run_off_speed,
 		], " status=", "PASS" if violations.is_empty() else "FAIL")
 	for violation: String in violations:
 		print("    ", violation)

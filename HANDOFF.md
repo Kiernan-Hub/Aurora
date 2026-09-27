@@ -1,32 +1,61 @@
 # Handoff
 
-## Where the project is — 2026-09-27, end of the obstacles session. READ THIS FIRST
+## Where the project is — 2026-09-27, late. READ THIS FIRST
 
-**Obstacle plan steps 1–5 are BUILT, tested and pushed** on branch `claude/implementation-t58fc3`.
-They are **not merged to `main`** yet. The branch is `main` + 8 commits, a clean fast-forward.
-**Nothing is in flight**: the working tree is clean and every gate is green.
-
-The approved plan was steps 1–8 (camera, pattern scheduler, floe + shard, thin ice, tiers, slam,
-double jump, art). Steps 1–5 are the obstacle half, and the owner said to build them in one go. **Steps 6–7
-(the air moves) wait for the owner's "go"**, because each needs an on-device touch test.
-This session's full build log (measurements, mutation tests, dead ends) is at the top of
-`docs/history.md`. It is not required reading; this file is.
+**Obstacle plan steps 1–6 are BUILT** on branch `claude/implementation-t58fc3`, **not merged to
+`main`**. The owner confirmed all eight decisions below ("those decisions are good") and said go on
+the air moves. **Step 6 (the slam) is built and every gate is green, but its mandatory phone tap
+test has NOT been done.** **Step 7 (double jump) waits for the owner's "go"**, and should wait
+for step 6's phone test too, since both share the one air-move site.
+This session's cloud build log is at the top of `docs/history.md`; not required reading.
 
 ### Next actions, in order
 
-1. **Owner: pull the branch and play it**, on desktop and on the phone.
-   - **Open the Godot editor once first.** `ThinIce` is a new `class_name`, and headless
-     `check.sh` needs the class cache the editor's import builds. Then `git status`: restore
-     `project.godot` if the editor stripped its pins (standing rule in `CLAUDE.md`).
-   - Use the checklist under "Owner checklist" below.
-2. **Tune by feel.** Every number is a starting value; the knobs are listed below. Any timing change
+1. **Owner: the step-6 phone test** (checklist in "Step 6 as built" below). Slam costs 300 coins,
+   so it needs a save with 300 in the wallet.
+2. **Owner: play the obstacle half** on desktop and phone ("Owner checklist" below).
+   - After opening the editor, run `git status`. It re-saves `HANDOFF.md` with tab indentation
+     (whitespace only; `git checkout -- HANDOFF.md`), and may strip `project.godot`'s pins
+     (standing rule in `CLAUDE.md`).
+3. **Tune by feel.** Every number is a starting value; the knobs are listed below. Any timing change
    must still pass `./scripts/check.sh`. The fairness proof prints the tightest window per pattern and
    fails if one goes below 7 frames.
-3. **Merge to `main`** once happy: `git checkout main && git pull && git merge --ff-only
+4. **Merge to `main`** once happy: `git checkout main && git pull && git merge --ff-only
    origin/claude/implementation-t58fc3 && git push`, or ask Claude to open a PR.
-4. **Owner answers the open decisions** below (they have defaults; only the step-5 approach is big).
-5. **Step 6 (slam)** on the owner's "go", then **step 7 (double jump)**. The design is in
-   "Remaining plan" below and unchanged; both end with a mandatory phone tap test.
+5. **Step 7 (double jump)** on the owner's "go". The design is in "Remaining plan" below.
+
+### Step 6 as built: shop rows + slam
+
+- **Shop:** `UpgradeStore.TRACKS` (`id`, `name`, `costs`, `hint`) is the shop. `GameManager.build_shop_rows()`
+  makes one label + button per row under the wallet line; `JumpLabel`/`BuyJumpButton` were removed
+  from `main.tscn`. A track's max level is its cost count; ids are save data (no version bump to add
+  one, renaming one un-buys it). `apply_upgrades()` sets `Player.has_slam`.
+- **Slam:** `player.gd`. A buffered air tap, at the ONE air-move site after the ground-jump branch,
+  sets `velocity.y = 1200` down, then gravity capped at 1,600 until touchdown, one per airtime.
+  - **Landing-window rule:** a tap still live at touchdown stays the ordinary landing jump.
+  - **Void rule:** refused unless the simulated dive has ground all the way down.
+  - **Blocked** by lake, boost, Aurora flight/landing latch, glide, death.
+  - Landing gets a bigger squash; the snow burst waits for the art pass.
+- **Decision flagged to the owner: a mid-air press slams.** "Hold in the air = spin" starts with a
+  press, and for a slam owner that press is a tap, so it slams. They spin by holding *through* the
+  jump from the ground instead. The alternative (slam on a short tap's *release*) keeps mid-air
+  press-to-spin but adds latency and press-timing code to the touch path. Revisit only if it feels bad.
+- **Verified:**
+  - Gates: `check.sh` 5/5 (new `check_slam_limits()`: cap 1,600 = run-off 1,600), `chasm_probe`
+    **72/72** (new `slam_void` and `slam_lip` trials, 0 recoveries), `freeze_search` 0 stalls,
+    plain and `--slam=1`.
+  - A throwaway runtime test, because a passing slam trial could pass with a slam that never fires:
+    - a tap at frame 20 cuts airtime 48 → 26 frames;
+    - unowned, the same tap changes nothing;
+    - a tap 4 frames before landing gives no slam and a second jump;
+    - tapping every frame over a void gives 0 slams there and 1 after it, and the player lives.
+- **Phone test (mandatory, touch path):**
+  1. Buy Slam; the button shows OWNED.
+  2. Jump, tap at the top: a dive.
+  3. Tap just before landing: a normal re-jump, not a dive.
+  4. Tap over a chasm: nothing happens.
+  5. Hold through a jump: it still spins.
+  6. Without Slam, nothing changes.
 
 ### Commits on the branch
 
@@ -39,13 +68,15 @@ This session's full build log (measurements, mutation tests, dead ends) is at th
 | `2e49830` | 4 | Thin ice (`ThinIce`); Aurora director + lake probe learn it |
 | `cf7c4ab` | fix | Hazard scenes load lazily (a load cycle left floes/shards script-less in some load orders) |
 | `5addd81` | 5 | `TIERS`, short proven combos, forward search, fallback to singles, first-appearance rule |
-| this one | — | This handoff; the session log moved to `docs/history.md` |
+| `4f4c2c5` | — | Cloud handoff; the session log moved to `docs/history.md` |
+| `91a64b5` | fix | Mac review: a gliding player passes through floe/shard (decision 8) |
+| this one | 6 | Shop rows from `UpgradeStore.TRACKS` + the slam; `check_slam_limits()`, `slam_*` chasm trials, `freeze_search --slam=1` |
 
-Gates on the final commit: `check.sh` **5/5** (~50s; `terrain_invariant` ~31s), freeze-search **0
-stalls / 40 trials**, `chasm_probe` **48/48**, `aurora_calm_probe` **PASS 182,974** assertions.
-`camera_shake_probe` is unchanged from before the camera move: follow distance mean 11.37 / max
-14.23px. All of these ran on Linux Godot 4.7.stable in the cloud container, not the Mac. **Nothing was
-checked visually or on the phone**; that part is the owner's.
+Steps 1–5 were re-verified on the Mac: `check.sh` 5/5, freeze-search 0 stalls, `chasm_probe` 48/48,
+`aurora_calm_probe` PASS 182,974 assertions, `sky_layer_check` PASS. `camera_shake_probe` measured
+`main` and the branch on the same Mac: follow distance mean 9.87px on both, every segment's jerk
+within noise, so the camera move adds no shake. **Nothing was checked visually or on the phone**;
+that part is the owner's.
 
 ---
 
@@ -135,7 +166,7 @@ checked visually or on the phone**; that part is the owner's.
 
 ---
 
-## Decisions Claude made without the owner. Confirm or overrule
+## Decisions Claude made without the owner: ALL CONFIRMED by the owner, 2026-09-27
 
 1. **Step 5 was built as "option A: density first"**, not the plan's long 2–3-piece patterns. The
    terrain is rarely flat for long: 400px of ≤6° fits 15–19% of start positions, 800px 6–8%, 1,200px 3–4%
@@ -254,19 +285,14 @@ shipped broken twice (`input.md`).
 (`shop_jump_label`/`shop_jump_button`); step 6 builds rows from an `UpgradeStore` table instead of adding
 NodePaths. **Placeholder prices: slam 300, double jump 900** (the jump track totals 1,130).
 
-### Step 6 — Shop rows + slam (medium)
-- `UpgradeStore` gets a table of tracks (jump ×5, slam ×1, double_jump ×1); the shop builds rows from
-  it. `GameManager.apply_upgrades()` sets `Player.has_slam` / `has_double_jump`. It still skips headless, so
-  **probes set those vars directly**.
-- Slam in `player.gd` at the single air-move site: the landing-window rule, the guards, the 1,600 cap.
-- New constant check: slam cap ≤ run-off drop speed. `chasm_probe` trials: slam refused over a void;
-  slam near a lip.
-- Gates: `check.sh`, `chasm_probe`, `freeze_search`. **On-device input test is mandatory** (export,
-  `adb install -r`, tap: `debugging.md` "Android device testing").
-- Docs: `input.md` (the air-move site), `physics.md`, `CLAUDE.md` rows 5 and 9.
+### Step 6 — Shop rows + slam: BUILT
+See "Step 6 as built" at the top. One difference from the plan: the `double_jump` shop row is added
+with step 7, not before, so the shop never sells a move that does nothing.
 
 ### Step 7 — Double jump (medium–large)
-- Same site, after the slam: guardrails A and B, the landing-window rule, all block flags.
+- Same site (`player.gd`, "THE AIR-MOVE SITE"): try the double jump before `try_slam()`. Guardrails A and
+  B, all block flags; the landing-window rule and `can_use_air_move()` already exist. Add the
+  `double_jump` row to `UpgradeStore.TRACKS` and its `has_double_jump` line to `apply_upgrades()`.
 - Checks: the **2× reach bound** (sweep every firing frame); `check_rare_coin_height` restated;
   `check_upgrade_curve()` comments restated to "single jump"; the obstacle-clearance note above;
   `chasm_probe` trials (double jump at the lip, at max reach over each width, **refused below the
@@ -286,11 +312,11 @@ red-dominant unless that rule is revisited).
 2. Slam **smashes a spike you land on** (like the boost)? **Try it after step 6; off by default.**
 3. Unlock prices: **slam 300, double jump 900**.
 4. Trick boost: **keep**, except after a double jump (guardrail B).
-5. Step 5's approach: **A as built**, or B / C (see "Decisions" above).
 6. Should coins avoid floe columns? **No guard for now** (checklist item 6).
 7. Hazard colour stays red-family? **Yes, until the art pass.**
 
-Answered and built: floating hazards wait out a glide; tier timings from the plan's table.
+Answered and built: floating hazards wait out a glide; tier timings from the plan's table; step 5 as
+option A (owner confirmed).
 
 ### Ideas flagged and NOT planned (the owner's rule: bug-prone or much harder → flag it)
 
@@ -341,9 +367,10 @@ Answered and built: floating hazards wait out a glide; tier timings from the pla
 
 **Docs updated this session:** `CLAUDE.md` (row 4, forward-view line), `visuals.md` (forward-view
 table), `physics.md` (camera target), `terrain.md` (pattern failure codes, 950 clearance),
-`debugging.md` (the new checks, `--fixed-fps`), `architecture.md` (scene graph line). **Still to update
-with steps 6–7:** `CLAUDE.md` rows 5 and 9 and the "double jump ruled out" trap line, `physics.md`,
-`input.md`.
+`debugging.md` (the new checks, `--fixed-fps`), `architecture.md` (scene graph line). Step 6 updated
+`CLAUDE.md` row 9, `input.md` ("The air-move site"), `physics.md` (slam) and `debugging.md`. **Still to
+update with step 7:** `CLAUDE.md` row 5 (guardrail B) and the "double jump ruled out" trap line, and
+`physics.md`'s "Double jump — ruled out" section.
 
 ---
 

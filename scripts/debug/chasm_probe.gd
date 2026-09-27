@@ -4,7 +4,7 @@ extends SceneTree
 # (lips level, void cut out of the collision shape, width clearable on paper); nothing there
 # runs physics, so nothing there proves a chasm actually behaves.
 #
-# Four trials per chasm, each starting from the same warp onto the lead-in flat:
+# Six trials per chasm, each starting from the same warp onto the lead-in flat:
 #
 #   no_jump  -- the player must FALL IN AND DIE. If this passes trivially (player survives
 #               without jumping) the void is not actually cut out of the collision shape and
@@ -29,6 +29,15 @@ extends SceneTree
 #               it, a glide that expired mid-void would restore gravity at lip height with no
 #               way to jump, the exact unavoidable-death shape the speed boost's guard exists
 #               to prevent.
+#   slam_void -- the slam (2026-09-27), owned. Jumps as "jump" does, then taps on EVERY frame
+#               from the near lip until landed: every slam whose dive would cross the void must
+#               be refused, so the jump carries on and clears it, and a slam once the dive has
+#               ground all the way lands on the far side.
+#   slam_lip  -- the same, tapping from take-off. The player hops and slams along the run-up
+#               (each tap on the ground is a jump, each in the air a slam) until a dive would land
+#               past the near lip, which must be refused. The torture test for the lip-side guard
+#               and the landing-window rule, and many high-speed slam landings for the
+#               recoveries=0 check.
 #
 # Usage:
 #   godot --headless --path . --script res://scripts/debug/chasm_probe.gd -- \
@@ -90,7 +99,7 @@ func _init() -> void:
 		quit(1)
 		return
 
-	var trial_modes: Array[String] = ["no_jump", "jump", "late", "boost"]
+	var trial_modes: Array[String] = ["no_jump", "jump", "late", "boost", "slam_void", "slam_lip"]
 	if glide_enabled:
 		trial_modes.append("glide")
 
@@ -127,6 +136,10 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 	var near_lip_x: float = float(void_span["start_x"])
 	var far_lip_x: float = float(void_span["end_x"])
 	reset_player(near_lip_x - APPROACH_WORLD_X + phase_offset_world_x)
+	# Probes get no upgrades (GameManager.apply_upgrades() skips headless), so the slam trials
+	# grant it here and every other trial measures the player who owns nothing.
+	var is_slam_trial: bool = trial_mode.begins_with("slam")
+	player.has_slam = is_slam_trial
 
 	if trial_mode == "boost":
 		(main.get_node("PowerupManager") as PowerupManager).start_speed_boost()
@@ -150,9 +163,11 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 	var reached_x: float = player.global_position.x
 	var landed_past_far_lip: bool = false
 	for _frame_index: int in range(TRIAL_FRAME_BUDGET):
-		if (trial_mode == "jump" or trial_mode == "late") and not has_jumped and player.global_position.x >= jump_trigger_x:
+		if (trial_mode == "jump" or trial_mode == "late" or is_slam_trial) and not has_jumped and player.global_position.x >= jump_trigger_x:
 			player.buffer_jump()
 			has_jumped = true
+		elif (trial_mode == "slam_lip" and has_jumped) or (trial_mode == "slam_void" and player.global_position.x >= near_lip_x):
+			player.buffer_jump()
 		# Holding past the far lip forever is not what a real player does -- they release once
 		# clearly across, and gravity (unopposed by thrust) brings them back down to land. Without
 		# this release the player just keeps climbing at GLIDE_MAX_RISE_SPEED for the rest of the
@@ -234,6 +249,7 @@ func reset_player(world_x: float) -> void:
 	player.end_boost()
 	player.end_glide()
 	player.velocity = Vector2.ZERO
+	player.is_slamming = false
 	# Past PHASE1_DURATION so the ramp uses the slow phase-2 acceleration (2.27 px/s^2, ~15
 	# px/s over a whole trial) and the pin below stays effectively pinned.
 	player.speed_manager.elapsed_time = SpeedManager.PHASE1_DURATION + 1.0

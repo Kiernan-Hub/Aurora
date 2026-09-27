@@ -71,6 +71,19 @@ const JUMP_MULTIPLIERS: Array[float] = [0.60, 0.70, 0.80, 0.90, 1.00]
 # still tuned. terrain_invariant_check.measure_coin_density() MEASURES it per seed.
 const JUMP_UPGRADE_COSTS: Array[int] = [60, 150, 320, 600]
 
+# Air moves are one-level tracks: a single purchase unlocks them for good. Player.has_slam.
+const SLAM_UPGRADE_ID: String = "slam"
+const SLAM_UPGRADE_COST: int = 300
+
+# THE SHOP, one row per track in display order; GameManager builds its rows from this, so a new
+# track is a row here plus its one line in GameManager.apply_upgrades(). "costs"[i] buys level
+# i -> i+1, so a track's max level is costs.size(). An id is SAVE DATA (SaveStore.upgrade_levels
+# keys on it): adding a track needs no version bump, renaming one un-buys it for everyone.
+const TRACKS: Array[Dictionary] = [
+	{"id": JUMP_UPGRADE_ID, "name": "Jump", "costs": JUMP_UPGRADE_COSTS, "hint": ""},
+	{"id": SLAM_UPGRADE_ID, "name": "Slam", "costs": [SLAM_UPGRADE_COST], "hint": "tap in the air to dive"},
+]
+
 const NO_COST: int = -1
 
 # Injected by GameServices._ready(). Null in any context that has no autoload, which is
@@ -81,10 +94,15 @@ var save_store: SaveStore
 # --- Static catalog -----------------------------------------------------------------
 # Everything below this line is answerable from constants alone.
 
+static func get_track(upgrade_id: String) -> Dictionary:
+	for track: Dictionary in TRACKS:
+		if track["id"] == upgrade_id:
+			return track
+	return {}
+
+
 static func get_max_level(upgrade_id: String) -> int:
-	if upgrade_id == JUMP_UPGRADE_ID:
-		return JUMP_MULTIPLIERS.size() - 1
-	return 0
+	return get_track(upgrade_id).get("costs", []).size()
 
 
 # Clamps rather than asserting: a save file written by a later build can legitimately
@@ -94,15 +112,12 @@ static func get_jump_multiplier(level: int) -> float:
 	return JUMP_MULTIPLIERS[clampi(level, 0, JUMP_MULTIPLIERS.size() - 1)]
 
 
-# Cost to go from `level` to `level + 1`, or NO_COST when already maxed.
-# Takes an upgrade_id it does not strictly need yet: a second upgrade track is meant to
-# be a table row plus a branch here, not a new function.
+# Cost to go from `level` to `level + 1`, or NO_COST when already maxed or unknown.
 static func get_upgrade_cost(upgrade_id: String, level: int) -> int:
-	if upgrade_id != JUMP_UPGRADE_ID:
+	var costs: Array = get_track(upgrade_id).get("costs", [])
+	if level < 0 or level >= costs.size():
 		return NO_COST
-	if level < 0 or level >= JUMP_UPGRADE_COSTS.size():
-		return NO_COST
-	return JUMP_UPGRADE_COSTS[level]
+	return int(costs[level])
 
 
 # The weakest jump the game can be played at. terrain_invariant_check uses this as the

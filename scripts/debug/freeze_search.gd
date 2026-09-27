@@ -74,6 +74,9 @@ func _init() -> void:
 	# open chord end in a ConcavePolygonShape2D segment soup and therefore the highest-risk
 	# geometry in the feature. Warp onto the lead-in flat, never into the void.
 	(main.get_node("TerrainGenerator") as TerrainGenerator).debug_chasm_disabled = get_int_argument("--chasms", 0) == 0
+	# --slam=1 grants the slam (probes get no upgrades), so every press the input schedules make
+	# in the air becomes a dive and its landing: slam contacts swept over the same start phases.
+	player.has_slam = get_int_argument("--slam", 0) == 1
 	root.add_child(main)
 	await physics_frame
 
@@ -197,6 +200,7 @@ func reset_player(warp_x: float) -> void:
 	player.speed_manager.current_speed = SpeedManager.MAX_SPEED
 	player.coyote_timer = 0.0
 	player.jump_buffer_timer = 0.0
+	player.is_slamming = false
 	player.last_physics_displacement = Vector2.ZERO
 	var player_chunk: int = int(floor(warp_x / terrain_generator.chunk_width))
 	terrain_generator.next_chunk_index = player_chunk - terrain_generator.chunk_count_behind

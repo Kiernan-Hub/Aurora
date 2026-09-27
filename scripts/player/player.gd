@@ -52,6 +52,19 @@ const GLIDE_MAX_FALL_SPEED: float = 550.0
 # but strong enough to clear a noticeably higher hop than the original -350 before the
 # hold/thrust math takes over.
 const GLIDE_LAUNCH_VELOCITY: float = -480.0
+# SLAM, a shop unlock (has_slam): an air tap sets velocity.y to SLAM_VELOCITY, then ordinary
+# gravity, capped at SLAM_MAX_FALL_SPEED until touchdown. The cap is the speed a drop chasm's
+# 800px run-off already reaches (sqrt(2 * GRAVITY * 800) = 1600), so a slam landing never meets
+# the collision solver at a speed it has not already been tested at; terrain_invariant_check's
+# check_slam_limits() holds it there. A slam can only SHORTEN a jump, so every reach bound in
+# the project (chasm run-up, rare coin, obstacle clearance) is untouched by construction.
+const SLAM_VELOCITY: float = 1200.0
+const SLAM_MAX_FALL_SPEED: float = 1600.0
+# How far ahead the dive is simulated before it is allowed (see try_slam). A slam from the highest
+# jump apex (256px, max upgrade with the jump powerup) lands in ~12 frames; the longest dive, from
+# that apex down a drop chasm's far side (1,056px), in ~42.
+const SLAM_PREDICTION_FRAMES: int = 60
+const SLAM_LAND_SQUASH_SCALE: Vector2 = Vector2(1.6, 0.6)
 # Aurora's brief automatic crest flight is a separate, bounded controller -- not a powerup and
 # not ordinary glide. The event only enables it over its write-ahead protected flat.
 const AURORA_FLIGHT_HEIGHT: float = 96.0
@@ -209,6 +222,11 @@ var jump_boost_multiplier: float = 1.0
 # GameManager.apply_upgrades() deliberately skips headless runs, so no gate can be
 # perturbed by whatever is in the developer's own save.dat. See the comment there.
 var upgrade_jump_multiplier: float = 1.0
+# Air-move unlocks, set once per run by GameManager.apply_upgrades() -- which skips headless, so
+# a probe that wants a slam sets this itself. False is the design baseline every gate measures.
+var has_slam: bool = false
+# From the slam until touchdown: caps the fall and makes the slam one per airtime.
+var is_slamming: bool = false
 var debug_rotation_timer: float = 0.0
 var airborne_rotation: float = 0.0
 # Reset every time a new airborne arc begins (see update_visual_rotation()'s takeoff
@@ -301,6 +319,62 @@ func buffer_jump() -> void:
 	jump_buffer_timer = JUMP_BUFFER_DURATION
 
 
+# Everything that blocks a ground jump blocks an air move, plus an active glide, where a tap is
+# thrust. The frame after a glide launch still reads is_on_floor() true (see the jump branch),
+# and is_glide_active is what keeps the air-move site from misreading it.
+func can_use_air_move() -> bool:
+	return not is_dead and terrain_generator != null and not is_jump_suppressed and not is_boosting \
+		and not is_glide_active and not is_aurora_flight_active and not is_aurora_flight_landing
+
+
+# The landing-window rule: will this buffered tap still be live on the frame after touchdown,
+# where the ordinary jump branch fires it? Every frame from here spends delta of the buffer.
+func will_buffered_jump_fire(delta: float) -> bool:
+	var landing_frame: int = get_landing_frame(velocity.y, INF, ceili(jump_buffer_timer / delta), false, delta)
+	return landing_frame >= 0 and jump_buffer_timer - float(landing_frame + 1) * delta > 0.0
+
+
+# The slam, if owned and unused this airtime, and only if its dive comes down on ground ALL THE
+# WAY: a dive that crosses a void is refused, whether it starts over one or just short of a
+# near lip. Over a void a slam is almost always an accidental death, and a dive that sank below
+# lip height inside one would meet the far lip's open chord end from underneath, which the
+# physics has never been tested against. Also refused when already falling at SLAM_VELOCITY or
+# faster (only a drop chasm's descent gets there): setting the dive speed, or capping it, would
+# SLOW that fall. A refused tap stays in the buffer, so it can still become the landing jump.
+func try_slam(delta: float) -> bool:
+	if not has_slam or is_slamming or velocity.y >= SLAM_VELOCITY:
+		return false
+	if get_landing_frame(SLAM_VELOCITY, SLAM_MAX_FALL_SPEED, SLAM_PREDICTION_FRAMES, true, delta) < 0:
+		return false
+	velocity.y = SLAM_VELOCITY
+	is_slamming = true
+	is_jump_ascending = false
+	play_squash_stretch(JUMP_STRETCH_SCALE)
+	return true
+
+
+# Frames until the feet reach the surface, integrating the way the airborne branch of
+# _physics_process does (gravity into velocity, then velocity into position), or -1 if not within
+# max_frames. The height field is pure, so this is a prediction rather than a guess. With
+# needs_ground, a sampled x over a void also returns -1; without it, a void is just no landing.
+func get_landing_frame(start_velocity_y: float, max_fall_speed: float, max_frames: int, needs_ground: bool, delta: float) -> int:
+	var velocity_y: float = start_velocity_y
+	var world_x: float = global_position.x
+	var feet_y: float = global_position.y + capsule_half_height
+	var speed: float = speed_manager.current_speed
+	for frame: int in range(1, max_frames + 1):
+		velocity_y = minf(velocity_y + GRAVITY * delta, max_fall_speed)
+		feet_y += velocity_y * delta
+		world_x += speed * delta
+		if not terrain_generator.has_ground_at_world_x(world_x):
+			if needs_ground:
+				return -1
+			continue
+		if feet_y >= terrain_generator.get_surface_world_y(world_x):
+			return frame
+	return -1
+
+
 func _physics_process(delta: float) -> void:
 	speed_manager.update(delta)
 	if DEBUG_ALLOW_MANUAL_SPEED_CONTROL:
@@ -344,6 +418,16 @@ func _physics_process(delta: float) -> void:
 		# landing and the grounded model may take over again.
 		is_jump_ascending = false
 
+	# THE AIR-MOVE SITE: the one place an air tap becomes a move, fed by the same jump buffer as
+	# the ground jump above, so the desktop poll and touch's buffer_jump() cannot diverge. A tap
+	# that will still be live when the player lands is LEFT ALONE -- the ordinary landing jump,
+	# exactly as before the moves existed (see will_buffered_jump_fire). That rule is what keeps
+	# thin ice's skip rhythm intact, and why a pattern proven fair without the moves stays fair.
+	if jump_buffer_timer > 0.0 and coyote_timer <= 0.0 and can_use_air_move() \
+			and not will_buffered_jump_fire(delta):
+		if try_slam(delta):
+			jump_buffer_timer = 0.0
+
 	# The gate is "on the floor and not climbing out of a jump", NOT the former
 	# `velocity.y >= 0.0`. That test was trying to let a jump escape the grounded
 	# model, but it also caught every rising frame, because the grounded model's own
@@ -381,6 +465,8 @@ func _physics_process(delta: float) -> void:
 			velocity.y = get_glide_velocity_y(delta)
 		else:
 			velocity.y += GRAVITY * delta
+			if is_slamming:
+				velocity.y = minf(velocity.y, SLAM_MAX_FALL_SPEED)
 
 	var position_before_move: Vector2 = global_position
 	debug_velocity_before_slide = velocity
@@ -391,9 +477,10 @@ func _physics_process(delta: float) -> void:
 	debug_position_after_snap = global_position
 	if is_on_floor() and not was_on_floor:
 		landed.emit()
-		play_squash_stretch(LAND_SQUASH_SCALE)
+		play_squash_stretch(SLAM_LAND_SQUASH_SCALE if is_slamming else LAND_SQUASH_SCALE)
 	if is_on_floor():
 		is_aurora_flight_landing = false
+		is_slamming = false
 	was_on_floor = is_on_floor()
 	# Measured after the snap deliberately: the snap is part of this frame's motion,
 	# and the stall/stuck watchdogs downstream must see where the body actually ended.

@@ -341,6 +341,14 @@ min 0.60 -> 0.50  =>  OBSTACLE_APEX_TOO_LOW, apex 32.0 = obstacle 32.0, window 0
 The second reproduces `upgrade_store.gd`'s documented failure exactly — at 0.50 the apex equals
 the obstacle height and the first cluster becomes a literal wall.
 
+### `check_slam_limits()` (2026-09-27)
+
+The slam's dive must start downward, and its fall cap (`Player.SLAM_MAX_FALL_SPEED`) may not
+exceed the run-off speed of the deepest drop chasm, √(2·GRAVITY·exit_drop) = 1,600 px/s today,
+the fastest landing the collision solver already meets. It has no reach bound, because a slam
+only shortens a jump. `check_upgrade_curve()` also asserts that the jump track lists one
+cost per step of `JUMP_MULTIPLIERS`, since the shop reads a track's max level off its cost list.
+
 ### `check_spawn_lookahead()` (2026-09-27)
 
 Everything placed ahead of the player must land **beyond the forward view**, or it pops into
@@ -418,6 +426,8 @@ Expect `trials with a STALL : 0`:
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/freeze_search.gd -- --seed=941462462 --warp=175000 --to=178000 --phases=8 --phasestep=0.25 --scan=1 --trialframes=500 --rebase=1
 ```
+Run it a second time with `--slam=1` after any change to the slam or landing. It grants the slam,
+so every press the input schedules make in the air becomes a dive and a high-speed landing.
 
 **Floor flicker probe** (`scripts/debug/floor_flicker_probe.gd`) — the permanent
 regression gate for the `is_on_floor()` flicker fix; per-segment-label flip-rate,
@@ -431,8 +441,9 @@ Other flags: `--seeds`, `--trace`, `--tracelines`, `--jump`.
 **Chasm probe** (`scripts/debug/chasm_probe.gd`) — the behavioural gate for chasms.
 `terrain_invariant_check` proves the *geometry* (lips level, void cut out of the collision
 shape, width clearable on paper) and runs no physics, so it cannot prove a chasm actually
-behaves. Four trials per chasm from the same warp onto the lead-in flat. Expect
-`status=PASS`:
+behaves. Six trials per chasm from the same warp onto the lead-in flat (72 at the gate's
+3 chasms × 4 phases). `slam_void`/`slam_lip` grant the slam and tap every frame, from the near
+lip or from take-off; the probe's header has what each one proves. Expect `status=PASS`:
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/debug/chasm_probe.gd -- --seed=683407368 --chasms=3 --phases=4
 ```

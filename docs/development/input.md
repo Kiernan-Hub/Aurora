@@ -18,6 +18,31 @@ neither re-trigger nor lose it.
 same jump-buffer timer the action path sets. Only the delivery differs; the coyote/buffer
 gate is shared.
 
+## The air-move site (2026-09-27)
+
+Shop-unlocked air moves (the slam now, the double jump in plan step 7) are decided at **one
+site in `Player._physics_process`**, right after the ground-jump branch, from the **same
+jump buffer** both paths above feed. There's no second input path to keep in sync.
+
+A buffered tap becomes an air move only when all of these hold:
+
+- the player is airborne with coyote time spent. A coyote jump still wins.
+- `can_use_air_move()`: every flag that blocks a ground jump (`is_jump_suppressed`,
+  `is_boosting`, Aurora crest flight and its landing latch, `is_dead`), plus `is_glide_active`,
+  where a tap is thrust.
+- **The landing-window rule:** `will_buffered_jump_fire()` is false. A tap that will still be
+  live on the frame after touchdown is left alone and becomes the ordinary landing jump. That
+  keeps thin ice's skip rhythm and every fairness proof unchanged. Landing is predicted by
+  integrating the airborne model forward over the pure height field (`get_landing_frame`).
+- the move's own guard. The slam's is that its simulated dive has ground **all the way** down,
+  so a dive over a void, or one that would cross a near lip, is refused. A refused tap stays in
+  the buffer.
+
+**A mid-air press is now two things for a slam owner.** Hold in the air still spins, but the
+press that starts the hold is also a tap, so it slams. A slam owner spins by holding *through*
+the jump from the ground. The owner was told; the alternative (slam on a short tap's
+*release*) adds latency and press-timing code to the touch path, which has broken twice.
+
 ## Why touch bypasses the action
 
 Measured on device 2026-08-02 (Galaxy S21, Godot 4.7, `adb logcat`). A tap produced

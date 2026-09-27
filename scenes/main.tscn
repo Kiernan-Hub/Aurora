@@ -475,16 +475,6 @@ theme_override_font_sizes/font_size = 16
 text = "Wallet: 0"
 horizontal_alignment = 1
 
-[node name="JumpLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=68450793]
-layout_mode = 2
-theme_override_font_sizes/font_size = 13
-text = "Jump  Lv 0/4"
-horizontal_alignment = 1
-
-[node name="BuyJumpButton" type="Button" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=717443780]
-layout_mode = 2
-text = "Jump"
-
 [node name="ResetProgressButton" type="Button" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=1210029879]
 layout_mode = 2
 text = "Reset Progress"

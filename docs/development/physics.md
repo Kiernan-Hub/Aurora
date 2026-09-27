@@ -27,6 +27,15 @@ would mean every expiring powerup silently wiped the player's purchase. Only
 `GameManager.apply_upgrades()` may write the upgrade one, and it skips headless runs so no
 probe measures physics derived from the developer's own `save.dat` — see `CLAUDE.md`.
 
+**Slam (shop unlock, 2026-09-27).** `Player.has_slam`, set only by `GameManager.apply_upgrades()`
+(so probes set it themselves). An air tap sets `velocity.y` to `SLAM_VELOCITY` (1,200 down), then
+ordinary gravity **capped at `SLAM_MAX_FALL_SPEED` (1,600)** until touchdown, one per airtime
+(`is_slamming`). The cap is the drop chasm's own run-off speed, √(2·1600·800), so a slam landing
+never meets the collision soup at an untested speed; `check_slam_limits()` holds it there. A slam
+can only **shorten** a jump, so no reach bound moves. It is refused unless the simulated dive has
+ground all the way down (`input.md`, "The air-move site"). Gates: `chasm_probe`'s `slam_void` /
+`slam_lip` trials, `freeze_search --slam=1`. Flair beyond a bigger landing squash waits for the art pass.
+
 > **REOPENED 2026-09-27:** the owner wants a double jump as a shop unlock. The worst-case reach turned
 > out to be a simple bound (exactly 2× a single jump), and the plan + guardrails are in `HANDOFF.md`
 > (step 7). The reasoning below is why the guardrails exist; rewrite this section when it ships.
