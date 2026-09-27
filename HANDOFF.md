@@ -2,9 +2,28 @@
 
 ## 2026-09-27 — Obstacles + air moves: the approved plan
 
-**Steps 1–2 are BUILT** on branch `claude/implementation-t58fc3`, not merged to `main` yet. The
+**Steps 1–3 are BUILT** on branch `claude/implementation-t58fc3`, not merged to `main` yet. The
 owner said to keep going through the obstacle steps (2–5) and stop before the air moves (6–7).
 Older sessions live in `docs/history.md`; none of that is a to-do.
+
+### Step 3 — built 2026-09-27: floating floe + shard
+
+- `scenes/obstacles/floe.tscn` (hitbox **32×136**, 64→200px above the surface; the placeholder is exactly
+  the hitbox) and `shard.tscn` (32×32 at 64–96px). Both run `obstacle.gd`, so hit, shield and boost
+  break-through behave like the spike. Placeholder `ColorRect` in the absolute obstacle colour.
+- `PIECE_KINDS` rows with `"floating": true`. A pattern holding one **waits out a glide** (open question 3's
+  default). A new **`TIER_START_TIMES`** (`[20, 60]`): floe and shard join at 1:00. Weights are spike 2 : floe 1 : shard 1.
+- `check_spawn_placement()` now places **every** kind, checks its height, and checks its real hitbox against the
+  `PIECE_KINDS` row the proof reads (mutation-tested). Fairness uses each tier's own opening speed.
+- **Contrast:** floating hazards are seen against scenery, not ice. Measured, obstacle red vs scenery
+  and sky is ≥ **0.65** in every biome (`sunset_rose` the worst), above the gate's 0.5. No gate change.
+- A runtime smoke run (real `main.tscn`, an unkillable player, 150s) placed 6 spikes, 3 shards and
+  1 floe, all at the right height.
+- Gates: `check.sh` 5/5, `aurora_calm_probe` PASS 182,974.
+- **Not done: the first-appearance "extra room".** Every pattern is a single piece so far, so a new
+  kind already arrives alone. The extra room lands with multi-piece patterns in step 5.
+- **Possible look issue:** an air coin line (132px) or the rare coin (174px) can overlap a floe's column
+  if both land at the same x. It is harmless, since you can stay down, but it looks odd. Not guarded.
 
 ### Step 2 — built 2026-09-27: pattern scheduler + fairness check
 
@@ -323,7 +342,7 @@ Sizes are relative.
   coin density). A guard that skips everything must fail loudly.
 - Gates: `check.sh`, `freeze-search`, `chasm_probe`, `aurora_calm_probe`.
 
-### Step 3 — Floating floe + shard (small)
+### Step 3 — Floating floe + shard (small) — **BUILT, see the top of this file**
 - Two new scenes using `obstacle.gd` (a column hitbox and a 32×32 hitbox). The spawner gets a per-kind
   `{half_height, clearance_above_ground}` table in place of the single `OBSTACLE_HALF_HEIGHT` (update
   the check that reads it).

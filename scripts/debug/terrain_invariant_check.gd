@@ -731,13 +731,25 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 	# node's OWN x rather than the requested one.
 	var probe_x: float = find_placement_probe_x(terrain_generator)
 
-	obstacle_spawner.spawn_obstacle(probe_x)
-	if obstacle_spawner.active_obstacles.is_empty():
-		violations.append("SPAWN_PLACEMENT ObstacleSpawner placed nothing at world_x=%.1f" % probe_x)
-	else:
-		violations.append_array(assert_clearance(terrain_generator, "ObstacleSpawner",
-			obstacle_spawner.active_obstacles[-1],
-			ObstacleSpawner.OBSTACLE_HALF_HEIGHT, ObstacleSpawner.OBSTACLE_HALF_HEIGHT))
+	# Every piece kind, and its real hitbox against the PIECE_KINDS row the fairness proof reads:
+	# a scene resized without its row would leave the proof about a shape that is not in the game.
+	for kind: StringName in ObstacleSpawner.PIECE_KINDS:
+		var kind_spec: Dictionary = ObstacleSpawner.PIECE_KINDS[kind]
+		var count_before: int = obstacle_spawner.active_obstacles.size()
+		obstacle_spawner.spawn_obstacle(probe_x, kind)
+		if obstacle_spawner.active_obstacles.size() == count_before:
+			violations.append("SPAWN_PLACEMENT ObstacleSpawner placed no %s at world_x=%.1f" % [kind, probe_x])
+			continue
+		var piece: Node2D = obstacle_spawner.active_obstacles[-1]
+		var center_height: float = float(kind_spec["center_height"])
+		violations.append_array(assert_clearance(terrain_generator, "ObstacleSpawner.%s" % kind, piece,
+			center_height, center_height))
+		var shape: RectangleShape2D = (piece.get_node("CollisionShape2D") as CollisionShape2D).shape as RectangleShape2D
+		var table_size: Vector2 = Vector2(float(kind_spec["half_width"]), float(kind_spec["half_height"])) * 2.0
+		if shape == null or not shape.size.is_equal_approx(table_size):
+			violations.append("SPAWN_PLACEMENT ObstacleSpawner.%s hitbox %s != PIECE_KINDS %s" % [
+				kind, shape.size if shape != null else Vector2.ZERO, table_size,
+			])
 
 	var powerup_row: Dictionary = PowerupSpawner.POWERUP_TABLE[0]
 	powerup_spawner.spawn_powerup(powerup_row["scene"], probe_x, powerup_row["effect"])
@@ -1263,10 +1275,11 @@ func check_spawn_lookahead() -> Array[String]:
 func check_pattern_fairness() -> Array[String]:
 	var violations: Array[String] = []
 	var boost_multipliers: Array[float] = [1.0, PowerupManager.JUMP_BOOST_VELOCITY_MULTIPLIER]
-	var slowest_speed: float = get_speed_at_time(ObstacleSpawner.FIRST_PATTERN_TIME)
 	var longest_pattern_seconds: float = 0.0
 
 	for pattern: Dictionary in ObstacleSpawner.PATTERNS:
+		# The slowest a pattern is met at is the speed when its tier opens.
+		var slowest_speed: float = get_speed_at_time(ObstacleSpawner.TIER_START_TIMES[int(pattern["tier"]) - 1])
 		var tightest_window: int = PATTERN_WINDOW_CAP_FRAMES
 		var tightest_case: String = "no jump needed"
 		for speed: float in [slowest_speed, SpeedManager.MAX_SPEED]:

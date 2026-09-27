@@ -22,6 +22,8 @@ class_name ObstacleSpawner
 var debug_spawning_disabled: bool = false
 
 const OBSTACLE_SCENE: PackedScene = preload("res://scenes/obstacles/obstacle.tscn")
+const FLOE_SCENE: PackedScene = preload("res://scenes/obstacles/floe.tscn")
+const SHARD_SCENE: PackedScene = preload("res://scenes/obstacles/shard.tscn")
 # Half of obstacle.tscn's RectangleShape2D size (32x32), so the box sits on top of
 # the surface rather than centered on it or floating above it.
 const OBSTACLE_HALF_HEIGHT: float = 16.0
@@ -90,11 +92,33 @@ const DESPAWN_BEHIND_WORLD_X: float = 1500.0
 # hitbox width (its footprint along the ground) and how high its CENTRE sits above the surface.
 # half_height is the hitbox's own, and only terrain_invariant_check reads it -- the fairness
 # model needs the full rect, and check_spawn_placement() compares both against the real shape.
+# All three kinds run obstacle.gd, so a hit, a shield and a boost break-through behave the same.
+#
+#   * SPIKE: 32x32 on the ground. Jump it.
+#   * FLOE: an ice island with an icicle hanging to head height. Its hitbox is ONE column from
+#     the icicle tip, 64px up (the standing capsule's 48 + 16 of margin), to 200px, and the
+#     placeholder art is exactly that column. Staying grounded always passes under it; any jump
+#     near it hits it. The floating-island look without a surface to stand on (HANDOFF, "Ideas
+#     flagged and NOT planned", for why standing on one is out).
+#   * SHARD: 32x32 floating at 64-96px. Levels 0-2 must stay under it; levels 3-4 can also
+#     clear it (feet above 96), so an upgrade opens a route rather than only easing one.
+#
+# "floating" marks kinds a glider could fly into: patterns holding one wait out a glide.
 const PIECE_SPIKE: StringName = &"spike"
+const PIECE_FLOE: StringName = &"floe"
+const PIECE_SHARD: StringName = &"shard"
 const PIECE_KINDS: Dictionary = {
 	PIECE_SPIKE: {"scene": OBSTACLE_SCENE, "half_width": 16.0, "half_height": OBSTACLE_HALF_HEIGHT,
-		"center_height": OBSTACLE_HALF_HEIGHT},
+		"center_height": OBSTACLE_HALF_HEIGHT, "floating": false},
+	PIECE_FLOE: {"scene": FLOE_SCENE, "half_width": 16.0, "half_height": 68.0,
+		"center_height": 132.0, "floating": true},
+	PIECE_SHARD: {"scene": SHARD_SCENE, "half_width": 16.0, "half_height": 16.0,
+		"center_height": 80.0, "floating": true},
 }
+
+# When each tier's patterns join the draw, in run seconds; index 0 is tier 1. The speed a tier
+# starts at is the slowest its patterns are ever met at, which check_pattern_fairness() reads.
+const TIER_START_TIMES: Array[float] = [FIRST_PATTERN_TIME, 60.0]
 
 # WHAT ARRIVES TOGETHER. A pattern is a few pieces timed in SECONDS from the first, placed
 # at the current speed. On flat ground a jump's height over time does not depend on speed, so
@@ -105,7 +129,9 @@ const PIECE_KINDS: Dictionary = {
 # favour of frequent singles, because they were spaced in pixels and nothing proved them
 # beatable. A row here is the same idea with the proof attached.
 const PATTERNS: Array[Dictionary] = [
-	{"id": &"spike", "tier": 1, "weight": 1, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}]},
+	{"id": &"spike", "tier": 1, "weight": 2, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}]},
+	{"id": &"floe", "tier": 2, "weight": 1, "pieces": [{"kind": PIECE_FLOE, "at": 0.0}]},
+	{"id": &"shard", "tier": 2, "weight": 1, "pieces": [{"kind": PIECE_SHARD, "at": 0.0}]},
 ]
 
 const HASH_MASK: int = 0x7fffffff
@@ -163,13 +189,18 @@ func _physics_process(_delta: float) -> void:
 	if elapsed_time >= next_pattern_time and not player.is_boosting:
 		# The pattern is drawn from next_pattern_index, which only advances on success, so a
 		# retry asks for the SAME pattern further along rather than re-rolling past it.
-		if try_place_pattern(get_pattern(next_pattern_index)):
-			next_pattern_index += 1
-			var interval_bounds: Vector2 = get_interval_bounds(elapsed_time)
-			var interval_roll: float = get_pattern_hash(next_pattern_index, HASH_CHANNEL_INTERVAL)
-			next_pattern_time += interval_bounds.x + (interval_roll * (interval_bounds.y - interval_bounds.x))
-		else:
-			next_pattern_time += FOOTPRINT_RETRY_DELAY
+		var pattern: Dictionary = get_pattern(next_pattern_index, get_tier(elapsed_time))
+		# A glider steers its own altitude and could fly into a floating piece, so those patterns
+		# wait out the glide the same way every pattern waits out a boost.
+		var waits_out_glide: bool = player.is_glide_active and has_floating_piece(pattern)
+		if not waits_out_glide:
+			if try_place_pattern(pattern):
+				next_pattern_index += 1
+				var interval_bounds: Vector2 = get_interval_bounds(elapsed_time)
+				var interval_roll: float = get_pattern_hash(next_pattern_index, HASH_CHANNEL_INTERVAL)
+				next_pattern_time += interval_bounds.x + (interval_roll * (interval_bounds.y - interval_bounds.x))
+			else:
+				next_pattern_time += FOOTPRINT_RETRY_DELAY
 
 	var despawn_world_x: float = player.global_position.x - DESPAWN_BEHIND_WORLD_X
 	for index: int in range(active_obstacles.size() - 1, -1, -1):
@@ -198,17 +229,39 @@ func get_interval_bounds(elapsed_time: float) -> Vector2:
 	return Vector2(min_interval, max_interval)
 
 
-# Weighted draw over PATTERNS, a pure function of (session_seed, pattern_index).
-func get_pattern(pattern_index: int) -> Dictionary:
+# The highest tier whose start time has passed.
+static func get_tier(elapsed_time: float) -> int:
+	var tier: int = 1
+	for index: int in range(TIER_START_TIMES.size()):
+		if elapsed_time >= TIER_START_TIMES[index]:
+			tier = index + 1
+	return tier
+
+
+# Weighted draw over the PATTERNS open at this tier, a pure function of (session_seed,
+# pattern_index, tier).
+func get_pattern(pattern_index: int, tier: int) -> Dictionary:
 	var total_weight: int = 0
 	for pattern: Dictionary in PATTERNS:
-		total_weight += int(pattern["weight"])
+		if int(pattern["tier"]) <= tier:
+			total_weight += int(pattern["weight"])
 	var remaining_weight: int = int(get_pattern_hash(pattern_index, HASH_CHANNEL_PATTERN) * float(total_weight))
+	var drawn: Dictionary = PATTERNS[0]
 	for pattern: Dictionary in PATTERNS:
+		if int(pattern["tier"]) > tier:
+			continue
+		drawn = pattern
 		remaining_weight -= int(pattern["weight"])
 		if remaining_weight < 0:
-			return pattern
-	return PATTERNS[PATTERNS.size() - 1]
+			break
+	return drawn
+
+
+static func has_floating_piece(pattern: Dictionary) -> bool:
+	for piece: Dictionary in pattern["pieces"]:
+		if bool(PIECE_KINDS[piece["kind"]]["floating"]):
+			return true
+	return false
 
 
 # Places every piece of the pattern or none of them. Returns false when the footprint guard

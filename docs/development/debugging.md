@@ -272,6 +272,13 @@ Godot --headless --path . --script res://scripts/debug/archive/<probe>.gd -- ...
 `SceneTree` script awaiting `physics_frame` still steps at the physics rate: freeze-replay
 (60,000) ~17 min, camera-shake (7,000) ~2 min.
 
+**Or add `--fixed-fps 60` and they run uncapped** (2026-09-27). It turns off real-time sync but
+keeps the 1/60 s step. Nothing in `scripts/` reads wall-clock time; every clock is advanced by
+`delta`. So results are identical: `aurora_calm_probe` gave the same 182,974 assertions and the same
+final `x=76896.96875` / `74646.890625` in **15 s instead of ~12 min**. Put it before `--path`:
+`Godot --headless --fixed-fps 60 --path . --script res://scripts/debug/<probe>.gd -- …`. If a probe
+ever starts reading `Time.get_ticks_*`, this stops being equivalent.
+
 **Floor-flicker at the full gate size is far slower than its frame count predicts, and nobody
 has explained why.** Measured 2026-08-09, all on one machine:
 
