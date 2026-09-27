@@ -22,8 +22,6 @@ class_name ObstacleSpawner
 var debug_spawning_disabled: bool = false
 
 const OBSTACLE_SCENE: PackedScene = preload("res://scenes/obstacles/obstacle.tscn")
-const FLOE_SCENE: PackedScene = preload("res://scenes/obstacles/floe.tscn")
-const SHARD_SCENE: PackedScene = preload("res://scenes/obstacles/shard.tscn")
 # Half of obstacle.tscn's RectangleShape2D size (32x32), so the box sits on top of
 # the surface rather than centered on it or floating above it.
 const OBSTACLE_HALF_HEIGHT: float = 16.0
@@ -90,7 +88,7 @@ const SPAWN_LOOKAHEAD_WORLD_X: float = 1500.0
 # regardless of whether it was cleared or hit.
 const DESPAWN_BEHIND_WORLD_X: float = 1500.0
 
-# WHAT CAN BE PLACED. A piece kind is a scene plus the two numbers that place it: half its
+# WHAT CAN BE PLACED. A piece kind is a scene PATH plus the two numbers that place it: half its
 # hitbox width (its footprint along the ground) and how high its CENTRE sits above the surface.
 # half_height is the hitbox's own, and only terrain_invariant_check reads it -- the fairness
 # model needs the full rect, and check_spawn_placement() compares both against the real shape.
@@ -108,18 +106,24 @@ const DESPAWN_BEHIND_WORLD_X: float = 1500.0
 #     in seconds, and its footprint is that whole stretch. Keep hopping.
 #
 # "floating" marks kinds a glider could fly into: patterns holding one wait out a glide.
+#
+# PATHS, LOADED ON FIRST SPAWN, NOT preload(). Preloading floe.tscn and shard.tscn here made a
+# load cycle: when this script is the first thing loaded, obstacle.gd is still mid-load (for
+# OBSTACLE_SCENE) when those two ask for it, and they come back with NO SCRIPT -- a floe that
+# never hurts anyone, with no error in the game. Measured 2026-09-27; main.tscn's own load
+# order happened to hide it. load() is cached after the first call.
 const PIECE_SPIKE: StringName = &"spike"
 const PIECE_FLOE: StringName = &"floe"
 const PIECE_SHARD: StringName = &"shard"
 const PIECE_THIN_ICE: StringName = &"thin_ice"
 const PIECE_KINDS: Dictionary = {
-	PIECE_SPIKE: {"scene": OBSTACLE_SCENE, "half_width": 16.0, "half_height": OBSTACLE_HALF_HEIGHT,
+	PIECE_SPIKE: {"scene": "res://scenes/obstacles/obstacle.tscn", "half_width": 16.0, "half_height": OBSTACLE_HALF_HEIGHT,
 		"center_height": OBSTACLE_HALF_HEIGHT, "floating": false},
-	PIECE_FLOE: {"scene": FLOE_SCENE, "half_width": 16.0, "half_height": 68.0,
+	PIECE_FLOE: {"scene": "res://scenes/obstacles/floe.tscn", "half_width": 16.0, "half_height": 68.0,
 		"center_height": 132.0, "floating": true},
-	PIECE_SHARD: {"scene": SHARD_SCENE, "half_width": 16.0, "half_height": 16.0,
+	PIECE_SHARD: {"scene": "res://scenes/obstacles/shard.tscn", "half_width": 16.0, "half_height": 16.0,
 		"center_height": 80.0, "floating": true},
-	PIECE_THIN_ICE: {"scene": null, "half_width": 0.0, "half_height": 0.0,
+	PIECE_THIN_ICE: {"scene": "", "half_width": 0.0, "half_height": 0.0,
 		"center_height": 0.0, "floating": false},
 }
 
@@ -362,7 +366,7 @@ func spawn_obstacle(world_x: float, kind: StringName = PIECE_SPIKE) -> void:
 	var kind_spec: Dictionary = PIECE_KINDS[kind]
 	var world_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) \
 		- float(kind_spec["center_height"])
-	var obstacle: Obstacle = (kind_spec["scene"] as PackedScene).instantiate() as Obstacle
+	var obstacle: Obstacle = (load(String(kind_spec["scene"])) as PackedScene).instantiate() as Obstacle
 	obstacle.position = Vector2(world_x, world_y)
 	if has_biome_color:
 		obstacle.set_visual_color(biome_obstacle_color)

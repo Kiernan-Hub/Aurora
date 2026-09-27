@@ -739,7 +739,7 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 	# a scene resized without its row would leave the proof about a shape that is not in the game.
 	for kind: StringName in ObstacleSpawner.PIECE_KINDS:
 		var kind_spec: Dictionary = ObstacleSpawner.PIECE_KINDS[kind]
-		if kind_spec["scene"] == null:
+		if String(kind_spec["scene"]).is_empty():
 			continue
 		var count_before: int = obstacle_spawner.active_obstacles.size()
 		obstacle_spawner.spawn_obstacle(probe_x, kind)
@@ -747,6 +747,9 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 			violations.append("SPAWN_PLACEMENT ObstacleSpawner placed no %s at world_x=%.1f" % [kind, probe_x])
 			continue
 		var piece: Node2D = obstacle_spawner.active_obstacles[-1]
+		if not (piece is Obstacle):
+			violations.append("SPAWN_PLACEMENT ObstacleSpawner.%s spawned without obstacle.gd -- it would never hurt the player" % kind)
+			continue
 		var center_height: float = float(kind_spec["center_height"])
 		violations.append_array(assert_clearance(terrain_generator, "ObstacleSpawner.%s" % kind, piece,
 			center_height, center_height))
