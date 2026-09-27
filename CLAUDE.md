@@ -119,7 +119,7 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
   `AIR_COIN_SCALE` 1.9 and the rare coin's 1.0 are both load-bearing.
 - **The jump upgrade curve may not exceed ×1.0224.** `CHASM_LEAD_IN_LENGTH` (900) bounds
   max-upgrade × the √2 powerup; above that a boosted jump lands *inside* the void and
-  `check_upgrade_curve()` fails the build. Same reason **double jump is ruled out** (`physics.md`).
+  `check_upgrade_curve()` fails the build. Same reason **double jump was ruled out** (`physics.md`) — **reopened 2026-09-27** as a shop unlock under guardrails (`HANDOFF.md`, step 7).
 - **The autoload *node* exists under `--headless --script`** though the global `Services` identifier
   doesn't. `GameManager.apply_upgrades()` must skip headless, or gates measure whatever jump level
   is in *your* `save.dat` (48/48 → 8 failures). Check `DisplayServer`, never `services.is_headless`.

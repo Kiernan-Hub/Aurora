@@ -27,6 +27,10 @@ would mean every expiring powerup silently wiped the player's purchase. Only
 `GameManager.apply_upgrades()` may write the upgrade one, and it skips headless runs so no
 probe measures physics derived from the developer's own `save.dat` — see `CLAUDE.md`.
 
+> **REOPENED 2026-09-27:** the owner wants a double jump as a shop unlock. The worst-case reach turned
+> out to be a simple bound (exactly 2× a single jump), and the plan + guardrails are in `HANDOFF.md`
+> (step 7). The reasoning below is why the guardrails exist; rewrite this section when it ships.
+
 **Double jump — ruled out (2026-08-06).** Every chasm invariant in
 `terrain_invariant_check.gd` (`CHASM_LEAD_IN_LENGTH`, `CHASM_MAX_REACH_FRACTION`,
 `check_chasm_variant_table()`) is built on reach as a pure function of takeoff speed —
@@ -223,7 +227,7 @@ The predicate is **depth below the height field**, not an absolute Y and not a c
 height:
 
 ```gdscript
-global_position.y - terrain_generator.get_surface_world_y(global_position.x) > FALL_DEATH_DEPTH  # 360
+global_position.y - terrain_generator.get_surface_world_y(global_position.x) > FALL_DEATH_DEPTH  # 200
 ```
 
 Two properties are load-bearing. It **needs no knowledge of chasms** — the field is
@@ -235,7 +239,7 @@ generator and the body by the same amount in the same frame, and `get_surface_wo
 the generator's live `global_position.y`, so the difference is invariant. A captured lip Y
 would go stale by a full rebase quantum the moment one landed mid-fall.
 
-360px is ~0.67s of fall. There is no terminal velocity in this project, so a deeper threshold
+200px is ~0.5s of fall (it was 360 / ~0.67s until the death registered too late past the far lip — `player.gd` has the measurement). There is no terminal velocity in this project, so a deeper threshold
 gets expensive fast.
 
 ## A speed boost carries the player across a chasm
