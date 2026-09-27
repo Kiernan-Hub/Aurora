@@ -189,11 +189,22 @@ func get_recovery_distance() -> float:
 func get_furthest_body_edge(spawner: Node) -> float:
 	var furthest: float = player.global_position.x
 	for child: Node in spawner.get_children():
-		var shape: CollisionShape2D = child.get_node_or_null("CollisionShape2D") as CollisionShape2D
-		if shape != null and shape.shape != null:
-			var bounds: Rect2 = shape.global_transform * shape.shape.get_rect()
+		var bounds: Rect2 = get_body_bounds(child)
+		if bounds.has_area():
 			furthest = maxf(furthest, bounds.end.x)
 	return furthest
+
+
+# World extent of a spawned body, or an empty rect. Bodies are found by collision shape, except
+# thin ice: it is a span check with no shape, so without this it would be invisible here.
+static func get_body_bounds(child: Node) -> Rect2:
+	var thin_ice: ThinIce = child as ThinIce
+	if thin_ice != null:
+		return thin_ice.get_world_rect()
+	var shape: CollisionShape2D = child.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	if shape == null or shape.shape == null:
+		return Rect2()
+	return shape.global_transform * shape.shape.get_rect()
 
 
 func try_reserve() -> bool:
@@ -226,11 +237,10 @@ func has_existing_conflict() -> bool:
 		for child: Node in spawner.get_children():
 			if child is Powerup and not PowerupManager.is_aurora_excluded_effect((child as Powerup).effect):
 				continue
-			var shape: CollisionShape2D = child.get_node_or_null("CollisionShape2D") as CollisionShape2D
-			if shape != null and shape.shape != null:
-				var bounds: Rect2 = shape.global_transform * shape.shape.get_rect()
-				if bounds.end.x >= player.global_position.x - BODY_CLEARANCE and bounds.position.x < flat_end_x:
-					return true
+			var bounds: Rect2 = get_body_bounds(child)
+			if bounds.has_area() and bounds.end.x >= player.global_position.x - BODY_CLEARANCE \
+					and bounds.position.x < flat_end_x:
+				return true
 	return false
 
 

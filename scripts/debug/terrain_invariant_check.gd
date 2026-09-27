@@ -134,6 +134,9 @@ const BREATHING_ROOM_MARGIN: float = 0.3
 # seed measures the share of candidate starts every pattern's footprint accepts.
 const PATTERN_FOOTPRINT_SAMPLE_STEP: float = 250.0
 const PATTERN_FOOTPRINT_MIN_ACCEPTANCE: float = 0.25
+# The shortest hop the weakest jump may make up the steepest terrain for thin ice to stay
+# crossable without the footprint's slope rule. Measured ~8 frames at 20.13 degrees.
+const THIN_ICE_MIN_HOP_FRAMES: int = 4
 # How much clear air the rare coin must keep on BOTH sides of its reachability window. The
 # window itself is only ~24px wide (the gap between the top two jump levels' ceilings), so
 # this is deliberately small; it exists to stop the clearance being tuned to the exact edge,
@@ -310,7 +313,8 @@ func check_session_seed(session_seed: int, start_world_x: float, end_world_x: fl
 	var chasm_report: Dictionary = check_chasms(terrain_generator, start_world_x, end_world_x)
 	var coin_spawner: CoinSpawner = main.get_node("TerrainGenerator/CoinSpawner") as CoinSpawner
 	var coin_report: Dictionary = measure_coin_density(terrain_generator, coin_spawner, start_world_x, end_world_x)
-	var footprint_violations: Array[String] = measure_pattern_footprints(terrain_generator, session_seed, start_world_x, end_world_x)
+	var footprint_violations: Array[String] = measure_pattern_footprints(terrain_generator, session_seed, start_world_x, end_world_x,
+		float(report["worst_slope_angle"]))
 	print_seed_report(session_seed, report, max_slope_angle)
 	print_chasm_report(session_seed, chasm_report)
 	var coin_violations: Array[String] = coin_report["violations"]
@@ -735,6 +739,8 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 	# a scene resized without its row would leave the proof about a shape that is not in the game.
 	for kind: StringName in ObstacleSpawner.PIECE_KINDS:
 		var kind_spec: Dictionary = ObstacleSpawner.PIECE_KINDS[kind]
+		if kind_spec["scene"] == null:
+			continue
 		var count_before: int = obstacle_spawner.active_obstacles.size()
 		obstacle_spawner.spawn_obstacle(probe_x, kind)
 		if obstacle_spawner.active_obstacles.size() == count_before:
@@ -750,6 +756,21 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 			violations.append("SPAWN_PLACEMENT ObstacleSpawner.%s hitbox %s != PIECE_KINDS %s" % [
 				kind, shape.size if shape != null else Vector2.ZERO, table_size,
 			])
+
+	# Thin ice has no body. Its node sits ON the surface at its start, and its overlay must sit
+	# OVERLAY_LIFT above the line or the chunks, added later, draw over it.
+	var ice_count_before: int = obstacle_spawner.active_obstacles.size()
+	obstacle_spawner.spawn_thin_ice(probe_x, probe_x + 200.0)
+	if obstacle_spawner.active_obstacles.size() == ice_count_before:
+		violations.append("SPAWN_PLACEMENT ObstacleSpawner placed no thin ice at world_x=%.1f" % probe_x)
+	else:
+		var thin_ice: ThinIce = obstacle_spawner.active_obstacles[-1] as ThinIce
+		violations.append_array(assert_clearance(terrain_generator, "ObstacleSpawner.thin_ice", thin_ice, 0.0, 0.0))
+		var overlay: Line2D = thin_ice.get_node("Overlay") as Line2D
+		var overlay_y: float = thin_ice.global_position.y + overlay.get_point_position(0).y
+		var overlay_lift: float = terrain_generator.get_surface_world_y(thin_ice.global_position.x) - overlay_y
+		if absf(overlay_lift - ThinIce.OVERLAY_LIFT) > PLACEMENT_EPSILON:
+			violations.append("SPAWN_PLACEMENT thin ice overlay sits %.1fpx above the surface, expected %.1f" % [overlay_lift, ThinIce.OVERLAY_LIFT])
 
 	var powerup_row: Dictionary = PowerupSpawner.POWERUP_TABLE[0]
 	powerup_spawner.spawn_powerup(powerup_row["scene"], probe_x, powerup_row["effect"])
@@ -1323,10 +1344,17 @@ func check_pattern_fairness() -> Array[String]:
 # speed and jump strength. 0 means no line survives; PATTERN_WINDOW_CAP_FRAMES means none is tight
 # (or no jump is needed at all).
 func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multiplier: float) -> int:
-	# Hazard rects in pattern space: x from the first piece, y = height above the ground.
+	# Hazard rects in pattern space: x from the first piece, y = height above the ground. Thin
+	# ice is an x span instead, deadly only to standing on it too long.
 	var hazards: Array[Rect2] = []
+	var ice_spans: Array[Vector2] = []
 	var last_hazard_x: float = 0.0
 	for piece: Dictionary in pattern["pieces"]:
+		if piece["kind"] == ObstacleSpawner.PIECE_THIN_ICE:
+			var ice_start: float = float(piece["at"]) * speed
+			ice_spans.append(Vector2(ice_start, ice_start + float(piece["length"]) * speed))
+			last_hazard_x = maxf(last_hazard_x, ice_start + float(piece["length"]) * speed)
+			continue
 		var kind: Dictionary = ObstacleSpawner.PIECE_KINDS[piece["kind"]]
 		var half_width: float = float(kind["half_width"]) + FAIRNESS_HAZARD_MARGIN
 		var half_height: float = float(kind["half_height"]) + FAIRNESS_HAZARD_MARGIN
@@ -1371,15 +1399,43 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 	for frame: int in range(frame_count - 1, -1, -1):
 		next_unsafe[frame] = next_unsafe[frame + 1] if grounded_safe[frame] else frame
 
-	if not is_pattern_survivable(1, frame_count, next_unsafe, arc_clean, landing):
+	# Thin ice as runs of frames whose player centre is on it, the same test ThinIce makes.
+	var ice_runs: Array[Vector2i] = []
+	for frame: int in range(frame_count):
+		var player_x: float = first_x + frame * frame_step
+		var on_ice: bool = false
+		for ice: Vector2 in ice_spans:
+			on_ice = on_ice or (player_x >= ice.x and player_x < ice.y)
+		if not on_ice:
+			continue
+		if not ice_runs.is_empty() and ice_runs[-1].y == frame - 1:
+			ice_runs[-1].y = frame
+		else:
+			ice_runs.append(Vector2i(frame, frame))
+	# How many consecutive grounded frames the ice allows; the next one cracks it.
+	var ice_grace_frames: int = int(floor((ThinIce.GRACE_SECONDS + ThinIce.GRACE_EPSILON) / FAIRNESS_FRAME_TIME))
+
+	# walk_end[f]: the first frame a player who LANDED on frame f cannot stand on -- a hazard, or
+	# the ice cracking, counted fresh from the landing because every landing restarts the grace.
+	var walk_end: Array[int] = []
+	walk_end.resize(frame_count)
+	for frame: int in range(frame_count):
+		var end_frame: int = next_unsafe[frame]
+		for run: Vector2i in ice_runs:
+			var first_on_ice: int = maxi(frame, run.x)
+			if first_on_ice + ice_grace_frames <= run.y:
+				end_frame = mini(end_frame, first_on_ice + ice_grace_frames)
+		walk_end[frame] = end_frame
+
+	if not is_pattern_survivable(1, frame_count, walk_end, arc_clean, landing):
 		return 0
-	if is_pattern_survivable(PATTERN_WINDOW_CAP_FRAMES, frame_count, next_unsafe, arc_clean, landing):
+	if is_pattern_survivable(PATTERN_WINDOW_CAP_FRAMES, frame_count, walk_end, arc_clean, landing):
 		return PATTERN_WINDOW_CAP_FRAMES
 	var low: int = 1
 	var high: int = PATTERN_WINDOW_CAP_FRAMES - 1
 	while low < high:
 		var middle: int = (low + high + 1) / 2
-		if is_pattern_survivable(middle, frame_count, next_unsafe, arc_clean, landing):
+		if is_pattern_survivable(middle, frame_count, walk_end, arc_clean, landing):
 			low = middle
 		else:
 			high = middle - 1
@@ -1389,7 +1445,7 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 # Can a player grounded at frame 0 get through, using only take-offs that sit in a run of at
 # least min_window consecutive usable take-off frames? Frames run backward so that every landing
 # (always later than its take-off) is already decided when a take-off is judged.
-func is_pattern_survivable(min_window: int, frame_count: int, next_unsafe: Array[int], arc_clean: Array[bool], landing: Array[int]) -> bool:
+func is_pattern_survivable(min_window: int, frame_count: int, walk_end: Array[int], arc_clean: Array[bool], landing: Array[int]) -> bool:
 	var survivable: Array[bool] = []
 	survivable.resize(frame_count + 1)
 	survivable[frame_count] = true
@@ -1399,7 +1455,7 @@ func is_pattern_survivable(min_window: int, frame_count: int, next_unsafe: Array
 	for frame: int in range(frame_count - 1, -1, -1):
 		# The last frame that can be stood on walking from here; a take-off may fire on any frame
 		# up to one past it, since it needs only the ground of the frame before.
-		var last_standing: int = next_unsafe[frame] - 1
+		var last_standing: int = walk_end[frame] - 1
 		if last_standing >= frame_count - 1:
 			survivable[frame] = true
 		else:
@@ -1430,17 +1486,27 @@ func does_player_hit(hazards: Array[Rect2], player_x: float, feet_height: float)
 
 # Share of candidate starts where each pattern's footprint is legal, per seed, measured through
 # ObstacleSpawner.is_footprint_legal() itself. Spans are taken at MAX_SPEED, their longest.
-func measure_pattern_footprints(terrain_generator: TerrainGenerator, session_seed: int, start_world_x: float, end_world_x: float) -> Array[String]:
+#
+# Also the one claim that lets thin ice skip the guard's slope rule: even the weakest jump must
+# still leave the steepest ground this seed produced, where at MAX_SPEED the surface rises under a
+# hop at MAX_SPEED * tan(slope). A hop that never leaves the ground cannot reset the ice.
+func measure_pattern_footprints(terrain_generator: TerrainGenerator, session_seed: int, start_world_x: float, end_world_x: float, worst_slope_angle: float) -> Array[String]:
 	var violations: Array[String] = []
-	var line: String = "TERRAIN_INVARIANT_PATTERN_FOOTPRINT seed=%d" % session_seed
+	var weakest_launch: float = -Player.JUMP_VELOCITY * float(UpgradeStore.JUMP_MULTIPLIERS.min())
+	var relative_launch: float = weakest_launch - SpeedManager.MAX_SPEED * tan(worst_slope_angle)
+	var weakest_hop_frames: float = maxf(0.0, 2.0 * relative_launch / Player.GRAVITY) / FAIRNESS_FRAME_TIME
+	if weakest_hop_frames < THIN_ICE_MIN_HOP_FRAMES:
+		violations.append("THIN_ICE_HOP_GROUNDED weakest hop %.1f frames < %d on %.2fdeg -- thin ice needs the footprint slope rule back" % [
+			weakest_hop_frames, THIN_ICE_MIN_HOP_FRAMES, rad_to_deg(worst_slope_angle),
+		])
+	var line: String = "TERRAIN_INVARIANT_PATTERN_FOOTPRINT seed=%d weakest_hop=%.1ff" % [session_seed, weakest_hop_frames]
 	for pattern: Dictionary in ObstacleSpawner.PATTERNS:
 		var sample_count: int = 0
 		var accepted_count: int = 0
 		var start_x: float = start_world_x + ObstacleSpawner.MIN_SAFE_START_WORLD_X
 		while start_x < end_world_x - ObstacleSpawner.OBSTACLE_VOID_CLEARANCE_AHEAD:
-			var span: Vector2 = ObstacleSpawner.get_pattern_span(pattern, start_x, SpeedManager.MAX_SPEED)
 			sample_count += 1
-			if ObstacleSpawner.is_footprint_legal(terrain_generator, span.x, span.y):
+			if ObstacleSpawner.is_footprint_legal(terrain_generator, pattern, start_x, SpeedManager.MAX_SPEED):
 				accepted_count += 1
 			start_x += PATTERN_FOOTPRINT_SAMPLE_STEP
 		var acceptance: float = float(accepted_count) / maxf(float(sample_count), 1.0)

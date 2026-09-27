@@ -2,9 +2,36 @@
 
 ## 2026-09-27 — Obstacles + air moves: the approved plan
 
-**Steps 1–3 are BUILT** on branch `claude/implementation-t58fc3`, not merged to `main` yet. The
+**Steps 1–4 are BUILT** on branch `claude/implementation-t58fc3`, not merged to `main` yet. The
 owner said to keep going through the obstacle steps (2–5) and stop before the air moves (6–7).
 Older sessions live in `docs/history.md`; none of that is a to-do.
+
+### Step 4 — built 2026-09-27: thin ice
+
+- **`ThinIce`** (`scripts/obstacles/thin_ice.gd`, a new `class_name`: **run the import once**, i.e. open
+  the editor, before `check.sh`). It is a span check: a player grounded on it for more than
+  **0.2 s (12 frames)** at a time calls `absorb_hit()`. Each landing resets the timer. A boost skims
+  over for free. A shield absorbs the crack and the patch **disarms** (fades to 30%). The overlay is
+  a `Line2D` drawn **4 px above** the surface line, where chunks can't cover it, in the absolute
+  obstacle colour, and biome pushes recolour it.
+- Patterns (tier 3, from **1:45**): `ice_short` 0.3 s (one jump clears it), weight 2, and `ice_long`
+  1.2 s (the skip), weight 1. `TIER_START_TIMES` is `[20, 60, 105]`.
+- **Deviation from the plan: thin ice skips the footprint's 6° slope rule.** Held to 6°, a 1.2 s
+  patch fits ~5% of the ground. Thin ice never touches physics, and a slope only shortens or lengthens
+  the hops. What makes that safe is now asserted per seed: the weakest jump still leaves the
+  steepest measured ground for ≥4 frames (measured **8.2** at 20.13°). Body pieces keep the rule
+  across the whole stretch between them. Placement: ice ~95%, bodies ~33%.
+- The fairness model counts grounded frames on ice (13 cracks, reset per landing): `ice_short` 34
+  frames, `ice_long` 12 (the grace). Mutation: grace 0.05 s ⇒ `ice_long` 3 frames, FAIL.
+- **Runtime-verified in the real scene:** standing cracks on exactly the **13th** grounded frame;
+  hopping each landing survives; a shield absorbs, disarms and survives.
+- Coverage holes closed: `lake_suppression_probe.is_spawned_item()` knows `ThinIce`, and
+  **`AuroraDirector.get_body_bounds()`** reports thin ice's span. The director found bodies only by
+  collision shape, so thin ice was invisible to its reservation and to the probe's "no hazard on the
+  flat" assertion.
+- **Deferred to the art/audio pass (step 8), flagged:** the crack SFX and the "player sinks" death. A
+  crack that kills already plays the death sound. Both need new assets plus wiring for a placeholder.
+- Gates: `check.sh` 5/5, `aurora_calm_probe` PASS 182,974. Live smoke run: 8 patches from 1:45.
 
 ### Step 3 — built 2026-09-27: floating floe + shard
 
@@ -351,7 +378,7 @@ Sizes are relative.
 - `check_spawn_placement()` measures a really-placed floe and shard against the surface.
 - Tier 2 patterns go live. Gates: `check.sh`, `aurora_calm_probe`. Owner playtests.
 
-### Step 4 — Thin ice (small–medium)
+### Step 4 — Thin ice (small–medium) — **BUILT, see the top of this file**
 - `ThinIce` node (span check, above). Spawned as a piece kind.
 - **Visual:** a crackled overlay sitting **just above** the surface line (see traps).
 - Crack SFX: a placeholder through the existing pool.

@@ -164,7 +164,7 @@ func scan_for_offenders(lake_start_x: float, lake_end_x: float, offenders: Dicti
 
 
 func is_spawned_item(node: Node) -> bool:
-	return node is Coin or node is Obstacle or node is Powerup
+	return node is Coin or node is Obstacle or node is Powerup or node is ThinIce
 
 
 # Deduplicated by instance id, because this runs every frame for the whole crossing and the same

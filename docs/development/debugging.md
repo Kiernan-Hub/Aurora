@@ -371,6 +371,12 @@ spike's 7 is 8.57 continuous, which is the "~8.6 frames" `upgrade_store.gd` alwa
 Mutation-tested: spikes 0.3 s apart ⇒ `window 0 … no surviving input exists`; interval floor 4 → 1 ⇒
 `PATTERN_BREATHING_ROOM`; spikes 1.6 s apart ⇒ `PATTERN_FOOTPRINT_STARVED` at 0.013.
 
+Thin ice joins the model as x spans. A player *landing* on frame f may stay grounded on it for 12
+frames, and the 13th cracks. The runtime `ThinIce` was checked to crack on exactly that frame.
+Because thin ice is exempt from the footprint's slope rule, each seed's `PATTERN_FOOTPRINT` line
+also asserts `weakest_hop` ≥ 4 frames: the weakest jump's airtime up the steepest measured slope
+(8.2 at 20.13°). Mutation: grace 0.05 s ⇒ `ice_long` window 3, FAIL.
+
 **One number is printed but deliberately NOT asserted.** `upgrade_store.gd` quotes "~8.6 frames"
 of window at 0.60 and "~3.7" at 0.55; the plain projectile derivation of *time spent above 32px*
 gives **15.9 and 11.0**. Those figures came from a derivation nobody has reproduced, so the gate

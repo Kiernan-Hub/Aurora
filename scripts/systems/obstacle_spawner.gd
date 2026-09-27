@@ -27,6 +27,8 @@ const SHARD_SCENE: PackedScene = preload("res://scenes/obstacles/shard.tscn")
 # Half of obstacle.tscn's RectangleShape2D size (32x32), so the box sits on top of
 # the surface rather than centered on it or floating above it.
 const OBSTACLE_HALF_HEIGHT: float = 16.0
+# What the scenes' own ColorRects are authored in, for a node spawned before any biome push.
+const DEFAULT_OBSTACLE_COLOR: Color = Color(1.0, 0.1, 0.1, 1.0)
 # Only place on close-to-flat ground: an obstacle glued to a slope reads as
 # unfair (its hitbox stops matching what the eye expects the moment the surface
 # tilts under it), and a steep approach also eats into the player's reaction
@@ -102,11 +104,14 @@ const DESPAWN_BEHIND_WORLD_X: float = 1500.0
 #     flagged and NOT planned", for why standing on one is out).
 #   * SHARD: 32x32 floating at 64-96px. Levels 0-2 must stay under it; levels 3-4 can also
 #     clear it (feet above 96), so an upgrade opens a route rather than only easing one.
+#   * THIN ICE: a stretch of ground, not a body (ThinIce). A piece of this kind has a "length"
+#     in seconds, and its footprint is that whole stretch. Keep hopping.
 #
 # "floating" marks kinds a glider could fly into: patterns holding one wait out a glide.
 const PIECE_SPIKE: StringName = &"spike"
 const PIECE_FLOE: StringName = &"floe"
 const PIECE_SHARD: StringName = &"shard"
+const PIECE_THIN_ICE: StringName = &"thin_ice"
 const PIECE_KINDS: Dictionary = {
 	PIECE_SPIKE: {"scene": OBSTACLE_SCENE, "half_width": 16.0, "half_height": OBSTACLE_HALF_HEIGHT,
 		"center_height": OBSTACLE_HALF_HEIGHT, "floating": false},
@@ -114,11 +119,13 @@ const PIECE_KINDS: Dictionary = {
 		"center_height": 132.0, "floating": true},
 	PIECE_SHARD: {"scene": SHARD_SCENE, "half_width": 16.0, "half_height": 16.0,
 		"center_height": 80.0, "floating": true},
+	PIECE_THIN_ICE: {"scene": null, "half_width": 0.0, "half_height": 0.0,
+		"center_height": 0.0, "floating": false},
 }
 
 # When each tier's patterns join the draw, in run seconds; index 0 is tier 1. The speed a tier
 # starts at is the slowest its patterns are ever met at, which check_pattern_fairness() reads.
-const TIER_START_TIMES: Array[float] = [FIRST_PATTERN_TIME, 60.0]
+const TIER_START_TIMES: Array[float] = [FIRST_PATTERN_TIME, 60.0, 105.0]
 
 # WHAT ARRIVES TOGETHER. A pattern is a few pieces timed in SECONDS from the first, placed
 # at the current speed. On flat ground a jump's height over time does not depend on speed, so
@@ -132,6 +139,9 @@ const PATTERNS: Array[Dictionary] = [
 	{"id": &"spike", "tier": 1, "weight": 2, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}]},
 	{"id": &"floe", "tier": 2, "weight": 1, "pieces": [{"kind": PIECE_FLOE, "at": 0.0}]},
 	{"id": &"shard", "tier": 2, "weight": 1, "pieces": [{"kind": PIECE_SHARD, "at": 0.0}]},
+	# Short: one jump clears it. Long: the skip.
+	{"id": &"ice_short", "tier": 3, "weight": 2, "pieces": [{"kind": PIECE_THIN_ICE, "at": 0.0, "length": 0.3}]},
+	{"id": &"ice_long", "tier": 3, "weight": 1, "pieces": [{"kind": PIECE_THIN_ICE, "at": 0.0, "length": 1.2}]},
 ]
 
 const HASH_MASK: int = 0x7fffffff
@@ -269,11 +279,14 @@ static func has_floating_piece(pattern: Dictionary) -> bool:
 func try_place_pattern(pattern: Dictionary) -> bool:
 	var speed: float = player.speed_manager.current_speed
 	var start_x: float = maxf(MIN_SAFE_START_WORLD_X, player.global_position.x + SPAWN_LOOKAHEAD_WORLD_X)
-	var span: Vector2 = get_pattern_span(pattern, start_x, speed)
-	if not is_footprint_legal(terrain_generator, span.x, span.y):
+	if not is_footprint_legal(terrain_generator, pattern, start_x, speed):
 		return false
 	for piece: Dictionary in pattern["pieces"]:
-		spawn_obstacle(start_x + float(piece["at"]) * speed, piece["kind"])
+		var piece_x: float = start_x + float(piece["at"]) * speed
+		if piece["kind"] == PIECE_THIN_ICE:
+			spawn_thin_ice(piece_x, piece_x + float(piece["length"]) * speed)
+		else:
+			spawn_obstacle(piece_x, piece["kind"])
 	return true
 
 
@@ -284,35 +297,58 @@ static func get_pattern_span(pattern: Dictionary, start_x: float, speed: float) 
 		var piece_x: float = start_x + float(piece["at"]) * speed
 		var half_width: float = float(PIECE_KINDS[piece["kind"]]["half_width"])
 		span.x = minf(span.x, piece_x - half_width)
-		span.y = maxf(span.y, piece_x + half_width)
+		span.y = maxf(span.y, piece_x + float(piece.get("length", 0.0)) * speed + half_width)
 	return span
 
 
-# THE ONE FOOTPRINT GUARD, for a whole pattern's span. It replaced four checks scattered over
+# THE ONE FOOTPRINT GUARD, for a whole pattern. It replaced four checks scattered over
 # spawn_cluster() that each looked at a single x. Static, so terrain_invariant_check measures
 # the real rule rather than a copy of it. Every clause is safety-critical except the slope one:
 #
-#   * SLOPE. A piece glued to a slope reads as unfair, and the fairness proof assumes flat
-#     ground (see OBSTACLE_MAX_SLOPE_ANGLE).
-#   * LAKE. Jumping is disabled across the frozen lake, so a hazard there is unavoidable death.
-#     Sampled with the slope, because the lake is far longer than any span.
-#   * GROUND. A piece within one jump reach BEFORE a chasm's near lip is unavoidable death:
-#     clearing it commits the player to a landing in the void.
-#   * AURORA. Its flat is a protected passage. spawn_obstacle() checks each piece again, so the
-#     rule holds for callers that bypass this guard.
-static func is_footprint_legal(terrain: TerrainGenerator, start_x: float, end_x: float) -> bool:
-	var sample_x: float = start_x
+#   * SLOPE, across the stretch from the first BODY piece to the last. A piece glued to a slope
+#     reads as unfair, and the fairness proof assumes the ground between pieces is flat too (see
+#     OBSTACLE_MAX_SLOPE_ANGLE). NOT under thin ice: it never touches physics, so a slope only
+#     lengthens or shortens the hops across it, and terrain_invariant_check asserts even the
+#     weakest hop leaves the steepest terrain. Held to 6 degrees, a 1.2s patch would fit ~5% of
+#     the ground and all but never appear.
+#   * LAKE, under every piece. Jumping is disabled across the frozen lake, so a hazard there is
+#     unavoidable death. The lake is far longer than any span, so the samples cannot miss it.
+#   * GROUND over the whole span. A piece within one jump reach BEFORE a chasm's near lip is
+#     unavoidable death: clearing it commits the player to a landing in the void.
+#   * AURORA, over the whole span. Its flat is a protected passage. spawn_obstacle() and
+#     spawn_thin_ice() check again, so the rule holds for callers that bypass this guard.
+static func is_footprint_legal(terrain: TerrainGenerator, pattern: Dictionary, start_x: float, speed: float) -> bool:
+	var body_span: Vector2 = Vector2(INF, -INF)
+	for piece: Dictionary in pattern["pieces"]:
+		var piece_x: float = start_x + float(piece["at"]) * speed
+		if piece["kind"] == PIECE_THIN_ICE:
+			if not is_span_clear(terrain, piece_x, piece_x + float(piece["length"]) * speed, false):
+				return false
+		else:
+			var half_width: float = float(PIECE_KINDS[piece["kind"]]["half_width"])
+			body_span.x = minf(body_span.x, piece_x - half_width)
+			body_span.y = maxf(body_span.y, piece_x + half_width)
+	if body_span.x <= body_span.y and not is_span_clear(terrain, body_span.x, body_span.y, true):
+		return false
+	var span: Vector2 = get_pattern_span(pattern, start_x, speed)
+	if not terrain.has_ground_over_world_x_span(span.x - OBSTACLE_VOID_CLEARANCE_BEHIND, span.y + OBSTACLE_VOID_CLEARANCE_AHEAD):
+		return false
+	return not terrain.overlaps_aurora_flat(span.x - AuroraDirector.BODY_CLEARANCE, span.y + AuroraDirector.BODY_CLEARANCE)
+
+
+# Walks [from_x, to_x] every FOOTPRINT_SAMPLE_STEP: never the lake, and within
+# OBSTACLE_MAX_SLOPE_ANGLE when needs_flat.
+static func is_span_clear(terrain: TerrainGenerator, from_x: float, to_x: float, needs_flat: bool) -> bool:
+	var sample_x: float = from_x
 	while true:
-		if absf(terrain.get_slope_angle_at_x(sample_x)) > OBSTACLE_MAX_SLOPE_ANGLE:
+		if needs_flat and absf(terrain.get_slope_angle_at_x(sample_x)) > OBSTACLE_MAX_SLOPE_ANGLE:
 			return false
 		if terrain.is_lake_world_x(sample_x):
 			return false
-		if sample_x >= end_x:
-			break
-		sample_x = minf(sample_x + FOOTPRINT_SAMPLE_STEP, end_x)
-	if not terrain.has_ground_over_world_x_span(start_x - OBSTACLE_VOID_CLEARANCE_BEHIND, end_x + OBSTACLE_VOID_CLEARANCE_AHEAD):
-		return false
-	return not terrain.overlaps_aurora_flat(start_x - AuroraDirector.BODY_CLEARANCE, end_x + AuroraDirector.BODY_CLEARANCE)
+		if sample_x >= to_x:
+			return true
+		sample_x = minf(sample_x + FOOTPRINT_SAMPLE_STEP, to_x)
+	return true
 
 
 # The unconditional placer: one piece at world_x, no guard but the Aurora's. Probes call it
@@ -334,6 +370,18 @@ func spawn_obstacle(world_x: float, kind: StringName = PIECE_SPIKE) -> void:
 	active_obstacles.append(obstacle)
 
 
+# A thin-ice stretch from start_x to end_x. Same Aurora rule as spawn_obstacle(), over the span.
+func spawn_thin_ice(start_x: float, end_x: float) -> void:
+	if terrain_generator.overlaps_aurora_flat(
+			start_x - AuroraDirector.BODY_CLEARANCE, end_x + AuroraDirector.BODY_CLEARANCE):
+		return
+	var thin_ice: ThinIce = ThinIce.new()
+	thin_ice.setup(player, terrain_generator, start_x, end_x,
+		biome_obstacle_color if has_biome_color else DEFAULT_OBSTACLE_COLOR)
+	add_child(thin_ice)
+	active_obstacles.append(thin_ice)
+
+
 # Repaints the obstacles already on screen along with every one spawned from here on, so a
 # crossfade never leaves two generations of obstacle on screen in different reds.
 func apply_biome_color(color: Color) -> void:
@@ -347,6 +395,9 @@ func apply_biome_color(color: Color) -> void:
 		var obstacle: Obstacle = node as Obstacle
 		if obstacle != null:
 			obstacle.set_visual_color(color)
+		var thin_ice: ThinIce = node as ThinIce
+		if thin_ice != null:
+			thin_ice.set_visual_color(color)
 
 
 # Pure function of (session_seed, pattern_index, channel) -> [0, 1). Same style as
