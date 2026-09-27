@@ -69,16 +69,19 @@ const FIRST_PATTERN_TIME: float = 20.0
 # eventually asks for an impossible obstacle-per-second rate.
 const OBSTACLE_RAMP_WINDOW: float = 30.0
 const OBSTACLE_RAMP_MAX_COUNT: int = 6
-# Absolute floor under the random interval regardless of how dense the ramp
-# above wants to go, so a jittered-down roll can never land two patterns
-# closer together than a player has time to react to. terrain_invariant_check asserts it stays
-# above the longest jump, so the end of one pattern can never land the player in the next.
+# Absolute floor under tier 1's random interval regardless of how dense the ramp above wants to
+# go. Tier 1 is the original ramp, start to start; every later tier uses TIERS' breathing room.
 const RECURRING_PATTERN_MIN_INTERVAL_FLOOR: float = 4.0
 # How long an illegal footprint waits before trying again, from 2026-09-27. Until then a slot
 # that failed the guard was simply LOST, and the guard fails ~60% of the time (measured over
 # three seeds: 37-41% of x positions pass), so most scheduled obstacles never appeared. Same
 # retry shape as RareCoinSpawner's, which found the same problem first.
 const FOOTPRINT_RETRY_DELAY: float = 1.0
+# Before a retry, the guard is also asked at points further ahead, up to this far past the
+# lookahead: a single fits ~92% of attempts within 500px. The pattern then arrives later by the
+# same distance, which the next breathing room is measured from.
+const FOOTPRINT_SEARCH_DISTANCE: float = 600.0
+const FOOTPRINT_SEARCH_STEP: float = 50.0
 
 # Beyond the forward view, so a pattern is never seen popping into existence. 800 was
 # already short of a 20:9 phone's ~860px, and Main.PLAYER_SCREEN_X_FRACTION now shows
@@ -127,9 +130,28 @@ const PIECE_KINDS: Dictionary = {
 		"center_height": 0.0, "floating": false},
 }
 
-# When each tier's patterns join the draw, in run seconds; index 0 is tier 1. The speed a tier
-# starts at is the slowest its patterns are ever met at, which check_pattern_fairness() reads.
-const TIER_START_TIMES: Array[float] = [FIRST_PATTERN_TIME, 60.0, 105.0]
+# TIERS: a new idea about every minute, and less room between patterns. "start" is when a tier's
+# patterns join the draw, in run seconds -- the speed there is the slowest its patterns are ever
+# met at, which check_pattern_fairness() reads. "room" is the BREATHING ROOM, from one pattern's
+# last piece to the next pattern's first, jittered +/-BREATHING_ROOM_JITTER. Tier 1 keeps the
+# original interval ramp instead (room -1). The last tier's room keeps shrinking to the floor.
+# Starting values from the HANDOFF plan, to be tuned by playing.
+const TIERS: Array[Dictionary] = [
+	{"start": FIRST_PATTERN_TIME, "room": -1.0},
+	{"start": 60.0, "room": 6.0},
+	{"start": 105.0, "room": 5.0},
+	{"start": 150.0, "room": 4.0},
+	{"start": 210.0, "room": 3.5},
+	{"start": 300.0, "room": 3.5},
+]
+const BREATHING_ROOM_JITTER: float = 0.3
+const BREATHING_ROOM_SHRINK_PER_SECOND: float = 0.25 / 60.0
+# terrain_invariant_check asserts this stays above the longest jump plus a margin, so the end of
+# one pattern can never land the player inside the next and the per-pattern proofs compose.
+const BREATHING_ROOM_FLOOR: float = 2.5
+# The first time a kind appears in a run it comes ALONE -- a solo pattern stands in for whatever
+# was drawn -- with this much extra room before and after it. That is the whole tutorial.
+const FIRST_APPEARANCE_EXTRA_ROOM: float = 1.5
 
 # WHAT ARRIVES TOGETHER. A pattern is a few pieces timed in SECONDS from the first, placed
 # at the current speed. On flat ground a jump's height over time does not depend on speed, so
@@ -146,6 +168,21 @@ const PATTERNS: Array[Dictionary] = [
 	# Short: one jump clears it. Long: the skip.
 	{"id": &"ice_short", "tier": 3, "weight": 2, "pieces": [{"kind": PIECE_THIN_ICE, "at": 0.0, "length": 0.3}]},
 	{"id": &"ice_long", "tier": 3, "weight": 1, "pieces": [{"kind": PIECE_THIN_ICE, "at": 0.0, "length": 1.2}]},
+	# COMBOS ARE SHORT ON PURPOSE. Their whole span must be flat for the proof to hold, and this
+	# terrain rarely is: 400px of flat fits ~15-19% of the ground, 1,200px ~3-4% (HANDOFF, "Step 5
+	# decision"). A combo that does not fit falls back to its first piece alone.
+	# Jump early so you land before the floe / the shard (or clear the shard at level 3+).
+	{"id": &"spike_floe", "tier": 4, "weight": 1, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}, {"kind": PIECE_FLOE, "at": 0.5}]},
+	{"id": &"spike_shard", "tier": 4, "weight": 1, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}, {"kind": PIECE_SHARD, "at": 0.5}]},
+	# Stay under, then jump right after.
+	{"id": &"floe_spike", "tier": 4, "weight": 1, "pieces": [{"kind": PIECE_FLOE, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.5}]},
+	{"id": &"shard_spike", "tier": 4, "weight": 1, "pieces": [{"kind": PIECE_SHARD, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.5}]},
+	# Two jumps, or one long one. Closer than ~0.6s it cannot be beaten at every level.
+	{"id": &"spike_spike", "tier": 4, "weight": 1, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.7}]},
+	# Skip off the ice, then jump.
+	{"id": &"ice_spike", "tier": 4, "weight": 1, "pieces": [{"kind": PIECE_THIN_ICE, "at": 0.0, "length": 0.5}, {"kind": PIECE_SPIKE, "at": 0.8}]},
+	{"id": &"spike_floe_spike", "tier": 5, "weight": 1, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}, {"kind": PIECE_FLOE, "at": 0.5}, {"kind": PIECE_SPIKE, "at": 1.0}]},
+	{"id": &"floe_spike_shard", "tier": 5, "weight": 1, "pieces": [{"kind": PIECE_FLOE, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.5}, {"kind": PIECE_SHARD, "at": 1.0}]},
 ]
 
 const HASH_MASK: int = 0x7fffffff
@@ -162,6 +199,10 @@ var player: Player
 var next_pattern_time: float = FIRST_PATTERN_TIME
 var next_pattern_index: int = 0
 var active_obstacles: Array[Node2D] = []
+# Kinds this run has already shown, for the first-appearance rule. Per run: a restart reloads
+# the scene.
+var introduced_kinds: Dictionary = {}
+var is_first_appearance_room_taken: bool = false
 
 # The current biome's obstacle colour, pushed by BiomeDirector.push_palette(). Same contract
 # as CoinSpawner's pair -- see the comment there -- with one extra reason it is absolute and
@@ -201,20 +242,7 @@ func _physics_process(_delta: float) -> void:
 	# any other.
 	var elapsed_time: float = player.speed_manager.elapsed_time
 	if elapsed_time >= next_pattern_time and not player.is_boosting:
-		# The pattern is drawn from next_pattern_index, which only advances on success, so a
-		# retry asks for the SAME pattern further along rather than re-rolling past it.
-		var pattern: Dictionary = get_pattern(next_pattern_index, get_tier(elapsed_time))
-		# A glider steers its own altitude and could fly into a floating piece, so those patterns
-		# wait out the glide the same way every pattern waits out a boost.
-		var waits_out_glide: bool = player.is_glide_active and has_floating_piece(pattern)
-		if not waits_out_glide:
-			if try_place_pattern(pattern):
-				next_pattern_index += 1
-				var interval_bounds: Vector2 = get_interval_bounds(elapsed_time)
-				var interval_roll: float = get_pattern_hash(next_pattern_index, HASH_CHANNEL_INTERVAL)
-				next_pattern_time += interval_bounds.x + (interval_roll * (interval_bounds.y - interval_bounds.x))
-			else:
-				next_pattern_time += FOOTPRINT_RETRY_DELAY
+		schedule_pattern(elapsed_time)
 
 	var despawn_world_x: float = player.global_position.x - DESPAWN_BEHIND_WORLD_X
 	for index: int in range(active_obstacles.size() - 1, -1, -1):
@@ -228,6 +256,58 @@ func _physics_process(_delta: float) -> void:
 			# survives is not observable here.
 			obstacle.queue_free()
 			active_obstacles.remove_at(index)
+
+
+# One scheduling decision, taken when a pattern is due. The pattern is drawn from
+# next_pattern_index, which only advances on success, so a retry asks for the SAME pattern
+# further along rather than re-rolling past it.
+func schedule_pattern(elapsed_time: float) -> void:
+	var pattern: Dictionary = get_pattern(next_pattern_index, get_tier(elapsed_time))
+	var new_kind: StringName = get_unintroduced_kind(pattern)
+	if new_kind != &"":
+		pattern = get_solo_pattern(new_kind)
+		if not is_first_appearance_room_taken:
+			is_first_appearance_room_taken = true
+			next_pattern_time += FIRST_APPEARANCE_EXTRA_ROOM
+			return
+	# A glider steers its own altitude and could fly into a floating piece, so those patterns
+	# wait out the glide the same way every pattern waits out a boost.
+	if player.is_glide_active and has_floating_piece(pattern):
+		return
+
+	var search_offset: float = try_place_pattern(pattern)
+	if search_offset < 0.0 and pattern["pieces"].size() > 1:
+		pattern = get_solo_pattern(pattern["pieces"][0]["kind"])
+		search_offset = try_place_pattern(pattern)
+	if search_offset < 0.0:
+		next_pattern_time += FOOTPRINT_RETRY_DELAY
+		return
+
+	next_pattern_index += 1
+	var speed: float = player.speed_manager.current_speed
+	var room_bounds: Vector2 = get_breathing_room_bounds(elapsed_time)
+	var room: float = room_bounds.x + get_pattern_hash(next_pattern_index, HASH_CHANNEL_INTERVAL) * (room_bounds.y - room_bounds.x)
+	if new_kind != &"":
+		introduced_kinds[new_kind] = true
+		is_first_appearance_room_taken = false
+		room += FIRST_APPEARANCE_EXTRA_ROOM
+	for piece: Dictionary in pattern["pieces"]:
+		introduced_kinds[piece["kind"]] = true
+	# Measured from where the pattern really ends: a forward search placed it later.
+	next_pattern_time = elapsed_time + search_offset / speed + get_pattern_duration(pattern) + room
+
+
+# The room before the next pattern: tier 1's original interval ramp, then each tier's breathing
+# room, shrinking in the last tier, never below BREATHING_ROOM_FLOOR.
+func get_breathing_room_bounds(elapsed_time: float) -> Vector2:
+	var tier: int = get_tier(elapsed_time)
+	if tier == 1:
+		return get_interval_bounds(elapsed_time)
+	var room: float = float(TIERS[tier - 1]["room"])
+	if tier == TIERS.size():
+		room -= (elapsed_time - float(TIERS[tier - 1]["start"])) * BREATHING_ROOM_SHRINK_PER_SECOND
+	room = maxf(room, BREATHING_ROOM_FLOOR)
+	return Vector2(maxf(BREATHING_ROOM_FLOOR, room * (1.0 - BREATHING_ROOM_JITTER)), room * (1.0 + BREATHING_ROOM_JITTER))
 
 
 # The randomized interval band for the window elapsed_time currently falls in --
@@ -246,8 +326,8 @@ func get_interval_bounds(elapsed_time: float) -> Vector2:
 # The highest tier whose start time has passed.
 static func get_tier(elapsed_time: float) -> int:
 	var tier: int = 1
-	for index: int in range(TIER_START_TIMES.size()):
-		if elapsed_time >= TIER_START_TIMES[index]:
+	for index: int in range(TIERS.size()):
+		if elapsed_time >= float(TIERS[index]["start"]):
 			tier = index + 1
 	return tier
 
@@ -271,6 +351,38 @@ func get_pattern(pattern_index: int, tier: int) -> Dictionary:
 	return drawn
 
 
+# The first kind in the pattern this run has not shown yet, or &"".
+func get_unintroduced_kind(pattern: Dictionary) -> StringName:
+	for piece: Dictionary in pattern["pieces"]:
+		if not introduced_kinds.has(piece["kind"]):
+			return piece["kind"]
+	return &""
+
+
+# The first single-piece row of this kind: what a combo falls back to, and how a kind first
+# appears.
+static func get_solo_pattern(kind: StringName) -> Dictionary:
+	for pattern: Dictionary in PATTERNS:
+		if pattern["pieces"].size() == 1 and pattern["pieces"][0]["kind"] == kind:
+			return pattern
+	return PATTERNS[0]
+
+
+# Seconds from the first piece's arrival to the last piece's end.
+static func get_pattern_duration(pattern: Dictionary) -> float:
+	var duration: float = 0.0
+	for piece: Dictionary in pattern["pieces"]:
+		duration = maxf(duration, float(piece["at"]) + float(piece.get("length", 0.0)))
+	return duration
+
+
+static func has_body_piece(pattern: Dictionary) -> bool:
+	for piece: Dictionary in pattern["pieces"]:
+		if piece["kind"] != PIECE_THIN_ICE:
+			return true
+	return false
+
+
 static func has_floating_piece(pattern: Dictionary) -> bool:
 	for piece: Dictionary in pattern["pieces"]:
 		if bool(PIECE_KINDS[piece["kind"]]["floating"]):
@@ -278,20 +390,34 @@ static func has_floating_piece(pattern: Dictionary) -> bool:
 	return false
 
 
-# Places every piece of the pattern or none of them. Returns false when the footprint guard
-# rejects the span, so the caller retries instead of losing the pattern.
-func try_place_pattern(pattern: Dictionary) -> bool:
+# Places every piece of the pattern or none of them, at the first legal start from the lookahead
+# out to FOOTPRINT_SEARCH_DISTANCE further. Returns how much further it went, or -1.0 when the
+# guard rejected every start, so the caller retries instead of losing the pattern.
+func try_place_pattern(pattern: Dictionary) -> float:
 	var speed: float = player.speed_manager.current_speed
-	var start_x: float = maxf(MIN_SAFE_START_WORLD_X, player.global_position.x + SPAWN_LOOKAHEAD_WORLD_X)
-	if not is_footprint_legal(terrain_generator, pattern, start_x, speed):
-		return false
+	var nominal_x: float = maxf(MIN_SAFE_START_WORLD_X, player.global_position.x + SPAWN_LOOKAHEAD_WORLD_X)
+	var offset: float = find_legal_offset(terrain_generator, pattern, nominal_x, speed)
+	if offset < 0.0:
+		return offset
+	var start_x: float = nominal_x + offset
 	for piece: Dictionary in pattern["pieces"]:
 		var piece_x: float = start_x + float(piece["at"]) * speed
 		if piece["kind"] == PIECE_THIN_ICE:
 			spawn_thin_ice(piece_x, piece_x + float(piece["length"]) * speed)
 		else:
 			spawn_obstacle(piece_x, piece["kind"])
-	return true
+	return offset
+
+
+# The forward search itself, static so terrain_invariant_check measures exactly what the game
+# does: the first offset in [0, FOOTPRINT_SEARCH_DISTANCE] whose footprint is legal, or -1.0.
+static func find_legal_offset(terrain: TerrainGenerator, pattern: Dictionary, nominal_x: float, speed: float) -> float:
+	var offset: float = 0.0
+	while offset <= FOOTPRINT_SEARCH_DISTANCE:
+		if is_footprint_legal(terrain, pattern, nominal_x + offset, speed):
+			return offset
+		offset += FOOTPRINT_SEARCH_STEP
+	return -1.0
 
 
 # World-x extent of every piece's hitbox, for a pattern whose first piece sits at start_x.
@@ -309,32 +435,21 @@ static func get_pattern_span(pattern: Dictionary, start_x: float, speed: float) 
 # spawn_cluster() that each looked at a single x. Static, so terrain_invariant_check measures
 # the real rule rather than a copy of it. Every clause is safety-critical except the slope one:
 #
-#   * SLOPE, across the stretch from the first BODY piece to the last. A piece glued to a slope
-#     reads as unfair, and the fairness proof assumes the ground between pieces is flat too (see
-#     OBSTACLE_MAX_SLOPE_ANGLE). NOT under thin ice: it never touches physics, so a slope only
-#     lengthens or shortens the hops across it, and terrain_invariant_check asserts even the
-#     weakest hop leaves the steepest terrain. Held to 6 degrees, a 1.2s patch would fit ~5% of
-#     the ground and all but never appear.
-#   * LAKE, under every piece. Jumping is disabled across the frozen lake, so a hazard there is
-#     unavoidable death. The lake is far longer than any span, so the samples cannot miss it.
+#   * SLOPE, across the whole span. A piece glued to a slope reads as unfair, and the fairness
+#     proof assumes the ground between pieces is flat too (see OBSTACLE_MAX_SLOPE_ANGLE). EXCEPT
+#     a pattern made only of thin ice: it never touches physics, so a slope only lengthens or
+#     shortens the hops across it, and terrain_invariant_check asserts even the weakest hop
+#     leaves the steepest terrain. Held to 6 degrees, a 1.2s patch would fit ~5% of the ground.
+#   * LAKE, across the whole span. Jumping is disabled across the frozen lake, so a hazard there
+#     is unavoidable death. The lake is far longer than any span, so the samples cannot miss it.
 #   * GROUND over the whole span. A piece within one jump reach BEFORE a chasm's near lip is
 #     unavoidable death: clearing it commits the player to a landing in the void.
 #   * AURORA, over the whole span. Its flat is a protected passage. spawn_obstacle() and
 #     spawn_thin_ice() check again, so the rule holds for callers that bypass this guard.
 static func is_footprint_legal(terrain: TerrainGenerator, pattern: Dictionary, start_x: float, speed: float) -> bool:
-	var body_span: Vector2 = Vector2(INF, -INF)
-	for piece: Dictionary in pattern["pieces"]:
-		var piece_x: float = start_x + float(piece["at"]) * speed
-		if piece["kind"] == PIECE_THIN_ICE:
-			if not is_span_clear(terrain, piece_x, piece_x + float(piece["length"]) * speed, false):
-				return false
-		else:
-			var half_width: float = float(PIECE_KINDS[piece["kind"]]["half_width"])
-			body_span.x = minf(body_span.x, piece_x - half_width)
-			body_span.y = maxf(body_span.y, piece_x + half_width)
-	if body_span.x <= body_span.y and not is_span_clear(terrain, body_span.x, body_span.y, true):
-		return false
 	var span: Vector2 = get_pattern_span(pattern, start_x, speed)
+	if not is_span_clear(terrain, span.x, span.y, has_body_piece(pattern)):
+		return false
 	if not terrain.has_ground_over_world_x_span(span.x - OBSTACLE_VOID_CLEARANCE_BEHIND, span.y + OBSTACLE_VOID_CLEARANCE_AHEAD):
 		return false
 	return not terrain.overlaps_aurora_flat(span.x - AuroraDirector.BODY_CLEARANCE, span.y + AuroraDirector.BODY_CLEARANCE)

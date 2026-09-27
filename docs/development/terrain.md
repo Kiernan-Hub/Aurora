@@ -202,7 +202,7 @@ seed-independent `check_chasm_variant_table()` pass that runs once before the se
 | `OBSTACLE_APEX_TOO_LOW` / `OBSTACLE_WINDOW_TOO_TIGHT` | a jump upgrade curve whose *minimum* cannot clear a 32×32 obstacle at the first pattern |
 | `PATTERN_UNFAIR` | an `ObstacleSpawner.PATTERNS` row with no surviving input, or a tightest take-off window under `PATTERN_MIN_WINDOW_FRAMES`, at any jump level ± the jump powerup (`debugging.md`) |
 | `PATTERN_BREATHING_ROOM` | a gap between patterns shorter than the longest jump + margin |
-| `PATTERN_FOOTPRINT_STARVED` | *(per seed)* a pattern whose footprint guard accepts under 25% of starts |
+| `PATTERN_FOOTPRINT_STARVED` | *(per seed)* a pattern the forward search places on too few attempts: floors 0.45 / 0.12 / 0.06 for 1 / 2 / 3 pieces |
 
 **The obstacle chasm clearance is 950px ahead of a pattern's span** (`OBSTACLE_VOID_CLEARANCE_AHEAD`,
 2026-09-27): a max-upgrade jump with the √2 powerup reaches 848px at 750 px/s. It was 700, which

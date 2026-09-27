@@ -363,10 +363,13 @@ take-off window** the best line needs. It must be ≥ `PATTERN_MIN_WINDOW_FRAMES
 its capsule's bounding rect, and hazards are grown by 1px, so both errors are conservative.
 It also asserts the minimum gap between patterns outlasts the longest jump (1.13 s) + 0.3 s.
 
-Per seed, `PATTERN_FOOTPRINT` reports the share of starts each pattern's footprint guard accepts,
-measured through `ObstacleSpawner.is_footprint_legal()` itself, and fails under 25%.
+Per seed, `PATTERN_FOOTPRINT` reports the share of attempts each pattern places, measured through
+`ObstacleSpawner.find_legal_offset()` itself, forward search included. The floors are set by piece
+count (0.45 / 0.12 / 0.06, about half the worst seed), because combos are rare on this terrain by
+design and fall back to a single. Only a collapse fails.
 
-Baseline: `spike window=7 frames (level 0 at 522.7 px/s)`, footprint 0.32–0.36 per seed. The
+Baseline: `spike window=7 frames (level 0 at 522.7 px/s)`, every combo 9 except
+`floe_spike_shard` 7. Placement per attempt: singles ~0.90, ice ~0.96, pairs 0.24–0.35, triples 0.13–0.20. The
 spike's 7 is 8.57 continuous, which is the "~8.6 frames" `upgrade_store.gd` always quoted.
 Mutation-tested: spikes 0.3 s apart ⇒ `window 0 … no surviving input exists`; interval floor 4 → 1 ⇒
 `PATTERN_BREATHING_ROOM`; spikes 1.6 s apart ⇒ `PATTERN_FOOTPRINT_STARVED` at 0.013.

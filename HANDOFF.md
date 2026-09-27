@@ -2,9 +2,39 @@
 
 ## 2026-09-27 — Obstacles + air moves: the approved plan
 
-**Steps 1–4 are BUILT** on branch `claude/implementation-t58fc3`, not merged to `main` yet. The
+**Steps 1–5 are BUILT** on branch `claude/implementation-t58fc3`, not merged to `main` yet. The
 owner said to keep going through the obstacle steps (2–5) and stop before the air moves (6–7).
-Older sessions live in `docs/history.md`; none of that is a to-do.
+**Next action: the owner plays it (phone and desktop) and tunes by feel. Then says "go" for step 6
+(slam), which needs an on-device input test.** Older sessions live in `docs/history.md`; none of
+that is a to-do.
+
+### Step 5 — built 2026-09-27: tiers + combos (option A, see "Step 5 decision")
+
+- **`TIERS`** replaces `TIER_START_TIMES`: `{start, room}` per tier, from the plan's table (20s ramp,
+  1:00 6s, 1:45 5s, 2:30 4s, 3:30 3.5s, 5:00 3.5s shrinking 0.25s/min to the **2.5s floor**, ±30%
+  jitter). Room is measured from a pattern's **end** to the next one's start. Tier 1 keeps the old
+  interval ramp. The check asserts both floors outlast the longest jump (1.13s) + 0.3s.
+- **Combos, short on purpose.** Tier 4: `spike_floe`, `spike_shard`, `floe_spike`, `shard_spike`
+  (0.5s apart), `spike_spike` (0.7s), `ice_spike`. Tier 5: `spike_floe_spike`, `floe_spike_shard`
+  (1.0s). All proven: 9 frames each, `floe_spike_shard` exactly 7 (level 2 +boost). A sweep through
+  the model showed two spikes are **unbeatable at every level closer than ~0.6s** (0.3s = 0 frames),
+  hence 0.7.
+- **Forward search**: each attempt tries the lookahead and every 50px up to 600px beyond it. A
+  single places ~90%, a pair ~24–35%, a triple ~13–20% of attempts (per seed, via the game's own
+  `find_legal_offset`). **A combo that doesn't fit falls back to its first piece alone**, so
+  the run never goes quiet. The next room counts from where the pattern really landed.
+- **First appearance**: a kind the run hasn't shown yet comes as its solo pattern, with 1.5s of
+  extra room before and after.
+- **Guard simplified**: flat across the **whole** span, unless the pattern is thin ice only.
+- **Measured in the live game** (7 min, 2 seeds, unkillable player): patterns per minute
+  **2, 8, 11, 12–15, 14–15, 14–15, 16**. That's ~51 in the first 5 min, against **18–25** hazards
+  today. By minute 7 one starts every ~4s. About **12% arrive as combos**, including 3-piece ones.
+- Gates: `check.sh` 5/5 (`terrain_invariant` now ~31s), freeze-search 0 stalls, chasm 48/48,
+  `aurora_calm_probe` PASS 182,974.
+
+**What the owner should feel for:** is 1:00–2:30 too dense now? It is ~2.5× today. Are the
+combos readable at 750 px/s? Does thin ice read as "keep hopping"? Every number above is a
+starting value in `TIERS` / `PATTERNS`.
 
 ### Step 4 — built 2026-09-27: thin ice
 
@@ -75,7 +105,7 @@ of start positions where a span stays ≤6° with ground ahead, 3 seeds: 400px 1
 1,200px 3–4%. Even searching 1,500px forward, an 800px pattern fits only 22–31% of the time.
 Singles fit ~100% with that search. **See "Step 5 decision" below.**
 
-### Step 5 decision (owner): how to get combos onto hilly terrain
+### Step 5 decision (owner): how to get combos onto hilly terrain — **A was built; B/C are still open**
 
 The plan's tier 4–6 difficulty is 2–3-piece patterns, whose whole span must be flat for the
 fairness proof to hold. The terrain rarely has that (numbers above), so as planned those patterns
@@ -386,7 +416,7 @@ Sizes are relative.
   covers it.
 - Tier 3 patterns go live. Owner tunes the grace (~0.2s) by feel on the phone.
 
-### Step 5 — Tiers + multi-piece patterns (medium)
+### Step 5 — Tiers + multi-piece patterns (medium) — **BUILT as option A, see the top of this file**
 - The tier table, 2- and 3-piece patterns, and the breathing-room ramp to its floor. Every pattern
   passes the fairness check.
 - **Tuned by the owner playing**, on the phone as well as desktop. This is where "too easy" is actually fixed.
