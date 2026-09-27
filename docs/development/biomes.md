@@ -304,7 +304,7 @@ strength-0 palette names.
 
 **A moon that arcs across several night biomes is NOT possible today**, and that is rule 2:
 two adjacent discs need the two-node cross-dissolve the ice band has, which `SkyCelestial` does
-not have. See `HANDOFF.md`, option C of the night-length decision.
+not have. See `docs/history.md`, option C of the night-length decision.
 
 > **Both rules stay properties of `BIOME_CYCLE`, and that is why the session rotates the arc
 > rather than reordering it** (see below). Rotation preserves adjacency, so walking the

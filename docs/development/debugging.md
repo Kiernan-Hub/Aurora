@@ -802,3 +802,26 @@ death-write path is now guarded and covered with an in-memory SaveStore. New pro
 detach unneeded Services, and deliberate destructive/mutation tests should use a copied project
 with a different application name/user directory. Never run save-reset tests against the real
 user-data path merely because `--headless` is set.
+
+## Android device testing
+
+Owner's phone: Galaxy S26 Ultra (`SM-S948U`, serial `R3GL20AE8BK`), 1440×3120 @ 120 Hz, Adreno 840, Vulkan.
+
+| Step | Command / note |
+|---|---|
+| adb | `~/Library/Android/sdk/platform-tools/adb`, **not on PATH** |
+| Export | `/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --export-debug "Android" ./aura.apk` (doesn't touch `project.godot`; `aura.apk` is git-ignored) |
+| Install + launch | `adb install -r aura.apk`, then `adb shell monkey -p com.kiernan.aura -c android.intent.category.LAUNCHER 1` |
+| USB | Phone must be on **"Transferring files"**; Samsung sometimes flips back to "charging only" after an install |
+
+- **"A valid Java SDK path is required"**: set `export/android/java_sdk_path` in the global
+  `editor_settings-4.7.tres` to `/Applications/Android Studio.app/Contents/jbr/Contents/Home`,
+  **with every Godot editor closed**. An open editor writes its in-memory value back on quit.
+- Relaunching right after `am force-stop` can fail with "Failed to create vulkan window". It's a
+  race, so wait a second. The app sits paused on the Start screen until someone taps Start.
+- **Audio:** `adb shell dumpsys audio`, then find `com.kiernan.aura` in the playback configurations.
+- **Frame timing:** `adb shell "dumpsys SurfaceFlinger --latency '<layer>'"`, where `<layer>` is the
+  full `... SurfaceView[com.kiernan.aura/...]@0(BLAST)#NNN` name from `dumpsys SurfaceFlinger --list`
+  (it changes every launch). It holds only ~128 frames, so poll every ~0.5 s and dedupe. Use
+  `adb logcat -G 16M` (it caps at 5 MiB) so a long run isn't lost. What this measured on the
+  biome-transition stutter: `physics.md`, "Render rate on phones".

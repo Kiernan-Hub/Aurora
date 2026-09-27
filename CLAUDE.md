@@ -6,6 +6,10 @@ over time, on infinite seeded procedural terrain. Gameplay art is still placehol
 **Priority order:** terrain stability > physics/collision correctness > game feel. Missions,
 upgrades and visual polish stay deprioritized until the core loop is stable.
 
+**Where the project is (2026-09-27):** clean slate. Core loop, both set pieces and the Android device
+review are done and green; **next up is obstacles**. `HANDOFF.md` (root) holds ONLY the current
+state; at session end its section moves to the top of `docs/history.md`, which is never required reading.
+
 **Editing rules.** Find the root cause in the connected files before changing anything; prefer targeted
 changes, and propose before altering existing architecture. `project.godot` pins `4.7` + `Mobile`, physics
 **60 Hz**, interpolation **OFF** — some terrain constants derive from `1.0/physics_ticks_per_second`, so changing the tick rate silently changes level geometry.
@@ -32,8 +36,7 @@ The conclusion goes here (what's true, what to avoid, one pointer); the full log
 No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/MacOS/Godot` (play with `--path .`; opens a window and blocks, so only when asked).
 
 **`./scripts/check.sh` runs the fast five in ~25s** — shipping-values, biome-schedule, terrain-shape,
-lake-suppression, and an export-content check that fails if `scripts/debug` reaches a real pack (its three
-`experiments/` paths went on 2026-09-03; still listed, as a rule about where throwaway work goes). Run it
+lake-suppression, and an export-content check that fails if `scripts/debug` reaches a real pack. Run it
 before every commit. It deliberately does *not* import the project, for the reason in the `project.godot` bullet below.
 
 **Thirteen maintained checks** — everything else lives in `scripts/debug/archive/`, so the
@@ -58,15 +61,11 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
 
 **The annotated scene graph is the first section of `architecture.md`** — open it before touching `main.tscn`. The rules that break things silently:
 
-- Nodes find each other **by sibling path** (`NodePath("../Player")`), resolved with
-  `get_node_or_null` and null-guarded. There is no service locator.
-- **Exactly one autoload**, `Services` (`class_name GameServices`); a new global needs a real
-  justification. **Never write `Services.x` in gameplay code** — use `GameServices.resolve(self)`
-  and null-guard it, or you break every headless probe.
-- `GameManager.set_state()` is the **only** place allowed to touch `get_tree().paused` or a
-  screen's visibility.
-- **Draw order is tree order plus `CanvasLayer.layer`; no `z_index` anywhere.** Reordering siblings
-  reorders rendering.
+- Nodes find each other **by sibling path** (`NodePath("../Player")`) via `get_node_or_null`, null-guarded. No service locator.
+- **Exactly one autoload**, `Services` (`class_name GameServices`); a new global needs a real justification.
+  **Never write `Services.x` in gameplay code** — use `GameServices.resolve(self)`, null-guarded, or every headless probe breaks.
+- `GameManager.set_state()` is the **only** place allowed to touch `get_tree().paused` or a screen's visibility.
+- **Draw order is tree order plus `CanvasLayer.layer`; no `z_index` anywhere.** Reordering siblings reorders rendering.
 - **The six spawners live under `TerrainGenerator`** so world rebasing carries them for free.
 
 ## Things that break silently
@@ -108,10 +107,8 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
 - **Scaling a hill scales length *and* amplitude together** (`BIG_HILL_SCALES`) — peak slope is
   `atan(π·magnitude/length)` and both hill types already sit at that 20.13° ceiling, so raising
   amplitude alone walks into the same wall-wedge failure.
-- **The opening biome renders at ABSOLUTE cycle index 0 only**, and the session phase survives death
-  and restart — so it is the first ~3 min of a *cold launch*, one death out of reach. **Set
-  `BiomeDirector.debug_pin_intro_biome` before editing `first_light.tres`**, or you are eyeballing
-  a different biome (this happened).
+- **The opening biome renders at ABSOLUTE cycle index 0 only** (the first ~3 min of a *cold launch*; the phase
+  survives death). **Set `BiomeDirector.debug_pin_intro_biome` before editing `first_light.tres`**, or you eyeball another biome.
 - **Deep ice is hard-capped at `ice_depth × 0.38`** (`ICE_TILE_DEPTH_FLOOR`, matched to the tile
   builder's `OUTPUT_FLOOR`), so even a pure white tint renders as a 0.38 grey. When ice "looks grey",
   **check saturation before brightness** — the fix is usually widening `b − r`.
@@ -133,11 +130,9 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
   movement level. Revisit only on a confirmed-visible complaint (`terrain_jitter.md`).
 - **`mega_drop` shakiness — SEGMENT CUT, not fixed**, `MEGA_DROP_SELECTION_WEIGHT = 0`. Six
   mitigations measured, none worked — read `camera_shake.md` before spending more time here.
-- **FIXED, don't re-investigate:** boost-into-obstacle-cluster death; `is_on_floor()` flicker on
-  rising terrain (`floor_flicker.md`). **Unreproduced:** "view snaps forward/back", watchdogs 0.
-- **Removed entirely, don't resurrect:** the old *terrain-driven* obstacle placement inside
-  `terrain_generator.gd` (not the live `ObstacleSpawner`) and vertical background parallax
-  (`dead_code.md`). Don't touch `project.godot` / `.godot/` / `*.uid` / `icon.svg` unless asked.
+- **FIXED, don't re-investigate:** boost-into-obstacle death; rising-terrain `is_on_floor()` flicker (`floor_flicker.md`).
+- **Removed entirely, don't resurrect:** the old *terrain-driven* obstacle placement inside `terrain_generator.gd`
+  (not the live `ObstacleSpawner`) and vertical background parallax (`dead_code.md`). Don't touch `project.godot` / `.godot/` / `*.uid` / `icon.svg` unless asked.
 
 ## Build order / status
 
@@ -148,7 +143,7 @@ All **working** unless said otherwise. The numbers are load-bearing; the reasoni
 | 1 | Core loop | **Chasms**: a void every ~30–95s, three *hazard* widths plus a survivable `chasm_drop` every 2nd chasm (**periodic, not weighted**). Hills roll a **10% oversized variant**, ×1.5/×2 on *both* axes. `terrain.md` |
 | 2 | Speed | Two-phase ramp: 100→500 px/s over 10s, then 500→750 over the next 110s. `MAX_SPEED` 750 at t=120s |
 | 3 | Coins + score | `SaveStore` **v3** — versioned best score, a **coin wallet** every run banks into on death, upgrade levels, cumulative playtime, achievements. **Rare coin** (25, ~60s) at `RARE_COIN_CLEARANCE` 174px, inside the 24px gap between the top two jump levels, so max-upgrade-only (or any level holding the ×√2 powerup). A coin slot rolls **10% into a 3-coin air line** (132px, clear of every jump ceiling). **In-run combo** off the run *total*: **×2 from 50, ×3 from 150**, never lost. `physics.md`, `architecture.md` |
-| 4 | Obstacles | Singles from t=20s, then every 12–30s. A boosting player breaks through instead of dying |
+| 4 | Obstacles | **Next area of work.** Singles only (clusters cut on purpose), placeholder 32×32 rect. First at t=20s; the average gap shrinks 30s→5s over 30s windows (±30%, 4s floor), on ≤6° ground clear of voids, lake and Aurora flat. A shield absorbs a hit; a boosting player breaks through |
 | 5 | Powerups | Six kinds — speed boost, jump boost, magnet, doubler, shield, glide — one `POWERUP_TABLE` row and one `active_effects` entry each. `can_end_effect()` blocks speed boost/glide expiring over a void. **Airborne tricks** pay a bonus `speed_boost` down that same path, no new velocity model |
 | 6 | Screens | START/PLAYING/PAUSED/DEAD/SHOP |
 | 7 | Audio | Six-voice one-shot SFX pool plus one scene-local Aurora ambient loop. SFX and Music use separate saved-volume buses. Both owners compute `is_headless` locally — `Services` isn't ready in harness `_init()` |
@@ -156,7 +151,7 @@ All **working** unless said otherwise. The numbers are load-bearing; the reasoni
 | 9 | Upgrades | Vertical slice: one track (jump, five levels), SHOP screen, banked coins. Missions/zones not started |
 | 10 | **Frozen lake** | The first set piece. Every 20 min of *cumulative* playtime, and only past 130s into a run, a forced 7500px flat segment is armed ahead of the player: jumping locked, all six spawners suppressed, ice takes a fixed authored blue under a full-screen reflection quad. Everything cosmetic rides ONE ramp, `FrozenLakeDirector.get_lake_blend()` — including the camera's framing. Skate spray and an etched track ride it too. The first crossing grants the game's first **achievement**. `terrain.md`, `visuals.md`, `input.md` |
 | 11 | **Achievements** | `AchievementManager` is the ONLY writer of `SaveStore.achievements` (an open dictionary, so a new one needs no version bump). **Triggers come TO it** — it listens to signals systems already emit, never the reverse — so adding one is a table row plus one `.connect()`, both in that file. **Its ids are save data**: adding is free, renaming un-earns it for everyone. No gallery/rewards yet, and an addon was evaluated and declined. `architecture.md` |
-| 12 | **Aurora borealis** | **BUILT; pending owner/device acceptance.** Every **30 min** cumulative playtime, one per run, only past **130s into a run** (the flat is cut at `MAX_SPEED` but ends on a 61s clock, so a still-accelerating player leaves dead flat behind) and only when the whole 61s window is night (`star_density` ≥ 0.8). One director clock owns: directional curtains; write-ahead protected flat with safe entry/recovery, spawn/powerup policy and lake arbitration; background/ice light; **a sky-into-ice reflection** (`aurora_reflection.gd`, reusing the LAKE's shader, no new one — compression is DERIVED per frame, never a constant, or the ice starves below `waterline/compression`; must stay BEFORE `AuroraBladeGlow` in tree order or it eats the glow); grounded blade glow; bounded snow crest; **occasional crossing light streaks** (`aurora_streaks.gd`); **wisps REMOVED — the concept was wrong, not the numbers**; restrained camera zoom/framing; six wings plus one 96px guided crest flight; a dedicated Music-bus ambient bed; and the once-only completion achievement. Existing visible objects are never removed; coins and non-movement powerups continue; normal input resumes after landing. **Shipping defaults restored (2026-09-20):** `BiomeDirector.debug_biome_seconds` `0.0`, `AuroraDirector.debug_aurora_interval_override` `0.0`, `AuroraDirector.debug_aurora_ignore_night` `false`. The preview interval also bypasses `MIN_RUN_TIME_SECONDS`. **`art_source/aurora_reference/` is the design authority for the LOOK — open it before guessing; it settled three wrong turns.** Scenery DARKENS under the aurora (never green, never brighter) or the sky/ridge edge reads as a seam; curtain bands grow UP, never down, or the hems hide behind the background. Blade glow is FINISHED; the wings rework is BLOCKED on a reference image that never arrived. `aurora_borealis.md` |
+| 12 | **Aurora borealis** | **DONE — device review passed 2026-09-27; a natural aurora is still unplayed at shipping pace.** Every **30 min** cumulative playtime, one per run, only past **130s into a run** (the flat is cut at `MAX_SPEED` but ends on a 61s clock, so a still-accelerating player leaves dead flat behind) and only when the whole 61s window is night (`star_density` ≥ 0.8). One director clock owns: directional curtains; write-ahead protected flat with safe entry/recovery, spawn/powerup policy and lake arbitration; background/ice light; **a sky-into-ice reflection** (`aurora_reflection.gd`, reusing the LAKE's shader, no new one — compression is DERIVED per frame, never a constant, or the ice starves below `waterline/compression`; must stay BEFORE `AuroraBladeGlow` in tree order or it eats the glow); grounded blade glow; bounded snow crest; **occasional crossing light streaks** (`aurora_streaks.gd`); **wisps REMOVED — the concept was wrong, not the numbers**; restrained camera zoom/framing; six wings plus one 96px guided crest flight; a dedicated Music-bus ambient bed; and the once-only completion achievement. Existing visible objects are never removed; coins and non-movement powerups continue; normal input resumes after landing. The debug preview interval also bypasses `MIN_RUN_TIME_SECONDS`. **`art_source/aurora_reference/` is the design authority for the LOOK — open it before guessing; it settled three wrong turns.** Scenery DARKENS under the aurora (never green, never brighter) or the sky/ridge edge reads as a seam; curtain bands grow UP, never down, or the hems hide behind the background. Blade glow is FINISHED; the wings rework is PARKED (no reference image) — accepted as is. `aurora_borealis.md` |
 
 **Three `.gdshader`s exist: `aurora_curtain.gdshader` owns sky reveal/folds; the other two are ice** — `shaders/ice.gdshader` (the band: two-tile noise dissolve,
 per-biome `ice_contrast`, plus a `flatten` and a `gloss` only the lake writes) and `shaders/frozen_lake_reflection.gdshader`.
@@ -168,12 +163,11 @@ time; never move one alone. **Author raster art at ≈2× its world size.** Both
 `expand`, and the four art-swap traps: `visuals.md`. Reference art and tool inputs live in `art_source/`, never
 the repo root — the root is imported into the export, that folder is `.gdignore`d.
 
-Debug instrumentation derives from `OS.is_debug_build()` — on under the editor and every probe, off
-in a release export, so it can't ship by forgetting a flag (`physics.md`).
+Debug instrumentation derives from `OS.is_debug_build()` — on in the editor and probes, off in a release export (`physics.md`).
 
 ---
 
-**Keep this file under ~175 lines** — the project's direction and the traps that cost real time, nothing else.
+**Keep this file under 175 lines** — the project's direction and the traps that cost real time, nothing else.
 How something works goes in `docs/development/`, what an investigation found in `docs/research/`.
 
 one thing i want to say (im the user, so this is important) if something has a lot of potenital to make more bugs or is gonna be exceeslsivey hard when theres another option, then jhsut flag it and let me know. i am prioritixzing this to be clean and lean code. if a big drop is too much terrain changing, then we just add a chasm instead, for exmaple

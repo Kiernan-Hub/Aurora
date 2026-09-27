@@ -4,7 +4,7 @@ Closed-investigation record for the background thread: what was tried, what fail
 constraints that were measured along the way. Moved out of `HANDOFF.md` on 2026-08-24, where
 its "current status" sections had gone stale and were actively misdirecting new sessions.
 
-**This is history, not a plan.** For where the background actually stands, read `HANDOFF.md`;
+**This is history, not a plan.** For where the background actually stands, read `CLAUDE.md`;
 for how the shipped layers work, `docs/development/visuals.md`. Nothing below describes the
 current scene: at the time this was written the four parallax layers were
 `FarPeaks/FarRidge/MidRidge/PineLine` and the panorama was an unwired experiment. `PineLine`
