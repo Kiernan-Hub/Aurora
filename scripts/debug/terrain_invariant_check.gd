@@ -753,6 +753,10 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 		if not (piece is Obstacle):
 			violations.append("SPAWN_PLACEMENT ObstacleSpawner.%s spawned without obstacle.gd -- it would never hurt the player" % kind)
 			continue
+		if (piece as Obstacle).is_floating != bool(kind_spec["floating"]):
+			violations.append("SPAWN_PLACEMENT ObstacleSpawner.%s is_floating=%s != PIECE_KINDS -- the glide pass-through disagrees with the table" % [
+				kind, (piece as Obstacle).is_floating,
+			])
 		var center_height: float = float(kind_spec["center_height"])
 		violations.append_array(assert_clearance(terrain_generator, "ObstacleSpawner.%s" % kind, piece,
 			center_height, center_height))

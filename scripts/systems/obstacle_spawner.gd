@@ -271,7 +271,9 @@ func schedule_pattern(elapsed_time: float) -> void:
 			next_pattern_time += FIRST_APPEARANCE_EXTRA_ROOM
 			return
 	# A glider steers its own altitude and could fly into a floating piece, so those patterns
-	# wait out the glide the same way every pattern waits out a boost.
+	# wait out the glide the same way every pattern waits out a boost. That only covers pieces
+	# placed DURING a glide; the ones already ahead when it starts are why a glider passes
+	# through floating pieces (Obstacle.is_floating).
 	if player.is_glide_active and has_floating_piece(pattern):
 		return
 
@@ -483,6 +485,7 @@ func spawn_obstacle(world_x: float, kind: StringName = PIECE_SPIKE) -> void:
 		- float(kind_spec["center_height"])
 	var obstacle: Obstacle = (load(String(kind_spec["scene"])) as PackedScene).instantiate() as Obstacle
 	obstacle.position = Vector2(world_x, world_y)
+	obstacle.is_floating = bool(kind_spec["floating"])
 	if has_biome_color:
 		obstacle.set_visual_color(biome_obstacle_color)
 	add_child(obstacle)

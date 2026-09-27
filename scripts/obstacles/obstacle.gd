@@ -3,6 +3,11 @@ extends Area2D
 class_name Obstacle
 
 var has_triggered: bool = false
+# Set by ObstacleSpawner from its PIECE_KINDS row before add_child(). A GLIDING player passes
+# through floating pieces: picking up a glide launches the player upward whether they want it or
+# not (Player.GLIDE_LAUNCH_VELOCITY), and even an instant thrust only clears a floe's 200px top
+# ~0.34s later, so a floe placed before the pickup and within ~260px after it was unavoidable.
+var is_floating: bool = false
 
 
 func _ready() -> void:
@@ -34,6 +39,6 @@ func _on_body_entered(body: Node2D) -> void:
 	# -- letting it also plow through obstacles for free is the same "boosting is
 	# unstoppable" contract, not a new one. has_shield is untouched here, so a shielded
 	# but non-boosting hit still costs the shield exactly as before.
-	if player.is_boosting:
+	if player.is_boosting or (is_floating and player.is_glide_active):
 		return
 	player.absorb_hit()

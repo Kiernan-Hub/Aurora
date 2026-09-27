@@ -155,6 +155,15 @@ checked visually or on the phone**; that part is the owner's.
    kills already plays the normal death sound. Both need new assets plus wiring.
 7. **The failed-slot retry is a real difficulty change** from the old code, which dropped ~60% of slots.
    Intended ("too easy" was the brief), but it is why tiers 1–2 are already denser than before.
+8. **A gliding player passes through floe and shard** (review on the Mac, after this handoff was
+   first written). A glide pickup launches you 480 px/s upward whether you want it or not; even an
+   instant thrust clears a floe's 200px top only ~0.34s (~260px) later. So a floe placed *before* the
+   pickup and just past it was unavoidable. The "floating patterns wait out a glide" rule can't see it,
+   since the floe was already there. Fix: `Obstacle.is_floating`, set from `PIECE_KINDS`, checked
+   next to the boost break-through. Spikes still kill a glider. Runtime-verified (glide survives, the
+   same launch without glide dies), and `check_spawn_placement` fails if the flag disagrees with the
+   table (mutation-tested). The alternative was making the powerup and obstacle spawners avoid each
+   other in both orders: more coupling for the same result.
 
 ## Owner checklist (phone + desktop)
 
