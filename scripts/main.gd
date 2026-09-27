@@ -65,6 +65,13 @@ const HORIZONTAL_FOLLOW_SMOOTHNESS: float = 8.0
 # estimate by (1-w)/w (~7x at 8.0), so any frame-to-frame noise left in it is
 # amplified straight back into the position this filter exists to smooth.
 const SCROLL_RATE_SMOOTHNESS: float = 6.0
+# WHERE THE PLAYER SITS ACROSS THE SCREEN, as a fraction from the left (2026-09-27). Centred
+# (0.5), half the screen showed terrain already passed: 691px ahead on 16:9, 0.92s at 750 px/s.
+# At 0.30 it is ~970px (16:9) and ~1,210px (20:9), about +40%. The offset is derived from the live
+# viewport and zoom (get_camera_forward_offset), so every aspect ratio, and the Aurora zoom, keep
+# the player at this same fraction. Every spawner that places objects ahead must spawn beyond
+# the resulting forward view; terrain_invariant_check's check_spawn_lookahead() asserts it.
+const PLAYER_SCREEN_X_FRACTION: float = 0.30
 # Vertical follow while glide is active: near-1:1, no dead zone, no lead term. A
 # permanent lead (tried and reverted, see git history) fixed the glide case but
 # amplified ordinary-hill camera jerk (measured: worst-frame jerk 0.43 -> 0.66
@@ -117,7 +124,9 @@ func _ready() -> void:
 	camera_authored_zoom = camera_2d.zoom
 	camera_baseline_y = camera_2d.global_position.y
 	camera_y = camera_baseline_y
-	camera_x = player.global_position.x
+	# Offset from the first frame, so the start screen and the first frames of a run are already
+	# framed and the camera does not swoop forward at spawn.
+	camera_x = player.global_position.x + get_camera_forward_offset()
 	camera_2d.make_current()
 	camera_2d.global_position = Vector2(camera_x, camera_y)
 	if terrain_generator == null:
@@ -252,6 +261,9 @@ func _physics_process(delta: float) -> void:
 
 	var player_x: float = player.global_position.x
 	update_camera_scroll_rate(player_x, delta)
+	# The offset is constant except while the Aurora zoom or a window resize changes it, and then
+	# it goes through the same follow filter as everything else rather than stepping.
+	var target_camera_x: float = player_x + get_camera_forward_offset()
 	if camera_horizontal_smoothness > 0.0:
 		var horizontal_weight: float = 1.0 - exp(-camera_horizontal_smoothness * delta)
 		# An exponential follow settles at a lag of (per-frame advance) *
@@ -264,9 +276,9 @@ func _physics_process(delta: float) -> void:
 		var lead: float = 0.0
 		if camera_lead_enabled:
 			lead = camera_scroll_rate * (1.0 - horizontal_weight) / horizontal_weight
-		camera_x = lerpf(camera_x, player_x + lead, horizontal_weight)
+		camera_x = lerpf(camera_x, target_camera_x + lead, horizontal_weight)
 	else:
-		camera_x = player_x
+		camera_x = target_camera_x
 
 	camera_2d.global_position = Vector2(camera_x, camera_y)
 
@@ -304,6 +316,16 @@ func update_camera_scroll_rate(player_x: float, delta: float) -> void:
 	previous_player_x = player_x
 	var rate_weight: float = 1.0 - exp(-SCROLL_RATE_SMOOTHNESS * delta)
 	camera_scroll_rate = lerpf(camera_scroll_rate, raw_scroll_rate, rate_weight)
+
+
+# How far ahead of the player the camera centre sits, so the player lands at
+# PLAYER_SCREEN_X_FRACTION. Derived from the viewport rather than the project's base width for the
+# same reason as the lake framing: aspect="expand" makes the base a minimum, and a 20:9 phone
+# genuinely sees more world. Dividing by the live zoom keeps the fraction fixed through the Aurora
+# zoom as well.
+func get_camera_forward_offset() -> float:
+	var visible_world_width: float = get_viewport_rect().size.x / camera_2d.zoom.x
+	return (0.5 - PLAYER_SCREEN_X_FRACTION) * visible_world_width
 
 
 # Turns tight glide-follow on the instant a glide starts, and only turns it back off

@@ -321,6 +321,14 @@ The lead exists because an exponential follow settles ~38px behind its target at
 speed, and on an auto-runner that's forward reaction distance the player can't afford to
 lose. Cancelling it costs judder rejection only, not visibility.
 
+**The target is `player_x + get_camera_forward_offset()`, not the player** (2026-09-27): the
+camera centre leads by `(0.5 − PLAYER_SCREEN_X_FRACTION) × visible width` so the player sits 30%
+from the left and forward view grows ~40% (`visuals.md` has the per-device table). The offset is
+derived from the live viewport and zoom, and `_ready()` applies it too, so there is no swoop at
+spawn. It is constant in ordinary play, so it cancels out of every jerk metric.
+`camera_shake_probe` measures its lag and follow distance against the offset target, keeping them
+comparable with earlier runs.
+
 Aurora camera composition is layered into this same sole writer: the event ramp eases to 1.055×
 the captured authored zoom and frames its protected flat at 0.59 of screen height. Glide has
 priority and suppresses both effects. There is no camera rotation or second controller, and the

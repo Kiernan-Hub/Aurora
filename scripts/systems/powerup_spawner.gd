@@ -115,8 +115,8 @@ const POWERUP_SURFACE_CLEARANCE: float = 40.0
 const FIRST_POWERUP_MIN_TIME: float = 15.0
 const POWERUP_INTERVAL_MIN: float = 18.0
 const POWERUP_INTERVAL_MAX: float = 42.0
-# Mirrors the chunk spawners' forward lookahead so pickups are never seen
-# popping into existence.
+# Beyond the forward view, so pickups are never seen popping into existence.
+# terrain_invariant_check's check_spawn_lookahead() asserts it.
 const SPAWN_LOOKAHEAD_WORLD_X: float = 1500.0
 # Well behind the player is safe to free -- an uncollected pickup this far back
 # (e.g. jumped over) is unreachable again.

@@ -301,7 +301,7 @@ elapsed CPU time before killing it.
 a shortened run produces a confident FAIL that means nothing. Always `--seeds=8 --to=300000`.
 
 It also carries several **constant-only checks** that need no scene and no seed — chasm variant
-table, rare-coin height, coin-line height, and the two below. They are cheap, so they run on
+table, rare-coin height, coin-line height, and the three below. They are cheap, so they run on
 every invocation.
 
 ### `check_upgrade_curve()` and `check_obstacle_clearance()` (2026-08-15)
@@ -333,6 +333,19 @@ min 0.60 -> 0.50  =>  OBSTACLE_APEX_TOO_LOW, apex 32.0 = obstacle 32.0, window 0
 
 The second reproduces `upgrade_store.gd`'s documented failure exactly — at 0.50 the apex equals
 the obstacle height and the first cluster becomes a literal wall.
+
+### `check_spawn_lookahead()` (2026-09-27)
+
+Everything placed ahead of the player must land **beyond the forward view**, or it pops into
+existence on screen. The obstacle and rare coin spawned at 800px, which a 20:9 phone (~860px
+ahead) already saw, and nothing checked it. The check bounds the forward view on a **21:9** screen,
+`(1 − Main.PLAYER_SCREEN_X_FRACTION) × 648 × 21/9 ÷ zoom`, plus a 64px edge margin. It reads the
+zoom and the terrain's chunk window from the real scene and the base height from `project.godot`.
+Rows: obstacle, rare coin, powerup, terrain chunks (which covers `CoinSpawner`). `GlideCoinSpawner`
+places off the camera's own right edge, so it isn't a row.
+
+Baseline `forward_view=1270.1 required=1334.1`. Mutation-tested: obstacle lookahead 1500 → 800 ⇒
+`SPAWN_LOOKAHEAD_INSIDE_VIEW ObstacleSpawner lookahead=800.0px`.
 
 **One number is printed but deliberately NOT asserted.** `upgrade_store.gd` quotes "~8.6 frames"
 of window at 0.60 and "~3.7" at 0.55; the plain projectile derivation of *time spent above 32px*

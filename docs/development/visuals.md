@@ -123,12 +123,19 @@ never rotates.
 `window ÷ scale`. The base is therefore a **minimum in both axes** — a device never sees *less*
 than the base, only more in one direction:
 
-| Device | Window | Viewport | Visible world | Forward view @ 750 px/s |
-|---|---|---|---|---|
-| 16:9 desktop | 1920×1080 | 1152×648 | 1382×778 | ~0.92 s |
-| 19.5:9 iPhone | 2556×1179 | 1404×648 | 1685×778 | ~1.12 s |
-| 20:9 Android | 2400×1080 | 1440×648 | 1728×778 | ~1.15 s |
-| 4:3 iPad | 2048×1536 | 1152×864 | 1382×1037 | ~0.92 s, extra height |
+| Device | Window | Viewport | Visible world | Forward view (player at 30%) | @ 750 px/s |
+|---|---|---|---|---|---|
+| 16:9 desktop | 1920×1080 | 1152×648 | 1382×778 | 968 px | ~1.29 s |
+| 19.5:9 phone (owner's S26) | 2556×1179 | 1404×648 | 1685×778 | 1,179 px | ~1.57 s |
+| 20:9 Android | 2400×1080 | 1440×648 | 1728×778 | 1,210 px | ~1.61 s |
+| 4:3 iPad | 2048×1536 | 1152×864 | 1382×1037 | 968 px | ~1.29 s, extra height |
+
+**The player sits 30% from the left, not centred** (`Main.PLAYER_SCREEN_X_FRACTION`, 2026-09-27).
+Centred, half the screen showed terrain already passed: forward view was 691px on 16:9 (0.92 s).
+The camera centre leads the player by `(0.5 − 0.30) × visible width`, read from the live viewport
+and zoom, so every aspect ratio and the Aurora zoom keep the same fraction. Forward view is
+therefore **base size, zoom *and* this fraction together**. Every spawner that places ahead must
+clear it on a 21:9 screen, which `check_spawn_lookahead()` asserts (`debugging.md`).
 
 So tall phones get **+25% forward visibility** and tablets get extra sky/ground rather than extra
 warning distance. Bounded, and in the forgiving direction. Equalising it properly means an

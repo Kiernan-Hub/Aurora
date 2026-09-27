@@ -110,7 +110,7 @@ const HIGH_JERK_THRESHOLD: float = 0.1
 var lag_match_count: int = 0
 var lag_sample_count: int = 0
 var lag_max_error: float = 0.0
-# How far the camera actually trails the player (player_x - camera_x). This is
+# How far the camera actually trails its target (player_x + forward offset - camera_x). This is
 # forward visibility given up, so it is the cost side of any smoothing.
 var follow_distance_sum: float = 0.0
 var follow_distance_max: float = 0.0
@@ -196,6 +196,11 @@ func record_frame(collect: bool) -> void:
 	var camera_pos: Vector2 = camera_2d.global_position
 	var player_x: float = player.global_position.x
 	var is_on_floor: bool = player.is_on_floor()
+	# The lag and follow checks below measure against where the camera is AIMED -- the player plus
+	# Main's forward offset (2026-09-27) -- so their numbers stay comparable with earlier runs.
+	# The jerk metrics need no correction: the offset is constant here (no Aurora zoom, fixed
+	# viewport), so it cancels out of every difference.
+	var forward_offset: float = (main as Main).get_camera_forward_offset()
 
 	# Rebasing shifts camera and player by the same exact power-of-two amount,
 	# so it cancels out of camera_delta -- except on the single frame it fires,
@@ -216,14 +221,14 @@ func record_frame(collect: bool) -> void:
 		# camera_x[n] should equal player_x[n-1] if the camera is reading a
 		# pre-move player position (Main is the scene root, so its
 		# _physics_process runs before the Player child's).
-		var lag_error: float = absf(camera_pos.x - previous_player_x)
+		var lag_error: float = absf(camera_pos.x - forward_offset - previous_player_x)
 		lag_sample_count += 1
 		lag_max_error = maxf(lag_max_error, lag_error)
 		if lag_error < 0.0001:
 			lag_match_count += 1
 
 		if collect:
-			var follow_distance: float = player_x - camera_pos.x
+			var follow_distance: float = player_x + forward_offset - camera_pos.x
 			follow_distance_sum += follow_distance
 			follow_distance_max = maxf(follow_distance_max, follow_distance)
 			follow_distance_count += 1
@@ -292,7 +297,8 @@ func report() -> void:
 	print("camera_x[n] == player_x[n-1] on %d/%d frames (%.1f%%), max error %.6f px" % [
 		lag_match_count, lag_sample_count, lag_fraction * 100.0, lag_max_error,
 	])
-	print("follow distance (player_x - camera_x): mean %.2f px, max %.2f px" % [
+	print("follow distance (player_x + forward offset %.1f - camera_x): mean %.2f px, max %.2f px" % [
+		(main as Main).get_camera_forward_offset(),
 		follow_distance_sum / maxf(float(follow_distance_count), 1.0), follow_distance_max,
 	])
 

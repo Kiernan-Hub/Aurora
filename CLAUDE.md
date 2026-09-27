@@ -159,7 +159,8 @@ Colour needs no shader — `Polygon2D` already renders `texture * vertex_color` 
 
 **Base viewport pinned 1152×648**, `aspect="expand"`, `Camera2D.zoom` 0.8333 → 1382×778 world px visible.
 **Base size and zoom are one decision — only their ratio is field of view**, which on an auto-runner is reaction
-time; never move one alone. **Author raster art at ≈2× its world size.** Both, the +25% a 20:9 phone gets from
+time; never move one alone. The player sits **30% from the left** (`Main.PLAYER_SCREEN_X_FRACTION`); anything
+spawned ahead must clear that forward view (`check_spawn_lookahead()`). **Author raster art at ≈2× its world size.** Both, the +25% a 20:9 phone gets from
 `expand`, and the four art-swap traps: `visuals.md`. Reference art and tool inputs live in `art_source/`, never
 the repo root — the root is imported into the export, that folder is `.gdignore`d.
 

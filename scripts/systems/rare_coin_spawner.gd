@@ -89,8 +89,9 @@ const RARE_COIN_INTERVAL_MAX: float = 70.0
 # expected extra wait, which quietly halved how often the diamond appeared; at 1s it is ~16s.
 const REJECTED_SLOT_RETRY_DELAY: float = 1.0
 
-# Mirrors the other spawners' forward lookahead so the coin enters from off-screen.
-const SPAWN_LOOKAHEAD_WORLD_X: float = 800.0
+# Beyond the forward view, so the coin enters from off-screen. Same bound as ObstacleSpawner's,
+# asserted by terrain_invariant_check's check_spawn_lookahead().
+const SPAWN_LOOKAHEAD_WORLD_X: float = 1500.0
 const DESPAWN_BEHIND_WORLD_X: float = 1500.0
 # Only over near-flat ground. Jumping from a slope changes both the apex and where it lands
 # relative to the coin, which is exactly the derivation above coming apart -- and the same

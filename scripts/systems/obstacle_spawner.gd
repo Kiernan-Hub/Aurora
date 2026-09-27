@@ -71,9 +71,10 @@ const OBSTACLE_RAMP_MAX_COUNT: int = 6
 # closer together than a player has time to react to.
 const RECURRING_CLUSTER_MIN_INTERVAL_FLOOR: float = 4.0
 
-# Mirrors the chunk spawners' forward lookahead so a cluster is never seen
-# popping into existence right underfoot.
-const SPAWN_LOOKAHEAD_WORLD_X: float = 800.0
+# Beyond the forward view, so a cluster is never seen popping into existence. 800 was
+# already short of a 20:9 phone's ~860px, and Main.PLAYER_SCREEN_X_FRACTION now shows
+# ~1,270px ahead on 21:9. terrain_invariant_check's check_spawn_lookahead() asserts it.
+const SPAWN_LOOKAHEAD_WORLD_X: float = 1500.0
 # Well behind the player is safe to free -- a cluster this far back is done
 # regardless of whether it was cleared or hit.
 const DESPAWN_BEHIND_WORLD_X: float = 1500.0

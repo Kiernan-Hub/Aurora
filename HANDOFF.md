@@ -2,9 +2,30 @@
 
 ## 2026-09-27 — Obstacles + air moves: the approved plan
 
-**Nothing is in flight.** `main` is clean and every gate is green. The owner approved the plan
-below. **Next action: step 1 (camera), waiting on the owner's "go".** Older sessions live in
-`docs/history.md`; none of that is a to-do.
+**Step 1 (camera) is BUILT** on branch `claude/implementation-t58fc3`, not merged to `main` yet.
+**Next action: the owner looks at it on the phone (list below), then says "go" for step 2.** Older
+sessions live in `docs/history.md`; none of that is a to-do.
+
+### Step 1 — built 2026-09-27 (cloud session)
+
+- `main.gd`: `PLAYER_SCREEN_X_FRACTION = 0.30`. The camera target is `player_x + get_camera_forward_offset()`,
+  where the offset is `(0.5 − 0.30) × viewport width ÷ live zoom`. It is also applied in `_ready()`.
+  Forward view 691 → **968px** (16:9), 864 → **1,210px** (20:9).
+- Lookaheads: obstacle 800 → **1500**, rare coin 800 → **1500**. **Powerup stays at 1500**
+  (the plan said ~1800): it already clears the widest checked screen with 230px spare, and every
+  object is ≤ 16px half-width. Keeping it also leaves `frozen_lake_director.gd`'s "+1500" reasoning true.
+- **New constant check `check_spawn_lookahead()`** (in `check.sh` via `terrain_invariant`): every
+  lookahead ≥ forward view on a **21:9** screen (1,270px) + 64px. Mutation-tested (800 fails).
+- `camera_shake_probe` measures lag/follow distance against the new target, so its numbers stay
+  comparable. Nothing else in the tree assumed a centred player: both reflections, the Aurora
+  streaks and the glide-coin trail already use the real view rectangle, and the birds are screen-space.
+
+**Owner, please look at these on the phone:**
+1. The player at ~30% from the left, on the start screen and in play.
+2. **The frozen lake's skate trail shows less of its tail.** It was tuned to fade over ~860px
+   behind the blade, but only ~415px (16:9) to ~520px (20:9) is now visible behind the player.
+   The near, brighter half remains. Cosmetic; tell me if it reads worse.
+3. Aurora: streaks, wings and framing with the player off-centre.
 
 This file is the single home for the plan until it's built. It covers the decisions, the design,
 the build order, and the logistics (gates, traps, contracts, open questions).
@@ -47,8 +68,8 @@ If it fails again, keep the log.
 | Too little forward view | The player sits mid-screen: 691px ahead on 16:9 (0.92s at 750 px/s), ~860px on a 20:9 phone (1.15s). Half the screen shows the past |
 
 **Smaller findings:**
-- **Obstacles pop into view on phones.** They spawn 800px ahead (`obstacle_spawner.gd:76`), but a 20:9
-  screen shows ~860px ahead. The rare coin does the same (`rare_coin_spawner.gd:93`). → fixed in step 1.
+- **Obstacles pop into view on phones.** They spawned 800px ahead, but a 20:9 screen showed ~860px
+  ahead. The rare coin did the same. → **fixed in step 1** (both 1500, now checked).
 - **The obstacle's chasm clearance has the √2 miss the chasm run-up had.**
   `OBSTACLE_VOID_CLEARANCE_AHEAD` (700) covers an unboosted jump (600px at 750 px/s) but not the
   jump-boost powerup's 848px. A *late* boosted jump over an obstacle sitting 700–850px before a void
@@ -216,7 +237,7 @@ it into rows generated from an `UpgradeStore` table, rather than adding six more
 **One step per commit, `check.sh` before each, and stop after each for the owner's "go".**
 Sizes are relative.
 
-### Step 1 — Camera: more forward view (small)
+### Step 1 — Camera: more forward view (small) — **BUILT, see the top of this file**
 - `main.gd`: add a constant forward offset to the camera's horizontal target, so the player sits at
   **~30% from the left**: `offset = (0.5 − 0.30) × visible world width`, read from the live viewport
   so every aspect ratio puts the player at the same screen fraction. The initial `camera_x` in `_ready()`

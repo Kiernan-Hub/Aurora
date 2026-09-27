@@ -159,6 +159,12 @@ const RARE_COIN_PROBE_ATTEMPTS: int = 400
 const RARE_COIN_PROBE_STEP: float = 50.0
 const GROUP_PROBE_FIRST_CHUNK: int = 8
 const GROUP_PROBE_CHUNKS: int = 60
+# The widest screen check_spawn_lookahead() bounds the forward view at. aspect="expand" gives a
+# wider screen more world to the right, and 21:9 is the widest mainstream phone (the owner's is
+# 19.5:9). Past the edge, room for an object's half-width (<=16px) and the camera follow's
+# excursion (camera_shake_probe: ~14px peak).
+const LOOKAHEAD_WIDEST_ASPECT: float = 21.0 / 9.0
+const LOOKAHEAD_EDGE_MARGIN: float = 64.0
 
 
 func _init() -> void:
@@ -207,6 +213,7 @@ func _init() -> void:
 	# since before they were written. Constant-only, so they join the group above.
 	variant_violations.append_array(check_upgrade_curve())
 	variant_violations.append_array(check_obstacle_clearance())
+	variant_violations.append_array(check_spawn_lookahead())
 
 	# Needs a scene (the generator must be in the tree to have a seed), so it cannot join the
 	# three constant-only checks above -- but it is still seed-independent in everything it
@@ -1161,6 +1168,45 @@ func check_obstacle_clearance() -> Array[String]:
 	print("TERRAIN_INVARIANT_OBSTACLE_CLEARANCE min_multiplier=%.2f apex=%.1f obstacle=%.1f window=%.3fs/%.1fpx at %.1fpx/s" % [
 		min_multiplier, apex, obstacle_height, window_seconds, window_px, slowest_speed,
 		], " frames=%.1f" % (window_seconds * 60.0),
+		" status=", "PASS" if violations.is_empty() else "FAIL")
+	for violation: String in violations:
+		print("    ", violation)
+	return violations
+
+
+# Everything placed ahead of the player must be placed beyond the forward view, or it pops into
+# existence on screen. That held for no one on a 20:9 phone at the old 800px (audit 2026-09-27),
+# and Main.PLAYER_SCREEN_X_FRACTION moved the edge further out still. The zoom and the terrain's
+# chunk window are read off the real scene, not restated, and the base height off project.godot.
+# GlideCoinSpawner is absent on purpose: it places off the camera's own right edge.
+func check_spawn_lookahead() -> Array[String]:
+	var violations: Array[String] = []
+
+	var main: Node = MAIN_SCENE.instantiate()
+	var zoom: float = (main.get_node("Camera2D") as Camera2D).zoom.x
+	var terrain_generator: TerrainGenerator = main.get_node("TerrainGenerator") as TerrainGenerator
+	var chunk_reach: float = float(terrain_generator.chunk_count_ahead) * terrain_generator.chunk_width
+	main.free()
+
+	var base_height: float = float(ProjectSettings.get_setting("display/window/size/viewport_height"))
+	var visible_width: float = base_height * LOOKAHEAD_WIDEST_ASPECT / zoom
+	var forward_view: float = (1.0 - Main.PLAYER_SCREEN_X_FRACTION) * visible_width
+	var required: float = forward_view + LOOKAHEAD_EDGE_MARGIN
+
+	var lookaheads: Dictionary[String, float] = {
+		"ObstacleSpawner": ObstacleSpawner.SPAWN_LOOKAHEAD_WORLD_X,
+		"RareCoinSpawner": RareCoinSpawner.SPAWN_LOOKAHEAD_WORLD_X,
+		"PowerupSpawner": PowerupSpawner.SPAWN_LOOKAHEAD_WORLD_X,
+		# CoinSpawner fills chunks as they are built, so this row covers it too.
+		"TerrainGenerator chunks": chunk_reach,
+	}
+	for spawner_name: String in lookaheads:
+		if lookaheads[spawner_name] < required:
+			violations.append("SPAWN_LOOKAHEAD_INSIDE_VIEW %s lookahead=%.1fpx forward_view=%.1fpx + margin %.1f -- it pops in on a %.2f:1 screen" % [
+				spawner_name, lookaheads[spawner_name], forward_view, LOOKAHEAD_EDGE_MARGIN, LOOKAHEAD_WIDEST_ASPECT,
+			])
+
+	print("TERRAIN_INVARIANT_SPAWN_LOOKAHEAD forward_view=%.1f required=%.1f" % [forward_view, required],
 		" status=", "PASS" if violations.is_empty() else "FAIL")
 	for violation: String in violations:
 		print("    ", violation)
