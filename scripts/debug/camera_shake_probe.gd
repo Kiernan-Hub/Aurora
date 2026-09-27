@@ -224,7 +224,10 @@ func record_frame(collect: bool) -> void:
 		var lag_error: float = absf(camera_pos.x - forward_offset - previous_player_x)
 		lag_sample_count += 1
 		lag_max_error = maxf(lag_max_error, lag_error)
-		if lag_error < 0.0001:
+		# 0.01, not 0.0001: camera_x now carries the forward offset, and Camera2D stores it as a
+		# float32, whose rounding at x ~200,000 is up to ~0.008px. Still far below the ~5-12px
+		# one-frame advance this check exists to tell apart from zero.
+		if lag_error < 0.01:
 			lag_match_count += 1
 
 		if collect:

@@ -17,7 +17,12 @@ sessions live in `docs/history.md`; none of that is a to-do.
 - **New constant check `check_spawn_lookahead()`** (in `check.sh` via `terrain_invariant`): every
   lookahead ≥ forward view on a **21:9** screen (1,270px) + 64px. Mutation-tested (800 fails).
 - `camera_shake_probe` measures lag/follow distance against the new target, so its numbers stay
-  comparable. Nothing else in the tree assumed a centred player: both reflections, the Aurora
+  comparable. Its lag-match tolerance is now 0.01px, because the offset camera x is rounded to float32.
+  Rigid mode (`--smoothness=0`) read 79.5% with that rounding; it reads 100% again at 0.01px.
+- **Gates** (Linux Godot 4.7.stable in the cloud container, not the Mac): `check.sh` **5/5 PASS**.
+  `camera_shake_probe` (seed 941462462) is **unchanged**: follow distance mean 11.37 / max 14.23px
+  (was 11.37 / 14.22), per-segment jerk within noise. `aurora_calm_probe` **PASS, 182,974
+  assertions**, both live cases. Nothing else in the tree assumed a centred player: both reflections, the Aurora
   streaks and the glide-coin trail already use the real view rectangle, and the birds are screen-space.
 
 **Owner, please look at these on the phone:**
