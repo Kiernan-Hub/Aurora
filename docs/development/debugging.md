@@ -665,7 +665,7 @@ fails silently, with the terrain still perfectly flat and every geometry gate st
 
 It pins a lake with `debug_force_lake_segment_index` (no probe can reach a naturally armed one —
 `FrozenLakeDirector` hard-skips headless), warps onto it at `MAX_SPEED`, crosses, and collects
-every item any of the six spawners places with an x strictly inside the span. Deduplicated by
+every item any of the five spawners places with an x strictly inside the span. Deduplicated by
 instance id, so the count is distinct offending nodes.
 
 Baseline: `frames=600 spawners=6 status=PASS`.
@@ -673,8 +673,8 @@ Baseline: `frames=600 spawners=6 status=PASS`.
 Mutation-tested by deleting both `is_lake_world_x` guards from `CoinSpawner`:
 `SPAWNED_ON_LAKE spawner=CoinSpawner count=21 first=Coin` — with the other five still clean.
 
-**THE TRAP IT WALKED INTO FIRST, because it is this file's own trap 6.** `CoinSpawner` and
-`GroundTreeSpawner` wrap each chunk's items in an unnamed `Node2D` group positioned at the
+**THE TRAP IT WALKED INTO FIRST, because it is this file's own trap 6.** `CoinSpawner`
+wraps each chunk's items in an unnamed `Node2D` group positioned at the
 chunk. The first version recursed blindly, saw those groups inside the lake, and reported
 thousands of violations. **An empty group inside the lake is the CORRECT result** — the chunk
 still exists, it just holds no coins, so the group is evidence of suppression *working*. Count

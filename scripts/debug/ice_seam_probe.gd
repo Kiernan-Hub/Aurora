@@ -156,7 +156,7 @@ func _process(_delta: float) -> bool:
 func hide_everything_but_terrain() -> void:
 	for path: String in [
 		"Player", "SnowDrift", "BirdFlock",
-		"TerrainGenerator/GroundTreeSpawner", "TerrainGenerator/CoinSpawner",
+		"TerrainGenerator/CoinSpawner",
 		"TerrainGenerator/PowerupSpawner", "TerrainGenerator/GlideCoinSpawner",
 		"TerrainGenerator/ObstacleSpawner",
 	]:

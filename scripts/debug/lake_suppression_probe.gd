@@ -34,14 +34,13 @@ const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 # of the opening terrain, and clear of a chasm on index-1/index/index+1.
 const LAKE_TEST_SEGMENT_INDEX: int = 200
 
-# The six spawners, by node path under TerrainGenerator. Named rather than discovered so that
-# ADDING A SEVENTH SPAWNER WITHOUT ADDING IT HERE is a visible omission in this list rather than
+# The five spawners, by node path under TerrainGenerator. Named rather than discovered so that
+# ADDING A SIXTH SPAWNER WITHOUT ADDING IT HERE is a visible omission in this list rather than
 # a silent hole -- discovery would quietly "cover" a new spawner while asserting nothing new.
 const SPAWNER_PATHS: Array[String] = [
 	"TerrainGenerator/CoinSpawner",
 	"TerrainGenerator/ObstacleSpawner",
 	"TerrainGenerator/PowerupSpawner",
-	"TerrainGenerator/GroundTreeSpawner",
 	"TerrainGenerator/GlideCoinSpawner",
 	"TerrainGenerator/RareCoinSpawner",
 ]
@@ -133,15 +132,14 @@ func _init() -> void:
 # own end_x is the next segment's start_x.
 #
 # COUNT ITEMS, NEVER CONTAINERS -- debugging.md's measurement trap, and the first version of this
-# file walked straight into it. CoinSpawner and GroundTreeSpawner each wrap a chunk's items in an
+# file walked straight into it. CoinSpawner wraps a chunk's items in an
 # unnamed Node2D group positioned at the chunk, so a naive recursive walk sees those groups,
 # finds their x inside the lake, and reports thousands of violations. AN EMPTY GROUP INSIDE THE
 # LAKE IS THE CORRECT RESULT: the chunk still exists, it just holds no coins. The group is
 # evidence of suppression WORKING, not failing.
 #
-# Hence the explicit two-level shape below rather than a blind recursion. It matches all six:
+# Hence the explicit two-level shape below rather than a blind recursion. It matches all five:
 #   CoinSpawner        -> group -> Coin        (items at depth 2)
-#   GroundTreeSpawner  -> group -> tree Node2D (items at depth 2)
 #   Obstacle/Powerup/GlideCoin/RareCoin spawners -> item (depth 1)
 func scan_for_offenders(lake_start_x: float, lake_end_x: float, offenders: Dictionary) -> void:
 	for spawner_path: String in SPAWNER_PATHS:
@@ -160,9 +158,9 @@ func scan_for_offenders(lake_start_x: float, lake_end_x: float, offenders: Dicti
 				continue
 			# Not an item, so it is a per-chunk group: its CHILDREN are the items.
 			for grandchild: Node in child.get_children():
-				var tree_or_coin: Node2D = grandchild as Node2D
-				if tree_or_coin != null:
-					record_if_on_lake(tree_or_coin, spawner_name, lake_start_x, lake_end_x, offenders)
+				var coin: Node2D = grandchild as Node2D
+				if coin != null:
+					record_if_on_lake(coin, spawner_name, lake_start_x, lake_end_x, offenders)
 
 
 func is_spawned_item(node: Node) -> bool:

@@ -106,10 +106,10 @@ var run_start_world_x: float = -INF
 var magnet_active: bool = false
 
 # The current biome's coin colour, pushed by BiomeDirector.push_palette(). Absolute, not a
-# multiplicative tint like tree_tint: a coin has to stay unmistakably a coin in every biome,
+# multiplicative tint like bird_tint: a coin has to stay unmistakably a coin in every biome,
 # so the palettes author the final colour rather than a factor over one.
 #
-# WHY NOT modulate ON THIS NODE, which is how trees and birds do it: modulate multiplies,
+# WHY NOT modulate ON THIS NODE, which is how the birds do it: modulate multiplies,
 # and multiplying the shipped gold can only ever darken it -- the dark biomes need it
 # BRIGHTER. Stamping the colour also costs nothing per frame, where a tint would still need
 # this same plumbing to reach glide coins with their own bonus colour.

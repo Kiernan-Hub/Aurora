@@ -36,8 +36,8 @@ class_name GlideCoinSpawner
 # a TerrainGenerator-local y, so a coin's local y is
 # ground_y + get_terrain_height(x) - clearance -- the same expression ObstacleSpawner and
 # PowerupSpawner already use. This node having no offset of its own is true and does not make
-# the term unnecessary: CoinSpawner and GroundTreeSpawner sit directly under TerrainGenerator
-# too and supply it by putting their GROUP node at y = ground_y, which this file has no
+# the term unnecessary: CoinSpawner sits directly under TerrainGenerator too and supplies it
+# by putting its GROUP node at y = ground_y, which this file has no
 # equivalent of. Omitting it hung the whole field, and the bonus diamond, ground_y (192px) too
 # high from this file's first commit until 2026-09-03 -- so TRAIL_CLEARANCE_MIN's "skims the
 # surface" never skimmed anything. terrain_invariant_check's check_spawn_placement() now

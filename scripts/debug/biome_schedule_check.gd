@@ -312,7 +312,7 @@ func check_palettes() -> void:
 		for field_name: String in [
 			"sky_top", "sky_mid", "sky_horizon", "glow_color", "celestial_color",
 			"scenery_far", "scenery_near", "haze_far", "haze_near",
-			"tree_tint", "bird_tint",
+			"bird_tint",
 			"ice_surface", "ice_depth",
 			"snow_tint", "coin_color", "obstacle_color",
 		]:
@@ -742,7 +742,7 @@ func check_blending() -> void:
 			var label: String = "blend[%d->%d]@%.2f" % [cycle_index, (cycle_index + 1) % cycle.size(), progress]
 			for field_name: String in ["sky_top", "sky_mid", "sky_horizon", "glow_color", "celestial_color",
 				"scenery_far", "scenery_near", "haze_far", "haze_near", "ice_surface", "ice_depth",
-				"snow_tint", "tree_tint", "bird_tint"]:
+				"snow_tint", "bird_tint"]:
 				assert_color_in_range(label + "." + field_name, out.get(field_name))
 			# The blended glow has to be layout-safe too, not just in-range as a colour: it is fed
 			# straight to sky_backdrop.position_glow() on every frame of the transition, and a

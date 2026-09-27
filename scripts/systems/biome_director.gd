@@ -118,7 +118,6 @@ const PROGRESS_EPSILON: float = 0.004
 @export var parallax_path: NodePath = NodePath("../ParallaxBackground")
 @export var terrain_generator_path: NodePath = NodePath("../TerrainGenerator")
 @export var snow_path: NodePath = NodePath("../SnowDrift/SnowParticles")
-@export var ground_trees_path: NodePath = NodePath("../TerrainGenerator/GroundTreeSpawner")
 @export var bird_flock_path: NodePath = NodePath("../BirdFlock/Flock")
 @export var coin_spawner_path: NodePath = NodePath("../TerrainGenerator/CoinSpawner")
 @export var glide_coin_spawner_path: NodePath = NodePath("../TerrainGenerator/GlideCoinSpawner")
@@ -134,7 +133,6 @@ var background_layers: Array[BackgroundGenerator] = []
 var background_strips: Array[BackgroundStrip] = []
 var terrain_generator: TerrainGenerator
 var snow: Node
-var ground_trees: Node2D
 var bird_flock: Node2D
 var coin_spawner: CoinSpawner
 var glide_coin_spawner: GlideCoinSpawner
@@ -281,7 +279,6 @@ func _ready() -> void:
 	sky_backdrop = resolve_palette_consumer(sky_backdrop_path)
 	snow = resolve_palette_consumer(snow_path)
 	terrain_generator = get_node_or_null(terrain_generator_path) as TerrainGenerator
-	ground_trees = get_node_or_null(ground_trees_path) as Node2D
 	bird_flock = get_node_or_null(bird_flock_path) as Node2D
 	coin_spawner = get_node_or_null(coin_spawner_path) as CoinSpawner
 	glide_coin_spawner = get_node_or_null(glide_coin_spawner_path) as GlideCoinSpawner
@@ -598,11 +595,9 @@ func push_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_tex
 		push_ice(palette, from_ice_texture, to_ice_texture, ice_weight)
 	if snow != null:
 		snow.apply_palette(palette)
-	# Trees and birds need no script change at all: a biome's effect on a foreground object
-	# genuinely IS a multiplicative tint, and modulate propagates to every child for free,
-	# including ones spawned later.
-	if ground_trees != null:
-		ground_trees.modulate = palette.tree_tint
+	# Birds need no script change at all: a biome's effect on a foreground object genuinely
+	# IS a multiplicative tint, and modulate propagates to every child for free, including
+	# ones spawned later.
 	if bird_flock != null:
 		# RGB ONLY. bird_flock.gd writes modulate.a every frame for its glide fade; taking
 		# the whole Color here would fight it and the birds would never fade out.

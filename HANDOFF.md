@@ -28,7 +28,7 @@ Older sessions live in `docs/history.md`; **none of that is a to-do**.
 
 Current state, so the next chat doesn't have to rediscover it:
 - **Code:** `scripts/systems/obstacle_spawner.gd` (232 lines, under `TerrainGenerator` like all
-  six spawners), `scripts/obstacles/obstacle.gd` (39 lines, `Area2D`), `scenes/obstacles/obstacle.tscn`.
+  five spawners), `scripts/obstacles/obstacle.gd` (39 lines, `Area2D`), `scenes/obstacles/obstacle.tscn`.
   Art is a **placeholder 32×32 `ColorRect`**.
 - **Behaviour:** singles only (multi-obstacle clusters were cut on purpose). The first arrives at t=20 s,
   then density ramps in 30 s windows up to 6 per window, with a hard 4 s minimum gap. Placed only on

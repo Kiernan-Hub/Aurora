@@ -19,7 +19,6 @@ Main (Node2D, scripts/main.gd)
 │   ├── CoinSpawner       per-chunk coin slots
 │   ├── ObstacleSpawner   timed clusters; a hit calls Player.absorb_hit()
 │   ├── PowerupSpawner    timed pickups, one weighted table
-│   ├── GroundTreeSpawner decorative, global grid keyed on session_seed
 │   ├── GlideCoinSpawner  air coins, only while Player.is_glide_active
 │   └── RareCoinSpawner   one 25-value coin ~every 60s, at MAX-JUMP-ONLY height
 ├── LakeReflection    the frozen lake's surface quad — hidden, and costing nothing, unless a
@@ -69,8 +68,7 @@ stops on every non-playing terminal/menu state.
 
 ## The spawners live under TerrainGenerator on purpose
 
-`CoinSpawner`, `ObstacleSpawner`, `PowerupSpawner`, `GroundTreeSpawner` (decorative,
-`docs/development/visuals.md`), `GlideCoinSpawner` and `RareCoinSpawner` are children of
+`CoinSpawner`, `ObstacleSpawner`, `PowerupSpawner`, `GlideCoinSpawner` and `RareCoinSpawner` are children of
 `TerrainGenerator`.
 Two separate reasons, both load-bearing:
 

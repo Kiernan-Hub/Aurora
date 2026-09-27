@@ -3,8 +3,8 @@ extends Resource
 class_name BiomePalette
 
 # One scenery mood, as pure data. Every colour the background pass used to hardcode across
-# sky_backdrop.gd, background_generator.gd, terrain_generator.gd, snow_drift.gd,
-# ground_tree_spawner.gd and bird_flock.gd now lives here instead, and biome_director.gd
+# sky_backdrop.gd, background_generator.gd, terrain_generator.gd, snow_drift.gd and
+# bird_flock.gd now lives here instead, and biome_director.gd
 # is the only thing that reads it.
 #
 # THIS FILE HAS NO SCENE-TREE ACCESS AND NO STATE. It is data plus one pure blend
@@ -131,9 +131,6 @@ const UNSET_COLOR: Color = Color(0.0, 0.0, 0.0, 0.0)
 # blended too: it is the mist-density difference between biomes.
 @export var haze_far: Color = Color(0.88, 0.92, 0.96, 0.40)
 @export var haze_near: Color = Color(0.85, 0.90, 0.95, 0.52)
-# Multiplied over the foreground trees rooted in the terrain. White = the authored colours
-# in ground_tree_spawner.gd; a dark biome pulls them down without needing four fields.
-@export var tree_tint: Color = Color(1.0, 1.0, 1.0, 1.0)
 @export var bird_tint: Color = Color(1.0, 1.0, 1.0, 1.0)
 
 @export_group("Ice")
@@ -311,7 +308,6 @@ static func blend_into(from: BiomePalette, to: BiomePalette, weights: PackedFloa
 	out.scenery_near = from.scenery_near.lerp(to.scenery_near, scenery)
 	out.haze_far = from.haze_far.lerp(to.haze_far, scenery)
 	out.haze_near = from.haze_near.lerp(to.haze_near, scenery)
-	out.tree_tint = from.tree_tint.lerp(to.tree_tint, scenery)
 	out.bird_tint = from.bird_tint.lerp(to.bird_tint, scenery)
 
 	var ice: float = weights[CHANNEL_ICE]

@@ -321,7 +321,7 @@ than approximately equal.
 `is_lake_world_x(world_x)` is the query every spawner asks, deliberately the same shape as
 `has_ground_at_world_x()` so suppression reads as one more reason a slot is unusable rather than
 as a new concept. With no lake armed it is a single int compare and never touches the segment
-cache — which matters, because six spawners call it per candidate item.
+cache — which matters, because every spawner calls it per candidate item.
 
 `get_lake_start_x()` / `get_lake_end_x()` both call `ensure_segment_cache_through()` first:
 `start_x` for a segment past the watermark does not exist until the cache is walked out to it.

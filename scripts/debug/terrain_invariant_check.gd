@@ -686,7 +686,6 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 	var coin_spawner: CoinSpawner = main.get_node("TerrainGenerator/CoinSpawner") as CoinSpawner
 	var obstacle_spawner: ObstacleSpawner = main.get_node("TerrainGenerator/ObstacleSpawner") as ObstacleSpawner
 	var powerup_spawner: PowerupSpawner = main.get_node("TerrainGenerator/PowerupSpawner") as PowerupSpawner
-	var tree_spawner: GroundTreeSpawner = main.get_node("TerrainGenerator/GroundTreeSpawner") as GroundTreeSpawner
 	var glide_spawner: GlideCoinSpawner = main.get_node("TerrainGenerator/GlideCoinSpawner") as GlideCoinSpawner
 	var rare_spawner: RareCoinSpawner = main.get_node("TerrainGenerator/RareCoinSpawner") as RareCoinSpawner
 
@@ -749,10 +748,10 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 			glide_spawner.active_coins[-1],
 			GlideCoinSpawner.TRAIL_CLEARANCE_MIN, GlideCoinSpawner.TRAIL_CLEARANCE_MAX))
 
-	# CoinSpawner and GroundTreeSpawner build one group per CHUNK and gate every slot on a hash,
-	# so a given chunk can legitimately yield nothing -- scan forward for the first that does.
-	# Their group node sitting at y = ground_y IS how they supply the term the two coin spawners
-	# were missing, which is exactly why they belong in this table rather than being assumed fine.
+	# CoinSpawner builds one group per CHUNK and gates every slot on a hash, so a given chunk can
+	# legitimately yield nothing -- scan forward for the first that does. Its group node sitting at
+	# y = ground_y IS how it supplies the term the two other coin spawners were missing, which is
+	# exactly why it belongs in this table rather than being assumed fine.
 	var coin_node: Node2D = first_group_child(coin_spawner, coin_spawner.spawn_coin_group, coin_spawner.active_coin_groups)
 	if coin_node == null:
 		violations.append("SPAWN_PLACEMENT CoinSpawner produced no coin in %d chunks" % GROUP_PROBE_CHUNKS)
@@ -760,12 +759,6 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 		violations.append_array(assert_clearance(terrain_generator, "CoinSpawner",
 			coin_node, CoinSpawner.COIN_SURFACE_CLEARANCE, CoinSpawner.COIN_LINE_CLEARANCE))
 
-	var tree_node: Node2D = first_group_child(tree_spawner, tree_spawner.spawn_tree_group, tree_spawner.active_tree_groups)
-	if tree_node == null:
-		violations.append("SPAWN_PLACEMENT GroundTreeSpawner produced no tree in %d chunks" % GROUP_PROBE_CHUNKS)
-	else:
-		# A tree is planted ON the surface -- its origin IS the contact point, clearance 0.
-		violations.append_array(assert_clearance(terrain_generator, "GroundTreeSpawner", tree_node, 0.0, 0.0))
 
 	main.queue_free()
 	return violations
@@ -786,7 +779,7 @@ func assert_clearance(terrain_generator: TerrainGenerator, spawner_name: String,
 	return violations
 
 
-# Walks chunk indices until one of the per-chunk spawners actually builds a child, and returns it.
+# Walks chunk indices until a per-chunk spawner actually builds a child, and returns it.
 # Starts past chunk 0 because CoinSpawner suppresses coins behind run_start_world_x.
 func first_group_child(spawner: Node2D, build_group: Callable, active_groups: Dictionary) -> Node2D:
 	for chunk_index: int in range(GROUP_PROBE_FIRST_CHUNK, GROUP_PROBE_FIRST_CHUNK + GROUP_PROBE_CHUNKS):

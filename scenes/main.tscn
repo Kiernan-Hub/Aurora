@@ -12,7 +12,6 @@
 [ext_resource type="Script" uid="uid://cbl2r5umx7t8l" path="res://scripts/systems/sfx_player.gd" id="11_sfx_player"]
 [ext_resource type="Script" path="res://scripts/systems/sky_backdrop.gd" id="12_sky"]
 [ext_resource type="Script" path="res://scripts/systems/snow_drift.gd" id="13_snow"]
-[ext_resource type="Script" path="res://scripts/systems/ground_tree_spawner.gd" id="14_ground_trees"]
 [ext_resource type="Script" path="res://scripts/systems/bird_flock.gd" id="15_birds"]
 [ext_resource type="Script" path="res://scripts/systems/glide_coin_spawner.gd" id="16_glide_coins"]
 [ext_resource type="Script" path="res://scripts/systems/biome_director.gd" id="17_biome"]
@@ -138,9 +137,6 @@ script = ExtResource("8_obstacle")
 
 [node name="PowerupSpawner" type="Node2D" parent="TerrainGenerator" unique_id=1131805352]
 script = ExtResource("10_powerup_spawner")
-
-[node name="GroundTreeSpawner" type="Node2D" parent="TerrainGenerator"]
-script = ExtResource("14_ground_trees")
 
 [node name="GlideCoinSpawner" type="Node2D" parent="TerrainGenerator"]
 script = ExtResource("16_glide_coins")

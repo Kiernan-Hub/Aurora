@@ -23,7 +23,6 @@ Front-to-back, as wired in `scenes/main.tscn`:
 | `CanvasLayer` | UI | `1` | — |
 | `AuroraBladeGlow` | world | `0`, after terrain | `aurora_blade_glow.gd` |
 | `TerrainGenerator` chunks, pickups, obstacles | world | `0` | `terrain_generator.gd` |
-| `TerrainGenerator/GroundTreeSpawner` | world | `0` | `ground_tree_spawner.gd` |
 | `Player` | world | `0` | `player.gd` |
 | `AuroraWings` | world | `0`, before player/terrain | `aurora_wings.gd` |
 | `AuroraWash/Wash` | `TextureRect` | `-45` | `aurora_wash.gd` |
@@ -160,7 +159,6 @@ footprint (`AnimatedSprite2D` at `scale 0.34`), i.e. ~2.9× — generous, and ha
 |---|---|---|
 | Coin (`coin.tscn` `ColorRect` 16×16) | 16×16 | 32–48 px |
 | Obstacle (`obstacle.tscn` 32×32) | 32×32 | 64–96 px |
-| Ground tree (`ground_tree_spawner.build_tree`) | ~40×70 | 80–140 px |
 
 **Four couplings will make an art swap silently wrong rather than hard**, and none of them
 errors — fix each alongside its sprite: `obstacle_spawner.gd`'s `OBSTACLE_HALF_HEIGHT`
@@ -273,17 +271,15 @@ at the same x with the same height regardless of which segment contains it. Each
 on the ridge line at its own x, so the tree line grows out of the hill instead of floating
 in front of it.
 
-## Ground-attached trees
+## Ground decoration — removed 2026-09-27
 
-`ground_tree_spawner.gd` is the one piece of scenery that is *not* decorative parallax:
-it is a `TerrainGenerator/GroundTreeSpawner` child, chunk-lifecycle-identical to
-`coin_spawner.gd` (same spawn/despawn window, same "don't read `session_seed` in
-`_ready()`" ordering trap, own hash-multiplier pair so its sequence never lines up with
-any other spawner's). Each tree's root position is `terrain_generator.get_terrain_height(world_x)`
-in `TerrainGenerator`'s own local space — the same value `build_chunk_surface` feeds the
-visible snow polygon — so a tree sits exactly on the rendered surface, not floating above
-or buried in it, and tilts to the local `get_slope_angle_at_x`. Trees are skipped wherever
-`has_ground_at_world_x` is false, so nothing plants itself over a chasm void.
+The play area has **no ground-attached scenery**. `GroundTreeSpawner` (pale ice formations
+planted on the surface every ~190px, originally conifers) was removed at the owner's request:
+it read as clutter, and ice shapes on the ridden ground compete with hazards for the player's
+eye. The owner plans real decoration later. The last version, with its `tree_tint` palette
+field, is at `1d38bef` — it was a clean chunk-lifecycle spawner rooted with
+`get_terrain_height()`, skipping voids and the lake. **Anything that comes back must not look
+like a hazard**; obstacles take an absolute colour for the same reason.
 
 An additional `FarPeaks` parallax layer (behind `FarRidge`, `motion_scale.x = 0.03`) and
 taller `ridge_height_max` on the existing ridge layers exist so the skyline reads as
