@@ -1,26 +1,121 @@
 # Handoff
 
-## Where the project is — 2026-09-27, late. READ THIS FIRST
+## Where the project is — 2026-09-27, end of session. READ THIS FIRST
 
-**Obstacle plan steps 1–7 are BUILT** on branch `claude/implementation-t58fc3`, **not merged to
-`main`**, and every gate is green. The owner confirmed all eight decisions below and said to keep
-going. **Neither air move has had its mandatory phone tap test** (the owner can't reach the phone
-yet). Step 8 is the owner's art pass. This session's cloud build log is at the top of
-`docs/history.md`; not required reading.
+**Obstacle plan steps 1–7 are BUILT, gated and pushed** on branch `claude/implementation-t58fc3`,
+**not merged to `main`**. Steps 1–5 (camera, pattern scheduler, floe/shard, thin ice, tiers) came
+from a cloud session. Steps 6–7 (slam, double jump) and a review of 1–5 were done on the Mac.
+Every gate is green on the Mac. **Nothing has been seen on the phone or checked by eye**; the
+complete list of what the owner still has to test is directly below. Step 8 is the owner's art
+pass. The full log of this session is the top entry of `docs/history.md`.
 
 ### Next actions, in order
 
-1. **Owner: the phone tap test** for both air moves (checklist below). Needs coins: slam 300,
-double jump 900. On desktop, `GameManager.debug_unlock_air_moves = true` grants both without
-buying (`shipping_values_check` fails while it's on).
-2. **Owner: play the obstacle half** on desktop and phone ("Owner checklist" below). After opening
-the editor, run `git status`. The editor re-saves `HANDOFF.md` with tab indentation (whitespace
-only; `git checkout -- HANDOFF.md`) and may strip `project.godot`'s pins (standing rule in `CLAUDE.md`).
-3. **Tune by feel.** Every number is a starting value; the knobs are listed below. Any timing change
-must still pass `./scripts/check.sh`. The fairness proof prints the tightest window per pattern and
-fails if one goes below 7 frames.
-4. **Merge to `main`** once happy: `git checkout main && git pull && git merge --ff-only
+1. **Owner: sections A–C below** (phone, desktop, playtest).
+2. **Tune by feel.** The knobs are in "Where to tune". Any timing change must still pass
+`./scripts/check.sh`, whose fairness proof fails any pattern under 7 frames of take-off window.
+3. **Merge to `main`** once happy: `git checkout main && git pull && git merge --ff-only
 origin/claude/implementation-t58fc3 && git push`, or ask Claude to open a PR.
+4. **Step 8, art** (owner): "Remaining plan" below.
+5. After opening the editor, always run `git status`. It re-saves `HANDOFF.md` with tabs (whitespace
+only: `git checkout -- HANDOFF.md`) and may strip `project.godot`'s pins (standing rule in `CLAUDE.md`).
+
+### Owner: every test nobody has done yet (the complete list)
+
+**A. Phone, mandatory.** The touch path has shipped broken twice, and no gate can see it. Export and
+install per `debugging.md`, "Android device testing". Needs coins (slam 300, double jump 900).
+1. Buy both in the shop; each button shows OWNED and the wallet drops by the price.
+2. Jump, then tap the **right** half at the top: a second jump.
+3. Jump, then tap the **left** half at the top: a dive.
+4. Tap either half just before landing: a normal re-jump, never a dive or a second jump.
+5. Tap left over a chasm: nothing. Run off a lip, then tap right once you've dropped below it: nothing (you die).
+6. Hold through a jump: it still spins, and a flip after a double jump pays coins but no speed boost.
+7. Without the unlocks (reset progress), no tap in the air does anything new.
+8. Thin ice with either thumb: the hop rhythm is unchanged.
+
+**B. Desktop.** Set `GameManager.debug_unlock_air_moves = true` (`scripts/game/game_manager.gd:53`) to skip
+buying, and set it back before committing (`shipping_values_check` fails while it's on).
+1. Space or left click in the air = second jump; **S or right click** in the air = dive. The key and
+mouse bindings (`InputSetup`) have never been pressed by anyone; probes press the action directly.
+2. The shop: three rows, readable, and a real purchase goes through. No test has clicked a buy
+button; the purchase path (`_on_buy_pressed`, bound per row) is code-reviewed only.
+
+**C. Play the obstacle half** (phone and desktop):
+1. **Density.** Is 1:00–2:30 now too busy, at ~2.5× the old count? Does 5:00+ get properly hard?
+2. **Readability at 750 px/s:** floe and shard against scenery, thin ice as "keep hopping", and the
+combos (e.g. spike→floe 0.5s, which needs an early jump).
+3. **Thin ice grace:** is 0.2s right on touch?
+4. **Camera at 30%**, on the start screen and in play; Aurora streaks, wings and framing with the player off-centre.
+5. **The frozen lake's skate trail shows less of its tail** (fades over ~860px; only ~415–520px behind the
+player is on screen now). Cosmetic.
+6. **Possible overlap:** an air coin line (132px) or the rare coin (174px) can sit inside a floe's column
+(64–200px). Harmless, looks odd, not guarded.
+7. The first spike now appears no earlier than ~21.5s, not 20s (first-appearance pause and retries).
+
+**D. Visual, never checked by anyone:** hazard placeholders, the thin-ice overlay, the shop's three
+code-built rows on a phone screen (font 13, same as the old authored row), and the slam's bigger
+landing squash.
+
+**E. Code paths no test reaches** (reviewed only):
+- The slam refused while already falling faster than 1,200 px/s. It is only reachable in a drop
+chasm's descent.
+- Touch's half-screen split in `Main._input`. Same coordinate space as the pause-button hit test next
+to it.
+- An Android build of this code. `check.sh`'s export check packs it, but nothing has run it on a device.
+
+### Audit guide (for another chat)
+
+**Scope.** This session's commits are `91a64b5..HEAD`: `git diff 4f4c2c5..HEAD`. The whole branch
+versus `main` is `git diff main..HEAD`. Commit list: "Commits on the branch" below.
+
+**Re-run every gate** (all green on 2026-09-27, Mac, Godot 4.7.stable; `--fixed-fps 60` gives the same
+results as real time, in seconds):
+
+| Gate | Command (after `--headless --fixed-fps 60 --path . --script res://scripts/debug/`) | Expected |
+|---|---|---|
+| fast five | `./scripts/check.sh` | 5/5 PASS |
+| air moves | `air_move_probe.gd` | 12/12 cases, `status=PASS` |
+| chasm | `chasm_probe.gd -- --seed=683407368 --chasms=3 --phases=4` | 120 trials, 0 failures, 0 recoveries |
+| freeze-search | `freeze_search.gd -- --seed=941462462 --warp=175000 --to=178000 --phases=8 --phasestep=0.25 --scan=1 --trialframes=500 --rebase=1`, then again with `--slam=1`, then `--double=1` | 0 stalls each |
+| floor-flicker | `floor_flicker_probe.gd -- --frames=20000` | 0 recoveries / 0 stuck |
+| aurora calm | `aurora_calm_probe.gd` | PASS, 182,974 assertions |
+| camera shake | `camera_shake_probe.gd -- --seed=941462462 --frames=7000 --warmup=120` | no pass/fail; matched `main` on the Mac (follow mean 9.87px both) |
+| sky layers | `sky_layer_check.gd`, **without** `--headless` | PASS |
+
+**Claims to check, and how each was verified:**
+
+| Claim | Code | Evidence |
+|---|---|---|
+| A glide pickup's forced launch into a floe was an unavoidable death; now a glider passes floating pieces | `obstacle.gd` `is_floating`, set in `ObstacleSpawner.spawn_obstacle` | `air_move_probe` `glide_floating`; `check_spawn_placement` asserts the flag per kind (mutation-tested) |
+| Slam: one site, side-selected, landing-window rule, void guard, cap 1,600 | `player.gd` "THE AIR-MOVE SITE", `try_slam`, `get_landing_frame` | `air_move_probe` (5 mutations caught), `chasm_probe` `slam_*`, `check_slam_limits`, `freeze_search --slam=1` |
+| Double jump: guardrail A (never below a lip), one per airtime, none while slamming | `player.gd` `try_double_jump` | `chasm_probe` `double_*` (the rescue trials die without it; `double_late` must die), `air_move_probe` |
+| Guardrail B: no trick boost after a double jump | `game_manager.gd` `_on_player_trick_completed`, `Player.has_double_jumped` | `air_move_probe` `trick_after_double` + control (mutation caught) |
+| Shop built from `UpgradeStore.TRACKS`; nothing else reads the removed nodes | `upgrade_store.gd`, `game_manager.gd` `build_shop_rows`/`refresh_shop`, `main.tscn` (2 nodes deleted) | `air_move_probe` `shop_rows`; `check_upgrade_curve` asserts the jump track's cost count |
+| Steps 1–5 hold on the Mac, not just in the cloud | — | the gate table above, re-run before any of this session's changes |
+
+**Judgement calls to scrutinise** (made in-session, flagged to the owner):
+1. **Left/right split** replaced the plan's one-button sequence. The owner asked for it; it also
+fixes "can't slam without double-jumping first".
+2. **A slam-side press in the air slams**, so a slam owner starts spins from the right side or by
+holding through the jump. The alternative, slam on release, was flagged and not built.
+3. **Slam refused while already falling ≥1,200 px/s**, so a slam can never slow a fall.
+4. **No formula-only "2× reach" check** (plan deviation): it would re-derive its own model. The chasm
+trials exercise the real double jump instead.
+5. **Test-harness fixes**, checked not to weaken anything:
+- `chasm_probe.reset_player()` now clears the jump buffer and coyote timer.
+- The rescue trials tap within one frame's fall of the lip, rather than on exactly one frame.
+- `double_late`'s expectation is the same as `no_jump`'s.
+
+The history entry has the traces behind each fix.
+
+**Weak spots worth a second look:**
+- **The landing-window prediction** (`will_buffered_jump_fire`) integrates the airborne model over the
+height field, so it can be off by a frame at the 0.12s edge: a tap there becomes either a landing
+jump or an air move. Both are legal outcomes, but the feel at that edge is untested on a phone.
+- **Guardrail A reads the height field** (`get_surface_world_y` plus exit drop), not collision. It
+relies on lips being level, which `terrain_invariant_check` asserts.
+- **`OBSTACLE_VOID_CLEARANCE_AHEAD` (950) covers a single boosted jump.** A double jump off a
+pattern's last piece can reach a void; that's the player's call by design.
 
 ### The air moves as built (steps 6–7)
 
@@ -57,33 +152,10 @@ and could not see the real code, so the chasm trials exercise the real double ju
 builds one label and button each, and `JumpLabel`/`BuyJumpButton` are gone from `main.tscn`. A
 track's max level is its cost count. Ids are save data: adding one needs no version bump, renaming one un-buys it.
 
-**Verified:**
-- `check.sh` 5/5.
-- `chasm_probe` **120/120**, 0 recoveries. Ten trials per chasm, including `slam_void`, `slam_lip`,
-`double_lip`, `double_rescue` (dies without a working double jump), `double_boost` and `double_late`
-(must die: guardrail A refusing below the lip).
-- `freeze_search` 0 stalls, plain, `--slam=1` and `--double=1`.
-- `floor_flicker_probe` (full 20,000 frames, 76s with `--fixed-fps`): 0 recoveries, 0 stuck,
-worst uphill flip rate 0.0000.
-- `aurora_calm_probe` PASS.
-- A throwaway runtime test of the real player:
-  - a slam tap cuts airtime 48 → 26 frames; unowned, nothing changes;
-  - a tap 4 frames before landing gives a landing jump, not a slam;
-  - over a void, 0 slams, then 1 after it;
-  - a double jump stretches airtime 53 → 81; a second tap is ignored; a slam-side tap with only the
-double jump owned does nothing;
-  - a flip after a double jump pays 5 coins and no boost, while the same handler without one boosts.
-- Found on the way: `chasm_probe`'s reset never cleared the jump buffer, so a tap-every-frame trial
-leaked a jump into the next one. It read as five guardrail failures. Fixed in `reset_player()`.
+**Verified:** see the audit guide above. The throwaway runtime test described in the history log
+became `scripts/debug/air_move_probe.gd`, a maintained gate.
 
-**Phone test (mandatory; the touch path has shipped broken twice):**
-1. Buy both; each button shows OWNED.
-2. Jump, then tap the **right** half at the top: a second jump.
-3. Jump, then tap the **left** half: a dive.
-4. Tap either half just before landing: a normal re-jump.
-5. Tap left over a chasm: nothing. Fall off a lip, then tap right: nothing.
-6. Hold through a jump: it still spins.
-7. Without the unlocks, nothing changes.
+**Phone test:** section A at the top.
 
 ### Commits on the branch
 
@@ -99,7 +171,8 @@ leaked a jump into the next one. It read as five guardrail failures. Fixed in `r
 | `4f4c2c5` | — | Cloud handoff; the session log moved to `docs/history.md` |
 | `91a64b5` | fix | Mac review: a gliding player passes through floe/shard (decision 8) |
 | `da4a857` | 6 | Shop rows from `UpgradeStore.TRACKS` + the slam; `check_slam_limits()`, `slam_*` chasm trials, `freeze_search --slam=1` |
-| this one | 7 | Double jump + the left/right side split; guardrails A and B; `double_*` chasm trials, `freeze_search --double=1`; `debug_unlock_air_moves` |
+| `e3bbf2b` | 7 | Double jump + the left/right side split; guardrails A and B; `double_*` chasm trials, `freeze_search --double=1`; `debug_unlock_air_moves` |
+| this one | — | `air_move_probe.gd` (new maintained gate) + this handoff, the audit guide and the session log in `docs/history.md` |
 
 Steps 1–5 were re-verified on the Mac: `check.sh` 5/5, freeze-search 0 stalls, `chasm_probe` 48/48,
 `aurora_calm_probe` PASS 182,974 assertions, `sky_layer_check` PASS. `camera_shake_probe` measured
@@ -222,18 +295,9 @@ that part is the owner's.
    table (mutation-tested). The alternative was making the powerup and obstacle spawners avoid each
    other in both orders: more coupling for the same result.
 
-## Owner checklist (phone + desktop)
+## Owner checklist
 
-1. **Feel of the density.** Is 1:00–2:30 now too busy, at ~2.5× the old count? Does 5:00+ get properly hard?
-2. **Readability at 750 px/s**: floe and shard (they float against scenery), thin ice as "keep
-   hopping", and the combos (e.g. spike→floe 0.5s, which needs an early jump).
-3. **Thin ice grace**: is 0.2s right on touch?
-4. **Camera at 30%**, on the start screen and in play; Aurora streaks, wings and framing with the player off-centre.
-5. **The frozen lake's skate trail shows less of its tail.** It fades over ~860px, but only ~415–520px
-   behind the player is on screen now. The near, bright half remains. Cosmetic.
-6. **Possible overlap:** an air coin line (132px) or the rare coin (174px) can sit inside a floe's
-   column (64–200px) when both land at the same x. Harmless (you can stay down), but it looks odd. Not guarded.
-7. The first spike now appears no earlier than ~21.5s, not 20s (the first-appearance pause, plus any footprint retries).
+Merged into "Owner: every test nobody has done yet" at the top (section C).
 
 ---
 

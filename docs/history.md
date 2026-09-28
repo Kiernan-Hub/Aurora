@@ -5,6 +5,149 @@ session ends, its `HANDOFF.md` section moves to the top of this file and `HANDOF
 the current state. **This is history, not a to-do list**: many entries are superseded, and some
 contradict the code. `CLAUDE.md` holds the current truth.
 
+## 2026-09-27 (late) — Mac review of steps 1–5; the air moves (steps 6–7); `air_move_probe`
+
+Session on the Mac, after the cloud session that built steps 1–5. The owner asked, in order:
+"pull and tell me where we're at", then "do whatever you think is best" (they were away), then "go"
+on the air moves, then "keep going" to step 7 with the left/right split, then this write-up.
+Commits: `91a64b5`, `da4a857`, `e3bbf2b`, and the one adding `air_move_probe.gd` and this entry.
+Everything stays on `claude/implementation-t58fc3`; nothing was merged.
+
+### 1. Review of the cloud session's steps 1–5
+
+- **Every gate re-run on the Mac** (the cloud ran Linux): `check.sh` 5/5, freeze-search 0 stalls,
+chasm 48/48, `aurora_calm_probe` PASS 182,974 assertions, `sky_layer_check` PASS (9 biomes, 44 layers).
+A headless `--import` came first, because `ThinIce` is a new `class_name`.
+- **Camera shake, measured against `main` on the same Mac** in a temporary worktree, both with
+`--fixed-fps 60`. Follow distance mean 9.87px on both (max 13.79 main, 13.82 branch), and every
+segment's mean jerk within ±0.002. The cloud's "11.37 / 14.23" were Linux numbers; compare like with
+like. The camera move adds no shake.
+- **Things that might assume a centred player, checked in code:**
+  - the glide-coin trail spawns past `camera.global_position` + half the view, so it follows the offset;
+  - streaks follow the camera;
+  - both reflections read the surface at the player's x on dead-flat ground;
+  - `AuroraDirector.get_recovery_distance()` uses the full visible width + 512, which still covers
+the 0.7 × width forward view;
+  - wings attach to the player;
+  - the bird flock is screen-space.
+
+None needed a change.
+- **Boost ending mid-pattern: not a problem.** A boost moves the player 3,000px (3s × 1,000). The
+farthest a piece can be placed ahead is 1,500 lookahead + 600 search + 750 (a triple's last piece at
+1.0s × 750) = 2,850. So everything placed before a boost is behind the player when it ends.
+- **Found: a glide pickup could force an unavoidable floe death** (`91a64b5`). `start_glide()`
+launches at 480 px/s up whether wanted or not. With thrust held from the first frame (net +1,200 up,
+capped at 600 px/s), the feet clear a floe's 200px top only at ~0.34s, about 260px at 750 px/s.
+Unheld, the apex is 72px, inside the 64–200 column. The scheduler's "floating patterns wait out a
+glide" rule only covers pieces placed *during* a glide. Fix: `Obstacle.is_floating`, set from
+`PIECE_KINDS`, with a glider passing floating pieces the way a booster breaks spikes.
+  - Runtime test: a glide into a floe survives (touched), the same launch without a glide dies, and
+a spike still kills a glider.
+  - `check_spawn_placement` asserts the flag. Mutation-tested: deleting the assignment fails floe and shard.
+  - Rejected alternative: make the powerup and obstacle spawners avoid each other in both spawn
+orders (coupling).
+  - Estimated frequency before the fix: roughly one death per ~100 min of late play.
+
+### 2. The editor re-tabs `HANDOFF.md`
+
+`--headless --import`, and later the owner opening the editor, re-saved `HANDOFF.md` with 4+-space
+indents turned into tabs (whitespace only). Cause: `.godot/editor/editor_layout.cfg` keeps
+`HANDOFF.md` and `CLAUDE.md` as open script-editor tabs. `CLAUDE.md` survives because its
+continuations use 2 spaces. Reverted twice with `git checkout -- HANDOFF.md`. `HANDOFF.md` now has no
+line starting with 4+ spaces (lazy list continuations), so there is nothing left to convert.
+
+### 3. Step 6: shop rows + slam (`da4a857`)
+
+- **Shop:** `UpgradeStore.TRACKS` is the shop, and `GameManager.build_shop_rows()` builds a
+label and button per row. The hand-authored `JumpLabel`/`BuyJumpButton` were deleted from
+`main.tscn`; no scene connection referenced them. A track's max level is its cost count, so
+`check_upgrade_curve()` now asserts the jump track lists `JUMP_MULTIPLIERS.size() − 1` costs.
+- **Slam:** one air-move site after the ground-jump branch, reading the shared jump buffer.
+  - `velocity.y = 1200`, then gravity capped at 1,600. That is √(2·1600·800), the drop chasm's own
+run-off speed, held by `check_slam_limits()`.
+  - The landing-window rule (`will_buffered_jump_fire`): a tap still live on the frame after touchdown
+stays the landing jump. It simulates the airborne integration over the height field with the
+remaining buffer.
+  - The void guard: the simulated dive (`get_landing_frame`, up to 60 frames) must have ground at
+every sampled x.
+- **Caught in review, before commit:** in a drop chasm's descent the player can already be falling
+faster than 1,200, and setting it would *slow* the fall. The slam is now refused there.
+- **Found while designing: the input conflict.** "Hold in the air = spin" starts with a press, and
+that press is a tap, so for a slam owner it slams. It was flagged to the owner; the alternative, slam
+on a short tap's release, was not built (latency, and press-timing code on the touch path).
+- **Verified:**
+  - Chasm 72/72, with the new `slam_void` (taps every frame from the near lip) and `slam_lip` (taps
+every frame from take-off: a hop-slam loop along the run-up). 0 recoveries.
+  - freeze-search `--slam=1`: 0 stalls.
+  - A runtime test: a tap at frame 20 cut airtime 48 → 26; unowned it did nothing; a tap 4 frames
+before landing gave no slam and two jumps; over a void, 0 slams, then 1 after.
+- The owner's desktop "press again doesn't slam" was correct behaviour: their save had 34 coins and
+no upgrades.
+
+### 4. Step 7: double jump + the side split (`e3bbf2b`)
+
+- **The owner assumed "slam is left side, double jump is right side".** The plan was one button in
+sequence (first air tap = double jump, second = slam), under which an owner of both could never
+slam without double-jumping first. The split was built:
+  - `buffer_jump(is_slam_side)`: touch's left half is the slam side (`Main._input`);
+  - desktop: `ui_accept` is the jump side, and a new `slam` action (S, right click; not the arrows,
+which debug builds use for speed) is the slam side;
+  - on the ground and inside the landing window, any tap jumps.
+- **Double jump:** a ground-strength impulse replacing vertical speed, once per airtime, none while
+slamming.
+  - Guardrail A: the feet must be above `get_surface_world_y + get_pending_exit_drop`.
+  - Guardrail B: `Player.has_double_jumped` is cleared at the start of the first grounded frame, so the
+landing-frame trick handler can still read it, and the handler skips the boost.
+- **`GameManager.debug_unlock_air_moves`** grants both for desktop testing. `shipping_values_check`
+fails while it's on (mutation-tested).
+- **No formula-only "2× reach" check** (plan deviation): it could only re-derive its own model.
+The rare coin and upgrade-curve comments were restated as single-jump bounds, and the obstacle void
+clearance comment says a double jump is the player's call.
+
+### 5. Test-harness bugs found, and how
+
+1. **`chasm_probe.reset_player()` never cleared the jump buffer.** The first run of the new trials
+had 5 failures on the one hazard chasm (seed 683407368's three chasms are drop, hazard, drop):
+  - `double_late` survived 3 of 4;
+  - `double_rescue` died 2 of 4.
+
+The trace showed phase 2 of `double_late` starting *airborne*, 110px above the lip at −22px. The
+previous trial's last tap was still buffered and fired a jump at the warp point. Fix: clear the
+buffer and coyote timer in the reset.
+2. **`double_rescue` tapped on exactly the last frame above the lip.** On some phases float rounding
+meant the probe never saw that frame (feet −10.2 → 0.0 in one step), so it never tapped. A fixed 12px
+window was then skipped whole by the boosted arc (−12.9 → +1.8, ~15px per frame). Fix: the window is
+one frame of the current fall plus 1px. 120/120 after.
+3. **`air_move_probe`, found while writing it:**
+  - A double jump also emits `jumped`, so keying "first airtime" on a jump count ended the check
+exactly when the thing it looked for happened. It now tracks the first landing.
+  - The grounded frame clears `has_double_jumped`, so the control sets it with no frame in between.
+  - A glide case left its landing shield pending, and it absorbed the next case's floe hit (plain
+launch "survived"). The warp now clears the shield state.
+
+### 6. `air_move_probe.gd`: the throwaway tests, made a maintained gate
+
+Twelve asserting cases, about 1s uncapped; the file header lists them. Mutation-tested, one at a
+time. Each broken rule failed exactly its cases:
+- guardrail B → both trick cases;
+- the landing-window rule → both `landing_window` cases;
+- glide pass-through → `glide_floating`;
+- side selection → `double_fires`, `wrong_side`, `trick_after_double`;
+- the slam void guard → `slam_over_void`.
+
+### 7. Final gate results (Mac, Godot 4.7.stable)
+
+- `check.sh` 5/5 (~55–65s).
+- `air_move_probe` 12/12.
+- Chasm 120/120, 0 recoveries.
+- Freeze-search 0 stalls, plain, `--slam=1` and `--double=1`.
+- Floor-flicker, full 20,000 frames × 6 seeds in 76s with `--fixed-fps`: 0 recoveries, 0 stuck, worst
+uphill flip rate 0.0000, worst gravity-while-grounded 0.0009, largest forced snap 1.86px.
+- `aurora_calm_probe` PASS 182,974.
+
+**Not done:** anything on the phone, anything visual, the desktop key/mouse bindings, and a real shop
+purchase. All are listed in `HANDOFF.md`, "Owner: every test nobody has done yet".
+
 ## 2026-09-27 — Obstacles + air moves: the approved plan, steps 1–5 built (HANDOFF as of `5addd81`)
 
 **Steps 1–5 are BUILT** on branch `claude/implementation-t58fc3`, not merged to `main` yet. The

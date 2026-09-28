@@ -35,18 +35,18 @@ The conclusion goes here (what's true, what to avoid, one pointer); the full log
 
 No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/MacOS/Godot` (play with `--path .`; opens a window and blocks, so only when asked).
 
-**`./scripts/check.sh` runs the fast five in ~25s** — shipping-values, biome-schedule, terrain-shape,
+**`./scripts/check.sh` runs the fast five in ~55s** — shipping-values, biome-schedule, terrain-shape,
 lake-suppression, and an export-content check that fails if `scripts/debug` reaches a real pack. Run it
 before every commit. It deliberately does *not* import the project, for the reason in the `project.godot` bullet below.
 
-**Thirteen maintained checks** — everything else lives in `scripts/debug/archive/`, so the
-directory answers "is this a gate?". `check.sh` runs four; the other nine take minutes or need a window (`debugging.md`):
+**Fourteen maintained checks** (everything else is in `scripts/debug/archive/`, so the directory answers "is this a gate?"): `check.sh` runs four, the other ten run by hand (`debugging.md`; `--fixed-fps 60` runs the headless ones in seconds):
 
 | Check | Run after |
 |---|---|
 | freeze-replay, **freeze-search**, floor-flicker | any player/collision/segment change. Freeze-search is the one that actually finds stalls — replay alone isn't sufficient |
 | camera-shake | any change to the camera follow in `main.gd` |
 | chasm | anything touching voids, fall death or the boost velocity model |
+| `air_move_probe.gd` | any change to the slam, double jump, jump buffer, trick reward or glide/floating rule — then also chasm and `freeze_search --slam=1` / `--double=1` |
 | `aurora_calm_probe.gd` | Aurora flat reservation, live entry/recovery, spawn suppression, lake arbitration — **plus the stored deadline and the night window**, the only gate reaching either |
 | `sky_layer_check.gd`, `ice_look_capture.gd`, `biome_contact_sheet.gd` | any visual change. **These three must run WITHOUT `--headless`** — they diff or save rendered frames |
 
@@ -54,7 +54,7 @@ directory answers "is this a gate?". `check.sh` runs four; the other nine take m
 reason the visual three exist; a bare off-tree director, as in `aurora_calm_probe`, is the one way in. And `shipping_values_check` is the only thing watching the debug knobs: each is
 a plain `var` the editor can't serialise, so no other gate sees one left flipped. It fails on all of them, on any
 `debug_*` override reaching `main.tscn`, and on a pinned engine setting going missing from `project.godot`;
-`--allow-temp` downgrades it to a warning. A 14th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing;
+`--allow-temp` downgrades it to a warning. A 15th file, `ice_seam_probe.gd`, is a *diagnostic* and asserts nothing;
 the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, meaningless numbers — never trust one without reviving it (`debugging.md`, which also has the `FREEZE_REPRO` rule).
 
 ## Scene wiring

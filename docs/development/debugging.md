@@ -477,6 +477,30 @@ feature failures — the `camera_shake.md` lesson again: measure the quantity th
   is exactly what a future refactor breaks silently. **This is the only gate that catches
   it.**
 
+**Air-move probe** (`scripts/debug/air_move_probe.gd`, 2026-09-27) — the behavioural gate for
+the slam and double jump away from voids (`chasm_probe` covers them at voids). It runs on the real
+Player in the real scene, on the first hazard chasm's flat lead-in at a pinned 400 px/s, in about
+**1 second** uncapped. Twelve asserting cases, each documented in the file's header: the slam
+fires, is a no-op unowned, and never starts over a void; the double jump fires and fires once;
+a tap in the landing window is the ordinary jump on either side; a tap on a move you don't own does
+nothing; a flip after a double jump pays coins but no boost (plus a control that a plain one still
+boosts); a glide launch passes through a floe while a plain launch and a spike still kill; the shop
+builds one row per track. Expect `AIR_MOVE_PROBE_RESULT ... status=PASS` and exit 0:
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --fixed-fps 60 --path . --script res://scripts/debug/air_move_probe.gd
+```
+**Verified to fail** (2026-09-27), one mutation at a time: removing guardrail B fails both trick
+cases; removing the landing-window rule fails both `landing_window` cases; removing the glide
+pass-through fails `glide_floating`; ignoring the tap's side fails `double_fires`, `wrong_side` and
+`trick_after_double`; removing the slam's void guard fails `slam_over_void`. Like every probe, it
+exercises the input *consumer*: `buffer_jump(is_slam_side)` and `Input.action_press`, never touch
+delivery, which still needs the phone.
+
+**Its warp resets more than position, and each reset is load-bearing.** It clears the jump buffer
+and coyote timer (a leftover tap fires a jump at the next warp point), the per-airtime flags, and the
+glide landing shield. A glide case leaves that shield pending, and it silently absorbed the next
+case's floe hit until the reset cleared it.
+
 ## Biome check (`scripts/debug/biome_schedule_check.gd`)
 
 Physics-free, ~1 second, no seeds. Run it after touching `resources/biomes/*.tres`,
