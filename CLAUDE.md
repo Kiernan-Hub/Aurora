@@ -33,7 +33,7 @@ The conclusion goes here (what's true, what to avoid, one pointer); the full log
 
 ## Run / debug / test
 
-No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/MacOS/Godot` (play with `--path .`; opens a window and blocks, so only when asked).
+No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/MacOS/Godot` (play with `--path .`; opens a window and blocks, so only when asked). **In a sandboxed agent (Codex) add `--log-file /tmp/godot.log` to every Godot command**, or Godot crashes at startup because it can't write its log under `~/Library` (`debugging.md`).
 
 **`./scripts/check.sh` runs the fast five in ~55s** — shipping-values, biome-schedule, terrain-shape,
 lake-suppression, and an export-content check that fails if `scripts/debug` reaches a real pack. Run it

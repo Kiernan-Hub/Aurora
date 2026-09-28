@@ -32,6 +32,11 @@ set -u
 
 GODOT="${GODOT:-/Applications/Godot.app/Contents/MacOS/Godot}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Godot's own log goes to a temp file instead of user://logs under ~/Library. A sandboxed agent
+# (Codex, 2026-09-27) can't write there, and Godot 4.7 then CRASHES at startup, with signal 11
+# right after "Failed to open 'user://logs/...'", instead of running without a log.
+GODOT_LOG_DIR="$(mktemp -d)"
+trap 'rm -rf "$GODOT_LOG_DIR"' EXIT
 
 VERBOSE=0
 case "${1:-}" in
@@ -86,7 +91,7 @@ run_export_check() {
 	local pack status entries
 	pack="$(mktemp -d)/content_check.pck"
 
-	output="$("$GODOT" --headless --path "$PROJECT_DIR" \
+	output="$("$GODOT" --headless --log-file "$GODOT_LOG_DIR/godot.log" --path "$PROJECT_DIR" \
 		--export-pack Android "$pack" 2>&1)"
 	status=$?
 
@@ -145,7 +150,7 @@ for gate in "${GATES[@]}"; do
 	IFS='|' read -r name script args <<< "$gate"
 	started=$SECONDS
 	# shellcheck disable=SC2086 -- args is a deliberately word-split flag list
-	output="$("$GODOT" --headless --path "$PROJECT_DIR" \
+	output="$("$GODOT" --headless --log-file "$GODOT_LOG_DIR/godot.log" --path "$PROJECT_DIR" \
 		--script "res://scripts/debug/$script" -- $args 2>&1)"
 	status=$?
 	report "$name" "$status" "$((SECONDS - started))"

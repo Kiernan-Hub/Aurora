@@ -7,6 +7,25 @@ and measured history for why each harness exists: `docs/research/freeze_bug.md`.
 No test suite, no build script. Godot: `/Applications/Godot.app/Contents/MacOS/Godot`
 (play with `--path .`, opens a window and blocks — only when asked).
 
+## Running Godot from a sandboxed agent (Codex): `--log-file`
+
+**Measured 2026-09-27.** Every Godot command Codex ran crashed about 2s after launch (11 crash reports
+in 35s, `EXC_BAD_ACCESS` at `0x158` inside Godot's startup, launched by `com.openai.codex`). The
+same binary ran fine outside it.
+
+Reproduced by denying file writes under `~/Library`:
+`sandbox-exec -p '(version 1)(allow default)(deny file-write* (subpath "/Users/kjh/Library"))' Godot --headless ...`.
+Godot prints `ERROR: Failed to open 'user://logs/godot<date>.log'` and then `handle_crash: Program
+crashed with signal 11` (exit 134). It doesn't carry on without the log.
+
+**Fix: `--log-file /tmp/godot.log`** (any writable path), before `--path`. Under the same sandbox
+this passed `shipping_values_check` and `air_move_probe` 12/12, and a sandboxed `--import` exited 0.
+The import only reported that it couldn't save editor settings, which is harmless (read-only, so
+nothing is damaged). `check.sh` passes `--log-file` itself since then, and passed 5/5 inside that sandbox.
+
+The alternative is letting the agent write to `~/Library/Application Support/Godot` (its sandbox
+settings). The flag is the smaller change and works for any runner.
+
 ## The fast five: `./scripts/check.sh`
 
 One command, ~25s, the tier to run before every commit:

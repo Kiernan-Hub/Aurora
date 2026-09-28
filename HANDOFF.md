@@ -69,7 +69,9 @@ to it.
 versus `main` is `git diff main..HEAD`. Commit list: "Commits on the branch" below.
 
 **Re-run every gate** (all green on 2026-09-27, Mac, Godot 4.7.stable; `--fixed-fps 60` gives the same
-results as real time, in seconds):
+results as real time, in seconds). **From a sandboxed agent (Codex), add `--log-file /tmp/godot.log` to every
+Godot command**, or Godot crashes at startup trying to write its log under `~/Library`. `check.sh` already
+does this (`debugging.md`, "Running Godot from a sandboxed agent").
 
 | Gate | Command (after `--headless --fixed-fps 60 --path . --script res://scripts/debug/`) | Expected |
 |---|---|---|
