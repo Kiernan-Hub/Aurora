@@ -20,6 +20,14 @@ pass. The full log of this session is the top entry of `docs/history.md`.
 
 ### Next actions, in order
 
+0. **Claude, first: fix `audit.md` finding 1 (P1) before any merge.** A spike on the far side of a
+climb can be unbeatable at jump level 0. Only the spike's own 32px is slope-checked, not the ground a
+jump leaves from. Re-verified on the Mac 2026-09-28 with the audit's embedded reproduction: `LEGAL=true`,
+0/192 level-0 survivors at 750 px/s, max-level control 26/48. The old single-obstacle rule on `main`
+also checked only the obstacle's own x, so the hole probably predates this branch; the branch's
+"proven fair" claim makes it matter now. The audit's "Next work" paragraph says what a fix must not do.
+Finding 2 (desktop S/right-click holds) is fixed in `88dc175` and re-verified: `air_move_probe`
+14/14, `check.sh` 5/5.
 1. **Owner: sections A–C below** (phone, desktop, playtest).
 2. **Tune by feel.** The knobs are in "Where to tune". Any timing change must still pass
 `./scripts/check.sh`, whose fairness proof fails any pattern under 7 frames of take-off window.
