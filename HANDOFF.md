@@ -1,5 +1,14 @@
 # Handoff
 
+## Audit follow-up — 2026-09-27
+
+Read **`audit.md` first**: the obstacle placement guard accepts a spike that the weakest jump
+could not clear in the live timing sweep, despite the flat-ground fairness gate passing.
+Resolve that finding before merging; the earlier green gates below do not cover it.
+The small desktop S/right-click hold mismatch is fixed, with two new behavioral cases:
+`air_move_probe` now expects **14/14**. The audit includes a self-contained fairness reproduction,
+results, limits and next steps for Claude. The prior session details below remain historical.
+
 ## Where the project is — 2026-09-27, end of session. READ THIS FIRST
 
 **Obstacle plan steps 1–7 are BUILT, gated and pushed** on branch `claude/implementation-t58fc3`,

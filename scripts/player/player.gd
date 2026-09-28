@@ -1066,7 +1066,7 @@ func end_glide() -> void:
 func is_glide_input_held() -> bool:
 	if is_jump_suppressed and not is_glide_active:
 		return false
-	if Input.is_action_pressed(&"ui_accept"):
+	if Input.is_action_pressed(&"ui_accept") or Input.is_action_pressed(SLAM_ACTION):
 		return true
 	return main_node != null and main_node.is_touch_held()
 

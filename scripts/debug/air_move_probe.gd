@@ -19,6 +19,7 @@ extends SceneTree
 #   glide_floating    a glide pickup's forced launch into a floe survives (Obstacle.is_floating);
 #                     the same launch without a glide dies; a spike still kills a glider.
 #   shop_rows         the shop builds one label + button per UpgradeStore.TRACKS row.
+#   held_controls     either desktop action held from take-off spins and supplies glide thrust.
 #
 # Every case runs on the first chasm's lead-in, which is flat, at a pinned 400 px/s so a double
 # jump's ~1.35s arc still lands on it. Probes get no upgrades (GameManager.apply_upgrades() skips
@@ -97,6 +98,7 @@ func _init() -> void:
 	await trick_after_double(start_x)
 	await glide_floating(start_x)
 	shop_rows()
+	await held_controls(start_x)
 
 	print("AIR_MOVE_PROBE_RESULT cases=%d failures=%d status=%s" % [cases, failures, "PASS" if failures == 0 else "FAIL"])
 	quit(0 if failures == 0 else 1)
@@ -291,6 +293,26 @@ func glide_floating(start_x: float) -> void:
 		"glide into floe: touched=%s dead=%s; plain launch dead=%s; spike while gliding dead=%s" % [
 			outcomes["glide"]["touched"], outcomes["glide"]["dead"],
 			outcomes["plain_launch"]["dead"], outcomes["spike_while_gliding"]["dead"]])
+
+
+func held_controls(start_x: float) -> void:
+	for action: StringName in [&"ui_accept", Player.SLAM_ACTION]:
+		warp(start_x, true, true)
+		await settle()
+		jump_count = 0
+		Input.action_press(action)
+		for frame: int in range(20):
+			await physics_frame
+		var spun: bool = player.trick_rotation_progress > 0.0
+		var only_ground_jump: bool = jump_count == 1 and not player.is_slamming and not player.has_double_jumped
+		player.start_glide()
+		var launch_velocity: float = player.velocity.y
+		await physics_frame
+		var thrust: bool = player.velocity.y < launch_velocity
+		Input.action_release(action)
+		player.end_glide()
+		expect("held_controls", spun and only_ground_jump and thrust,
+			"%s: spin=%s ground jump only=%s glide thrust=%s" % [action, spun, only_ground_jump, thrust])
 
 
 func shop_rows() -> void:
