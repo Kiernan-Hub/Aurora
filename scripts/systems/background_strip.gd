@@ -41,6 +41,18 @@ class_name BackgroundStrip
 #   painted in and survives as partial alpha, so a haze band on top would fog it
 #   twice. The near layers keep theirs -- each layer's haze veils only its own layer.
 #
+# THE ICE PLAIN BELOW THE WATERLINE (2026-10-03)
+#
+#   The panorama's reflections fade out a little below its waterline, and below them
+#   there used to be only MidRidge's flat fill. Terrain normally covers that, but every
+#   layer is screen-locked vertically, so a high double jump or glide lifts the camera,
+#   drops the terrain toward the bottom edge and uncovers it: the owner's "white void".
+#   So this layer also draws a plain, behind the strip, from the waterline down past
+#   the bottom edge. It is transparent at the waterline, so frames in ordinary play stay
+#   as they were and no edge can form against the fill behind it. It then ramps to a
+#   palette colour, with faint perspective streaks that make it read as ground. It
+#   needs no camera, physics or terrain change.
+#
 # LOAD-BEARING CONSTRAINTS
 #
 #   * motion_scale.y MUST stay 0, same as every other layer. Vertical parallax was
@@ -91,13 +103,52 @@ class_name BackgroundStrip
 # background_generator.gd, which owns its constants and the reasoning behind them.
 var aurora_blend: float = 0.0
 
+# How far down the plain runs, in the same viewport-height units as the fractions above. Those
+# units are not quite screen units: ParallaxBackground draws every layer at the camera's zoom
+# (measured: this layer's scale is 0.833 and its y is 0), so 1.0 lands ~83% of the way down the
+# screen and the real bottom edge is 1/zoom = 1.2. The camera only ever zooms IN from there (the
+# Aurora's ×1.055), so 1.5 leaves margin for any zoom down to 0.67.
+const PLAIN_BOTTOM_FRACTION: float = 1.5
+# Baked once. It is stretched to one panorama loop wide (~3.9× at the base viewport), which only
+# lengthens the streaks, and to ~1:1 vertically. It wraps in x, so the loop has no seam.
+const PLAIN_TEXTURE_SIZE: Vector2i = Vector2i(1024, 512)
+const PLAIN_RNG_SEED: int = 20261003
+# THE STREAKS ARE WHAT MAKES IT READ AS GROUND. A gradient alone was built first and the owner
+# could not see it: a smooth empty field is still a void, whatever its colour. These are
+# darker dashes, like distant pressure ridges and floes. In perspective they are thin, short,
+# dense and faint at the waterline, and thicker, longer, sparser and stronger toward the viewer.
+#
+# The darkest a streak gets, as a multiplier off the plain colour.
+const PLAIN_STREAK_DARKNESS: float = 0.2
+# Depth (fraction of the texture height) where streaks reach full strength. In ordinary play only
+# the top ~9% is uncovered, so they stay faint there.
+const PLAIN_STREAK_FULL_DEPTH: float = 0.35
+# Each row of streaks sits this many times deeper than the last: perspective spacing.
+const PLAIN_ROW_GROWTH_MIN: float = 1.08
+const PLAIN_ROW_GROWTH_MAX: float = 1.16
+
 var strip_sprite: Sprite2D
+# Null under --headless, which renders nothing and should not pay for the bake.
+var plain_sprite: Sprite2D
 
 
 func _ready() -> void:
 	if strip_texture == null:
 		push_error("BackgroundStrip requires a strip_texture.")
 		return
+
+	# Added BEFORE the strip, so it draws behind it and the panorama's floes and
+	# reflections sit on top of it. Tree order is draw order. Locally computed from
+	# DisplayServer, never Services.is_headless (see sky_backdrop.gd's aurora bands).
+	if DisplayServer.get_name() != "headless":
+		plain_sprite = Sprite2D.new()
+		plain_sprite.name = "Plain"
+		plain_sprite.texture = build_plain_texture()
+		plain_sprite.centered = false
+		# Starting colour only, from the palette defaults. The director overwrites it on
+		# frame one, the same as silhouette_color.
+		plain_sprite.modulate = get_plain_color(BiomePalette.new())
+		add_child(plain_sprite)
 
 	strip_sprite = Sprite2D.new()
 	strip_sprite.name = "Strip"
@@ -121,6 +172,22 @@ func _ready() -> void:
 func apply_palette(palette: BiomePalette) -> void:
 	silhouette_color = palette.get_scenery_color(depth_t)
 	refresh_silhouette()
+	if plain_sprite != null:
+		plain_sprite.modulate = get_plain_color(palette)
+
+
+# The nearest scenery the palette authors, veiled by the nearest haze it authors: what a ridge
+# layer at depth_t 1.0 would show below its skyline. So the plain needs no palette field, and
+# it follows every biome and crossfade. It also keeps chasms readable, because a void shows
+# this plain behind it. In all eight biomes its luminance stays at least 0.19 above the
+# deepest terrain fill (ice_depth × 0.38), and 0.12 above it at the darkest streak.
+#
+# It does not take the Aurora response. Under a full Aurora the ridge fill it replaces moves
+# by 4/255 at most, because the darkening silhouette and the brightening haze cancel out.
+# A plain that stays put therefore matches it.
+static func get_plain_color(palette: BiomePalette) -> Color:
+	var haze: Color = palette.get_haze_color(1.0)
+	return palette.get_scenery_color(1.0).lerp(Color(haze.r, haze.g, haze.b), haze.a)
 
 
 # Pushed by AuroraDirector.push_blend(), duck-typed like every other Aurora consumer. This is
@@ -175,4 +242,76 @@ func apply_viewport_size() -> void:
 	# The loop. In layer-local px, which is world px * motion_scale.x -- so the
 	# distance this covers in the world is this number divided by motion_scale.x,
 	# and THAT is how long the panorama runs before a player sees it again.
-	motion_mirroring = Vector2(strip_texture.get_width() * display_scale, 0.0)
+	var loop_width: float = strip_texture.get_width() * display_scale
+	motion_mirroring = Vector2(loop_width, 0.0)
+
+	# Exactly one loop wide, so mirroring tiles the plain along with the strip. Its
+	# top is the strip's waterline.
+	if plain_sprite == null:
+		return
+	var plain_top: float = horizon_y_fraction * viewport_height
+	plain_sprite.position = Vector2(0.0, plain_top)
+	plain_sprite.scale = Vector2(loop_width / PLAIN_TEXTURE_SIZE.x,
+		(PLAIN_BOTTOM_FRACTION * viewport_height - plain_top) / PLAIN_TEXTURE_SIZE.y)
+
+
+# Near-white, so modulate carries the colour and a biome push is one property write with no
+# re-bake, the same as the strip. The base alpha ramps from 0 at the waterline to 1 at
+# fraction 1.0 (~83% down the screen) and holds below that. Then the streaks go on top.
+# Everything is in fractions, so the texture never depends on the viewport and is built once.
+# Seeded with a constant, never session_seed (see the header): the plain is a fixed loop too.
+func build_plain_texture() -> ImageTexture:
+	var size: Vector2i = PLAIN_TEXTURE_SIZE
+	var image: Image = Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
+	var opaque_row: float = size.y * (1.0 - horizon_y_fraction) / (PLAIN_BOTTOM_FRACTION - horizon_y_fraction)
+	for row: int in range(size.y):
+		image.fill_rect(Rect2i(0, row, size.x, 1), Color(1.0, 1.0, 1.0, get_plain_alpha(row, opaque_row)))
+
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = PLAIN_RNG_SEED
+	# Depth is the fraction of the texture's height below the waterline. Shallower rows than
+	# this would be under a texel apart and too faint to see anyway.
+	var depth: float = 0.03
+	while depth < 1.0:
+		var row: int = int(depth * size.y)
+		var thickness: int = 1 + roundi(depth * 20.0)
+		var strength: float = smoothstep(0.0, PLAIN_STREAK_FULL_DEPTH, depth) * rng.randf_range(0.4, 1.0)
+		# Dashes across one full width from a random start; about a third of the row is covered.
+		var x: float = rng.randf() * size.x
+		var end_x: float = x + size.x
+		while x < end_x:
+			var length: float = size.x * (0.01 + 0.12 * depth) * rng.randf_range(0.5, 1.5)
+			draw_plain_streak(image, x, length, row, thickness, strength, opaque_row)
+			x += length * rng.randf_range(2.0, 5.0)
+		depth *= rng.randf_range(PLAIN_ROW_GROWTH_MIN, PLAIN_ROW_GROWTH_MAX)
+	return ImageTexture.create_from_image(image)
+
+
+# One soft streak: a sine bump across its thickness and along its length, so it has no hard
+# edge or end and reads as a smear of shadow on the ice rather than a ruled line. Drawn as
+# stepped fill_rects (a few px each once stretched), because per-pixel writes cost far more.
+# Wrapped at the right edge, so the loop has no seam. Its alpha is never below the base ramp's,
+# so a streak near the waterline shows faintly over the fill behind it.
+func draw_plain_streak(image: Image, start_x: float, length: float, row: int, thickness: int,
+		strength: float, opaque_row: float) -> void:
+	var width: int = image.get_width()
+	var steps: int = clampi(int(length / 6.0), 3, 16)
+	var step_length: float = length / steps
+	for offset: int in range(thickness):
+		var y: int = row + offset
+		if y >= image.get_height():
+			return
+		var across: float = sin(PI * (offset + 0.5) / thickness)
+		for step: int in range(steps):
+			var weight: float = strength * across * sin(PI * (step + 0.5) / steps)
+			var shade: float = 1.0 - PLAIN_STREAK_DARKNESS * weight
+			var color: Color = Color(shade, shade, shade, maxf(get_plain_alpha(y, opaque_row), weight))
+			var left: int = posmod(int(start_x + step * step_length), width)
+			var span: int = maxi(int(step_length + 1.0), 1)
+			image.fill_rect(Rect2i(left, y, mini(span, width - left), 1), color)
+			if left + span > width:
+				image.fill_rect(Rect2i(0, y, left + span - width, 1), color)
+
+
+static func get_plain_alpha(row: int, opaque_row: float) -> float:
+	return clampf(float(row) / maxf(opaque_row, 1.0), 0.0, 1.0)

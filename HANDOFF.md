@@ -14,7 +14,7 @@ the white void below.** That covers desktop (B). The phone tests (A) are still o
 
 ### Next actions, in order
 
-1. **IMPORTANT: fix the white void under a high jump or glide.** Owner-reported; section directly below.
+1. **White void: FIXED and committed** (section directly below). Nothing owed.
 2. **Owner: phone tests (A) and playtest (C) below.** Install the APK with the phone on USB
    "Transferring files": `~/Library/Android/sdk/platform-tools/adb install -r aura.apk`.
 3. **Tune by feel.** The knobs are in "Where to tune". Any timing change must still pass
@@ -26,36 +26,40 @@ the white void below.** That covers desktop (B). The phone tests (A) are still o
    only: `git checkout -- HANDOFF.md`) and may strip `project.godot`'s pins (standing rule in
    `CLAUDE.md`). It happened again before this session; restored, `check.sh` green.
 
-### The white void below a high jump or glide (IMPORTANT, owner-reported 2026-10-03)
+### The white void below a high jump or glide (owner-reported 2026-10-03): FIXED, owner-approved 2026-10-04
 
-**What it looks like:** jump high (a double jump) or glide, and the whole lower half of the screen
-is one flat pale colour. The background ice ends partway down, and the terrain has dropped to the
-bottom edge (owner's screenshot: player mid-flip at half height, ground only in the bottom-left corner).
+**What it looked like:** jump high (a double jump) or glide, and the whole lower half of the screen
+was one flat pale colour. The background ice ended partway down, and the terrain had dropped to the
+bottom edge.
 
-**Cause** (read from the code, not measured). The camera follows the player up: `main.gd`
-`get_vertical_camera_target()` holds a ±72px dead zone, then follows, and a glide follows 1:1. Every
-background layer is screen-locked vertically (`motion_scale.y = 0`, a hard rule). The panorama
-(`IceStrip`, `background_strip.gd`) is placed by screen fraction and simply ends below its waterline
-(`horizon_y_fraction` 0.55). Below it there is nothing but the `SkyBackdrop` colour, because in
-ordinary play the terrain covers that part of the screen. Climb far enough and the terrain slides
-down and uncovers it. **The double jump made this common:** a single jump peaks at 128px
-(640² / 2·1600), a double at ~256px, and ~512px with the jump powerup. Before, only a glide got
-that high, and the birds were the patch for it (`visuals.md`, "Birds").
+**Cause, corrected 2026-10-03.** The camera follows the player up (`main.gd`
+`get_vertical_camera_target()`: a ±72px dead zone, then it follows; a glide follows 1:1), but every
+background layer is screen-locked vertically. The panorama's reflections fade out just below its
+waterline. Below that, the screen shows `MidRidge`'s flat fill under its flat haze, not the
+`SkyBackdrop`. The ridge fills run to 900px past the bottom edge. In ordinary play the terrain
+covers that area. **The double jump made this common:** a single jump peaks at 128px, a double at
+~256px, and ~512px with the jump powerup.
+**Measured:** `ParallaxBackground` draws every layer at the camera zoom (0.833, y 0). So
+`background_strip.gd`'s "fractions of viewport height" land ×0.833 on screen: the waterline is at
+~46% of the screen, not 55%.
 
-**Recommended fix (low risk, visual only):** paint the screen-locked backdrop all the way to the
-bottom edge. Add a distant ice-plain layer below the panorama's bottom edge, under
-`ParallaxBackground` and behind the terrain: a biome-tinted gradient, optionally a faint
-horizontal-streak texture scrolling at `IceStrip`'s x rate. In ordinary play the terrain covers it,
-so normal frames don't change; it shows only in exactly this moment. There is no camera, physics or
-terrain change, so no gameplay gate is affected. The costs:
-- one node (maybe one texture);
-- one colour the `BiomeDirector` sets per biome. Derive it from an existing palette colour before
-  adding a palette field;
-- the three visual gates (`sky_layer_check`, `ice_look_capture`, `biome_contact_sheet`), run windowed.
+**What was built (`background_strip.gd` only):** a `Plain` sprite inside the `IceStrip` layer,
+behind the panorama, from the waterline to fraction 1.5 (past the bottom edge at any zoom the game
+uses). It is transparent at the waterline and opaque ~83% down the screen. Its colour is the
+palette's nearest scenery veiled by its nearest haze: no new palette field, no `main.tscn` node, no
+director wiring. **Round 1 was the gradient alone, and the owner could not see it**: a smooth
+empty field is still a void. **Round 2 added soft perspective streaks**, baked once into a
+1024×512 texture (5.4 ms on the Mac, skipped under `--headless`): darker smears that are thin and
+faint at the waterline and broader toward the viewer. Checked in a camera-lifted capture. No
+Aurora response, because the fill it covers moves ≤4/255 under a full Aurora. Chasm voids show
+it, and even the darkest streak stays ≥0.12 luminance above the deepest terrain fill.
+Gates: `check.sh` 5/5, `sky_layer_check` PASS; `ice_look_capture` and `biome_contact_sheet` run
+windowed, with only faint smears above the ground line in ordinary play.
 
-Also check it against the lake and Aurora reflections, which are full-screen too.
+**The owner looked at it in game and approved it (2026-10-04).** Knobs (top of `background_strip.gd`): `PLAIN_STREAK_DARKNESS` (0.2) for how strong the
+streaks are; the `0.12 * depth` length and `depth * 20.0` thickness in `build_plain_texture()`.
 
-**Flagged alternatives** (more bug surface, not recommended):
+**Flagged alternatives, not taken** (more bug surface):
 - **Cap the camera's climb** so the ground stays in frame and the player rises toward the top
   instead. That touches the camera follow, so `camera_shake_probe` needs a re-run, and a high glide
   or a powered double jump could leave the top of the screen.

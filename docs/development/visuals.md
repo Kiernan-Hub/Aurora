@@ -29,6 +29,7 @@ Front-to-back, as wired in `scenes/main.tscn`:
 | `SnowDrift/SnowParticles` | `GPUParticles2D` | `-50` | `snow_drift.gd` |
 | `BirdFlock/Flock` | `Node2D` | `-60` | `bird_flock.gd` |
 | `ParallaxBackground/IceStrip` | `ParallaxLayer` | `(0.05, 0)` | `background_strip.gd` |
+| `ParallaxBackground/IceStrip/Plain` | `Sprite2D`, behind the strip | `(0.05, 0)` | `background_strip.gd` (the ice plain, below) |
 | `ParallaxBackground/MidRidge` | `ParallaxLayer` | `(0.035, 0)` | `background_generator.gd` |
 | `ParallaxBackground/FarRidge` | `ParallaxLayer` | `(0.025, 0)` | `background_generator.gd` |
 | `ParallaxBackground/FarPeaks` | `ParallaxLayer` | `(0.015, 0)` | `background_generator.gd` |
@@ -388,6 +389,24 @@ Birds aren't tied to terrain depth at all, so they read as something happening o
 regardless of how far below the surface actually is. `flock_alpha` fades them in/out off
 `player.is_glide_active` (`FADE_SMOOTHNESS`), so they only ever appear during the glide
 they exist for, never as clutter over obstacles during ordinary play.
+
+## The ice plain below the waterline (2026-10-03)
+
+The fix for the owner's "white void". A double jump (~256px) or a glide lifts the camera, and
+because every layer is screen-locked vertically the terrain drops toward the bottom edge. That
+uncovers what sits below the panorama's reflections: `MidRidge`'s flat fill under its flat haze.
+`IceStrip` now also draws a `Plain` sprite behind the panorama. It is transparent at the waterline,
+so ordinary frames keep their look and no edge can form against the fill. It turns opaque ~83% down
+the screen, and its colour is the palette's nearest scenery veiled by its nearest haze
+(`get_plain_color()`). There is no palette field, no director wiring and no Aurora response;
+the reasons are in the function's comment. **The gradient alone was invisible to the owner.**
+What makes it read as ground is the soft perspective streaks baked into its texture: thin and
+faint at the waterline, broad near the viewer. Hard 1px dashes were tried first and read as ruled lines.
+
+**The strip's fractions are not screen fractions.** `ParallaxBackground` draws every layer at
+the camera zoom (measured: layer scale 0.833, y 0), so `horizon_y_fraction` 0.55 lands at ~46% of
+the screen and fraction 1.0 at ~83%. Anything that must reach the bottom edge has to run past 1/zoom.
+The plain runs to 2.0.
 
 ## The skate trail (frozen lake only)
 
