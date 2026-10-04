@@ -1,22 +1,28 @@
 # Handoff
 
-## Where the project is — 2026-10-03. READ THIS FIRST
+## Where the project is — 2026-10-04. READ THIS FIRST
 
 **Everything is committed and pushed** on `claude/implementation-t58fc3` (still not merged to
 `main`). The 2026-09-29 work went in as one commit: `audit.md` finding 1 fixed (details below) and
 the new `GameManager.debug_start_wallet` (`game_manager.gd:58`), which refills the saved wallet to
 that many coins on every launch and restart (debug builds only, never headless). **It is committed
-at 0**; `shipping_values_check` fails `check.sh` while it's on. `aura.apk` on disk was built with it
-at 9999, so that build already has coins. It was never installed.
+at 0**; `shipping_values_check` fails `check.sh` while it's on. **`aura.apk` on disk (built
+2026-10-04 from `a03dcc3`) was exported with it at 9999** and is NOT installed yet. Installing it
+tops the phone's saved wallet up to 9999 for good; that save is dev data.
 
 **The owner played the branch on the Mac (2026-10-03): everything works and feels good, except
-the white void below.** That covers desktop (B). The phone tests (A) are still owed.
+the white void below.** That covers desktop (B).
+
+**Phone, 2026-10-04: `a03dcc3` installed (a wallet-0 build), runs, owner says "all good". That is
+NOT test A.** The phone's save afterwards read `upgrades: {"jump": 4}`, `coin_wallet: 92`: no slam
+or double jump was bought, so neither air move was tapped. Read it with
+`adb exec-out run-as com.kiernan.aura cat files/save.dat`.
 
 ### Next actions, in order
 
 1. **White void: FIXED and committed** (section directly below). Nothing owed.
-2. **Owner: phone tests (A) and playtest (C) below.** Install the APK with the phone on USB
-   "Transferring files": `~/Library/Android/sdk/platform-tools/adb install -r aura.apk`.
+2. **Owner: phone tests (A) and playtest (C) below.** The 9999-coin APK is ready. Install it with
+   the phone on USB "Transferring files": `~/Library/Android/sdk/platform-tools/adb install -r aura.apk`.
 3. **Tune by feel.** The knobs are in "Where to tune". Any timing change must still pass
    `./scripts/check.sh`, whose fairness proofs fail any pattern under 7 frames of take-off window.
 4. **Merge to `main`** once happy: `git checkout main && git pull && git merge --ff-only
