@@ -936,6 +936,12 @@ Owner's phone: Galaxy S26 Ultra (`SM-S948U`, serial `R3GL20AE8BK`), 1440×3120 @
   **with every Godot editor closed**. An open editor writes its in-memory value back on quit.
 - Relaunching right after `am force-stop` can fail with "Failed to create vulkan window". It's a
   race, so wait a second. The app sits paused on the Start screen until someone taps Start.
+- **Driving it without a thumb (2026-10-04, how phone test A was run):** `adb shell input tap X Y`
+  (physical landscape px, 3120×1440; screenshot ÷ scale to find buttons) goes through the real
+  touch path. Record with `screenrecord --time-limit N`, pull, `ffmpeg -vf fps=20` to frames, and
+  OCR the debug overlay (top-left, crop ≈ `0,55,480,140` for `velocity.y`/`is_on_floor`) with
+  macOS Vision from a ~20-line Swift script. The save is `adb exec-out run-as com.kiernan.aura cat
+  files/save.dat` (debug builds only). It can't aim at a hazard: the run dies at the first spike.
 - **Audio:** `adb shell dumpsys audio`, then find `com.kiernan.aura` in the playback configurations.
 - **Frame timing:** `adb shell "dumpsys SurfaceFlinger --latency '<layer>'"`, where `<layer>` is the
   full `... SurfaceView[com.kiernan.aura/...]@0(BLAST)#NNN` name from `dumpsys SurfaceFlinger --list`

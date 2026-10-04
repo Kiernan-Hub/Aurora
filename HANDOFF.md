@@ -6,23 +6,28 @@
 `main`). The 2026-09-29 work went in as one commit: `audit.md` finding 1 fixed (details below) and
 the new `GameManager.debug_start_wallet` (`game_manager.gd:58`), which refills the saved wallet to
 that many coins on every launch and restart (debug builds only, never headless). **It is committed
-at 0**; `shipping_values_check` fails `check.sh` while it's on. **`aura.apk` on disk (built
-2026-10-04 from `a03dcc3`) was exported with it at 9999** and is NOT installed yet. Installing it
-tops the phone's saved wallet up to 9999 for good; that save is dev data.
+at 0**; `shipping_values_check` fails `check.sh` while it's on. **The phone now runs a 9999-wallet
+build of `a03dcc3`** (also `aura.apk` on disk), and its save owns the slam and double jump.
 
 **The owner played the branch on the Mac (2026-10-03): everything works and feels good, except
 the white void below.** That covers desktop (B).
 
-**Phone, 2026-10-04: `a03dcc3` installed (a wallet-0 build), runs, owner says "all good". That is
-NOT test A.** The phone's save afterwards read `upgrades: {"jump": 4}`, `coin_wallet: 92`: no slam
-or double jump was bought, so neither air move was tapped. Read it with
-`adb exec-out run-as com.kiernan.aura cat files/save.dat`.
+**Phone test A, 2026-10-04: 6 of 8 PASS, driven by Claude over adb** (item-by-item in the list
+below). Method: `adb shell input tap` on each screen half (the real Android touch path, the one that
+shipped broken before), `screenrecord`, then OCR of the debug overlay's `velocity.y`/`is_on_floor`
+and coin counter per frame (macOS Vision via a throwaway Swift script). A double jump reads as
+velocity.y snapping back to ~-587 mid-air, a dive as a snap to ~+1280. Items 5 (chasm) and 8 (thin
+ice) were not reached: they need a tap timed to where a hazard is, which blind injection can't do.
+Their logic is `air_move_probe`'s (14/14, and `player.gd` is unchanged since).
+
+**One small bug found:** after buying in the shop from the death screen, Back shows the death
+screen's OLD wallet (10053 after spending 1,200). `death_stats_label` is written once, at death
+(`game_manager.gd:585`); the shop never refreshes it. Display only, the save is right.
 
 ### Next actions, in order
 
 1. **White void: FIXED and committed** (section directly below). Nothing owed.
-2. **Owner: phone tests (A) and playtest (C) below.** The 9999-coin APK is ready. Install it with
-   the phone on USB "Transferring files": `~/Library/Android/sdk/platform-tools/adb install -r aura.apk`.
+2. **Owner: playtest (C) below, on the phone.** Items A5/A8 by thumb if you meet them on the way.
 3. **Tune by feel.** The knobs are in "Where to tune". Any timing change must still pass
    `./scripts/check.sh`, whose fairness proofs fail any pattern under 7 frames of take-off window.
 4. **Merge to `main`** once happy: `git checkout main && git pull && git merge --ff-only
@@ -121,14 +126,15 @@ pass. That session's full log is the second entry of `docs/history.md`.
 install per `debugging.md`, "Android device testing". Needs coins (slam 300, double jump 900):
 the `aura.apk` on disk already has 9999. For a fresh export, set `GameManager.debug_start_wallet`
 (`game_manager.gd:58`) to 9999 locally, and set it back to 0 before any commit (`check.sh` fails while it's on).
-1. Buy both in the shop; each button shows OWNED and the wallet drops by the price.
-2. Jump, then tap the **right** half at the top: a second jump.
-3. Jump, then tap the **left** half at the top: a dive.
-4. Tap either half just before landing: a normal re-jump, never a dive or a second jump.
-5. Tap left over a chasm: nothing. Run off a lip, then tap right once you've dropped below it: nothing (you die).
-6. Hold through a jump: it still spins, and a flip after a double jump pays coins but no speed boost.
-7. Without the unlocks (reset progress), no tap in the air does anything new.
-8. Thin ice with either thumb: the hop rhythm is unchanged.
+Results 2026-10-04 (Claude over adb, see the top):
+1. Buy both in the shop; each button shows OWNED and the wallet drops by the price. **PASS**: 10053 → 9753 → 8853, save `slam:1, double_jump:1`.
+2. Jump, then tap the **right** half at the top: a second jump. **PASS**: -133 → -587 mid-air, ~0.5s more air.
+3. Jump, then tap the **left** half at the top: a dive. **PASS**: -160 → +1227, landed 3 samples later.
+4. Tap either half just before landing: a normal re-jump, never a dive or a second jump. **PASS, both halves**: one grounded frame, then -560. Earlier taps (~0.15s out) correctly moved.
+5. Tap left over a chasm: nothing. Run off a lip, then tap right once you've dropped below it: nothing (you die). **NOT RUN** on device.
+6. Hold through a jump: it still spins, and a flip after a double jump pays coins but no speed boost. **PASS**: spin visible; DJ flip paid +5 coins, speed stayed ~380 (a boost is 1000).
+7. Without the unlocks (reset progress), no tap in the air does anything new. **PASS** (tested before buying, both halves).
+8. Thin ice with either thumb: the hop rhythm is unchanged. **NOT RUN** on device.
 
 **B. Desktop. DONE by the owner on the Mac, 2026-10-03: everything works** (the one bug found is
 the white void, at the top). Kept for reference: set `GameManager.debug_unlock_air_moves = true` (`scripts/game/game_manager.gd:53`) to skip
