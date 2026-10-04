@@ -5,6 +5,38 @@ session ends, its `HANDOFF.md` section moves to the top of this file and `HANDOF
 the current state. **This is history, not a to-do list**: many entries are superseded, and some
 contradict the code. `CLAUDE.md` holds the current truth.
 
+## 2026-09-28/29 — audit finding 1 fixed (spike approach); `debug_start_wallet`
+
+Session on the Mac. The owner asked "read handoff.md and continue", then for free coins to test the
+shop ("start me off with max tokens"), then to wrap up. **Nothing was committed**; the working tree
+holds all of it (see `HANDOFF.md`'s top section for the file list and the commit steps).
+
+- **Finding 1.** The flat-ground fairness proof let through spikes placed just past a climb. A
+  terrain-aware run of the same model over accepted placements put it at ~1 in 5 spikes unbeatable
+  at jump level 0 or 1 (3 seeds), plus spike-first combos. The model was matched against the audit's
+  live harness at 9 positions and was never optimistic. Fix: the guard's APPROACH clause (2px,
+  over the weakest jump's reach), `floe_spike_shard`'s shard 1.0s → 1.1s, placement floors lowered to the
+  measured 0.32 / 0.04 / 0.01, and `check_placed_pattern_fairness()` in `terrain_invariant_check`
+  (mutation-tested three ways). A "flat band" guard was measured and ruled out (22% placement).
+  Everything measured, including the forward-search cost, is in `docs/research/spike_approach_fairness.md`.
+- **Throwaway tools, not kept:** a terrain-aware copy of the fairness model with sweep and candidate-guard
+  modes, and audit.md's live harness parameterised by `--seed/--x/--mult`. Both lived in the session
+  scratchpad. The model is now `get_pattern_takeoff_window(..., terrain, start_x)` in the gate itself.
+- **`GameManager.debug_start_wallet`**: tops the saved wallet up on every scene load (debug builds,
+  not headless), watched by `shipping_values_check`. Left ON at 9999 at session end for the owner's shop
+  tests, which blocks `check.sh` until it's reset.
+
+The HANDOFF section this session replaced, verbatim:
+
+> ## Audit follow-up — 2026-09-27
+>
+> Read **`audit.md` first**: the obstacle placement guard accepts a spike that the weakest jump
+> could not clear in the live timing sweep, despite the flat-ground fairness gate passing.
+> Resolve that finding before merging; the earlier green gates below do not cover it.
+> The small desktop S/right-click hold mismatch is fixed, with two new behavioral cases:
+> `air_move_probe` now expects **14/14**. The audit includes a self-contained fairness reproduction,
+> results, limits and next steps for Claude. The prior session details below remain historical.
+
 ## 2026-09-27 (late) — Mac review of steps 1–5; the air moves (steps 6–7); `air_move_probe`
 
 Session on the Mac, after the cloud session that built steps 1–5. The owner asked, in order:

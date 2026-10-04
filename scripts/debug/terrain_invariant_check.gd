@@ -132,11 +132,24 @@ const PATTERN_WINDOW_CAP_FRAMES: int = 60
 const BREATHING_ROOM_MARGIN: float = 0.3
 # A guard that rejects everything reads as an easy, empty game rather than a failure, so each
 # seed measures, per pattern, the share of attempts the game's own forward search places. Floors
-# by piece count, about half the worst seed measured 2026-09-27 (singles 0.90, pairs 0.24,
-# triples 0.13): combos are rare on this terrain by design and fall back to a single, so only a
-# collapse fails here.
+# by piece count, about half the worst seed measured: combos are rare on this terrain by design and
+# fall back to a single, so only a collapse fails here. 2026-09-28, after the spike APPROACH clause
+# (a combo's later spikes need flat-or-falling ground between pieces too): singles 0.64, pairs 0.087
+# (spike_spike), triples 0.023. Before it, 0.90 / 0.24 / 0.13, with ~1 in 5 spikes unbeatable.
 const PATTERN_FOOTPRINT_SAMPLE_STEP: float = 1000.0
-const PATTERN_FOOTPRINT_MIN_ACCEPTANCE: Array[float] = [0.45, 0.12, 0.06]
+const PATTERN_FOOTPRINT_MIN_ACCEPTANCE: Array[float] = [0.32, 0.04, 0.01]
+# check_placed_pattern_fairness(): one sampled nominal x per this many px, per pattern and speed,
+# each pattern starting a different fraction of a step in. Sized for check.sh's time (~1s a seed).
+# A deep run is `--placed-step=10000`: 2,383 placements over the 8 seeds, all fair (2026-09-28).
+const PLACED_FAIRNESS_SAMPLE_STEP: float = 40000.0
+# Known placements of a lone spike, both on seed 683407368 (the sweep's second seed). x=21060 is
+# audit.md's finding 1: a short flat between a valley's climb out and the next hill's climb, the
+# ground a level-0 jump leaves from 8-70px below the spike, 0/192 live level-0 survivors. x=72000 is
+# the control: a long flat segment, where the model must still see a fair window.
+const PLACED_FAIRNESS_CASES: Array[Dictionary] = [
+	{"seed": 683407368, "x": 21060.0, "fair": false},
+	{"seed": 683407368, "x": 72000.0, "fair": true},
+]
 # The shortest hop the weakest jump may make up the steepest terrain for thin ice to stay
 # crossable without the footprint's slope rule. Measured ~8 frames at 20.13 degrees.
 const THIN_ICE_MIN_HOP_FRAMES: int = 4
@@ -319,6 +332,7 @@ func check_session_seed(session_seed: int, start_world_x: float, end_world_x: fl
 	var coin_report: Dictionary = measure_coin_density(terrain_generator, coin_spawner, start_world_x, end_world_x)
 	var footprint_violations: Array[String] = measure_pattern_footprints(terrain_generator, session_seed, start_world_x, end_world_x,
 		float(report["worst_slope_angle"]))
+	footprint_violations.append_array(check_placed_pattern_fairness(terrain_generator, session_seed, start_world_x, end_world_x))
 	print_seed_report(session_seed, report, max_slope_angle)
 	print_chasm_report(session_seed, chasm_report)
 	var coin_violations: Array[String] = coin_report["violations"]
@@ -1335,9 +1349,11 @@ func check_spawn_lookahead() -> Array[String]:
 # at the slowest speed the pattern can meet and at MAX_SPEED. A HIGHER jump is not automatically
 # safer: it stays up longer, so it can carry the player into a piece a lower jump lands before.
 #
-# THE MODEL. Flat ground, which the footprint guard's slope rule approximates, and the player's
-# own 60 Hz integration order: the take-off frame already applies one frame of gravity, exactly
-# as player.gd does. The capsule is modelled as its bounding rect, which contains it, so a clean
+# THE MODEL. Flat ground here, which is what proves the TABLE; check_placed_pattern_fairness()
+# runs the same model on the real ground of placements the guard accepts, which is what proves
+# the GUARD (audit.md, finding 1: flat alone let through a spike no level-0 jump could clear).
+# The player's own 60 Hz integration order: the take-off frame already applies one frame of
+# gravity, exactly as player.gd does. The capsule is modelled as its bounding rect, which contains it, so a clean
 # rect is a clean capsule. The only input is WHEN to leave the ground, and a new jump can fire on
 # the first frame after a landing (the jump buffer).
 #
@@ -1393,12 +1409,17 @@ func check_pattern_fairness() -> Array[String]:
 
 # The tightest take-off window, in frames, the best line through this pattern needs at this
 # speed and jump strength. 0 means no line survives; PATTERN_WINDOW_CAP_FRAMES means none is tight
-# (or no jump is needed at all).
-func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multiplier: float) -> int:
+# (or no jump is needed at all). Flat ground by default; given a terrain, the pattern's first
+# piece sits at start_x on the real height field and every piece, stance and landing follows it.
+# A pass_mark > 0 only asks whether the window reaches it: pass_mark or 0, one pass of the search
+# instead of about eight.
+func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multiplier: float,
+		terrain: TerrainGenerator = null, start_x: float = 0.0, pass_mark: int = 0) -> int:
 	# Hazard rects in pattern space: x from the first piece, y = height above the ground. Thin
 	# ice is an x span instead, deadly only to standing on it too long.
 	var hazards: Array[Rect2] = []
 	var ice_spans: Array[Vector2] = []
+	var first_hazard_x: float = INF
 	var last_hazard_x: float = 0.0
 	for piece: Dictionary in pattern["pieces"]:
 		if piece["kind"] == ObstacleSpawner.PIECE_THIN_ICE:
@@ -1409,18 +1430,22 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 		var kind: Dictionary = ObstacleSpawner.PIECE_KINDS[piece["kind"]]
 		var half_width: float = float(kind["half_width"]) + FAIRNESS_HAZARD_MARGIN
 		var half_height: float = float(kind["half_height"]) + FAIRNESS_HAZARD_MARGIN
-		var center: Vector2 = Vector2(float(piece["at"]) * speed, float(kind["center_height"]))
+		var center_x: float = float(piece["at"]) * speed
+		var center: Vector2 = Vector2(center_x, get_ground_height(terrain, start_x, center_x) + float(kind["center_height"]))
 		hazards.append(Rect2(center.x - half_width, center.y - half_height, half_width * 2.0, half_height * 2.0))
 		last_hazard_x = maxf(last_hazard_x, center.x + half_width)
+		first_hazard_x = minf(first_hazard_x, center.x - half_width)
 
 	var frame_step: float = speed * FAIRNESS_FRAME_TIME
 	var first_x: float = -FAIRNESS_LEAD_SECONDS * speed
 	# Past the last frame the player's back edge has cleared every hazard; nothing can hit.
 	var frame_count: int = int(ceil((last_hazard_x + PLAYER_CAPSULE_RADIUS - first_x) / frame_step)) + 1
 
+	var ground: Array[float] = []
 	var grounded_safe: Array[bool] = []
 	for frame: int in range(frame_count):
-		grounded_safe.append(not does_player_hit(hazards, first_x + frame * frame_step, 0.0))
+		ground.append(get_ground_height(terrain, start_x, first_x + frame * frame_step))
+		grounded_safe.append(not does_player_hit(hazards, first_x + frame * frame_step, ground[frame]))
 
 	# One arc per take-off frame. landing == frame_count means it came down past everything.
 	var arc_clean: Array[bool] = []
@@ -1428,15 +1453,17 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 	var launch_speed: float = -Player.JUMP_VELOCITY * jump_multiplier
 	for takeoff: int in range(frame_count):
 		var vertical_speed: float = launch_speed
-		var height: float = 0.0
+		var height: float = ground[takeoff]
 		var frame: int = takeoff
 		var clean: bool = true
 		while frame < frame_count:
 			vertical_speed -= Player.GRAVITY * FAIRNESS_FRAME_TIME
 			height += vertical_speed * FAIRNESS_FRAME_TIME
-			if height <= 0.0:
+			if height <= ground[frame]:
 				break
-			if does_player_hit(hazards, first_x + frame * frame_step, height):
+			# Short-circuit first: most arc frames are nowhere near a piece.
+			if first_x + frame * frame_step + PLAYER_CAPSULE_RADIUS >= first_hazard_x \
+					and does_player_hit(hazards, first_x + frame * frame_step, height):
 				clean = false
 				break
 			frame += 1
@@ -1478,6 +1505,8 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 				end_frame = mini(end_frame, first_on_ice + ice_grace_frames)
 		walk_end[frame] = end_frame
 
+	if pass_mark > 0:
+		return pass_mark if is_pattern_survivable(pass_mark, frame_count, walk_end, arc_clean, landing) else 0
 	if not is_pattern_survivable(1, frame_count, walk_end, arc_clean, landing):
 		return 0
 	if is_pattern_survivable(PATTERN_WINDOW_CAP_FRAMES, frame_count, walk_end, arc_clean, landing):
@@ -1525,7 +1554,14 @@ func is_pattern_survivable(min_window: int, frame_count: int, walk_end: Array[in
 	return survivable[0]
 
 
-# The player's bounding rect, feet at feet_height above the ground, against every hazard rect.
+# Height of the ground above the first piece's base, pattern_x from it. 0 without a terrain.
+func get_ground_height(terrain: TerrainGenerator, start_x: float, pattern_x: float) -> float:
+	if terrain == null:
+		return 0.0
+	return terrain.get_surface_world_y(start_x) - terrain.get_surface_world_y(start_x + pattern_x)
+
+
+# The player's bounding rect, feet at feet_height above the pattern's base, against every hazard rect.
 func does_player_hit(hazards: Array[Rect2], player_x: float, feet_height: float) -> bool:
 	var body: Rect2 = Rect2(player_x - PLAYER_CAPSULE_RADIUS, feet_height,
 		PLAYER_CAPSULE_RADIUS * 2.0, PLAYER_CAPSULE_HALF_HEIGHT * 2.0)
@@ -1569,6 +1605,70 @@ func measure_pattern_footprints(terrain_generator: TerrainGenerator, session_see
 				pattern["id"], acceptance, floor_acceptance,
 			])
 	print(line, " status=", "PASS" if violations.is_empty() else "FAIL")
+	for violation: String in violations:
+		print("    ", violation)
+	return violations
+
+
+# THE GUARD'S HALF OF FAIRNESS. check_pattern_fairness() proves each pattern on flat ground;
+# this re-runs that proof on the REAL ground under placements ObstacleSpawner's own forward search
+# accepts, at every jump level +/- the powerup, at the slowest speed the pattern meets and at
+# MAX_SPEED. It is what catches a guard clause that lets through ground the flat proof does not
+# describe. Sampled, not exhaustive: the full model costs ~2ms per case.
+#
+# The model was checked against the live game on 2026-09-28 (the real Player, collision and
+# spawned spike, 48 tap timings per case): at the audit's position it predicts 0 frames at level 0
+# (live: 0/192 survived) and 25 at level 4 (live: 26/48), and it was never optimistic at six more
+# positions (docs/research/spike_approach_fairness.md). PLACED_FAIRNESS_CASES pins the audit's, plus
+# a positive control, so a model that stopped seeing the hole would fail here rather than pass.
+func check_placed_pattern_fairness(terrain_generator: TerrainGenerator, session_seed: int, start_world_x: float, end_world_x: float) -> Array[String]:
+	var violations: Array[String] = []
+	for known_case: Dictionary in PLACED_FAIRNESS_CASES:
+		if int(known_case["seed"]) != session_seed:
+			continue
+		var pattern: Dictionary = ObstacleSpawner.get_solo_pattern(ObstacleSpawner.PIECE_SPIKE)
+		for speed: float in [get_speed_at_time(ObstacleSpawner.FIRST_PATTERN_TIME), SpeedManager.MAX_SPEED]:
+			var legal: bool = ObstacleSpawner.is_footprint_legal(terrain_generator, pattern, float(known_case["x"]), speed)
+			var window: int = get_pattern_takeoff_window(pattern, speed, UpgradeStore.get_min_jump_multiplier(), terrain_generator, float(known_case["x"]))
+			var is_fair: bool = bool(known_case["fair"])
+			if legal != is_fair:
+				violations.append("PLACED_KNOWN_CASE seed=%d x=%.0f at %.1f px/s: the guard %s it, expected %s" % [
+					session_seed, float(known_case["x"]), speed, "accepts" if legal else "rejects", "accept" if is_fair else "reject"])
+			if (window >= PATTERN_MIN_WINDOW_FRAMES) != is_fair:
+				violations.append("PLACED_KNOWN_CASE seed=%d x=%.0f at %.1f px/s: the model gives level 0 %d frames, expected %s -- the model no longer matches the live game" % [
+					session_seed, float(known_case["x"]), speed, window, "a fair window" if is_fair else "an unfair one"])
+
+	var checked_count: int = 0
+	var sample_step: float = get_float_argument("--placed-step", PLACED_FAIRNESS_SAMPLE_STEP)
+	for pattern_index: int in range(ObstacleSpawner.PATTERNS.size()):
+		var pattern: Dictionary = ObstacleSpawner.PATTERNS[pattern_index]
+		var speeds: Array[float] = [SpeedManager.MAX_SPEED]
+		var slowest_speed: float = get_speed_at_time(float(ObstacleSpawner.TIERS[int(pattern["tier"]) - 1]["start"]))
+		if slowest_speed < SpeedManager.MAX_SPEED:
+			speeds.push_front(slowest_speed)
+		for speed: float in speeds:
+			var nominal_x: float = start_world_x + ObstacleSpawner.MIN_SAFE_START_WORLD_X \
+				+ sample_step * float(pattern_index) / float(ObstacleSpawner.PATTERNS.size())
+			while nominal_x < end_world_x - ObstacleSpawner.OBSTACLE_VOID_CLEARANCE_AHEAD:
+				var offset: float = ObstacleSpawner.find_legal_offset(terrain_generator, pattern, nominal_x, speed)
+				nominal_x += sample_step
+				if offset < 0.0:
+					continue
+				checked_count += 1
+				var start_x: float = nominal_x - sample_step + offset
+				for level: int in range(UpgradeStore.JUMP_MULTIPLIERS.size()):
+					for boost_multiplier: float in [1.0, PowerupManager.JUMP_BOOST_VELOCITY_MULTIPLIER]:
+						var jump_multiplier: float = UpgradeStore.JUMP_MULTIPLIERS[level] * boost_multiplier
+						if get_pattern_takeoff_window(pattern, speed, jump_multiplier, terrain_generator, start_x, PATTERN_MIN_WINDOW_FRAMES) > 0:
+							continue
+						var window: int = get_pattern_takeoff_window(pattern, speed, jump_multiplier, terrain_generator, start_x)
+						violations.append("PLACED_PATTERN_UNFAIR seed=%d %s x=%.0f level %d%s at %.1f px/s: %d frames < %d on the real ground -- %s" % [
+							session_seed, pattern["id"], start_x, level, " +boost" if boost_multiplier > 1.0 else "", speed,
+							window, PATTERN_MIN_WINDOW_FRAMES,
+							"no surviving input exists" if window == 0 else "the guard accepts ground the flat proof does not cover"])
+
+	print("TERRAIN_INVARIANT_PLACED_FAIRNESS seed=%d placements=%d min=%d" % [session_seed, checked_count, PATTERN_MIN_WINDOW_FRAMES],
+		" status=", "PASS" if violations.is_empty() else "FAIL")
 	for violation: String in violations:
 		print("    ", violation)
 	return violations

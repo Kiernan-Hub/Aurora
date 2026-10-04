@@ -51,6 +51,11 @@ var require_start_screen: bool = true
 # jump in apply_upgrades() (a play session only; headless still skips). A plain var, not
 # @export, like require_start_screen; shipping_values_check fails the build if it is left true.
 var debug_unlock_air_moves: bool = false
+# TEMP knob for testing the shop without earning coins: above 0, every scene load (launch or
+# restart) tops the SAVED wallet up to this many, so a purchase still visibly drops it. Buying
+# everything costs 2,330. Debug builds only, never headless; shipping_values_check fails the build
+# if it is left above 0.
+var debug_start_wallet: int = 0
 
 var player: Player
 var main: Main
@@ -176,6 +181,7 @@ func _ready() -> void:
 	# in main.tscn so its _ready() has already run, and upgrade_jump_multiplier is only
 	# read inside _physics_process, which cannot start until every _ready() completes.
 	apply_upgrades()
+	apply_debug_start_wallet()
 
 	# require_start_screen=false is the harness opt-out, and it has to skip straight to
 	# PLAYING rather than sitting on START -- see the comment on that var. A quick
@@ -712,6 +718,18 @@ func apply_upgrades() -> void:
 	player.upgrade_jump_multiplier = UpgradeStore.get_jump_multiplier(jump_level)
 	player.has_slam = debug_unlock_air_moves or services.upgrades.get_level(UpgradeStore.SLAM_UPGRADE_ID) > 0
 	player.has_double_jump = debug_unlock_air_moves or services.upgrades.get_level(UpgradeStore.DOUBLE_JUMP_UPGRADE_ID) > 0
+
+
+# See debug_start_wallet. Headless is skipped for apply_upgrades()'s reason: a probe must never
+# write the developer's own save.dat.
+func apply_debug_start_wallet() -> void:
+	if debug_start_wallet <= 0 or services == null or not OS.is_debug_build():
+		return
+	if DisplayServer.get_name() == "headless":
+		return
+	if services.save_store.coin_wallet < debug_start_wallet:
+		services.save_store.coin_wallet = debug_start_wallet
+		services.save_store.save_to_disk()
 
 
 func _on_shop_pressed() -> void:

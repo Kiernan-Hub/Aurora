@@ -36,6 +36,15 @@ const OBSTACLE_MAX_SLOPE_ANGLE: float = deg_to_rad(6.0)
 # How finely the footprint guard walks a pattern's span for slope and lake. Half a hitbox,
 # so no piece can sit on a sample-free stretch.
 const FOOTPRINT_SAMPLE_STEP: float = 16.0
+# How far the ground a spike is jumped FROM may sit below the spike's own base (see the APPROACH
+# clause on is_footprint_legal). The weakest jump clears a spike by 14px at its apex, and the
+# lone spike at 20s already sits exactly on the 7-frame fairness bar on flat ground, so there is
+# almost nothing to give: 4px left a spike under 7 frames at 523 px/s, 2px left none (3 seeds,
+# 2026-09-28; docs/research/spike_approach_fairness.md).
+const SPIKE_APPROACH_DROP_TOLERANCE: float = 2.0
+# Twice the footprint's step: the approach is ~360px long, this guard can run 13 times in one frame,
+# and between samples this far apart the terrain's curvature hides a dip of ~0.5px at most.
+const SPIKE_APPROACH_SAMPLE_STEP: float = 32.0
 # Chasm exclusion around a pattern's span. AHEAD covers the longest jump a player can take off
 # the last piece: max upgrade with the sqrt(2) jump powerup, 1.13s of airtime, 848px at
 # MAX_SPEED, plus margin. It was 700 until 2026-09-27, which covered only the unboosted 600px,
@@ -158,7 +167,9 @@ const FIRST_APPEARANCE_EXTRA_ROOM: float = 1.5
 # WHAT ARRIVES TOGETHER. A pattern is a few pieces timed in SECONDS from the first, placed
 # at the current speed. On flat ground a jump's height over time does not depend on speed, so
 # terrain_invariant_check's check_pattern_fairness() can prove every row beatable at every jump
-# level from this table alone -- a new row is only legal once it passes there.
+# level from this table alone -- a new row is only legal once it passes there. That proves the
+# TABLE; the real ground is is_footprint_legal()'s job, which check_placed_pattern_fairness()
+# holds it to.
 #
 # The multi-obstacle "clusters" this replaces (1-5 boxes with a tight/wide gap) were cut in
 # favour of frequent singles, because they were spaced in pixels and nothing proved them
@@ -184,7 +195,9 @@ const PATTERNS: Array[Dictionary] = [
 	# Skip off the ice, then jump.
 	{"id": &"ice_spike", "tier": 4, "weight": 1, "pieces": [{"kind": PIECE_THIN_ICE, "at": 0.0, "length": 0.5}, {"kind": PIECE_SPIKE, "at": 0.8}]},
 	{"id": &"spike_floe_spike", "tier": 5, "weight": 1, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}, {"kind": PIECE_FLOE, "at": 0.5}, {"kind": PIECE_SPIKE, "at": 1.0}]},
-	{"id": &"floe_spike_shard", "tier": 5, "weight": 1, "pieces": [{"kind": PIECE_FLOE, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.5}, {"kind": PIECE_SHARD, "at": 1.0}]},
+	# The shard at 1.1s, not 1.0s: at 1.0s a level-2 jump with the powerup, carried from the spike
+	# into the shard, had exactly the 7-frame bar on flat ground and 6 on real ground 1.6px off level.
+	{"id": &"floe_spike_shard", "tier": 5, "weight": 1, "pieces": [{"kind": PIECE_FLOE, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.5}, {"kind": PIECE_SHARD, "at": 1.1}]},
 ]
 
 const HASH_MASK: int = 0x7fffffff
@@ -448,6 +461,15 @@ static func get_pattern_span(pattern: Dictionary, start_x: float, speed: float) 
 #     is unavoidable death. The lake is far longer than any span, so the samples cannot miss it.
 #   * GROUND over the whole span. A piece within one jump reach BEFORE a chasm's near lip is
 #     unavoidable death: clearing it commits the player to a landing in the void.
+#   * APPROACH, before every spike. The one piece that MUST be jumped is jumped from ground
+#     BEFORE it, which the slope clause never looked at. A spike on a short flat at the top of
+#     a climb is effectively as much taller as the take-off ground sits lower, and the weakest
+#     jump has 14px to spare: seed 683407368's spike at x=21060 passed every other clause and no
+#     level-0 or level-1 jump could clear it (audit.md, finding 1). So over the weakest jump's
+#     whole reach before each spike, the ground may not sit more than
+#     SPIKE_APPROACH_DROP_TOLERANCE below the spike's base. Ground ABOVE it only helps the jump.
+#     terrain_invariant_check re-runs the fairness proof on the real ground of accepted
+#     placements to hold this clause to it.
 #   * AURORA, over the whole span. Its flat is a protected passage. spawn_obstacle() and
 #     spawn_thin_ice() check again, so the rule holds for callers that bypass this guard.
 static func is_footprint_legal(terrain: TerrainGenerator, pattern: Dictionary, start_x: float, speed: float) -> bool:
@@ -456,7 +478,10 @@ static func is_footprint_legal(terrain: TerrainGenerator, pattern: Dictionary, s
 		return false
 	if not terrain.has_ground_over_world_x_span(span.x - OBSTACLE_VOID_CLEARANCE_BEHIND, span.y + OBSTACLE_VOID_CLEARANCE_AHEAD):
 		return false
-	return not terrain.overlaps_aurora_flat(span.x - AuroraDirector.BODY_CLEARANCE, span.y + AuroraDirector.BODY_CLEARANCE)
+	if terrain.overlaps_aurora_flat(span.x - AuroraDirector.BODY_CLEARANCE, span.y + AuroraDirector.BODY_CLEARANCE):
+		return false
+	# Last: it samples the most ground, and this whole guard runs up to 13 times in one frame.
+	return is_spike_approach_clear(terrain, pattern, start_x, speed)
 
 
 # Walks [from_x, to_x] every FOOTPRINT_SAMPLE_STEP: never the lake, and within
@@ -471,6 +496,24 @@ static func is_span_clear(terrain: TerrainGenerator, from_x: float, to_x: float,
 		if sample_x >= to_x:
 			return true
 		sample_x = minf(sample_x + FOOTPRINT_SAMPLE_STEP, to_x)
+	return true
+
+
+# The APPROACH clause. The reach is the weakest jump's flat airtime at this speed: no jump that
+# clears the spike leaves from further back, and every stronger jump can leave from the same
+# ground, rising higher at every instant. World y grows downward, so "lower" is a larger y.
+static func is_spike_approach_clear(terrain: TerrainGenerator, pattern: Dictionary, start_x: float, speed: float) -> bool:
+	var reach: float = 2.0 * -Player.JUMP_VELOCITY * UpgradeStore.get_min_jump_multiplier() / Player.GRAVITY * speed
+	for piece: Dictionary in pattern["pieces"]:
+		if piece["kind"] != PIECE_SPIKE:
+			continue
+		var spike_x: float = start_x + float(piece["at"]) * speed
+		var lowest_allowed_y: float = terrain.get_surface_world_y(spike_x) + SPIKE_APPROACH_DROP_TOLERANCE
+		var sample_x: float = spike_x - reach
+		while sample_x < spike_x:
+			if terrain.get_surface_world_y(sample_x) > lowest_allowed_y:
+				return false
+			sample_x += SPIKE_APPROACH_SAMPLE_STEP
 	return true
 
 

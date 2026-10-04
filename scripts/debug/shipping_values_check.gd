@@ -130,6 +130,8 @@ func check_flag_defaults() -> void:
 	expect_bool("GameManager.require_start_screen", game_manager.require_start_screen, true)
 	# Left true, every player owns both air moves without buying them, and the shop sells nothing.
 	expect_bool("GameManager.debug_unlock_air_moves", game_manager.debug_unlock_air_moves, false)
+	# Left above 0, every player's wallet refills on every restart and the shop costs nothing.
+	expect_int("GameManager.debug_start_wallet", game_manager.debug_start_wallet, 0)
 	game_manager.free()
 
 	expect_float("BiomeDirector.BIOME_DISTANCE", BiomeDirector.BIOME_DISTANCE, 75000.0)

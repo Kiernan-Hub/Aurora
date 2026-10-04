@@ -1,6 +1,7 @@
 # Obstacle branch audit — 2026-09-27
 
-**For Claude: fix finding 1 before merging. Finding 2 is fixed in the commit adding this entry.**
+**Both findings are FIXED.** Finding 1 on 2026-09-28 (`docs/research/spike_approach_fairness.md`);
+finding 2 in the commit adding this entry.
 The older September 24 audit remains below as historical context; its branch table is not current.
 
 Reviewed `4f4c2c5..8fdbfab` (latest session) and `main..8fdbfab` (whole obstacle branch),
@@ -9,7 +10,18 @@ Branch: `claude/implementation-t58fc3`. The separate `cbabd0f` log-path fix arri
 original audit and was preserved. The owner subsequently authorized this write-up, straightforward
 fixes, a commit and a push to this branch. No merge was requested.
 
-## 1. P1 — OPEN: the placement guard accepts an unfair spike
+## 1. P1 — FIXED 2026-09-28: the placement guard accepts an unfair spike
+
+**Resolution.** Confirmed and larger than one position: a terrain-aware run of the fairness model
+over accepted placements found ~1 in 5 spikes unbeatable at jump level 0 or 1 (3 seeds), and the
+model matched this reproduction at 9 positions (never optimistic). Fixed with a guard clause, per
+"Next work": over the weakest jump's reach before each spike, no ground more than 2px below its
+base. Backed by a gate, not a lowered threshold: `check_placed_pattern_fairness()` re-runs the proof
+on the real ground of accepted placements (every level ± powerup, both speeds, combos included)
+and pins this position as a regression, with a positive control. Placement rates were measured and
+their floors moved (combos are now rarer). The claims in HANDOFF/CLAUDE were narrowed to "flat
+proof for the table, real-ground check for the guard". Full log in the research doc above. The
+original finding follows unchanged.
 
 References: `scripts/systems/obstacle_spawner.gd:453–459` (footprint guard),
 `:464–473` (slope sampling), `scripts/debug/terrain_invariant_check.gd:1338–1342`

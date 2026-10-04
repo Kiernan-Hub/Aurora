@@ -1,46 +1,116 @@
 # Handoff
 
-## Audit follow-up — 2026-09-27
+## Where the project is — 2026-10-03. READ THIS FIRST
 
-Read **`audit.md` first**: the obstacle placement guard accepts a spike that the weakest jump
-could not clear in the live timing sweep, despite the flat-ground fairness gate passing.
-Resolve that finding before merging; the earlier green gates below do not cover it.
-The small desktop S/right-click hold mismatch is fixed, with two new behavioral cases:
-`air_move_probe` now expects **14/14**. The audit includes a self-contained fairness reproduction,
-results, limits and next steps for Claude. The prior session details below remain historical.
+**Everything is committed and pushed** on `claude/implementation-t58fc3` (still not merged to
+`main`). The 2026-09-29 work went in as one commit: `audit.md` finding 1 fixed (details below) and
+the new `GameManager.debug_start_wallet` (`game_manager.gd:58`), which refills the saved wallet to
+that many coins on every launch and restart (debug builds only, never headless). **It is committed
+at 0**; `shipping_values_check` fails `check.sh` while it's on. `aura.apk` on disk was built with it
+at 9999, so that build already has coins. It was never installed.
 
-## Where the project is — 2026-09-27, end of session. READ THIS FIRST
+**The owner played the branch on the Mac (2026-10-03): everything works and feels good, except
+the white void below.** That covers desktop (B). The phone tests (A) are still owed.
+
+### Next actions, in order
+
+1. **IMPORTANT: fix the white void under a high jump or glide.** Owner-reported; section directly below.
+2. **Owner: phone tests (A) and playtest (C) below.** Install the APK with the phone on USB
+   "Transferring files": `~/Library/Android/sdk/platform-tools/adb install -r aura.apk`.
+3. **Tune by feel.** The knobs are in "Where to tune". Any timing change must still pass
+   `./scripts/check.sh`, whose fairness proofs fail any pattern under 7 frames of take-off window.
+4. **Merge to `main`** once happy: `git checkout main && git pull && git merge --ff-only
+   origin/claude/implementation-t58fc3 && git push`, or ask Claude to open a PR. **The switch must be 0.**
+5. **Step 8, art** (owner): "Remaining plan" below.
+6. After opening the editor, always run `git status`. It re-saves `HANDOFF.md` with tabs (whitespace
+   only: `git checkout -- HANDOFF.md`) and may strip `project.godot`'s pins (standing rule in
+   `CLAUDE.md`). It happened again before this session; restored, `check.sh` green.
+
+### The white void below a high jump or glide (IMPORTANT, owner-reported 2026-10-03)
+
+**What it looks like:** jump high (a double jump) or glide, and the whole lower half of the screen
+is one flat pale colour. The background ice ends partway down, and the terrain has dropped to the
+bottom edge (owner's screenshot: player mid-flip at half height, ground only in the bottom-left corner).
+
+**Cause** (read from the code, not measured). The camera follows the player up: `main.gd`
+`get_vertical_camera_target()` holds a ±72px dead zone, then follows, and a glide follows 1:1. Every
+background layer is screen-locked vertically (`motion_scale.y = 0`, a hard rule). The panorama
+(`IceStrip`, `background_strip.gd`) is placed by screen fraction and simply ends below its waterline
+(`horizon_y_fraction` 0.55). Below it there is nothing but the `SkyBackdrop` colour, because in
+ordinary play the terrain covers that part of the screen. Climb far enough and the terrain slides
+down and uncovers it. **The double jump made this common:** a single jump peaks at 128px
+(640² / 2·1600), a double at ~256px, and ~512px with the jump powerup. Before, only a glide got
+that high, and the birds were the patch for it (`visuals.md`, "Birds").
+
+**Recommended fix (low risk, visual only):** paint the screen-locked backdrop all the way to the
+bottom edge. Add a distant ice-plain layer below the panorama's bottom edge, under
+`ParallaxBackground` and behind the terrain: a biome-tinted gradient, optionally a faint
+horizontal-streak texture scrolling at `IceStrip`'s x rate. In ordinary play the terrain covers it,
+so normal frames don't change; it shows only in exactly this moment. There is no camera, physics or
+terrain change, so no gameplay gate is affected. The costs:
+- one node (maybe one texture);
+- one colour the `BiomeDirector` sets per biome. Derive it from an existing palette colour before
+  adding a palette field;
+- the three visual gates (`sky_layer_check`, `ice_look_capture`, `biome_contact_sheet`), run windowed.
+
+Also check it against the lake and Aurora reflections, which are full-screen too.
+
+**Flagged alternatives** (more bug surface, not recommended):
+- **Cap the camera's climb** so the ground stays in frame and the player rises toward the top
+  instead. That touches the camera follow, so `camera_shake_probe` needs a re-run, and a high glide
+  or a powered double jump could leave the top of the screen.
+- **Zoom out with altitude**, Alto's style. Zoom is field of view on this game. It moves the
+  forward offset and collides with the Aurora zoom. Worst, objects spawned at the forward edge could
+  pop in on screen (`check_spawn_lookahead()`). This has the most moving parts.
+- **Vertical parallax** is banned (`dead_code.md`). Don't.
+
+### Audit finding 1, fixed 2026-09-28
+
+Both `audit.md` findings are closed; nothing now blocks the merge except the owner's own tests
+below. Full log: `docs/research/spike_approach_fairness.md`.
+
+- **What was wrong, and how big.** The fairness proof is on flat ground, and the guard never looked
+  at the ground a spike is jumped from. A spike on a short level stretch at the top of a climb is
+  effectively taller by however far the take-off ground sits below it. Measured over 3 seeds:
+  **~1 in 5 accepted spikes was unbeatable at jump level 0 or 1**, and so were 4–22% of spike-first
+  combos. This existed on `main` too.
+- **The fix, `obstacle_spawner.gd`:** a fourth guard clause, APPROACH. Over the weakest jump's reach
+  before each spike (its airtime × speed, 360px at 750), no ground more than **2px** below the
+  spike's base. Ground above it is fine. Plus one retime: `floe_spike_shard`'s shard 1.0s → **1.1s**,
+  which had zero slack on flat and lost a frame on real ground.
+- **The proof, `terrain_invariant_check.gd`:** the same fairness model now takes the real height field.
+  `check_placed_pattern_fairness()` runs it, per seed, on placements the game's own forward search
+  accepts: every level ± powerup, at the pattern's slowest speed and at 750. It also pins the audit's
+  position (must be rejected, model must see 0 frames) and a flat control. A deep run
+  (`--placed-step=10000`) found 2,383 placements over 8 seeds, all ≥ 7 frames. It's mutation-tested three ways.
+- **The model was checked against the live game** at 9 spots (real Player, audit harness): every
+  predicted 0 died live (0 of 192), and every live window was ≥ the model's.
+- **What it costs you:** combos are rarer, because a combo's later spikes now need flat-or-falling
+  ground between pieces too. Per attempt: spike 0.90 → ~0.67, pairs 0.24–0.35 → 0.09–0.25, triples
+  0.13–0.20 → 0.02–0.07. A failed combo still falls back to its first piece, so density mostly
+  holds; tiers 4–5 show fewer combos. If that feels thin, raise combo `weight`s in `PATTERNS`
+  (no code). `check.sh` takes ~70s now (was ~55s).
+- **Flagged, not fixed:** the forward search was already several ms at worst for combos before this
+  (it re-walks the whole span for every 50px offset), and is now ~1.5× that. It's a candidate for the
+  phone's unexplained late frames. Unmeasured on the device.
+
+Finding 2 (desktop S/right-click holds) was fixed in `88dc175`: `air_move_probe` 14/14.
+
+## The obstacle branch, as of 2026-09-27 (still current)
 
 **Obstacle plan steps 1–7 are BUILT, gated and pushed** on branch `claude/implementation-t58fc3`,
 **not merged to `main`**. Steps 1–5 (camera, pattern scheduler, floe/shard, thin ice, tiers) came
 from a cloud session. Steps 6–7 (slam, double jump) and a review of 1–5 were done on the Mac.
 Every gate is green on the Mac. **Nothing has been seen on the phone or checked by eye**; the
 complete list of what the owner still has to test is directly below. Step 8 is the owner's art
-pass. The full log of this session is the top entry of `docs/history.md`.
-
-### Next actions, in order
-
-0. **Claude, first: fix `audit.md` finding 1 (P1) before any merge.** A spike on the far side of a
-climb can be unbeatable at jump level 0. Only the spike's own 32px is slope-checked, not the ground a
-jump leaves from. Re-verified on the Mac 2026-09-28 with the audit's embedded reproduction: `LEGAL=true`,
-0/192 level-0 survivors at 750 px/s, max-level control 26/48. The old single-obstacle rule on `main`
-also checked only the obstacle's own x, so the hole probably predates this branch; the branch's
-"proven fair" claim makes it matter now. The audit's "Next work" paragraph says what a fix must not do.
-Finding 2 (desktop S/right-click holds) is fixed in `88dc175` and re-verified: `air_move_probe`
-14/14, `check.sh` 5/5.
-1. **Owner: sections A–C below** (phone, desktop, playtest).
-2. **Tune by feel.** The knobs are in "Where to tune". Any timing change must still pass
-`./scripts/check.sh`, whose fairness proof fails any pattern under 7 frames of take-off window.
-3. **Merge to `main`** once happy: `git checkout main && git pull && git merge --ff-only
-origin/claude/implementation-t58fc3 && git push`, or ask Claude to open a PR.
-4. **Step 8, art** (owner): "Remaining plan" below.
-5. After opening the editor, always run `git status`. It re-saves `HANDOFF.md` with tabs (whitespace
-only: `git checkout -- HANDOFF.md`) and may strip `project.godot`'s pins (standing rule in `CLAUDE.md`).
+pass. That session's full log is the second entry of `docs/history.md`.
 
 ### Owner: every test nobody has done yet (the complete list)
 
 **A. Phone, mandatory.** The touch path has shipped broken twice, and no gate can see it. Export and
-install per `debugging.md`, "Android device testing". Needs coins (slam 300, double jump 900).
+install per `debugging.md`, "Android device testing". Needs coins (slam 300, double jump 900):
+the `aura.apk` on disk already has 9999. For a fresh export, set `GameManager.debug_start_wallet`
+(`game_manager.gd:58`) to 9999 locally, and set it back to 0 before any commit (`check.sh` fails while it's on).
 1. Buy both in the shop; each button shows OWNED and the wallet drops by the price.
 2. Jump, then tap the **right** half at the top: a second jump.
 3. Jump, then tap the **left** half at the top: a dive.
@@ -50,7 +120,8 @@ install per `debugging.md`, "Android device testing". Needs coins (slam 300, dou
 7. Without the unlocks (reset progress), no tap in the air does anything new.
 8. Thin ice with either thumb: the hop rhythm is unchanged.
 
-**B. Desktop.** Set `GameManager.debug_unlock_air_moves = true` (`scripts/game/game_manager.gd:53`) to skip
+**B. Desktop. DONE by the owner on the Mac, 2026-10-03: everything works** (the one bug found is
+the white void, at the top). Kept for reference: set `GameManager.debug_unlock_air_moves = true` (`scripts/game/game_manager.gd:53`) to skip
 buying, and set it back before committing (`shipping_values_check` fails while it's on).
 1. Space or left click in the air = second jump; **S or right click** in the air = dive. The key and
 mouse bindings (`InputSetup`) have never been pressed by anyone; probes press the action directly.
@@ -59,6 +130,8 @@ button; the purchase path (`_on_buy_pressed`, bound per row) is code-reviewed on
 
 **C. Play the obstacle half** (phone and desktop):
 1. **Density.** Is 1:00–2:30 now too busy, at ~2.5× the old count? Does 5:00+ get properly hard?
+   Since the 2026-09-28 fix, combos are rarer (see the top): do tiers 4–5 still feel like new ideas?
+   Spikes now sit only on flats or at the foot of a descent, never just past a climb: repetitive?
 2. **Readability at 750 px/s:** floe and shard against scenery, thin ice as "keep hopping", and the
 combos (e.g. spike→floe 0.5s, which needs an early jump).
 3. **Thin ice grace:** is 0.2s right on touch?
@@ -243,7 +316,7 @@ that part is the owner's.
 | 2 | 1:00 | `floe`, `shard` (w1 each) | 6s |
 | 3 | 1:45 | `ice_short` 0.3s (w2), `ice_long` 1.2s (w1) | 5s |
 | 4 | 2:30 | pairs: `spike_floe`, `spike_shard`, `floe_spike`, `shard_spike` (0.5s apart), `spike_spike` (0.7s), `ice_spike` | 4s |
-| 5 | 3:30 | triples: `spike_floe_spike`, `floe_spike_shard` (1.0s) | 3.5s |
+| 5 | 3:30 | triples: `spike_floe_spike` (1.0s), `floe_spike_shard` (1.1s) | 3.5s |
 | 6 | 5:00 | — | 3.5s shrinking 0.25s/min to the **2.5s floor** (~9:00) |
 
 - **Each attempt**: draw a pattern for the current tier. A kind not yet seen this run is swapped for
@@ -254,10 +327,12 @@ that part is the owner's.
 - **Footprint guard** (`is_footprint_legal`, static): ≤6° across the whole span (**except
   thin-ice-only patterns**), not on the lake, ground over `[start − 200, end + 950]`, off the Aurora
   flat. 950 = the boosted max jump's 848px + margin (it was 700: a late boosted jump could land in a chasm).
+  **Approach** (2026-09-28): over the weakest jump's reach before each spike, no ground >2px below its base.
 - **Measured in the live game** (7 min, 2 seeds, unkillable player): patterns per minute **2, 8, 11,
   12–15, 14–15, 14–15, 16**. That's ~51 in the first 5 min, vs **18–25** before this work: the old code
   silently dropped ~60% of slots. By minute 7 one starts every ~4s; **~12% arrive as combos**. Per
-  attempt: singles place ~90%, thin ice ~96%, pairs 24–35%, triples 13–20%.
+  attempt: singles place ~90%, thin ice ~96%, pairs 24–35%, triples 13–20%. **All measured before the
+  approach clause**: spikes now place ~67%, pairs 9–25%, triples 2–7%, so fewer combos. Not re-measured live.
 
 ### New checks (all in `check.sh` via `terrain_invariant_check`, all mutation-tested; see `debugging.md`)
 - **`check_pattern_fairness()`**: every pattern simulated at 60 Hz on flat ground, **5 jump levels ×
@@ -265,8 +340,10 @@ that part is the owner's.
   asserts a surviving line exists and its tightest take-off window is **≥ 7 frames**
   (`PATTERN_MIN_WINDOW_FRAMES`). The lone spike measures 7: 8.57 continuous, the old "~8.6 frames".
   It also asserts both breathing-room floors outlast the longest jump (1.13s) + 0.3s.
+- **`check_placed_pattern_fairness()`** (per seed, 2026-09-28): the same model on the **real ground** of
+  sampled placements the forward search accepts. It's what proves the guard; the flat proof only proves the table.
 - **Per seed**: each pattern's placement rate through the game's own `find_legal_offset()` (floors
-  0.45 / 0.12 / 0.06 for 1 / 2 / 3 pieces), plus **`weakest_hop`**: the weakest jump's airtime up the
+  0.32 / 0.04 / 0.01 for 1 / 2 / 3 pieces since the approach clause; were 0.45 / 0.12 / 0.06), plus **`weakest_hop`**: the weakest jump's airtime up the
   steepest measured slope must be ≥ 4 frames (it is 8.2 at 20.13°). That is what makes thin ice's
   slope exemption safe.
 - **`check_spawn_placement()`** places **every** kind and checks its height above the surface, that its real
@@ -323,7 +400,7 @@ Merged into "Owner: every test nobody has done yet" at the top (section C).
 ## How to run things
 
 - **Fast gates, before every commit:** `./scripts/check.sh` (Mac path built in; elsewhere
-  `GODOT=/path/to/Godot ./scripts/check.sh`). ~50s.
+  `GODOT=/path/to/Godot ./scripts/check.sh`). ~70s.
 - **Slow gates in seconds:** put **`--fixed-fps 60` before `--path`** and they run uncapped with
   identical results (verified on `aurora_calm_probe`: same assertions, same final positions, 15s instead
   of ~12min). Exact commands per gate are in `debugging.md`. Gates for the next steps: `check.sh`,
@@ -402,7 +479,11 @@ except after a double jump; the air moves split left (slam) / right (double jump
   `get_body_bounds()` knows it, and invisible to `lake_suppression_probe` unless `is_spawned_item()` knows
   it. Both know `ThinIce`; a new shapeless kind must be added to both.
 - **Long combos starve on this terrain.** The per-seed placement floors fail a pattern the search can
-  rarely place. Keep combos short or accept the fallback rate.
+  rarely place. Keep combos short or accept the fallback rate. Every extra spike in a combo also needs
+  flat-or-falling ground before it (the approach clause), which is why spike-heavy combos are the rarest.
+- **The flat proof proves the table, not the guard.** Any change that lets the guard accept more ground
+  (slope limit, approach tolerance, a new exemption) must pass `check_placed_pattern_fairness()`; the
+  flat proof can't see it. Don't lower `PATTERN_MIN_WINDOW_FRAMES` to make that check pass.
 - **Thin ice's slope exemption depends on `weakest_hop`.** Lowering the weakest jump multiplier or
   steepening terrain fails it; then restore the slope rule for thin ice.
 - **Two spikes closer than ~0.6s are unbeatable at some jump level** (0.3s = 0 frames): a higher jump

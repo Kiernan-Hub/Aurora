@@ -392,14 +392,28 @@ It also asserts the minimum gap between patterns outlasts the longest jump (1.13
 
 Per seed, `PATTERN_FOOTPRINT` reports the share of attempts each pattern places, measured through
 `ObstacleSpawner.find_legal_offset()` itself, forward search included. The floors are set by piece
-count (0.45 / 0.12 / 0.06, about half the worst seed), because combos are rare on this terrain by
+count (0.32 / 0.04 / 0.01, about half the worst seed), because combos are rare on this terrain by
 design and fall back to a single. Only a collapse fails.
 
-Baseline: `spike window=7 frames (level 0 at 522.7 px/s)`, every combo 9 except
-`floe_spike_shard` 7. Placement per attempt: singles ~0.90, ice ~0.96, pairs 0.24–0.35, triples 0.13–0.20. The
+Baseline: `spike window=7 frames (level 0 at 522.7 px/s)`, every combo 9 (`floe_spike_shard` too
+since its shard moved to 1.1s). Placement per attempt since the approach clause (2026-09-28): spike
+~0.64–0.71, floe/shard ~0.91, ice ~0.96, pairs 0.087–0.25, triples 0.023–0.067. The
 spike's 7 is 8.57 continuous, which is the "~8.6 frames" `upgrade_store.gd` always quoted.
 Mutation-tested: spikes 0.3 s apart ⇒ `window 0 … no surviving input exists`; interval floor 4 → 1 ⇒
 `PATTERN_BREATHING_ROOM`; spikes 1.6 s apart ⇒ `PATTERN_FOOTPRINT_STARVED` at 0.013.
+
+**`check_placed_pattern_fairness()` (per seed, 2026-09-28)** runs the same model on the **real height
+field**: every piece sits at its own surface height, and stance and landing follow the ground. The
+placements are the ones the game's forward search accepts, sampled every `PLACED_FAIRNESS_SAMPLE_STEP`
+(40,000px) per pattern and speed, at every level ± powerup, and each must reach 7 frames. The flat
+proof covers the table; this covers the guard. It also pins `PLACED_FAIRNESS_CASES`: the audit's
+spike (seed 683407368, x=21060) must be rejected *and* modelled unfair, and a flat control must be
+accepted and fair. It prints `TERRAIN_INVARIANT_PLACED_FAIRNESS seed=… placements=~80`. For a deep run
+add `--placed-step=10000`: ~300 placements a seed, 2,383 over the 8, all fair (~4 min). Checked
+against the live game at 9 positions: never optimistic (`research/spike_approach_fairness.md`).
+Mutation-tested: clause disabled ⇒ `PLACED_PATTERN_UNFAIR spike … 0 frames … no surviving input exists`;
+model blind to terrain ⇒ `PLACED_KNOWN_CASE … the model no longer matches the live game`; tolerance
+2 → 12px ⇒ `PLACED_PATTERN_UNFAIR … 4 frames`.
 
 Thin ice joins the model as x spans. A player *landing* on frame f may stay grounded on it for 12
 frames, and the 13th cracks. The runtime `ThinIce` was checked to crack on exactly that frame.
