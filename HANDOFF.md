@@ -31,11 +31,21 @@ moved to the top of `docs/history.md`.
   actions 2), and archiving the older audits at the bottom of `audit.md` (code comments still cite
   "audit.md, finding 1"). A13 needs no action.
 
+**On the phone now (end of session, 2026-10-04 ~23:51):** this branch's HEAD as a debug build,
+installed over the old one with the save kept (all three upgrades owned, wallet ~10,400). Built with
+`debug_start_wallet` 9999 for the export only; the source is back at 0. The same APK is `aura.apk`
+on disk. **The owner said "all good", but the save showed only ~27 s of new playtime banked**
+(1716.7 → 1743.6 s), so **playtest C is still effectively open**: it needs runs past 1:00, 2:30
+and 5:00. The phone's USB-debugging permission had dropped once this session; if `adb devices`
+says `unauthorized`, tap Allow on the phone.
+
 ### Next actions, in order
 
-1. **Owner: playtest (C) below, on the phone.** Also re-check that buying from the death screen
-   then Back shows the new wallet. Items A5/A8 by thumb if you meet them.
-2. **One phone run with logcat** (`adb logcat -s godot | grep OBSTACLE_SEARCH`, `debugging.md`,
+1. **Owner: playtest (C) below, on the phone**, with runs long enough to reach tiers 4–6 (2:30
+   and 5:00+). Items A5/A8 by thumb if you meet them. The death-screen wallet fix (A2) can't be
+   re-checked by buying: everything is owned, and Reset Progress would wipe the lake progress and
+   achievement. `regression_probe`'s `death_stats` covers it instead.
+2. **Read logcat during that run** (`adb logcat -s godot | grep OBSTACLE_SEARCH`, `debugging.md`,
    "Android device testing"): it says whether the obstacle search causes the late frames (A3).
 3. **Tune by feel.** The knobs are in "Where to tune". Any timing change must still pass
    `./scripts/check.sh`, whose fairness proofs fail any pattern under 7 frames of take-off window.

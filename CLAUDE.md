@@ -122,6 +122,7 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
 - **The autoload *node* exists under `--headless --script`** though the global `Services` identifier
   doesn't. `GameManager.apply_upgrades()` must skip headless, or gates measure whatever jump level
   is in *your* `save.dat` (48/48 → 8 failures). Check `DisplayServer`, never `services.is_headless`.
+- **A `--script` that fails to parse exits 0, and a script load cycle leaves a scene script-less with no error** (naming `Player` in `coin.gd` did it, 2026-10-04): `check.sh` fails on `Parse Error`; a hand-run gate does not, so read its output.
 
 ## Known issues
 

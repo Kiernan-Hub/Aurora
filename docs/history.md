@@ -11,8 +11,10 @@ Sessions on the Mac. The owner reported the white void below a high jump (2026-1
 with a streaked ice plain behind the panorama and approved in game. Phone test A ran over adb:
 6 of 8 passed, and the one bug found (stale death-screen wallet) was fixed in the audit pass. A
 ChatGPT audit (`audit.md`, 19 items) was then worked through, one commit per item: 17 closed,
-A3 left at measurement (no phone attached), A9 and the old root-audit archive left for the owner.
-The current state of all of it is `HANDOFF.md`'s top section.
+A3 left at measurement (no phone attached at the time), and the old root-audit archive left in
+place. At the end the branch's HEAD went onto the phone (debug build, save kept); the owner said
+"all good" after ~27 s of banked play, so playtest C stays open. The current state of all of it is
+`HANDOFF.md`'s top section.
 
 The HANDOFF sections this session replaced, verbatim:
 
