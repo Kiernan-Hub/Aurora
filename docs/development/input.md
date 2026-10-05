@@ -40,7 +40,10 @@ A buffered tap becomes an air move only when all of these hold:
 - **The landing-window rule:** `will_buffered_jump_fire()` is false. A tap that will still be
   live on the frame after touchdown is left alone and becomes the ordinary landing jump. That
   keeps thin ice's skip rhythm and every fairness proof unchanged. Landing is predicted by
-  integrating the airborne model forward over the pure height field (`get_landing_frame`).
+  integrating the airborne model forward over the pure height field (`get_landing_frame`), and
+  judged **one frame early**: the rounded capsule meets a slope up to a frame before its centre
+  does, and judged on time an owned move stole real landing jumps (audit A14, fixed 2026-10-04).
+  So owning a move never changes what a tap in the landing window does.
 - the move's own guard. The slam's: its simulated dive has ground **all the way** down, so a
   dive over a void, or one that would cross a near lip, is refused. It's also refused when you're
   already falling faster than the dive, since it would slow you. The double jump's: the feet are

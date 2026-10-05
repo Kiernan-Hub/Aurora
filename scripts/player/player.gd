@@ -339,11 +339,20 @@ func can_use_air_move() -> bool:
 		and not is_glide_active and not is_aurora_flight_active and not is_aurora_flight_landing
 
 
-# The landing-window rule: will this buffered tap still be live on the frame after touchdown,
-# where the ordinary jump branch fires it? Every frame from here spends delta of the buffer.
+# The landing-window rule: will this buffered tap still be live when the ordinary jump branch
+# fires it, on the frame after touchdown? This frame's delta is already spent, so a touchdown on
+# frame N (this one is 1) leaves jump_buffer_timer - N * delta on that next frame.
+#
+# N is taken ONE FRAME EARLIER than predicted. The prediction follows a point under the capsule's
+# centre, but the rounded capsule meets a slope first, so real contact can come a frame sooner
+# (air_move_probe's landing_model: always within one frame). Judged on the predicted frame plus
+# one, as this used to be, a tap that is a landing jump without the moves became an air move
+# with them, up to two frames from touchdown (audit.md A14, air_move_probe's landing_edge).
+# Judged early, a tap in that window is left alone and does exactly what it does for a player
+# who owns neither: a landing jump, or nothing if the buffer runs out first.
 func will_buffered_jump_fire(delta: float) -> bool:
 	var landing_frame: int = get_landing_frame(velocity.y, INF, ceili(jump_buffer_timer / delta), false, delta)
-	return landing_frame >= 0 and jump_buffer_timer - float(landing_frame + 1) * delta > 0.0
+	return landing_frame >= 0 and jump_buffer_timer - float(landing_frame - 1) * delta > 0.0
 
 
 # The slam, if owned and unused this airtime, and only if its dive comes down on ground ALL THE

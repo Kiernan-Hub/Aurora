@@ -20,9 +20,17 @@ extends SceneTree
 #                     the same launch without a glide dies; a spike still kills a glider.
 #   shop_rows         the shop builds one label + button per UpgradeStore.TRACKS row.
 #   held_controls     either desktop action held from take-off spins and supplies glide thrust.
+#   landing_edge      at 750 px/s on real hills, every tap in the frames before touchdown has the
+#                     same outcome with either move owned as with neither: owning a move never
+#                     turns a landing jump into an air move (audit.md A14, which was this exact spot).
+#   landing_model     the landing prediction against real touchdowns, 100 spots x 3 jump strengths:
+#                     always within one frame. will_buffered_jump_fire() relies on the EARLY side
+#                     (touchdown never 2+ frames before the prediction): the rounded capsule meets
+#                     a slope before its centre does. Late touchdowns (collision follows straight
+#                     chords, which sit below the height field on a crest) cannot cause a steal.
 #
-# Every case runs on the first chasm's lead-in, which is flat, at a pinned 400 px/s so a double
-# jump's ~1.35s arc still lands on it. Probes get no upgrades (GameManager.apply_upgrades() skips
+# Every case but the last two runs on the first chasm's lead-in, which is flat, at a pinned
+# 400 px/s so a double jump's ~1.35s arc still lands on it. Probes get no upgrades (GameManager.apply_upgrades() skips
 # headless), so each case sets has_slam / has_double_jump itself.
 #
 # Usage (uncapped, same results as real time -- debugging.md):
@@ -34,6 +42,11 @@ const PINNED_SPEED: float = 400.0
 # Start of each case, back from the first chasm's near lip; the lead-in is 900px long.
 const START_BEFORE_LIP: float = 880.0
 const MID_ARC_TAP_FRAME: int = 20
+# The landing cases' hilly stretch: the audit's reproduction spot, then every 317px from it.
+const HILLS_START_X: float = 20000.0
+const HILLS_STEP_X: float = 317.0
+const HILLS_SPOTS: int = 100
+const JUMP_STRENGTHS: Array[float] = [0.6, 1.0, 1.41421356]
 
 var main: Node
 var player: Player
@@ -76,7 +89,7 @@ func _init() -> void:
 	expect("slam_unowned", slam_unowned == plain, "airtime %d vs plain %d" % [slam_unowned, plain])
 
 	for is_slam_side: bool in [true, false]:
-		var window: Dictionary = await landing_window(start_x, plain - 4, is_slam_side)
+		var window: Dictionary = await tap_run(start_x, PINNED_SPEED, plain - 4, true, true, is_slam_side)
 		expect("landing_window", not window["moved"] and window["jumps"] == 2,
 			"%s side: air move=%s jumps=%d" % ["slam" if is_slam_side else "jump", window["moved"], window["jumps"]])
 
@@ -99,6 +112,8 @@ func _init() -> void:
 	await glide_floating(start_x)
 	shop_rows()
 	await held_controls(start_x)
+	await landing_edge()
+	await landing_model()
 
 	print("AIR_MOVE_PROBE_RESULT cases=%d failures=%d status=%s" % [cases, failures, "PASS" if failures == 0 else "FAIL"])
 	quit(0 if failures == 0 else 1)
@@ -122,7 +137,7 @@ func find_first_hazard_void() -> Dictionary:
 
 # Same re-seat as chasm_probe.reset_player(), including the chunk rebuild a backward warp needs,
 # and clearing every piece of per-airtime and input state a previous case could leave behind.
-func warp(world_x: float, owns_slam: bool, owns_double_jump: bool) -> void:
+func warp(world_x: float, owns_slam: bool, owns_double_jump: bool, speed: float = PINNED_SPEED) -> void:
 	game_manager.set_state(GameManager.State.PLAYING)
 	player.is_dead = false
 	player.end_boost()
@@ -140,7 +155,7 @@ func warp(world_x: float, owns_slam: bool, owns_double_jump: bool) -> void:
 	player.has_slam = owns_slam
 	player.has_double_jump = owns_double_jump
 	player.speed_manager.elapsed_time = SpeedManager.PHASE1_DURATION + 1.0
-	player.speed_manager.current_speed = PINNED_SPEED
+	player.speed_manager.current_speed = speed
 	player.global_position = Vector2(world_x, terrain_generator.get_surface_world_y(world_x) - player.capsule_half_height)
 	for chunk_index: int in terrain_generator.active_chunks.keys():
 		terrain_generator.remove_chunk(chunk_index)
@@ -151,10 +166,10 @@ func warp(world_x: float, owns_slam: bool, owns_double_jump: bool) -> void:
 	obstacle_spawner.active_obstacles.clear()
 
 
-func settle() -> void:
+func settle(speed: float = PINNED_SPEED) -> void:
 	for frame: int in range(10):
 		await physics_frame
-	player.speed_manager.current_speed = PINNED_SPEED
+	player.speed_manager.current_speed = speed
 
 
 # Frames from take-off to touchdown, with optional taps (frame numbers after take-off).
@@ -172,24 +187,101 @@ func airtime(start_x: float, owns_slam: bool, owns_double_jump: bool, tap_frame:
 	return frames
 
 
-func landing_window(start_x: float, tap_frame: int, is_slam_side: bool) -> Dictionary:
-	warp(start_x, true, true)
-	await settle()
+# A jump, then a second tap tap_frame frames after take-off. "moved" is whether the FIRST airtime
+# used an air move; "jumps" counts every jumped emit, so a landing jump makes it 2. Not keyed on
+# jump_count alone: a double jump emits jumped too.
+func tap_run(world_x: float, speed: float, tap_frame: int, owns_slam: bool, owns_double_jump: bool, is_slam_side: bool) -> Dictionary:
+	warp(world_x, owns_slam, owns_double_jump, speed)
+	await settle(speed)
 	jump_count = 0
 	player.buffer_jump()
 	await physics_frame
 	var moved: bool = false
-	var has_landed: bool = false
-	for frames: int in range(1, 120):
+	var airtime: int = -1
+	for frames: int in range(1, 200):
 		if frames == tap_frame:
 			player.buffer_jump(is_slam_side)
 		await physics_frame
-		# Only the FIRST airtime counts. Not keyed on jump_count: a double jump emits jumped too,
-		# which would end the check the moment the thing it looks for happened.
-		if not has_landed:
+		if airtime < 0:
 			moved = moved or player.is_slamming or player.has_double_jumped
-			has_landed = player.is_on_floor()
-	return {"moved": moved, "jumps": jump_count}
+			if player.is_on_floor():
+				airtime = frames
+		elif frames > airtime + 3:
+			break
+	return {"moved": moved, "jumps": jump_count, "airtime": airtime}
+
+
+# Every tap from 12 frames before touchdown to touchdown, at the audit's spot and speed: whatever
+# the tap does with neither move owned (a landing jump, or nothing once the buffer runs out), it
+# must do the same with either one owned. 12 frames back reaches past the 7.2-frame buffer, so
+# the sweep also has to see the owned moves fire there, or it never crossed the boundary.
+func landing_edge() -> void:
+	var speed: float = SpeedManager.MAX_SPEED
+	var plain: Dictionary = await tap_run(HILLS_START_X, speed, -1, false, false, false)
+	var landing: int = int(plain["airtime"])
+	var stolen: Array[String] = []
+	var landing_jumps: int = 0
+	var early_moves: int = 0
+	for tap_frame: int in range(landing - 12, landing + 1):
+		var unowned: Dictionary = await tap_run(HILLS_START_X, speed, tap_frame, false, false, false)
+		var is_landing_jump: bool = unowned["jumps"] == 2
+		if is_landing_jump:
+			landing_jumps += 1
+		for owns_slam: bool in [true, false]:
+			var owned: Dictionary = await tap_run(HILLS_START_X, speed, tap_frame, owns_slam, not owns_slam, owns_slam)
+			if is_landing_jump and (owned["moved"] or owned["jumps"] != 2):
+				stolen.append("%s@%d" % ["slam" if owns_slam else "double", tap_frame])
+			if tap_frame == landing - 12 and owned["moved"]:
+				early_moves += 1
+	expect("landing_edge", stolen.is_empty() and landing_jumps > 0 and early_moves == 2,
+		"touchdown at %d; landing jumps unowned %d/13; stolen %s; moves 12 frames out %d/2" % [
+			landing, landing_jumps, stolen, early_moves])
+
+
+func landing_model() -> void:
+	var speed: float = SpeedManager.MAX_SPEED
+	var delta: float = 1.0 / float(Engine.physics_ticks_per_second)
+	var samples: int = 0
+	var one_early: int = 0
+	var one_late: int = 0
+	var wrong: Array[String] = []
+	for spot: int in range(HILLS_SPOTS):
+		var world_x: float = HILLS_START_X + HILLS_STEP_X * float(spot)
+		if not has_ground_through(world_x, world_x + speed * 2.0):
+			continue
+		for strength: float in JUMP_STRENGTHS:
+			warp(world_x, false, false, speed)
+			player.upgrade_jump_multiplier = strength
+			await settle(speed)
+			player.buffer_jump()
+			await physics_frame
+			var predictions: Array[int] = []
+			while not player.is_on_floor() and predictions.size() < 200:
+				predictions.append(player.get_landing_frame(player.velocity.y, INF, 200, false, delta))
+				await physics_frame
+			var touchdown: int = predictions.size()
+			for sample: int in range(touchdown):
+				var actual: int = touchdown - sample
+				samples += 1
+				if actual == predictions[sample] - 1:
+					one_early += 1
+				elif actual == predictions[sample] + 1:
+					one_late += 1
+				elif actual != predictions[sample]:
+					wrong.append("x=%.0f j=%.2f predicted %d actual %d" % [world_x, strength, predictions[sample], actual])
+	player.upgrade_jump_multiplier = 1.0
+	expect("landing_model", wrong.is_empty() and samples > 3000,
+		"%d samples: touchdown 1 frame early %d, 1 late %d, further off %d %s" % [
+			samples, one_early, one_late, wrong.size(), wrong.slice(0, 3)])
+
+
+func has_ground_through(from_x: float, to_x: float) -> bool:
+	var x: float = from_x
+	while x <= to_x:
+		if not terrain_generator.has_ground_at_world_x(x):
+			return false
+		x += 16.0
+	return true
 
 
 func slam_over_void() -> Dictionary:

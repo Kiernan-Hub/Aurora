@@ -518,7 +518,9 @@ feature failures — the `camera_shake.md` lesson again: measure the quantity th
 **Air-move probe** (`scripts/debug/air_move_probe.gd`, 2026-09-27) — the behavioural gate for
 the slam and double jump away from voids (`chasm_probe` covers them at voids). It runs on the real
 Player in the real scene, on the first hazard chasm's flat lead-in at a pinned 400 px/s, in about
-**1 second** uncapped. Fourteen asserting cases, each documented in the file's header: the slam
+**8 seconds** uncapped. Sixteen asserting cases, each documented in the file's header. The two
+newest run on real hills at 750 px/s: `landing_edge` (an owned move never replaces a landing jump)
+and `landing_model` (the landing prediction is within one frame of real touchdown). The slam
 fires, is a no-op unowned, and never starts over a void; the double jump fires and fires once;
 a tap in the landing window is the ordinary jump on either side; a tap on a move you don't own does
 nothing; a flip after a double jump pays coins but no boost (plus a control that a plain one still

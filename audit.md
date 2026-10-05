@@ -46,7 +46,7 @@ established P0/P1 blocker. Each item below states what evidence exists and what 
 - [x] **A11 / P2:** Protect source-art exclusion in the export gate. *(Mutation in a disposable copy not re-run.)*
 - [ ] **A12 / P3:** Give historical artifacts a clear retention/indexing policy.
 - [ ] **A13 / P3:** Keep future extractions small and tied to an actual maintenance need.
-- [ ] **A14 / P2:** Preserve buffered landing jumps when air upgrades are owned.
+- [x] **A14 / P2:** Preserve buffered landing jumps when air upgrades are owned. *(Landing window judged one frame early; `landing_edge` + `landing_model` in `air_move_probe`.)*
 - [x] **A15 / P2:** Stop late pickup callbacks from changing an already-finalized run.
 - [x] **A16 / P2:** Make physics gates fail on detected failures/incomplete runs. *(Also: `check.sh` now fails a gate whose script doesn't parse/load. Godot exits 0 then.)*
 - [x] **A17 / P3:** Reject non-finite/out-of-range save numbers field by field.
