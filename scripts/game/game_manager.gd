@@ -385,14 +385,11 @@ func set_state(new_state: State) -> void:
 	# GameServices.set_music_volume.
 	if previous_state == State.PAUSED and new_state != State.PAUSED and services != null:
 		services.save_settings()
-	# Leaving PLAYING is the only moment this run's seconds stop accruing, so it is the
-	# only place they can be captured without polling. Covers pause, Home, quick restart
-	# and -- because the Android focus-out handler below routes through set_state -- the
-	# app being backgrounded, which is the case a death-only hook silently loses.
-	#
-	# Returns false on the death path, because _on_player_died() has already banked and
-	# let record_run's single existing write carry the total. So death still costs exactly
-	# one disk write, not two.
+	# Leaving PLAYING is the one moment this run's seconds stop accruing, so they are banked
+	# here: pause (and so Home and Restart, reachable only from PAUSED or DEAD) and the Android
+	# focus-out handler, which routes through set_state -- the backgrounded-app case a death-only
+	# hook loses. On death bank_playtime() returns false: _on_player_died() already banked, and
+	# record_run's one write carries it.
 	if previous_state == State.PLAYING and new_state != State.PLAYING:
 		if bank_playtime() and services != null:
 			services.save_store.save_to_disk()
@@ -412,13 +409,8 @@ func set_state(new_state: State) -> void:
 func bank_playtime() -> bool:
 	if services == null or main == null:
 		return false
-	# Skipped in headless for the same reason apply_upgrades() is, and it is not an
-	# optimisation. The autoload NODE exists under --headless --script, so a probe would
-	# otherwise bank its own runtime into the developer's real save.dat -- a 60,000-frame
-	# freeze run is 1,000 seconds, which would hand out frozen lakes that no amount of
-	# playing earned and move the schedule out from under every later measurement.
-	# Reading DisplayServer directly, never services.is_headless, which is assigned in
-	# GameServices._ready() and can still be false here (CLAUDE.md records this twice).
+	# Never in headless, for apply_upgrades()'s reason: a 60,000-frame probe would otherwise bank
+	# 1,000s into the developer's save.dat and hand out lakes nobody earned.
 	if DisplayServer.get_name() == "headless":
 		return false
 	var unbanked_seconds: float = main.elapsed_time - banked_run_seconds
@@ -689,27 +681,14 @@ func update_coin_label() -> void:
 	coin_label.text = "Coins: %d   x%.1f" % [coin_count, combo_multiplier]
 
 
-# The SINGLE choke point where a purchased stat reaches gameplay. Nothing else in the
-# project may write player.upgrade_jump_multiplier -- a second writer is how the powerup
-# and the upgrade would start clobbering each other.
+# The SINGLE choke point where a purchased stat reaches gameplay. Nothing else may write
+# player.upgrade_jump_multiplier, or the powerup and the upgrade start clobbering each other.
 #
-# HEADLESS IS EXCLUDED, AND THAT IS LOAD-BEARING, NOT AN OPTIMISATION. The autoload NODE
-# does exist in a `--headless --script` probe (only the global `Services` IDENTIFIER is
-# missing there), so resolve() succeeds and this function runs. Ungated, every physics
-# gate silently measures whatever jump level is in the DEVELOPER'S OWN save.dat --
-# machine-dependent, and drifting every time they buy an upgrade in a real session.
-#
-# Measured 2026-08-04: ungated, chasm_probe went 48/48 -> 8 failures. A probe that has
-# never played is level 0 (x0.60), and the 280px void stops being clearable on an early
-# jump. Gates must measure the design baseline (x1.00), which is upgrade_jump_multiplier's
-# own default -- so skipping is exactly right, and doing it here rather than as a
-# per-probe opt-out flag means a NEW probe cannot forget it.
-#
-# The check is LOCAL rather than `services.is_headless`, and that distinction cost a
-# debugging cycle: is_headless is assigned in GameServices._ready(), which a harness has
-# not necessarily run by the time GameManager._ready() gets here -- it read false in the
-# probe and the gate stayed broken. Same trap CLAUDE.md records for the audio path.
-# Reading DisplayServer directly has no initialisation order at all.
+# HEADLESS IS EXCLUDED, AND THAT IS LOAD-BEARING. The autoload node exists in a
+# `--headless --script` probe, so ungated, every physics gate measures the jump level in the
+# DEVELOPER'S OWN save.dat (chasm_probe went 48/48 -> 8 failures, 2026-08-04). Gates must measure
+# the x1.00 default, and gating here means a new probe cannot forget it. DisplayServer, never
+# services.is_headless: GameServices._ready() may not have assigned it yet.
 func apply_upgrades() -> void:
 	if services == null or player == null:
 		return
