@@ -26,29 +26,53 @@ nothing is damaged). `check.sh` passes `--log-file` itself since then, and passe
 The alternative is letting the agent write to `~/Library/Application Support/Godot` (its sandbox
 settings). The flag is the smaller change and works for any runner.
 
-## The fast five: `./scripts/check.sh`
+## The fast six: `./scripts/check.sh`
 
-One command, ~70s, the tier to run before every commit:
+One command, ~75s, the tier to run before every commit:
 
 ```bash
 ./scripts/check.sh          # quiet on PASS, full gate output on FAIL, exits non-zero
+./scripts/check.sh --full   # then every asserting physics gate, with --fixed-fps 60 (~3 min)
 ./scripts/check.sh -v       # print every gate's output either way
 GODOT=/path/to/Godot ./scripts/check.sh
 ```
 
 It runs `shipping_values_check`, `biome_schedule_check`, `terrain_invariant_check`
 (`--seeds=8 --to=300000`, not tunable — a shortened run FAILs meaninglessly),
-`lake_suppression_probe`, and the export-content check below. It runs **all five even
-after one fails**, so a red run still gives you the whole picture. Mutation-tested
-2026-08-25 by flipping `debug_chasm_disabled`: `shipping_values` and `terrain_invariant`
-both caught it and the runner exited 1.
+`lake_suppression_probe`, `regression_probe`, and the export-content check below. It runs
+**every gate even after one fails**, so a red run still gives you the whole picture.
+Mutation-tested 2026-08-25 by flipping `debug_chasm_disabled`: `shipping_values` and
+`terrain_invariant` both caught it and the runner exited 1.
+
+**Two runner rules, both 2026-10-04.** Each gate has a time limit (`GATE_TIME_LIMIT`, 900s), so
+a harness left paused fails instead of hanging the runner. And a gate whose script does not
+parse or load FAILS: Godot itself exits 0 then, so before this rule a broken gate read as PASS.
+
+**`--full`** then runs `air_move_probe`, `aurora_calm_probe`, `chasm_probe`, `freeze_search`
+three times (plain, `--slam=1`, `--double=1`), `floor_flicker_probe` and `freeze_replay_runner`,
+with the arguments in this file's sections below. `camera_shake_probe` stays manual: it only
+prints metrics.
+
+### `regression_probe` — save, shop, death screen, touch, reload
+
+Seven cases, each a bug that shipped or was reproduced once (2026-09-20 audit, `audit.md` A1, A2,
+A15, A17): a purchase whose save fails rolls back; the loader rejects INF/out-of-range/negative
+counts and wrong-typed containers field by field; one lifted finger keeps the glide hold; the
+death screen follows a shop purchase and a reset; a coin touched in the death step counts only if
+it came first; Home and Restart from PAUSED bank the biome phase. ~3s. **It swaps an in-memory
+`SaveStore` into the `Services` autoload before the scene exists**, so it never reads the
+developer's save for a verdict and never writes it — copy that pattern for any new test that
+buys, resets or leaves PLAYING. Mutation-tested: dropping the death-screen refresh or the reload's
+phase banking fails exactly the matching case.
 
 ### `export_content` — what actually reaches a device
 
-The fifth entry is not a Godot gate. It exports a pack headless
-(`--export-pack Android`, ~2s) into a temp dir and fails if any of four paths survived
+The last entry is not a Godot gate. It exports a pack headless
+(`--export-pack Android`, ~2s) into a temp dir and fails if any of five paths survived
 `export_presets.cfg`'s `exclude_filter`: `scripts/debug`, `scripts/experiments`,
-`scenes/experiments`, `assets/textures/experiments`. Without the filter that is 636 KB of
+`scenes/experiments`, `assets/textures/experiments`, and `art_source`. That last one is kept out
+by `art_source/.gdignore`, not the preset, so the check also fails if that file is missing:
+without it ~96 MiB of source art imports and ships (a 7 MB pack measured at 67 MB, audit A11). Without the filter that is 636 KB of
 probes and 3.8 MB of experiment textures on a player's phone. It reports the pack's
 resource count on PASS (136 today) and deletes the pack either way.
 
@@ -238,9 +262,9 @@ the tell: if a camera measurement looks inflated, check `scroll_rate_x` against 
 ## Archived probes are NOT gates — and most of them no longer run
 
 **They live in `scripts/debug/archive/` as of 2026-08-15.** `scripts/debug/` holds exactly the
-**fourteen maintained** checks plus one diagnostic, `ice_seam_probe.gd`, and nothing else — so
+**fifteen maintained** checks plus one diagnostic, `ice_seam_probe.gd`, and nothing else — so
 "is this thing a gate?" is answered by which directory it is in rather than by checking a list.
-The fourteen: the fast four in `check.sh`; `freeze_search`, `freeze_replay_runner`,
+The fifteen: the fast five in `check.sh`; `freeze_search`, `freeze_replay_runner`,
 `floor_flicker_probe`, `chasm_probe`, `air_move_probe` and `aurora_calm_probe`, which exit
 non-zero on failure; `camera_shake_probe`, which only prints metrics; and the three rendered
 captures.
@@ -250,7 +274,7 @@ captures.
 `obstacle_spawner.gd`, `powerup_spawner.gd` and several research docs. Those were left as
 written — none of them is a path, they are prose naming a measurement's source, and rewriting
 28 comment lines across gameplay files to add a directory earns nothing. **A bare probe
-filename in a comment means `scripts/debug/archive/<name>`** unless it is one of the fifteen.
+filename in a comment means `scripts/debug/archive/<name>`** unless it is one of the sixteen.
 
 Everything in `archive/` is a one-off from a closed investigation, kept for its measurements and
 its comments. **Audited 2026-08-03, and most of them silently lie now:**

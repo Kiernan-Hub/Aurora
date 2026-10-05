@@ -27,17 +27,18 @@ gates (below).
 ## Checks
 
 ```bash
-./scripts/check.sh          # the fast five, ~70s — run before every commit
+./scripts/check.sh          # the fast six, ~75s — run before every commit
+./scripts/check.sh --full   # plus every asserting physics gate, ~3 min
 ./scripts/check.sh -v       # same, but print every gate's output
 ```
 
-Fourteen maintained checks exist in three tiers, plus one diagnostic (`ice_seam_probe`) —
+Fifteen maintained checks exist in three tiers, plus one diagnostic (`ice_seam_probe`) —
 everything else lives in `scripts/debug/archive/`, so the directory answers "is this a gate?".
 
 | Tier | What | When |
 |---|---|---|
-| **fast** | the five in `check.sh` | before every commit |
-| **physics** | freeze-search, freeze-replay, floor-flicker, chasm, camera-shake, `air_move_probe`, `aurora_calm_probe` | after any player, collision, segment or air-move change; the Aurora probe after Aurora/lake changes. Fast with `--fixed-fps 60` |
+| **fast** | the six in `check.sh` | before every commit |
+| **physics** | `check.sh --full`: freeze-search (plain, slam, double), freeze-replay, floor-flicker, chasm, `air_move_probe`, `aurora_calm_probe`. Camera-shake by hand (metrics only) | after any player, collision, segment or air-move change; the Aurora probe after Aurora/lake changes |
 | **visual** | `sky_layer_check`, `ice_look_capture`, `biome_contact_sheet` | after any visual change — **must run WITHOUT `--headless`** |
 
 The visual three can never join a headless runner: `BiomeDirector` returns early under

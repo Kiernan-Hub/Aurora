@@ -115,8 +115,12 @@ func load_from_disk() -> void:
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return
+	load_from_data(parsed as Dictionary)
 
-	var data: Dictionary = parsed as Dictionary
+
+# Separate from the file read so regression_probe can test the field validation without
+# touching user://.
+func load_from_data(data: Dictionary) -> void:
 	var version: int = _read_count(data, "version")
 
 	# v0 -> v1: the pre-versioning file carried best_score and nothing else. Every

@@ -581,7 +581,7 @@ func _on_player_died() -> void:
 func refresh_death_stats() -> void:
 	var best_score: int = 0
 	var wallet: int = 0
-	if services != null and DisplayServer.get_name() != "headless":
+	if services != null:
 		best_score = services.save_store.best_score
 		wallet = services.save_store.coin_wallet
 	# A reset since death zeroes the best, and "Best: 0 (New Best!)" would contradict itself.

@@ -157,12 +157,17 @@ var ice_variant_count: int = 0
 var rendered_depth_far: float = 0.0
 var rendered_depth_near: float = 1.0
 var rendered_depth_source: String = "authored endpoints (scene not read)"
+# The coin sprite's mean opaque colour, read from the real coin.tscn. coin.gd MULTIPLIES the
+# biome's coin_color over that sprite, so the drawn coin is this times coin_color -- something the
+# raw palette colour cannot see (a darker or swapped sprite). Alpha 0 means the read failed.
+var coin_sprite_mean: Color = Color(0.0, 0.0, 0.0, 0.0)
 
 
 func _init() -> void:
 	var schedule_steps: int = get_int_argument("--steps", DEFAULT_SCHEDULE_STEPS)
 
 	read_rendered_depth_range()
+	read_coin_sprite_mean()
 	check_palettes()
 	if ice_variant_count < MIN_ICE_VARIANTS:
 		failures.append("no palette resolved an ice_texture (expected at least %d) -- every pattern variant is missing, so the whole cycle silently fell back to the smooth tile"
@@ -491,6 +496,16 @@ func check_gameplay_contrast(label: String, palette: BiomePalette) -> void:
 				failures.append("%s.%s is only %.3f from %s (< %.3f) -- it harmonises with the biome instead of reading against it, and this is one of the two colours a player has to read at 750 px/s"
 					% [label, gameplay_field, contrast, background_field, MIN_GAMEPLAY_CONTRAST])
 
+	# The same floor for the coin as actually drawn: sprite times tint (audit.md A6). Measured
+	# 2026-10-04: lowest 0.64, starlit_night's coin against its horizon.
+	if coin_sprite_mean.a > 0.0:
+		var drawn_coin: Color = coin_sprite_mean * palette.coin_color
+		for background_field: String in backgrounds:
+			var drawn_contrast: float = get_color_distance(drawn_coin, palette.get(background_field) as Color)
+			if drawn_contrast < MIN_GAMEPLAY_CONTRAST:
+				failures.append("%s: the DRAWN coin (sprite x coin_color) is only %.3f from %s (< %.3f) -- the palette colour passes, but the sprite it multiplies has made the coin hard to read"
+					% [label, drawn_contrast, background_field, MIN_GAMEPLAY_CONTRAST])
+
 	var coin: Color = palette.coin_color
 	if coin.r - coin.b < MIN_COIN_RED_OVER_BLUE or coin.g <= coin.b:
 		failures.append("%s.coin_color (%.2f, %.2f, %.2f) has stopped reading as warm gold -- a biome may shift the coin, never recolour it"
@@ -500,6 +515,30 @@ func check_gameplay_contrast(label: String, palette: BiomePalette) -> void:
 	if obstacle.r - maxf(obstacle.g, obstacle.b) < MIN_OBSTACLE_RED_DOMINANCE:
 		failures.append("%s.obstacle_color (%.2f, %.2f, %.2f) has stopped reading as the danger colour -- red must dominate in every biome"
 			% [label, obstacle.r, obstacle.g, obstacle.b])
+
+
+# Alpha-weighted mean of the coin sprite's mostly-opaque texels, from the Visual node the game
+# actually tints. A failed read is a failure, not a skipped check.
+func read_coin_sprite_mean() -> void:
+	var coin: Node = (load("res://scenes/pickups/coin.tscn") as PackedScene).instantiate()
+	var visual: Sprite2D = coin.get_node_or_null("Visual") as Sprite2D
+	var image: Image = visual.texture.get_image() if visual != null and visual.texture != null else null
+	coin.free()
+	if image == null:
+		failures.append("coin.tscn has no readable Visual sprite -- the drawn-coin contrast cannot be measured")
+		return
+	if image.is_compressed():
+		image.decompress()
+	var total: Color = Color(0.0, 0.0, 0.0, 0.0)
+	for y: int in range(image.get_height()):
+		for x: int in range(image.get_width()):
+			var texel: Color = image.get_pixel(x, y)
+			if texel.a >= 0.5:
+				total += Color(texel.r * texel.a, texel.g * texel.a, texel.b * texel.a, texel.a)
+	if total.a <= 0.0:
+		failures.append("the coin sprite has no opaque pixels")
+		return
+	coin_sprite_mean = Color(total.r / total.a, total.g / total.a, total.b / total.a, 1.0)
 
 
 # Euclidean over RGB. Alpha is ignored: every colour these compare is opaque.
