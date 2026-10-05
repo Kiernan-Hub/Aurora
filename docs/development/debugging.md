@@ -979,3 +979,9 @@ Owner's phone: Galaxy S26 Ultra (`SM-S948U`, serial `R3GL20AE8BK`), 1440×3120 @
   (it changes every launch). It holds only ~128 frames, so poll every ~0.5 s and dedupe. Use
   `adb logcat -G 16M` (it caps at 5 MiB) so a long run isn't lost. What this measured on the
   biome-transition stutter: `physics.md`, "Render rate on phones".
+- **Obstacle search cost (audit A3, open):** a debug build prints `OBSTACLE_SEARCH_SLOWEST <ms>
+  at <s>` each time the slowest pattern-scheduling decision of the run grows
+  (`adb logcat -s godot | grep OBSTACLE_SEARCH`). 6-8 ms worst on an M4 Mac (combos, a full
+  13-start miss). Compare it with the frame timing above before optimising: no result-identical
+  speedup exists (running the cheap clauses first measured ~no change), so any real one changes
+  which placements are accepted and must re-pass `check_placed_pattern_fairness()`.

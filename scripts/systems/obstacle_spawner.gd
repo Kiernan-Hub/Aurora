@@ -226,6 +226,11 @@ var is_first_appearance_room_taken: bool = false
 # toward its own scheme. biome_schedule_check enforces that from the data side.
 var has_biome_color: bool = false
 var biome_obstacle_color: Color = Color.WHITE
+# The slowest scheduling decision this run. A combo that fits nowhere walks its span at up to 13
+# starts and then searches again for a solo: 6-8ms worst on an M4 Mac, unmeasured on a phone
+# (audit.md A3). Debug builds print it whenever it grows, so a phone run's logcat answers whether
+# it causes late frames before anyone optimises it: OBSTACLE_SEARCH_SLOWEST in debugging.md.
+var slowest_schedule_usec: int = 0
 
 
 func _ready() -> void:
@@ -257,7 +262,13 @@ func _physics_process(_delta: float) -> void:
 	# any other.
 	var elapsed_time: float = player.speed_manager.elapsed_time
 	if elapsed_time >= next_pattern_time and not player.is_boosting:
+		var started_usec: int = Time.get_ticks_usec()
 		schedule_pattern(elapsed_time)
+		var spent_usec: int = Time.get_ticks_usec() - started_usec
+		if spent_usec > slowest_schedule_usec:
+			slowest_schedule_usec = spent_usec
+			if OS.is_debug_build() and DisplayServer.get_name() != "headless":
+				print("OBSTACLE_SEARCH_SLOWEST %.2f ms at %.0fs" % [spent_usec / 1000.0, elapsed_time])
 
 	var despawn_world_x: float = player.global_position.x - DESPAWN_BEHIND_WORLD_X
 	for index: int in range(active_obstacles.size() - 1, -1, -1):

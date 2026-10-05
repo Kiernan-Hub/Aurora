@@ -35,7 +35,7 @@ established P0/P1 blocker. Each item below states what evidence exists and what 
 
 - [x] **A1 / P2:** Surface save failures instead of reporting a durable purchase success. *(2026-10-04: purchase only; reset/record_run still ignore it.)*
 - [x] **A2 / P2:** Refresh death-screen wallet/best after shop purchases and progress reset.
-- [ ] **A3 / P2:** Profile and reduce repeated obstacle-placement work without weakening fairness.
+- [ ] **A3 / P2:** Profile and reduce repeated obstacle-placement work without weakening fairness. *(2026-10-04: measurement added, `OBSTACLE_SEARCH_SLOWEST` in debug logcat; no phone attached to read it. Cheap-clauses-first measured ~no gain, so no result-identical speedup exists; optimisation waits for phone numbers.)*
 - [x] **A4 / P2:** Make existing integration gates routinely runnable; cover save/menu/input regressions. *(`regression_probe` in the fast tier, in-memory save; `check.sh --full`; per-gate time limit.)*
 - [ ] **A5 / P2:** Reconcile current documentation and mark historical fixes as resolved. *(2026-10-04: all listed contradictions fixed except the HANDOFF trim and the old root-audit archive.)*
 - [x] **A6 / P2:** Test coin readability using its actual sprite/tint contract. *(`biome_schedule_check` measures the real sprite × coin_color against every background; lowest 0.64.)*
