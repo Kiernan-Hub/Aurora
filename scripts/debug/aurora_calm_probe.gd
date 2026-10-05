@@ -36,9 +36,10 @@ var assertions: int = 0
 class MemorySaveStore extends SaveStore:
 	var writes: int = 0
 	var saved_achievements: Dictionary[String, bool] = {}
-	func save_to_disk() -> void:
+	func save_to_disk() -> bool:
 		writes += 1
 		saved_achievements = achievements.duplicate()
+		return true
 
 
 func _init() -> void:

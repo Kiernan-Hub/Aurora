@@ -2235,8 +2235,8 @@ func refresh_ice_appearance() -> void:
 		# every band in the world shares this one material.
 		ice_material.set_shader_parameter("contrast", lerpf(ice_contrast, LAKE_ICE_CONTRAST, lake_ice_blend))
 		ice_material.set_shader_parameter("flatten", LAKE_ICE_FLATTEN * lake_ice_blend)
-		# The sheen ice.gdshader has carried unwritten since it was built. Scaled by the blend
-		# alone, so it is exactly 0 -- the shader's documented identity -- everywhere but a lake.
+		# Scaled by the two blends alone, so it is exactly 0 -- the shader's documented
+		# identity -- everywhere but a lake or an aurora.
 		ice_material.set_shader_parameter("gloss_strength", maxf(
 			LAKE_ICE_GLOSS_STRENGTH * lake_ice_blend,
 			AURORA_GLOSS_STRENGTH * aurora_ice_blend))

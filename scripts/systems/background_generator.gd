@@ -47,11 +47,7 @@ class_name BackgroundGenerator
 #     runs on every gate frame with no opt-out flag. Keep _physics_process to the index
 #     arithmetic it already was; do no per-frame node work.
 
-const SHAPE_RIDGE: int = 0
-const SHAPE_PINES: int = 1
-
 @export var player_path: NodePath
-@export_enum("Ridge:0", "Pines:1") var shape_kind: int = SHAPE_RIDGE
 @export var segment_width: float = 1024.0
 @export var segment_count_ahead: int = 2
 @export var segment_count_behind: int = 1
@@ -80,10 +76,6 @@ const SHAPE_PINES: int = 1
 @export var haze_rise: float = 130.0
 # Per-layer hash salt. Any two layers sharing a salt would generate the same skyline.
 @export var rng_salt: int = 0
-# Ignored unless shape_kind is Pines.
-@export var pine_spacing: float = 52.0
-@export var pine_height_min: float = 26.0
-@export var pine_height_max: float = 52.0
 
 var player: CharacterBody2D
 var next_segment_index: int = 0
@@ -350,8 +342,6 @@ func spawn_segment(segment_index: int) -> void:
 	segment.name = "Segment%d" % segment_index
 	segment.position = Vector2(segment_origin_x, 0.0)
 	segment.add_child(build_ridge_polygon(segment_origin_x))
-	if shape_kind == SHAPE_PINES:
-		build_pines(segment, segment_origin_x)
 	ridges_root.add_child(segment)
 	active_segments[segment_index] = segment
 
@@ -393,7 +383,7 @@ func build_ridge_polygon(segment_origin_x: float) -> Polygon2D:
 	ridge.name = "Ridge"
 	ridge.polygon = points
 	# WHITE, deliberately: ridges_root.modulate carries the actual silhouette colour and
-	# multiplies down through every segment and pine under it. That is what lets a biome
+	# multiplies down through every segment under it. That is what lets a biome
 	# transition recolour this whole layer with one property write per frame, including
 	# segments that have not spawned yet -- instead of walking every polygon in the layer.
 	ridge.color = Color.WHITE
@@ -417,47 +407,6 @@ func build_wave_phases() -> void:
 	wave_phases = PackedFloat64Array()
 	for wave_index: int in range(RIDGE_WAVE_WAVELENGTHS.size()):
 		wave_phases.append(get_hash_unit_float(wave_index) * TAU)
-
-
-# Trees are placed on a global grid so a tree's identity is its absolute index, not its
-# position within a segment -- that is what keeps a tree at the same x with the same
-# height no matter which segment happens to contain it.
-func build_pines(segment: Node2D, segment_origin_x: float) -> void:
-	var first_tree_index: int = int(floor(segment_origin_x / pine_spacing))
-	var last_tree_index: int = int(floor((segment_origin_x + segment_width) / pine_spacing))
-	for tree_index: int in range(first_tree_index, last_tree_index + 1):
-		# Jitter keeps the grid from reading as a grid. Bounded to under half the
-		# spacing, so trees cannot reorder or stack.
-		var jitter: float = (get_hash_unit_float(tree_index * 3) - 0.5) * pine_spacing * 0.7
-		var tree_x: float = (float(tree_index) * pine_spacing) + jitter
-		if tree_x < segment_origin_x or tree_x >= segment_origin_x + segment_width:
-			continue
-
-		var tree_height: float = pine_height_min + (get_hash_unit_float((tree_index * 3) + 1) * (pine_height_max - pine_height_min))
-		var pine: Polygon2D = Polygon2D.new()
-		pine.name = "Pine%d" % tree_index
-		# Rooted ON the ridge line, so the tree line reads as growing out of the hill
-		# rather than floating in front of it.
-		pine.position = Vector2(tree_x - segment_origin_x, base_y - get_ridge_height(tree_x))
-		pine.polygon = build_pine_polygon(tree_height)
-		# White for the same reason as the ridge: ridges_root.modulate tints it.
-		pine.color = Color.WHITE
-		segment.add_child(pine)
-
-
-# A two-tier conifer, drawn from the apex clockwise. Deliberately simple: at this scale
-# the silhouette is what carries, and detail would only add noise behind the play area.
-func build_pine_polygon(tree_height: float) -> PackedVector2Array:
-	var half_width: float = tree_height * 0.21
-	return PackedVector2Array([
-		Vector2(0.0, -tree_height),
-		Vector2(half_width * 0.56, -tree_height * 0.52),
-		Vector2(half_width * 0.32, -tree_height * 0.52),
-		Vector2(half_width, 0.0),
-		Vector2(-half_width, 0.0),
-		Vector2(-half_width * 0.32, -tree_height * 0.52),
-		Vector2(-half_width * 0.56, -tree_height * 0.52),
-	])
 
 
 # Transparent at the top, full haze by the time it reaches the skyline, and holding that

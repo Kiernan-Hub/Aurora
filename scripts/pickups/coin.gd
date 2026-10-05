@@ -82,6 +82,12 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 	if not body.is_in_group("player"):
 		return
+	# Contacts from the death step still arrive after the tree pauses. The run is already
+	# banked by then, so a coin taken here would show in the score but never reach the wallet.
+	# Read by name, NOT `body as Player`: naming the Player class here closes a script load
+	# cycle, and rare_coin.tscn then loads with no script (biome_schedule_check, 2026-10-04).
+	if body.get(&"is_dead"):
+		return
 
 	has_been_collected = true
 	set_deferred("monitoring", false)

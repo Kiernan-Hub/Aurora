@@ -273,12 +273,6 @@ wavelengths 2π larger — ~16,000 px for the first octave — and rendered ever
 straight diagonal line. If the mountains ever look flat again, check this first: an octave
 much longer than the ~1150 px viewport cannot read as a mountain, only as a slope.
 
-Pines (`shape_kind = 1`) are placed on a **global** grid, so a tree's identity is its
-absolute index rather than its offset within a segment — that is what keeps a given tree
-at the same x with the same height regardless of which segment contains it. Each is rooted
-on the ridge line at its own x, so the tree line grows out of the hill instead of floating
-in front of it.
-
 ## Ground decoration — removed 2026-09-27
 
 The play area has **no ground-attached scenery**. `GroundTreeSpawner` (pale ice formations

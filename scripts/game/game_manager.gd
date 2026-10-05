@@ -146,10 +146,12 @@ var shop_return_state: State = State.DEAD
 # false except in the one-frame window between _on_quick_restart_pressed() and the
 # rebuilt GameManager's _ready() reading it.
 static var pending_quick_restart: bool = false
-# Null in headless harness runs -- see GameServices. Every use is null-guarded, and a
-# null store simply means this run's best score is not persisted, which is exactly
-# what a probe wants anyway.
+# Null only off-tree. Under `--headless --script` the autoload node exists and this resolves,
+# which is why every save-writing path here also checks DisplayServer (see apply_upgrades()).
 var services: GameServices
+# This run's record_run() verdict, kept for refresh_death_stats(): the death screen stays up
+# under the shop, whose purchases and reset change the wallet and best it shows.
+var last_run_is_new_best: bool = false
 
 # How much of THIS run's Main.elapsed_time has already been folded into
 # SaveStore.total_playtime_seconds. See bank_playtime() for why it exists.
@@ -211,7 +213,6 @@ func wire_scene() -> bool:
 		push_error("GameManager requires a Main parent, a Player node at %s, and an SfxPlayer at %s." % [player_path, sfx_player_path])
 		return false
 
-	player.jumped.connect(_on_player_jumped)
 	player.trick_completed.connect(_on_player_trick_completed)
 
 	start_screen = get_node_or_null(start_screen_path) as Control
@@ -234,7 +235,7 @@ func wire_scene() -> bool:
 	# "Home" is the one that lands on the START/main screen, same as the pause
 	# screen's Home button and the same handler.
 	restart_button.pressed.connect(_on_quick_restart_pressed)
-	death_home_button.pressed.connect(_on_restart_pressed)
+	death_home_button.pressed.connect(_on_home_pressed)
 	player.died.connect(_on_player_died)
 
 	pause_screen = get_node_or_null(pause_screen_path) as Control
@@ -270,7 +271,7 @@ func wire_scene() -> bool:
 	pause_button.button_down.connect(_on_pause_pressed)
 	resume_button.pressed.connect(_on_resume_pressed)
 	pause_restart_button.pressed.connect(_on_quick_restart_pressed)
-	pause_home_button.pressed.connect(_on_restart_pressed)
+	pause_home_button.pressed.connect(_on_home_pressed)
 
 	# MusicSlider and MusicLabel are visible because AuroraAudio now owns a scene-local ambient
 	# stream on the existing Music bus. The control stays bus-level: it applies to this bed and any
@@ -536,13 +537,6 @@ func _on_start_pressed() -> void:
 	Input.action_release(&"ui_accept")
 
 
-func _on_player_jumped() -> void:
-	# Jump SFX muted 2026-08-04: the placeholder WAV is grating on a run where you jump
-	# constantly. The signal, the pool voice and SfxPlayer.play_jump() all stay wired, so
-	# restoring it is uncommenting one line once there is a real sound.
-	pass
-
-
 func _on_powerup_collected() -> void:
 	sfx_player.play_powerup()
 
@@ -567,9 +561,7 @@ func _on_player_died() -> void:
 	# record_run banks this run's coins into the wallet AND updates the best score, so
 	# the label below always reads post-update values -- neither "(New Best!)" nor the
 	# wallet total can be stale. Banking needs no separate call.
-	var is_new_best: bool = false
-	var best_score: int = 0
-	var wallet: int = 0
+	last_run_is_new_best = false
 	bank_biome_phase()
 	# Script harnesses can have a real Services autoload. bank_playtime() already
 	# skips headless, but record_run() itself writes coins/bests even when banking
@@ -578,12 +570,23 @@ func _on_player_died() -> void:
 		# BEFORE record_run, so this run's seconds ride record_run's single disk write
 		# rather than costing a second one from set_state(DEAD) a few lines below.
 		bank_playtime()
-		is_new_best = services.save_store.record_run(coin_count, main.elapsed_time)
+		last_run_is_new_best = services.save_store.record_run(coin_count, main.elapsed_time)
+	refresh_death_stats()
+	set_state(State.DEAD)
+
+
+# Coins and Time are this run's and fixed (the tree is paused and a dead player takes no
+# pickups); Best and Wallet are read from the save, so a purchase or a reset made in the shop
+# above this screen shows when it closes. Never re-run _on_player_died() for this: it banks.
+func refresh_death_stats() -> void:
+	var best_score: int = 0
+	var wallet: int = 0
+	if services != null and DisplayServer.get_name() != "headless":
 		best_score = services.save_store.best_score
 		wallet = services.save_store.coin_wallet
-	var best_suffix: String = " (New Best!)" if is_new_best else ""
+	# A reset since death zeroes the best, and "Best: 0 (New Best!)" would contradict itself.
+	var best_suffix: String = " (New Best!)" if last_run_is_new_best and best_score == coin_count else ""
 	death_stats_label.text = "Coins: %d\nTime: %s\nBest: %d%s\nWallet: %d" % [coin_count, main.format_elapsed_time(main.elapsed_time), best_score, best_suffix, wallet]
-	set_state(State.DEAD)
 
 
 # Session state, not save state: where this run ended is where the next one picks the day
@@ -626,34 +629,32 @@ func _on_sfx_volume_changed(value: float) -> void:
 		services.set_sfx_volume(value)
 
 
-# Reloads back to the main/start screen -- this is the "Home" button on both the pause
-# screen (which bypasses set_state(), so it is the one exit from PAUSED that the flush
-# there cannot cover) and the death screen. Lands on START because that's what a bare
-# reload_current_scene() does -- see require_start_screen.
-func _on_restart_pressed() -> void:
+# The "Home" button on both the pause and death screens. Lands on START because that's
+# what a bare reload_current_scene() does -- see require_start_screen.
+func _on_home_pressed() -> void:
+	reload_scene(false)
+
+
+# The "Restart" button on both the pause and death screens: reloads AND skips the
+# START screen, straight into a new run, via the static flag that survives the reload --
+# see pending_quick_restart.
+func _on_quick_restart_pressed() -> void:
+	reload_scene(true)
+
+
+# Both menu reloads. A reload bypasses set_state(), so it is the one exit from PAUSED that
+# set_state()'s settings flush cannot cover, and the one sanctioned get_tree().paused write
+# outside it: the tree-wide paused flag is not reset by reload_current_scene(), so leaving it
+# true would rebuild the scene into a frozen world. The reloaded GameManager sets its own
+# state in _ready().
+func reload_scene(quick_start: bool) -> void:
 	sfx_player.play_click()
 	# From DEAD, _on_player_died already banked it.
 	if state == State.PAUSED:
 		bank_biome_phase()
 	if services != null:
 		services.save_settings()
-	# Unpause before the reload: the tree-wide paused flag is not reset by
-	# reload_current_scene(), so leaving it true would rebuild the scene into a frozen
-	# world. The reloaded GameManager sets its own state in _ready().
-	get_tree().paused = false
-	get_tree().reload_current_scene()
-
-
-# The "Restart" button on both the pause and death screens: reloads AND skips the
-# START screen, straight into a new run. Same reload as _on_restart_pressed, plus the
-# static flag that survives it -- see pending_quick_restart.
-func _on_quick_restart_pressed() -> void:
-	sfx_player.play_click()
-	if state == State.PAUSED:
-		bank_biome_phase()
-	if services != null:
-		services.save_settings()
-	GameManager.pending_quick_restart = true
+	GameManager.pending_quick_restart = quick_start
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
@@ -758,6 +759,9 @@ func _on_buy_pressed(upgrade_id: String) -> void:
 	if services == null:
 		return
 	if not services.upgrades.purchase(upgrade_id):
+		# The button is disabled when unaffordable, so a refusal here is a save that failed
+		# and was rolled back. The next refresh_shop() restores the wallet line.
+		shop_wallet_label.text = "Couldn't save. Try again."
 		return
 	sfx_player.play_powerup()
 	# Applied immediately even though the current run is over: keeping this next to the
@@ -765,6 +769,7 @@ func _on_buy_pressed(upgrade_id: String) -> void:
 	# follows re-derives the same value from disk anyway.
 	apply_upgrades()
 	refresh_shop()
+	refresh_death_stats()
 
 
 # One row per UpgradeStore.TRACKS entry, inserted under the wallet line in table order. The
@@ -828,3 +833,4 @@ func _on_reset_progress_confirmed() -> void:
 		# player immediately rather than waiting for the next reload.
 		apply_upgrades()
 	refresh_shop()
+	refresh_death_stats()

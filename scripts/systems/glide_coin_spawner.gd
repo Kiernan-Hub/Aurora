@@ -193,7 +193,7 @@ func spawn_trail_coin() -> void:
 		var clearance: float = randf_range(TRAIL_CLEARANCE_MIN, TRAIL_CLEARANCE_MAX)
 		var local_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - clearance
 		if is_far_enough_from_active_coins(world_x, local_y):
-			spawn_coin(world_x, local_y, TRAIL_COIN_VALUE, AIR_COIN_SCALE, null)
+			spawn_coin(world_x, local_y, TRAIL_COIN_VALUE, AIR_COIN_SCALE)
 			return
 		fallback_position = Vector2(world_x, local_y)
 		has_fallback = true
@@ -206,7 +206,7 @@ func spawn_trail_coin() -> void:
 	# crowded late glide quietly dropped coins from its field. has_fallback stays false when
 	# every attempt failed the void check instead, which is the case that must still drop.
 	if has_fallback:
-		spawn_coin(fallback_position.x, fallback_position.y, TRAIL_COIN_VALUE, AIR_COIN_SCALE, null)
+		spawn_coin(fallback_position.x, fallback_position.y, TRAIL_COIN_VALUE, AIR_COIN_SCALE)
 
 
 # zoom.x, not a hardcoded viewport size: project.godot pins no window/size/viewport_* and
@@ -236,24 +236,21 @@ func spawn_bonus_coin(world_x: float) -> void:
 	if terrain_generator.is_lake_world_x(world_x):
 		return
 	var local_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - BONUS_SURFACE_CLEARANCE
-	spawn_coin(world_x, local_y, BONUS_COIN_VALUE, BONUS_DIAMOND_SCALE, null, BONUS_COIN_SCENE)
+	spawn_coin(world_x, local_y, BONUS_COIN_VALUE, BONUS_DIAMOND_SCALE, BONUS_COIN_SCENE)
 
 
-# null means "whatever this coin's colour should be right now", which is the biome's once one
-# has been pushed and coin.tscn's authored gold before that. A Color overrides it outright.
-# scene defaults to the ordinary trail coin; the bonus call passes BONUS_COIN_SCENE, which is
-# never tinted below -- same reasoning as RareCoinSpawner: no spawner pushes a colour into the
-# diamond, so it keeps its own authored modulate.
-func spawn_coin(world_x: float, local_y: float, coin_value: int, coin_scale: float, tint: Variant, scene: PackedScene = COIN_SCENE) -> void:
+# A trail coin takes the biome's colour once one has been pushed, and coin.tscn's authored gold
+# before that. scene defaults to the ordinary trail coin; the bonus call passes BONUS_COIN_SCENE,
+# which is never tinted below -- same reasoning as RareCoinSpawner: no spawner pushes a colour
+# into the diamond, so it keeps its own authored modulate.
+func spawn_coin(world_x: float, local_y: float, coin_value: int, coin_scale: float, scene: PackedScene = COIN_SCENE) -> void:
 	var coin: Coin = scene.instantiate() as Coin
 	coin.value = coin_value
 	coin.collected.connect(_on_coin_collected)
 	coin.position = Vector2(world_x, local_y)
 	if coin_scale != 1.0:
 		coin.scale = Vector2(coin_scale, coin_scale)
-	if tint is Color:
-		coin.set_visual_color(tint)
-	elif has_biome_color and scene != BONUS_COIN_SCENE:
+	if has_biome_color and scene != BONUS_COIN_SCENE:
 		coin.set_visual_color(biome_coin_color)
 	add_child(coin)
 	active_coins.append(coin)

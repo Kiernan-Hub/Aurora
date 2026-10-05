@@ -72,6 +72,8 @@ const HASH_RESOLUTION: int = 100000
 
 var camera: Camera2D
 var streak: Line2D
+# One per STREAK_COLORS entry, built once: a streak's colour is fixed for its whole crossing.
+var taper_gradients: Array[Gradient] = []
 var disabled: bool = false
 
 
@@ -99,6 +101,8 @@ func _ready() -> void:
 	streak.antialiased = true
 	streak.material = additive
 	add_child(streak)
+	for color: Color in STREAK_COLORS:
+		taper_gradients.append(build_taper_gradient(color))
 
 
 func apply_aurora(blend: float, elapsed: float) -> void:
@@ -126,8 +130,7 @@ func apply_aurora(blend: float, elapsed: float) -> void:
 	var arc: float = length * ARC_RATIO
 	streak.points = build_streak_points(length, arc)
 	streak.width = lerpf(WIDTH_MIN, WIDTH_MAX, hash_unit(index, 2))
-	streak.gradient = build_taper_gradient(
-		STREAK_COLORS[int(hash_unit(index, 3) * float(STREAK_COLORS.size())) % STREAK_COLORS.size()])
+	streak.gradient = taper_gradients[int(hash_unit(index, 3) * float(STREAK_COLORS.size())) % STREAK_COLORS.size()]
 
 	# STRICT ALTERNATION, NOT A HASH. The hash is well distributed over many indices (111/200
 	# below 0.5) but an encounter only ever plays the FIRST EIGHT, and there it happened to give

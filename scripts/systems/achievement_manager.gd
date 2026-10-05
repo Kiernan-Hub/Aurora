@@ -128,12 +128,6 @@ func grant(id: String) -> void:
 	achievement_granted.emit(id, display_name)
 
 
-func is_unlocked(id: String) -> bool:
-	if services == null or services.save_store == null:
-		return false
-	return services.save_store.achievements.get(id, false)
-
-
 # ================= A TRAP FOR WHOEVER ADDS ACHIEVEMENT #3 =================
 #
 # THIS FILE HAS NO HEADLESS GUARD, AND THAT IS ONLY SAFE BECAUSE BOTH OF ITS TRIGGERS COME FROM

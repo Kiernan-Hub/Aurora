@@ -23,6 +23,7 @@ const SAVE_PATH: String = "user://save.dat"
 # rename, and SAVE_PATH is still the last good save.
 const TEMP_SAVE_PATH: String = "user://save.dat.tmp"
 const CURRENT_VERSION: int = 3
+const MAX_SAVED_COUNT: float = 9007199254740992.0
 
 const DEFAULT_MUSIC_VOLUME: float = 0.8
 const DEFAULT_SFX_VOLUME: float = 1.0
@@ -116,16 +117,16 @@ func load_from_disk() -> void:
 		return
 
 	var data: Dictionary = parsed as Dictionary
-	var version: int = int(_read_number(data, "version", 0.0))
+	var version: int = _read_count(data, "version")
 
 	# v0 -> v1: the pre-versioning file carried best_score and nothing else. Every
 	# other field simply keeps its default, so there is no explicit conversion step --
 	# reading the fields that exist IS the migration. The upgraded shape lands on disk
 	# the next time save_to_disk() runs.
-	best_score = int(_read_number(data, "best_score", 0.0))
+	best_score = _read_count(data, "best_score")
 
 	if version >= 1:
-		best_time = _read_number(data, "best_time", 0.0)
+		best_time = maxf(_read_number(data, "best_time", 0.0), 0.0)
 		var settings: Dictionary = _read_dictionary(data, "settings")
 		music_volume = clampf(_read_number(settings, "music_volume", DEFAULT_MUSIC_VOLUME), 0.0, 1.0)
 		sfx_volume = clampf(_read_number(settings, "sfx_volume", DEFAULT_SFX_VOLUME), 0.0, 1.0)
@@ -134,15 +135,15 @@ func load_from_disk() -> void:
 	# the defaults (0 coins, level 0 everywhere) are exactly the correct new-player state
 	# and there is nothing to convert.
 	if version >= 2:
-		coin_wallet = maxi(int(_read_number(data, "coin_wallet", 0.0)), 0)
+		coin_wallet = _read_count(data, "coin_wallet")
 		# Copied key by key on purpose. JSON.parse_string returns an UNTYPED Dictionary,
 		# and assigning one straight into a Dictionary[String, int] fails at runtime.
 		# The int() casts are equally load-bearing: JSON round-trips every number as a
 		# float, so the values arrive as 2.0, not 2.
 		var stored_levels: Dictionary = _read_dictionary(data, "upgrades")
 		for upgrade_id: Variant in stored_levels.keys():
-			if _is_number(stored_levels[upgrade_id]):
-				upgrade_levels[String(upgrade_id)] = maxi(int(stored_levels[upgrade_id]), 0)
+			if _is_count(stored_levels[upgrade_id]):
+				upgrade_levels[String(upgrade_id)] = int(stored_levels[upgrade_id])
 
 	# v2 -> v3: same idiom again. A v2 file has never played a set piece, so 0 seconds
 	# banked, 0 lakes seen and no achievements is the correct state for it -- an existing
@@ -153,10 +154,10 @@ func load_from_disk() -> void:
 		# only come from a hand-edited or corrupt file, where it would push the next lake
 		# unreachably far away.
 		total_playtime_seconds = maxf(_read_number(data, "total_playtime_seconds", 0.0), 0.0)
-		frozen_lake_count = maxi(int(_read_number(data, "frozen_lake_count", 0.0)), 0)
+		frozen_lake_count = _read_count(data, "frozen_lake_count")
 		# Read inside `version >= 3` rather than under a version of its own -- see the field's
 		# note. Absent in a pre-aurora v3 file, where the 0 default is correct.
-		aurora_count = maxi(int(_read_number(data, "aurora_count", 0.0)), 0)
+		aurora_count = _read_count(data, "aurora_count")
 		# NO maxf CLAMP TO 0 HERE, unlike the seconds field above, because -1.0 is the
 		# UNSCHEDULED sentinel and clamping it to 0.0 would mean "due immediately" -- the
 		# backlog bug the sentinel exists to prevent. Absent in a pre-aurora save, where -1.0
@@ -174,13 +175,27 @@ func load_from_disk() -> void:
 # `int([])`) aborts load_from_disk halfway, so one bad field used to skip every field after
 # it -- and the next save then wrote those defaults over recoverable progress. Each reader
 # returns its fallback for a wrong type, so only the bad field is lost.
+#
+# Finite only: valid JSON like 1e309 parses to INF, which would poison a clock or the wallet.
 static func _is_number(value: Variant) -> bool:
-	return typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT
+	return typeof(value) == TYPE_INT or (typeof(value) == TYPE_FLOAT and is_finite(value))
+
+
+# A non-negative whole-number field. JSON hands every number back as a float, and int() of one
+# past int64 saturates rather than failing, so out-of-range values are rejected before the cast.
+# 2^53 is the largest integer a float carries exactly.
+static func _is_count(value: Variant) -> bool:
+	return _is_number(value) and value >= 0 and value <= MAX_SAVED_COUNT
 
 
 static func _read_number(source: Dictionary, key: String, fallback: float) -> float:
 	var value: Variant = source.get(key, fallback)
 	return float(value) if _is_number(value) else fallback
+
+
+static func _read_count(source: Dictionary, key: String) -> int:
+	var value: Variant = source.get(key, 0)
+	return int(value) if _is_count(value) else 0
 
 
 static func _read_dictionary(source: Dictionary, key: String) -> Dictionary:
@@ -203,11 +218,14 @@ static func _read_dictionary(source: Dictionary, key: String) -> Dictionary:
 #
 # The temp file is deliberately NOT cleaned up on a failed write -- if the rename is what
 # failed, that file is the only complete copy of the payload that exists.
-func save_to_disk() -> void:
+#
+# Returns whether the payload reached SAVE_PATH. Only a purchase acts on it (UpgradeStore rolls
+# back); every other caller's next save simply retries.
+func save_to_disk() -> bool:
 	var file: FileAccess = FileAccess.open(TEMP_SAVE_PATH, FileAccess.WRITE)
 	if file == null:
 		push_error("SaveStore failed to open %s for writing." % TEMP_SAVE_PATH)
-		return
+		return false
 
 	var payload: Dictionary = {
 		"version": CURRENT_VERSION,
@@ -237,12 +255,14 @@ func save_to_disk() -> void:
 	if not stored or write_error != OK:
 		push_error("SaveStore failed to write %s (error %d). The save on disk is unchanged."
 				% [TEMP_SAVE_PATH, write_error])
-		return
+		return false
 
 	var rename_result: Error = DirAccess.rename_absolute(TEMP_SAVE_PATH, SAVE_PATH)
 	if rename_result != OK:
 		push_error("SaveStore failed to move %s over %s (error %d). The save on disk is unchanged."
 				% [TEMP_SAVE_PATH, SAVE_PATH, rename_result])
+		return false
+	return true
 
 
 # Returns true when this run beat the stored best, so the caller can show "New Best!".

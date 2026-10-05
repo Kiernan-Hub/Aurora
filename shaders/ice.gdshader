@@ -1,6 +1,7 @@
 shader_type canvas_item;
 
-// The ice band's shader, and the ONLY shader in this project. It exists for the three things
+// The ice band's shader (one of three: the lake reflection and the aurora curtains have their
+// own, see CLAUDE.md). It exists for the three things
 // vertex colours provably cannot do; everything they CAN do still rides vertex_colors, exactly
 // as biomes.md's "Why colour is still not a shader's job" describes. Do not grow this remit.
 //
@@ -8,7 +9,7 @@ shader_type canvas_item;
 //      second Polygon2D that used to exist per ground run -- one node fewer, and a
 //      patchy dissolve instead of a uniform fade).
 //   2. Contrast against the tile, independent of hue.
-//   3. A gloss/sheen uniform, parameterised and left at 0 for a later flat-lake biome.
+//   3. A gloss/sheen uniform, left at 0 except on the frozen lake and under an aurora.
 //
 // EVERY UNIFORM'S DEFAULT IS AN EXACT IDENTITY. At overlay_weight 0 / contrast 1 /
 // gloss_strength 0 this renders pixel-identical to the no-material Polygon2D it replaced --

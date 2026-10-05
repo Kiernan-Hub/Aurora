@@ -9,7 +9,8 @@ class_name GameServices
 # it with GameServices.resolve(node) below. This is not a style preference, it is the
 # difference between working harnesses and silently hanging ones:
 #
-#   `--headless --script` runs DO NOT REGISTER AUTOLOADS. A direct `Services.x` is a
+#   `--headless --script` runs have no global `Services` IDENTIFIER (the autoload NODE
+#   still exists at /root/Services -- see HEADLESS TRAP below). A direct `Services.x` is a
 #   COMPILE error there ("Identifier not found: Services"), not a runtime null -- so
 #   the whole script fails to load, its class becomes Nil, and every probe line that
 #   configures it (require_start_screen = false, debug_spawning_disabled = true) fails
@@ -30,8 +31,7 @@ class_name GameServices
 #
 # WHY ONE IS NEEDED: restart is get_tree().reload_current_scene(), so every node in
 # main.tscn is destroyed and rebuilt between runs. Anything that must outlive a run --
-# the save file, volume settings, background music that shouldn't restart on every
-# death -- cannot live in that scene. This is that layer, and it stays a thin owner of
+# the save file, volume settings -- cannot live in that scene. This is that layer, and it stays a thin owner of
 # per-concern components rather than growing into a god object.
 #
 # HEADLESS TRAP -- read before adding anything here: autoloads are instantiated in
@@ -55,16 +55,10 @@ var save_store: SaveStore = SaveStore.new()
 # headless probes that have no autoload at all.
 var upgrades: UpgradeStore = UpgradeStore.new()
 var is_headless: bool = false
-# Lives here, not in main.tscn, for the same reason save_store does: restart calls
-# reload_current_scene() and destroys every node in that scene, but music
-# transitioning between runs is exactly the case that must NOT restart.
-# No stream is assigned yet -- CLAUDE.md build order still lists audio as
-# not-started; this wires the bus and volume so a track can be dropped in later
-# with no other changes.
-var music_player: AudioStreamPlayer
 
 
-# Returns null in headless harness runs, where the autoload does not exist. Callers
+# Returns null when the node is not in a tree with the autoload (an off-tree probe object).
+# Under `--headless --script` the autoload node DOES exist, so this returns it. Callers
 # must null-guard; treat services as an optional convenience, never as a hard
 # dependency, so no gameplay path can be made unrunnable by its absence.
 static func resolve(from: Node) -> GameServices:
@@ -80,16 +74,11 @@ func _ready() -> void:
 	save_store.load_from_disk()
 	upgrades.save_store = save_store
 
-	# Headless probes have no audio driver; touching AudioServer/AudioStreamPlayer
-	# there is exactly the class of thing the HEADLESS TRAP note above warns about.
+	# Headless probes have no audio driver; touching AudioServer there is exactly the
+	# class of thing the HEADLESS TRAP note above warns about.
 	if is_headless:
 		return
 
-	music_player = AudioStreamPlayer.new()
-	music_player.name = "MusicPlayer"
-	music_player.bus = MUSIC_BUS
-	music_player.process_mode = Node.PROCESS_MODE_ALWAYS
-	add_child(music_player)
 	apply_music_volume()
 	apply_sfx_volume()
 

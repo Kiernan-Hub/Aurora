@@ -124,7 +124,8 @@ func _init() -> void:
 	print("    max slide count seen: %d" % max_slides_seen)
 	print("    worst trial         : %s" % best_description)
 	print("SEARCH_END")
-	quit(0)
+	# Near-stalls stay diagnostic; a stall, or a sweep that ran no trials, fails the process.
+	quit(1 if stall_trials > 0 or trials == 0 else 0)
 
 
 func build_schedules() -> Array[Vector2i]:

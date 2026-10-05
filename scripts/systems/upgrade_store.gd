@@ -90,8 +90,8 @@ const TRACKS: Array[Dictionary] = [
 
 const NO_COST: int = -1
 
-# Injected by GameServices._ready(). Null in any context that has no autoload, which is
-# every headless probe -- callers must null-guard, matching the services contract.
+# Injected by GameServices._ready(). Null on any instance built outside it -- callers must
+# null-guard, matching the services contract.
 var save_store: SaveStore
 
 
@@ -130,12 +130,6 @@ static func get_min_jump_multiplier() -> float:
 	return JUMP_MULTIPLIERS[0]
 
 
-# The strongest jump the game can be played at. Worst case for the chasm lead-in, since
-# the jump powerup stacks multiplicatively on top of it.
-static func get_max_jump_multiplier() -> float:
-	return JUMP_MULTIPLIERS[JUMP_MULTIPLIERS.size() - 1]
-
-
 # --- Instance: transactions against the save file ------------------------------------
 
 func get_level(upgrade_id: String) -> int:
@@ -155,10 +149,6 @@ func get_wallet() -> int:
 	return save_store.coin_wallet
 
 
-func is_maxed(upgrade_id: String) -> bool:
-	return get_level(upgrade_id) >= get_max_level(upgrade_id)
-
-
 func can_purchase(upgrade_id: String) -> bool:
 	if save_store == null:
 		return false
@@ -173,8 +163,18 @@ func purchase(upgrade_id: String) -> bool:
 	if not can_purchase(upgrade_id):
 		return false
 
+	# A purchase that did not reach the disk did not happen: relaunching would hand back the
+	# coins and take the level away, so roll memory back to match rather than show success.
 	var cost: int = get_next_cost(upgrade_id)
+	var previous_level: int = get_level(upgrade_id)
+	var had_level_entry: bool = save_store.upgrade_levels.has(upgrade_id)
 	save_store.coin_wallet -= cost
-	save_store.upgrade_levels[upgrade_id] = get_level(upgrade_id) + 1
-	save_store.save_to_disk()
-	return true
+	save_store.upgrade_levels[upgrade_id] = previous_level + 1
+	if save_store.save_to_disk():
+		return true
+	save_store.coin_wallet += cost
+	if had_level_entry:
+		save_store.upgrade_levels[upgrade_id] = previous_level
+	else:
+		save_store.upgrade_levels.erase(upgrade_id)
+	return false

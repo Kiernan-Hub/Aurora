@@ -19,6 +19,9 @@ func _init() -> void:
 	# broken one; world_rebase_enabled is no longer exported, so this is the only
 	# way to disable it.
 	var rebase_enabled: bool = get_int_argument("--rebase", 1) == 1
+	# Any status but no_freeze fails the process: freeze_detected and stall_recovered are the bug,
+	# and tree_paused means the run stopped measuring (a death or a stuck start screen).
+	var failed_runs: int = 0
 	for run_index: int in range(run_count):
 		var main: Node = MAIN_SCENE.instantiate()
 		var terrain_generator: TerrainGenerator = main.get_node("TerrainGenerator") as TerrainGenerator
@@ -52,22 +55,27 @@ func _init() -> void:
 			if player.debug_freeze_event_count > event_count_at_run_start:
 				completed_frames = frame_index + 1
 				print("FREEZE_REPLAY_RUN_RESULT run=", run_index + 1, " seed=", session_seed, " rebase=", int(rebase_enabled), " status=freeze_detected frame=", completed_frames)
+				failed_runs += 1
 				break
 			if paused:
 				completed_frames = frame_index + 1
 				print("FREEZE_REPLAY_RUN_RESULT run=", run_index + 1, " seed=", session_seed, " rebase=", int(rebase_enabled), " status=tree_paused frame=", completed_frames)
+				failed_runs += 1
 				break
 
 		if player.debug_freeze_event_count == event_count_at_run_start and not paused:
 			# A recovery means the watchdog had to unwedge the player, i.e. a stall
 			# still happened -- that is a failure, not a pass.
 			var status: String = "no_freeze" if player.debug_stall_recovery_count == 0 else "stall_recovered"
+			if player.debug_stall_recovery_count > 0:
+				failed_runs += 1
 			print("FREEZE_REPLAY_RUN_RESULT run=", run_index + 1, " seed=", session_seed, " rebase=", int(rebase_enabled), " status=", status, " frames=", completed_frames, " stall_recoveries=", player.debug_stall_recovery_count, " world_x=%.1f" % player.global_position.x)
 		main.queue_free()
 		await process_frame
 		paused = false
 
-	quit(0)
+	print("FREEZE_REPLAY_", "FAIL %d of %d runs" % [failed_runs, run_count] if failed_runs > 0 else "PASS")
+	quit(1 if failed_runs > 0 else 0)
 
 
 func get_int_argument(argument_name: String, default_value: int) -> int:

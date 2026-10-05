@@ -2,16 +2,15 @@ extends Node
 
 class_name SfxPlayer
 
-# One-shot gameplay sound effects (jump, coin, powerup, death), routed through the
+# One-shot gameplay sound effects (coin, powerup, death, menu click), routed through the
 # "SFX" bus so the pause screen's sound slider controls them independently of music.
-# A pool of players rather than one, because a coin pickup and a jump landing can
+# A pool of players rather than one, because a coin pickup and a powerup can
 # overlap in the same frame and each needs its own voice.
 #
 # Placeholder sounds -- generated tones, same role as the ColorRect/Polygon2D
 # placeholder art. Swap the .wav files under assets/audio/sfx/ for real assets later;
 # nothing else here needs to change.
 
-const JUMP_SOUND: AudioStream = preload("res://assets/audio/sfx/jump.wav")
 const COIN_SOUND: AudioStream = preload("res://assets/audio/sfx/coin.wav")
 const POWERUP_SOUND: AudioStream = preload("res://assets/audio/sfx/powerup.wav")
 const DEATH_SOUND: AudioStream = preload("res://assets/audio/sfx/death.wav")
@@ -19,7 +18,7 @@ const CLICK_SOUND: AudioStream = preload("res://assets/audio/sfx/click.wav")
 
 const SFX_BUS: StringName = &"SFX"
 # Comfortably above the number of gameplay sounds that can land on the same frame
-# (jump + coin + powerup, at most) with headroom for a fast coin streak.
+# (coin + powerup, at most) with headroom for a fast coin streak.
 const POOL_SIZE: int = 6
 
 var players: Array[AudioStreamPlayer] = []
@@ -60,10 +59,6 @@ func _ready() -> void:
 		player.bus = SFX_BUS
 		add_child(player)
 		players.append(player)
-
-
-func play_jump() -> void:
-	play(JUMP_SOUND)
 
 
 func play_coin() -> void:

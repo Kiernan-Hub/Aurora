@@ -7,7 +7,7 @@
 # prints that gate's full output, because the gates' own failure text is the
 # diagnosis.
 #
-#   ./scripts/check.sh              run all four
+#   ./scripts/check.sh              run all five
 #   ./scripts/check.sh -v           print every gate's output, pass or fail
 #   GODOT=/path/to/Godot ./scripts/check.sh
 #
@@ -16,17 +16,17 @@
 #
 #   fast (here)  shipping_values, biome_schedule, terrain_invariant,
 #                lake_suppression, export_content
-#   physics      freeze-search, freeze-replay, floor-flicker, chasm, camera-shake
-#                — minutes each, run them after any player/collision/segment change
+#   physics      freeze-search, freeze-replay, floor-flicker, chasm, camera-shake,
+#                air_move_probe, aurora_calm_probe
+#                — run by hand after the changes debugging.md lists for each
 #   visual       sky_layer_check, ice_look_capture, biome_contact_sheet
 #                — MUST run WITHOUT --headless, they diff or save rendered frames,
 #                  so they can never join a headless runner
 #
-# NOT run here, deliberately: project import (`--headless --editor --quit`). An
-# --editor run rewrites project.godot and strips the pinned physics settings, and
-# some terrain constants derive from physics_ticks_per_second — a validation script
-# that silently changes level geometry is worse than no validation script. Import
-# stays the manual step it is documented as, needed only after adding a class_name.
+# NOT run here, deliberately: project import (`--headless --editor --quit`). It is slow,
+# needed only after adding a class_name, and this runner stays free of any command that
+# CAN write to the project. (Import was measured not to rewrite project.godot; a
+# project-setting SAVE is what strips the pins -- debugging.md has the measurements.)
 
 set -u
 
@@ -66,12 +66,15 @@ GATES=(
 # someone deletes a line from it, which is the exact regression worth catching.
 #
 # THE THREE experiments/ PATHS NO LONGER EXIST (deleted 2026-09-03 with the abandoned
-# procedural-background line), so today only res://scripts/debug can actually trip this.
+# procedural-background line), so today res://scripts/debug and res://art_source can trip this.
 # They stay listed, and stay in the preset's exclude_filter, as a standing rule about
 # where throwaway work goes: recreate any of them and it is excluded and checked from
 # the first commit, rather than needing someone to remember both files.
 FORBIDDEN=(
 	"res://scripts/debug"
+	# ~96 MiB of source and reference art. Kept out by art_source/.gdignore, not by the preset:
+	# without that file it imports and ships (measured: a 7 MB pack became 67 MB).
+	"res://art_source"
 	"res://scripts/experiments"
 	"res://scenes/experiments"
 	"res://assets/textures/experiments"
@@ -89,6 +92,11 @@ FORBIDDEN=(
 # legitimately needs to, that is the moment to switch to a real path-table parse.
 run_export_check() {
 	local pack status entries
+	# Checked by name as well as through the pack below, so the failure names the cause.
+	if [[ ! -f "$PROJECT_DIR/art_source/.gdignore" ]]; then
+		output="EXPORT_CONTENT_CHECK FAIL  art_source/.gdignore is missing -- source art would ship."
+		return 1
+	fi
 	pack="$(mktemp -d)/content_check.pck"
 
 	output="$("$GODOT" --headless --log-file "$GODOT_LOG_DIR/godot.log" --path "$PROJECT_DIR" \
@@ -153,6 +161,11 @@ for gate in "${GATES[@]}"; do
 	output="$("$GODOT" --headless --log-file "$GODOT_LOG_DIR/godot.log" --path "$PROJECT_DIR" \
 		--script "res://scripts/debug/$script" -- $args 2>&1)"
 	status=$?
+	# Godot exits 0 when the --script itself fails to parse or load, so a gate that never ran
+	# would read as PASS. Measured 2026-10-04 on aurora_calm_probe after a signature change.
+	if [[ $status -eq 0 ]] && grep -qE 'Parse Error|Failed to load script' <<< "$output"; then
+		status=1
+	fi
 	report "$name" "$status" "$((SECONDS - started))"
 done
 

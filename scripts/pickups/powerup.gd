@@ -18,6 +18,10 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 	if not body.is_in_group("player"):
 		return
+	# See Coin, including why the flag is read by name: a contact from the death step must not
+	# start an effect on a finished run.
+	if body.get(&"is_dead"):
+		return
 
 	has_been_collected = true
 	set_deferred("monitoring", false)

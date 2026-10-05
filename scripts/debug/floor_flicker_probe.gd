@@ -12,13 +12,16 @@ extends SceneTree
 # The next frame ran the gravity model, fell the ~0.4px back onto the surface, and
 # the cycle repeated at ~2-frame period. The body never actually left the terrain.
 #
-# What this probe asserts, per segment label and per slope sign:
+# What this probe measures, per segment label and per slope sign:
 #   - floor-flip rate: was ~0.36 on uphill frames vs ~0.01 on downhill before the fix
 #   - gravity model running on a grounded body: was ~0.23-0.33 on rising segments
-#   - forced-snap displacement: must stay sub-pixel, or the snap is cancelling real
-#     airtime instead of closing a sub-pixel gap
+#   - forced-snap displacement (diagnostic: 1.86px max across the six default seeds,
+#     2026-10-04, so "sub-pixel" is not the baseline)
 #   - contact quality (surface-gap wobble, vertical-motion reversals, airborne
 #     fraction), so a fix that trades flicker for worse contact cannot pass quietly
+#
+# It FAILS (exit 1) on any stall recovery or stuck event, or when the worst uphill flip rate
+# or gravity-while-grounded rate passes MAX_REGRESSION_RATE. Fixed baseline: 0 and ~0.001.
 #
 # Metric definitions are local to this file: the harness that produced the historical
 # 0.210px / 4.09% figures no longer exists, so numbers here are only comparable
@@ -30,6 +33,8 @@ extends SceneTree
 const MAIN_SCENE: PackedScene = preload("res://scenes/main.tscn")
 const DEFAULT_SEEDS: String = "941462462,2160065702,3188032853,222894852,12345,987654321"
 const FLAT_SLOPE_EPSILON: float = 0.001
+# An order of magnitude under the bug's 0.23-0.36, far above the fixed baseline.
+const MAX_REGRESSION_RATE: float = 0.05
 
 
 class SegmentStats:
@@ -78,8 +83,12 @@ func _init() -> void:
 	print("    worst gravity-model-while-grounded   : %.4f" % worst_gravity_while_grounded)
 	print("    largest forced floor snap (px)       : %.4f" % worst_snap_y)
 	print("    stall recoveries / stuck events      : %d / %d" % [total_recoveries, total_stuck_events])
+	var failed: bool = total_recoveries > 0 or total_stuck_events > 0 \
+			or worst_uphill_flip_rate > MAX_REGRESSION_RATE \
+			or worst_gravity_while_grounded > MAX_REGRESSION_RATE
+	print("FLICKER_", "FAIL" if failed else "PASS")
 	print("FLICKER_END")
-	quit(0)
+	quit(1 if failed else 0)
 
 
 func run_seed(session_seed: int, frame_limit: int, trace_label: String, trace_lines: int, jump_period: int) -> Dictionary:
