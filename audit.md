@@ -42,7 +42,7 @@ established P0/P1 blocker. Each item below states what evidence exists and what 
 - [x] **A7 / P3:** Remove the verified unused scaffolding listed below.
 - [x] **A8 / P3:** Consolidate the two scene-reload paths.
 - [ ] **A9 / P3:** Trim historical essays in source; keep behavior-critical invariants nearby.
-- [ ] **A10 / P3:** Make biome captures cover all nine base palettes reproducibly.
+- [x] **A10 / P3:** Make biome captures cover all nine base palettes reproducibly. *(Pinned rotation 0 and a no-variant salt; labelled files; exit 1 on a failed save.)*
 - [x] **A11 / P2:** Protect source-art exclusion in the export gate. *(Mutation in a disposable copy not re-run.)*
 - [ ] **A12 / P3:** Give historical artifacts a clear retention/indexing policy.
 - [ ] **A13 / P3:** Keep future extractions small and tied to an actual maintenance need.

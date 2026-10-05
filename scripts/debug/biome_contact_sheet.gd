@@ -1,12 +1,20 @@
 extends SceneTree
 
-# Renders every biome in the cycle from one run, for judging palettes side by side.
+# Renders every biome from one run, for judging palettes side by side: first_light (absolute
+# index 0, outside the cycle) and then all eight cycle palettes, nine shots.
 #
 # Not a gate. Companion to ice_look_capture.gd: that one shows what a real run looks
-# like, this one answers "do all eight actually work" without playing for the ~13
-# minutes a full cycle takes at BIOME_DISTANCE.
+# like, this one answers "do all nine actually work" without playing for the ~13
+# minutes a full cycle takes at BIOME_DISTANCE. Exits 1 if any image failed to save.
 #
 #   godot --path . --script res://scripts/debug/biome_contact_sheet.gd -- --out=/tmp/biome
+#
+# REPRODUCIBLE ORDER. The game rotates the arc and rolls rare variants per launch; this pins
+# the rotation to 0 (the authored order) and the variant salt to one that rolls no variant on
+# indices 0-8 today, so two runs give the same sheet of BASE palettes. Files are
+# <out>_<index>_<palette>[_variant].png, so a variant that does roll (variant_chance changed)
+# is labelled, not silent. It used to capture indices 0-7: first_light plus only seven of the
+# eight, a random seven each launch.
 #
 # Works by suspending BiomeDirector._process and driving apply_palette_for_world_x()
 # by hand at the CENTRE of each biome's span -- centre, so every shot is a settled
@@ -26,6 +34,10 @@ const WARMUP_FRAMES: int = 40
 # Frames between setting a palette and capturing it. Needs to cover at least one render
 # plus snow_drift's density lerp, which eases rather than snapping.
 const SETTLE_FRAMES: int = 8
+const PINNED_VARIANT_SALT: int = 2
+# first_light, then the whole cycle.
+var capture_count: int = BiomeDirector.BIOME_CYCLE.size() + 1
+var save_failures: int = 0
 
 var main: Node2D
 var director: BiomeDirector
@@ -40,6 +52,8 @@ func _init() -> void:
 	for argument: String in OS.get_cmdline_user_args():
 		if argument.begins_with("--out="):
 			output_prefix = argument.trim_prefix("--out=")
+	BiomeDirector.session_cycle_rotation = 0
+	BiomeDirector.session_variant_salt = PINNED_VARIANT_SALT
 	main = MAIN_SCENE.instantiate() as Node2D
 	(main.get_node("GameManager") as GameManager).require_start_screen = false
 	root.add_child(main)
@@ -75,8 +89,8 @@ func _process(_delta: float) -> bool:
 		biome_index += 1
 		return false
 
-	if biome_index >= BiomeDirector.BIOME_CYCLE.size():
-		quit(0)
+	if biome_index >= capture_count:
+		quit(1 if save_failures > 0 else 0)
 		return true
 
 	# Mid-biome, so the palette is fully settled and not part-way through a crossfade.
@@ -91,10 +105,19 @@ func capture_current() -> void:
 	# each session (BiomeDirector.session_cycle_rotation), so indexing the authored array would
 	# label every capture with the wrong biome.
 	var palette: BiomePalette = director.get_cycle_palette(biome_index)
+	var base: BiomePalette = director.get_cycle_base_palette(biome_index)
+	# A variant is a duplicate with no resource_path, so the name comes from its base.
+	var label: String = base.resource_path.get_file().get_basename() + ("" if palette == base else "_variant")
 	var image: Image = root.get_texture().get_image()
-	image.save_png("%s_%d.png" % [output_prefix, biome_index])
-	# Printed so the sheet can be checked against the data instead of by eye: the top
-	# sky pixel must match this palette's sky_top, or the capture is off by a frame again.
+	var path: String = "%s_%d_%s.png" % [output_prefix, biome_index, label]
+	var error: Error = image.save_png(path) if image != null else ERR_CANT_CREATE
+	if error != OK:
+		save_failures += 1
+		push_error("biome_contact_sheet: could not save %s (error %d)" % [path, error])
+		return
+	# Printed so the sheet can be checked against the data instead of by eye: the top-left sky
+	# pixel should match this palette's sky_top, and must not match the PREVIOUS shot's, or the
+	# capture is off by a frame again. A glow reaching that corner warms it (arctic_dawn's sits
+	# at the top left), so a near-miss there is the palette, not the capture.
 	print("biome=%d %s  sky_top_expected=%s  sky_top_rendered=%s" % [
-		biome_index, palette.resource_path.get_file().get_basename(), palette.sky_top,
-		image.get_pixel(4, 2)])
+		biome_index, label, palette.sky_top, image.get_pixel(4, 2)])
