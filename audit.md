@@ -41,7 +41,7 @@ established P0/P1 blocker. Each item below states what evidence exists and what 
 - [x] **A6 / P2:** Test coin readability using its actual sprite/tint contract. *(`biome_schedule_check` measures the real sprite × coin_color against every background; lowest 0.64.)*
 - [x] **A7 / P3:** Remove the verified unused scaffolding listed below.
 - [x] **A8 / P3:** Consolidate the two scene-reload paths.
-- [ ] **A9 / P3:** Trim historical essays in source; keep behavior-critical invariants nearby.
+- [x] **A9 / P3:** Trim historical essays in source; keep behavior-critical invariants nearby. *(The four named files, comments only, one commit each; 226 comment lines removed, every invariant and research pointer kept. Other files only when next touched.)*
 - [x] **A10 / P3:** Make biome captures cover all nine base palettes reproducibly. *(Pinned rotation 0 and a no-variant salt; labelled files; exit 1 on a failed save.)*
 - [x] **A11 / P2:** Protect source-art exclusion in the export gate. *(Mutation in a disposable copy not re-run.)*
 - [x] **A12 / P3:** Give historical artifacts a clear retention/indexing policy. *(`art_source/README.md`: per-folder purpose and rule. No files deleted; that is the owner's call.)*
