@@ -33,25 +33,25 @@ A3 requires profiling; A13 is conditional future work; A18 requires a visual dec
 not instructions to implement every possible abstraction or retune approved art. There is no newly
 established P0/P1 blocker. Each item below states what evidence exists and what completion means.
 
-- [ ] **A1 / P2:** Surface save failures instead of reporting a durable purchase success.
-- [ ] **A2 / P2:** Refresh death-screen wallet/best after shop purchases and progress reset.
+- [x] **A1 / P2:** Surface save failures instead of reporting a durable purchase success. *(2026-10-04: purchase only; reset/record_run still ignore it.)*
+- [x] **A2 / P2:** Refresh death-screen wallet/best after shop purchases and progress reset.
 - [ ] **A3 / P2:** Profile and reduce repeated obstacle-placement work without weakening fairness.
 - [ ] **A4 / P2:** Make existing integration gates routinely runnable; cover save/menu/input regressions.
-- [ ] **A5 / P2:** Reconcile current documentation and mark historical fixes as resolved.
+- [ ] **A5 / P2:** Reconcile current documentation and mark historical fixes as resolved. *(2026-10-04: all listed contradictions fixed except the HANDOFF trim and the old root-audit archive.)*
 - [ ] **A6 / P2:** Test coin readability using its actual sprite/tint contract.
-- [ ] **A7 / P3:** Remove the verified unused scaffolding listed below.
-- [ ] **A8 / P3:** Consolidate the two scene-reload paths.
+- [x] **A7 / P3:** Remove the verified unused scaffolding listed below.
+- [x] **A8 / P3:** Consolidate the two scene-reload paths.
 - [ ] **A9 / P3:** Trim historical essays in source; keep behavior-critical invariants nearby.
 - [ ] **A10 / P3:** Make biome captures cover all nine base palettes reproducibly.
-- [ ] **A11 / P2:** Protect source-art exclusion in the export gate.
+- [x] **A11 / P2:** Protect source-art exclusion in the export gate. *(Mutation in a disposable copy not re-run.)*
 - [ ] **A12 / P3:** Give historical artifacts a clear retention/indexing policy.
 - [ ] **A13 / P3:** Keep future extractions small and tied to an actual maintenance need.
 - [ ] **A14 / P2:** Preserve buffered landing jumps when air upgrades are owned.
-- [ ] **A15 / P2:** Stop late pickup callbacks from changing an already-finalized run.
-- [ ] **A16 / P2:** Make physics gates fail on detected failures/incomplete runs.
-- [ ] **A17 / P3:** Reject non-finite/out-of-range save numbers field by field.
+- [x] **A15 / P2:** Stop late pickup callbacks from changing an already-finalized run.
+- [x] **A16 / P2:** Make physics gates fail on detected failures/incomplete runs. *(Also: `check.sh` now fails a gate whose script doesn't parse/load. Godot exits 0 then.)*
+- [x] **A17 / P3:** Reject non-finite/out-of-range save numbers field by field.
 - [ ] **A18 / P3:** Resolve the skate-track halo/core modulation contract after visual review.
-- [ ] **A19 / P3:** Reuse unchanged Aurora streak gradients.
+- [x] **A19 / P3:** Reuse unchanged Aurora streak gradients.
 
 ### A1 — Purchases report success when persistence fails
 

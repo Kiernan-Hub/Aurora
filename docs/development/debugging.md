@@ -28,7 +28,7 @@ settings). The flag is the smaller change and works for any runner.
 
 ## The fast five: `./scripts/check.sh`
 
-One command, ~25s, the tier to run before every commit:
+One command, ~70s, the tier to run before every commit:
 
 ```bash
 ./scripts/check.sh          # quiet on PASS, full gate output on FAIL, exits non-zero
@@ -76,7 +76,7 @@ run without `--headless`, so no headless runner can ever include them.
 **Project import is deliberately NOT in the runner.** The original reason — that `--editor`
 strips the pinned physics settings — turned out to be wrong (measured 2026-08-26, see the
 corrected table below). The decision stands on its remaining merits: import is slow, it is
-needed only after adding a `class_name`, and keeping the ~25s runner free of any command that
+needed only after adding a `class_name`, and keeping the runner free of any command that
 *can* write to the project is worth more than the convenience. Import stays the manual step
 below.
 
@@ -177,7 +177,8 @@ Both of these were hit on 2026-08-03 adding the `Services` autoload. Neither pri
 useful failure — the gate just never terminates — so check them first when a probe
 that used to finish suddenly doesn't.
 
-**1. `--script` runs do not register autoloads.** Referencing the global identifier
+**1. `--script` runs have no global `Services` identifier** (the autoload *node* still exists
+at `/root/Services`, which is why `resolve()` works there). Referencing the identifier
 `Services` from gameplay code is a *compile* error in a headless script run, not a
 runtime null. The referencing script fails to load entirely, its class resolves to
 `Nil`, and every probe line configuring it (`require_start_screen = false`,
@@ -195,7 +196,8 @@ naming its type fails with `Could not find type "X"` — same cascade as above. 
 ```
 
 Run that after adding any new `class_name`, before running any gate — then **`git diff
-project.godot` immediately**, because that command strips it (see the table above).
+project.godot`**. The import itself measured clean (table above), but a settings save in the
+same session would not be, and checking costs nothing.
 
 ## Harness opt-outs — set these before `add_child(main)`
 
@@ -235,17 +237,20 @@ the tell: if a camera measurement looks inflated, check `scroll_rate_x` against 
 
 ## Archived probes are NOT gates — and most of them no longer run
 
-**They live in `scripts/debug/archive/` as of 2026-08-15.** `scripts/debug/` now holds exactly
-the **twelve maintained** files and nothing else — the six headless gates, the four visual
-checks, `shipping_values_check.gd` and `ice_seam_probe.gd` — so "is this thing a gate?" is
-answered by which directory it is in rather than by checking a list.
+**They live in `scripts/debug/archive/` as of 2026-08-15.** `scripts/debug/` holds exactly the
+**fourteen maintained** checks plus one diagnostic, `ice_seam_probe.gd`, and nothing else — so
+"is this thing a gate?" is answered by which directory it is in rather than by checking a list.
+The fourteen: the fast four in `check.sh`; `freeze_search`, `freeze_replay_runner`,
+`floor_flicker_probe`, `chasm_probe`, `air_move_probe` and `aurora_calm_probe`, which exit
+non-zero on failure; `camera_shake_probe`, which only prints metrics; and the three rendered
+captures.
 
 **Comments across the codebase name these probes by bare filename** (`freeze_ab_runner.gd`,
 `stall_recovery_probe.gd`, …) in `player.gd`, `game_manager.gd`, `speed_manager.gd`,
 `obstacle_spawner.gd`, `powerup_spawner.gd` and several research docs. Those were left as
 written — none of them is a path, they are prose naming a measurement's source, and rewriting
 28 comment lines across gameplay files to add a directory earns nothing. **A bare probe
-filename in a comment means `scripts/debug/archive/<name>`** unless it is one of the twelve.
+filename in a comment means `scripts/debug/archive/<name>`** unless it is one of the fifteen.
 
 Everything in `archive/` is a one-off from a closed investigation, kept for its measurements and
 its comments. **Audited 2026-08-03, and most of them silently lie now:**
@@ -513,12 +518,12 @@ feature failures — the `camera_shake.md` lesson again: measure the quantity th
 **Air-move probe** (`scripts/debug/air_move_probe.gd`, 2026-09-27) — the behavioural gate for
 the slam and double jump away from voids (`chasm_probe` covers them at voids). It runs on the real
 Player in the real scene, on the first hazard chasm's flat lead-in at a pinned 400 px/s, in about
-**1 second** uncapped. Twelve asserting cases, each documented in the file's header: the slam
+**1 second** uncapped. Fourteen asserting cases, each documented in the file's header: the slam
 fires, is a no-op unowned, and never starts over a void; the double jump fires and fires once;
 a tap in the landing window is the ordinary jump on either side; a tap on a move you don't own does
 nothing; a flip after a double jump pays coins but no boost (plus a control that a plain one still
-boosts); a glide launch passes through a floe while a plain launch and a spike still kill; the shop
-builds one row per track. Expect `AIR_MOVE_PROBE_RESULT ... status=PASS` and exit 0:
+boosts); a glide launch passes through a floe while a plain launch and a spike still kill; holding
+either desktop action spins and glides; the shop builds one row per track. Expect `AIR_MOVE_PROBE_RESULT ... status=PASS` and exit 0:
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --fixed-fps 60 --path . --script res://scripts/debug/air_move_probe.gd
 ```

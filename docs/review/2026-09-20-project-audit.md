@@ -1,5 +1,10 @@
 # Project audit — 2026-09-20
 
+> **Resolved (note added 2026-10-04).** All four findings are fixed: P1 in `7b844a2`, the
+> malformed-field P2 in `e5ba888`, multi-touch glide in `9f07726`, pause-menu biome phase in
+> `ae200cb`. None has a maintained regression gate yet (root `audit.md`, A4). The original
+> report follows unchanged.
+
 Baseline: `e157a6b` on `claude/aurora-reconcile`. Read-only review of runtime code, scene wiring,
 resources, shaders, persistence, input, progression, set pieces, and export configuration.
 No gameplay fixes were made. A concurrent edit to Aurora ice colors in

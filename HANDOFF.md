@@ -20,9 +20,9 @@ velocity.y snapping back to ~-587 mid-air, a dive as a snap to ~+1280. Items 5 (
 ice) were not reached: they need a tap timed to where a hazard is, which blind injection can't do.
 Their logic is `air_move_probe`'s (14/14, and `player.gd` is unchanged since).
 
-**One small bug found:** after buying in the shop from the death screen, Back shows the death
-screen's OLD wallet (10053 after spending 1,200). `death_stats_label` is written once, at death
-(`game_manager.gd:585`); the shop never refreshes it. Display only, the save is right.
+**One small bug found:** after buying in the shop from the death screen, Back showed the death
+screen's OLD wallet. **Fixed 2026-10-04** (`audit.md` A2): `refresh_death_stats()` re-reads best
+and wallet after every purchase and reset. Not yet re-checked on the phone.
 
 ### Next actions, in order
 

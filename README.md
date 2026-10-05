@@ -27,21 +27,22 @@ gates (below).
 ## Checks
 
 ```bash
-./scripts/check.sh          # the fast five, ~25s — run before every commit
+./scripts/check.sh          # the fast five, ~70s — run before every commit
 ./scripts/check.sh -v       # same, but print every gate's output
 ```
 
-Twelve maintained checks exist in three tiers, and only twelve — everything else lives in
-`scripts/debug/archive/`, so the directory answers "is this a gate?".
+Fourteen maintained checks exist in three tiers, plus one diagnostic (`ice_seam_probe`) —
+everything else lives in `scripts/debug/archive/`, so the directory answers "is this a gate?".
 
 | Tier | What | When |
 |---|---|---|
 | **fast** | the five in `check.sh` | before every commit |
-| **physics** | freeze-search, freeze-replay, floor-flicker, chasm, camera-shake | after any player, collision or segment change — minutes each |
+| **physics** | freeze-search, freeze-replay, floor-flicker, chasm, camera-shake, `air_move_probe`, `aurora_calm_probe` | after any player, collision, segment or air-move change; the Aurora probe after Aurora/lake changes. Fast with `--fixed-fps 60` |
 | **visual** | `sky_layer_check`, `ice_look_capture`, `biome_contact_sheet` | after any visual change — **must run WITHOUT `--headless`** |
 
 The visual three can never join a headless runner: `BiomeDirector` returns early under
-`--headless`, so **every headless gate is blind to biome code**. Commands and full descriptions
+`--headless`, so **every headless gate is blind to biome code** (only `aurora_calm_probe` reaches
+it, through an off-tree director). Commands and full descriptions
 are in `docs/development/debugging.md`.
 
 > **Run `git status` after any engine run.** A project-settings *save* can rewrite
