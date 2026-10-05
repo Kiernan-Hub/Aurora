@@ -5,6 +5,363 @@ session ends, its `HANDOFF.md` section moves to the top of this file and `HANDOF
 the current state. **This is history, not a to-do list**: many entries are superseded, and some
 contradict the code. `CLAUDE.md` holds the current truth.
 
+## 2026-10-03/04 — white void fixed; phone test A; the `audit.md` cleanup pass
+
+Sessions on the Mac. The owner reported the white void below a high jump (2026-10-03); it was fixed
+with a streaked ice plain behind the panorama and approved in game. Phone test A ran over adb:
+6 of 8 passed, and the one bug found (stale death-screen wallet) was fixed in the audit pass. A
+ChatGPT audit (`audit.md`, 19 items) was then worked through, one commit per item: 17 closed,
+A3 left at measurement (no phone attached), A9 and the old root-audit archive left for the owner.
+The current state of all of it is `HANDOFF.md`'s top section.
+
+The HANDOFF sections this session replaced, verbatim:
+
+> ## Where the project is — 2026-10-04. READ THIS FIRST
+>
+> **Everything is committed and pushed** on `claude/implementation-t58fc3` (still not merged to
+> `main`). The 2026-09-29 work went in as one commit: `audit.md` finding 1 fixed (details below) and
+> the new `GameManager.debug_start_wallet` (`game_manager.gd:58`), which refills the saved wallet to
+> that many coins on every launch and restart (debug builds only, never headless). **It is committed
+> at 0**; `shipping_values_check` fails `check.sh` while it's on. **The phone now runs a 9999-wallet
+> build of `a03dcc3`** (also `aura.apk` on disk), and its save owns the slam and double jump.
+>
+> **The owner played the branch on the Mac (2026-10-03): everything works and feels good, except
+> the white void below.** That covers desktop (B).
+>
+> **Phone test A, 2026-10-04: 6 of 8 PASS, driven by Claude over adb** (item-by-item in the list
+> below). Method: `adb shell input tap` on each screen half (the real Android touch path, the one that
+> shipped broken before), `screenrecord`, then OCR of the debug overlay's `velocity.y`/`is_on_floor`
+> and coin counter per frame (macOS Vision via a throwaway Swift script). A double jump reads as
+> velocity.y snapping back to ~-587 mid-air, a dive as a snap to ~+1280. Items 5 (chasm) and 8 (thin
+> ice) were not reached: they need a tap timed to where a hazard is, which blind injection can't do.
+> Their logic is `air_move_probe`'s (14/14, and `player.gd` is unchanged since).
+>
+> **One small bug found:** after buying in the shop from the death screen, Back showed the death
+> screen's OLD wallet. **Fixed 2026-10-04** (`audit.md` A2): `refresh_death_stats()` re-reads best
+> and wallet after every purchase and reset. Not yet re-checked on the phone.
+>
+> ### Next actions, in order
+>
+> 1. **White void: FIXED and committed** (section directly below). Nothing owed.
+> 2. **Owner: playtest (C) below, on the phone.** Items A5/A8 by thumb if you meet them on the way.
+> 3. **Tune by feel.** The knobs are in "Where to tune". Any timing change must still pass
+>    `./scripts/check.sh`, whose fairness proofs fail any pattern under 7 frames of take-off window.
+> 4. **Merge to `main`** once happy: `git checkout main && git pull && git merge --ff-only
+>    origin/claude/implementation-t58fc3 && git push`, or ask Claude to open a PR. **The switch must be 0.**
+> 5. **Step 8, art** (owner): "Remaining plan" below.
+> 6. After opening the editor, always run `git status`. It re-saves `HANDOFF.md` with tabs (whitespace
+>    only: `git checkout -- HANDOFF.md`) and may strip `project.godot`'s pins (standing rule in
+>    `CLAUDE.md`). It happened again before this session; restored, `check.sh` green.
+>
+> ### The white void below a high jump or glide (owner-reported 2026-10-03): FIXED, owner-approved 2026-10-04
+>
+> **What it looked like:** jump high (a double jump) or glide, and the whole lower half of the screen
+> was one flat pale colour. The background ice ended partway down, and the terrain had dropped to the
+> bottom edge.
+>
+> **Cause, corrected 2026-10-03.** The camera follows the player up (`main.gd`
+> `get_vertical_camera_target()`: a ±72px dead zone, then it follows; a glide follows 1:1), but every
+> background layer is screen-locked vertically. The panorama's reflections fade out just below its
+> waterline. Below that, the screen shows `MidRidge`'s flat fill under its flat haze, not the
+> `SkyBackdrop`. The ridge fills run to 900px past the bottom edge. In ordinary play the terrain
+> covers that area. **The double jump made this common:** a single jump peaks at 128px, a double at
+> ~256px, and ~512px with the jump powerup.
+> **Measured:** `ParallaxBackground` draws every layer at the camera zoom (0.833, y 0). So
+> `background_strip.gd`'s "fractions of viewport height" land ×0.833 on screen: the waterline is at
+> ~46% of the screen, not 55%.
+>
+> **What was built (`background_strip.gd` only):** a `Plain` sprite inside the `IceStrip` layer,
+> behind the panorama, from the waterline to fraction 1.5 (past the bottom edge at any zoom the game
+> uses). It is transparent at the waterline and opaque ~83% down the screen. Its colour is the
+> palette's nearest scenery veiled by its nearest haze: no new palette field, no `main.tscn` node, no
+> director wiring. **Round 1 was the gradient alone, and the owner could not see it**: a smooth
+> empty field is still a void. **Round 2 added soft perspective streaks**, baked once into a
+> 1024×512 texture (5.4 ms on the Mac, skipped under `--headless`): darker smears that are thin and
+> faint at the waterline and broader toward the viewer. Checked in a camera-lifted capture. No
+> Aurora response, because the fill it covers moves ≤4/255 under a full Aurora. Chasm voids show
+> it, and even the darkest streak stays ≥0.12 luminance above the deepest terrain fill.
+> Gates: `check.sh` 5/5, `sky_layer_check` PASS; `ice_look_capture` and `biome_contact_sheet` run
+> windowed, with only faint smears above the ground line in ordinary play.
+>
+> **The owner looked at it in game and approved it (2026-10-04).** Knobs (top of `background_strip.gd`): `PLAIN_STREAK_DARKNESS` (0.2) for how strong the
+> streaks are; the `0.12 * depth` length and `depth * 20.0` thickness in `build_plain_texture()`.
+>
+> **Flagged alternatives, not taken** (more bug surface):
+> - **Cap the camera's climb** so the ground stays in frame and the player rises toward the top
+>   instead. That touches the camera follow, so `camera_shake_probe` needs a re-run, and a high glide
+>   or a powered double jump could leave the top of the screen.
+> - **Zoom out with altitude**, Alto's style. Zoom is field of view on this game. It moves the
+>   forward offset and collides with the Aurora zoom. Worst, objects spawned at the forward edge could
+>   pop in on screen (`check_spawn_lookahead()`). This has the most moving parts.
+> - **Vertical parallax** is banned (`dead_code.md`). Don't.
+>
+> ### Audit finding 1, fixed 2026-09-28
+>
+> Both `audit.md` findings are closed; nothing now blocks the merge except the owner's own tests
+> below. Full log: `docs/research/spike_approach_fairness.md`.
+>
+> - **What was wrong, and how big.** The fairness proof is on flat ground, and the guard never looked
+>   at the ground a spike is jumped from. A spike on a short level stretch at the top of a climb is
+>   effectively taller by however far the take-off ground sits below it. Measured over 3 seeds:
+>   **~1 in 5 accepted spikes was unbeatable at jump level 0 or 1**, and so were 4–22% of spike-first
+>   combos. This existed on `main` too.
+> - **The fix, `obstacle_spawner.gd`:** a fourth guard clause, APPROACH. Over the weakest jump's reach
+>   before each spike (its airtime × speed, 360px at 750), no ground more than **2px** below the
+>   spike's base. Ground above it is fine. Plus one retime: `floe_spike_shard`'s shard 1.0s → **1.1s**,
+>   which had zero slack on flat and lost a frame on real ground.
+> - **The proof, `terrain_invariant_check.gd`:** the same fairness model now takes the real height field.
+>   `check_placed_pattern_fairness()` runs it, per seed, on placements the game's own forward search
+>   accepts: every level ± powerup, at the pattern's slowest speed and at 750. It also pins the audit's
+>   position (must be rejected, model must see 0 frames) and a flat control. A deep run
+>   (`--placed-step=10000`) found 2,383 placements over 8 seeds, all ≥ 7 frames. It's mutation-tested three ways.
+> - **The model was checked against the live game** at 9 spots (real Player, audit harness): every
+>   predicted 0 died live (0 of 192), and every live window was ≥ the model's.
+> - **What it costs you:** combos are rarer, because a combo's later spikes now need flat-or-falling
+>   ground between pieces too. Per attempt: spike 0.90 → ~0.67, pairs 0.24–0.35 → 0.09–0.25, triples
+>   0.13–0.20 → 0.02–0.07. A failed combo still falls back to its first piece, so density mostly
+>   holds; tiers 4–5 show fewer combos. If that feels thin, raise combo `weight`s in `PATTERNS`
+>   (no code). `check.sh` takes ~70s now (was ~55s).
+> - **Flagged, not fixed:** the forward search was already several ms at worst for combos before this
+>   (it re-walks the whole span for every 50px offset), and is now ~1.5× that. It's a candidate for the
+>   phone's unexplained late frames. Unmeasured on the device.
+>
+> Finding 2 (desktop S/right-click holds) was fixed in `88dc175`: `air_move_probe` 14/14.
+>
+> ## The obstacle branch, as of 2026-09-27 (still current)
+>
+> **Obstacle plan steps 1–7 are BUILT, gated and pushed** on branch `claude/implementation-t58fc3`,
+> **not merged to `main`**. Steps 1–5 (camera, pattern scheduler, floe/shard, thin ice, tiers) came
+> from a cloud session. Steps 6–7 (slam, double jump) and a review of 1–5 were done on the Mac.
+> Every gate is green on the Mac. **Nothing has been seen on the phone or checked by eye**; the
+> complete list of what the owner still has to test is directly below. Step 8 is the owner's art
+> pass. That session's full log is the second entry of `docs/history.md`.
+>
+> ### Owner: every test nobody has done yet (the complete list)
+>
+> **A. Phone, mandatory.** The touch path has shipped broken twice, and no gate can see it. Export and
+> install per `debugging.md`, "Android device testing". Needs coins (slam 300, double jump 900):
+> the `aura.apk` on disk already has 9999. For a fresh export, set `GameManager.debug_start_wallet`
+> (`game_manager.gd:58`) to 9999 locally, and set it back to 0 before any commit (`check.sh` fails while it's on).
+> Results 2026-10-04 (Claude over adb, see the top):
+> 1. Buy both in the shop; each button shows OWNED and the wallet drops by the price. **PASS**: 10053 → 9753 → 8853, save `slam:1, double_jump:1`.
+> 2. Jump, then tap the **right** half at the top: a second jump. **PASS**: -133 → -587 mid-air, ~0.5s more air.
+> 3. Jump, then tap the **left** half at the top: a dive. **PASS**: -160 → +1227, landed 3 samples later.
+> 4. Tap either half just before landing: a normal re-jump, never a dive or a second jump. **PASS, both halves**: one grounded frame, then -560. Earlier taps (~0.15s out) correctly moved.
+> 5. Tap left over a chasm: nothing. Run off a lip, then tap right once you've dropped below it: nothing (you die). **NOT RUN** on device.
+> 6. Hold through a jump: it still spins, and a flip after a double jump pays coins but no speed boost. **PASS**: spin visible; DJ flip paid +5 coins, speed stayed ~380 (a boost is 1000).
+> 7. Without the unlocks (reset progress), no tap in the air does anything new. **PASS** (tested before buying, both halves).
+> 8. Thin ice with either thumb: the hop rhythm is unchanged. **NOT RUN** on device.
+>
+> **B. Desktop. DONE by the owner on the Mac, 2026-10-03: everything works** (the one bug found is
+> the white void, at the top). Kept for reference: set `GameManager.debug_unlock_air_moves = true` (`scripts/game/game_manager.gd:53`) to skip
+> buying, and set it back before committing (`shipping_values_check` fails while it's on).
+> 1. Space or left click in the air = second jump; **S or right click** in the air = dive. The key and
+> mouse bindings (`InputSetup`) have never been pressed by anyone; probes press the action directly.
+> 2. The shop: three rows, readable, and a real purchase goes through. No test has clicked a buy
+> button; the purchase path (`_on_buy_pressed`, bound per row) is code-reviewed only.
+>
+> **C. Play the obstacle half** (phone and desktop):
+> 1. **Density.** Is 1:00–2:30 now too busy, at ~2.5× the old count? Does 5:00+ get properly hard?
+>    Since the 2026-09-28 fix, combos are rarer (see the top): do tiers 4–5 still feel like new ideas?
+>    Spikes now sit only on flats or at the foot of a descent, never just past a climb: repetitive?
+> 2. **Readability at 750 px/s:** floe and shard against scenery, thin ice as "keep hopping", and the
+> combos (e.g. spike→floe 0.5s, which needs an early jump).
+> 3. **Thin ice grace:** is 0.2s right on touch?
+> 4. **Camera at 30%**, on the start screen and in play; Aurora streaks, wings and framing with the player off-centre.
+> 5. **The frozen lake's skate trail shows less of its tail** (fades over ~860px; only ~415–520px behind the
+> player is on screen now). Cosmetic.
+> 6. **Possible overlap:** an air coin line (132px) or the rare coin (174px) can sit inside a floe's column
+> (64–200px). Harmless, looks odd, not guarded.
+> 7. The first spike now appears no earlier than ~21.5s, not 20s (first-appearance pause and retries).
+>
+> **D. Visual, never checked by anyone:** hazard placeholders, the thin-ice overlay, the shop's three
+> code-built rows on a phone screen (font 13, same as the old authored row), and the slam's bigger
+> landing squash.
+>
+> **E. Code paths no test reaches** (reviewed only):
+> - The slam refused while already falling faster than 1,200 px/s. It is only reachable in a drop
+> chasm's descent.
+> - Touch's half-screen split in `Main._input`. Same coordinate space as the pause-button hit test next
+> to it.
+> - An Android build of this code. `check.sh`'s export check packs it, but nothing has run it on a device.
+>
+> ### Audit guide (for another chat)
+>
+> **Scope.** This session's commits are `91a64b5..HEAD`: `git diff 4f4c2c5..HEAD`. The whole branch
+> versus `main` is `git diff main..HEAD`. Commit list: "Commits on the branch" below.
+>
+> **Re-run every gate** (all green on 2026-09-27, Mac, Godot 4.7.stable; `--fixed-fps 60` gives the same
+> results as real time, in seconds). **From a sandboxed agent (Codex), add `--log-file /tmp/godot.log` to every
+> Godot command**, or Godot crashes at startup trying to write its log under `~/Library`. `check.sh` already
+> does this (`debugging.md`, "Running Godot from a sandboxed agent").
+>
+> | Gate | Command (after `--headless --fixed-fps 60 --path . --script res://scripts/debug/`) | Expected |
+> |---|---|---|
+> | fast five | `./scripts/check.sh` | 5/5 PASS |
+> | air moves | `air_move_probe.gd` | 12/12 cases, `status=PASS` |
+> | chasm | `chasm_probe.gd -- --seed=683407368 --chasms=3 --phases=4` | 120 trials, 0 failures, 0 recoveries |
+> | freeze-search | `freeze_search.gd -- --seed=941462462 --warp=175000 --to=178000 --phases=8 --phasestep=0.25 --scan=1 --trialframes=500 --rebase=1`, then again with `--slam=1`, then `--double=1` | 0 stalls each |
+> | floor-flicker | `floor_flicker_probe.gd -- --frames=20000` | 0 recoveries / 0 stuck |
+> | aurora calm | `aurora_calm_probe.gd` | PASS, 182,974 assertions |
+> | camera shake | `camera_shake_probe.gd -- --seed=941462462 --frames=7000 --warmup=120` | no pass/fail; matched `main` on the Mac (follow mean 9.87px both) |
+> | sky layers | `sky_layer_check.gd`, **without** `--headless` | PASS |
+>
+> **Claims to check, and how each was verified:**
+>
+> | Claim | Code | Evidence |
+> |---|---|---|
+> | A glide pickup's forced launch into a floe was an unavoidable death; now a glider passes floating pieces | `obstacle.gd` `is_floating`, set in `ObstacleSpawner.spawn_obstacle` | `air_move_probe` `glide_floating`; `check_spawn_placement` asserts the flag per kind (mutation-tested) |
+> | Slam: one site, side-selected, landing-window rule, void guard, cap 1,600 | `player.gd` "THE AIR-MOVE SITE", `try_slam`, `get_landing_frame` | `air_move_probe` (5 mutations caught), `chasm_probe` `slam_*`, `check_slam_limits`, `freeze_search --slam=1` |
+> | Double jump: guardrail A (never below a lip), one per airtime, none while slamming | `player.gd` `try_double_jump` | `chasm_probe` `double_*` (the rescue trials die without it; `double_late` must die), `air_move_probe` |
+> | Guardrail B: no trick boost after a double jump | `game_manager.gd` `_on_player_trick_completed`, `Player.has_double_jumped` | `air_move_probe` `trick_after_double` + control (mutation caught) |
+> | Shop built from `UpgradeStore.TRACKS`; nothing else reads the removed nodes | `upgrade_store.gd`, `game_manager.gd` `build_shop_rows`/`refresh_shop`, `main.tscn` (2 nodes deleted) | `air_move_probe` `shop_rows`; `check_upgrade_curve` asserts the jump track's cost count |
+> | Steps 1–5 hold on the Mac, not just in the cloud | — | the gate table above, re-run before any of this session's changes |
+>
+> **Judgement calls to scrutinise** (made in-session, flagged to the owner):
+> 1. **Left/right split** replaced the plan's one-button sequence. The owner asked for it; it also
+> fixes "can't slam without double-jumping first".
+> 2. **A slam-side press in the air slams**, so a slam owner starts spins from the right side or by
+> holding through the jump. The alternative, slam on release, was flagged and not built.
+> 3. **Slam refused while already falling ≥1,200 px/s**, so a slam can never slow a fall.
+> 4. **No formula-only "2× reach" check** (plan deviation): it would re-derive its own model. The chasm
+> trials exercise the real double jump instead.
+> 5. **Test-harness fixes**, checked not to weaken anything:
+> - `chasm_probe.reset_player()` now clears the jump buffer and coyote timer.
+> - The rescue trials tap within one frame's fall of the lip, rather than on exactly one frame.
+> - `double_late`'s expectation is the same as `no_jump`'s.
+>
+> The history entry has the traces behind each fix.
+>
+> **Weak spots worth a second look:**
+> - **The landing-window prediction** (`will_buffered_jump_fire`) integrates the airborne model over the
+> height field, so it can be off by a frame at the 0.12s edge: a tap there becomes either a landing
+> jump or an air move. Both are legal outcomes, but the feel at that edge is untested on a phone.
+> - **Guardrail A reads the height field** (`get_surface_world_y` plus exit drop), not collision. It
+> relies on lips being level, which `terrain_invariant_check` asserts.
+> - **`OBSTACLE_VOID_CLEARANCE_AHEAD` (950) covers a single boosted jump.** A double jump off a
+> pattern's last piece can reach a void; that's the player's call by design.
+>
+> ### The air moves as built (steps 6–7)
+>
+> **Input.** One site in `player.gd` ("THE AIR-MOVE SITE"), fed by the shared jump buffer.
+> - On the ground, and in the landing window, **any tap jumps**, exactly as before.
+> - In the air, **the tap's side picks the move**: the left half of the screen slams, the right half
+> double-jumps. The owner asked for this split. It replaced the plan's one-button sequence (tap = double
+> jump, then tap = slam), under which an owner of both could never slam without double-jumping first.
+> - Desktop: Space/Enter/left click is the jump side; **S or right click** is the slam side (arrows
+> are debug speed control).
+> - **Landing-window rule:** a tap still live at touchdown stays the ordinary landing jump, which keeps
+> thin ice's rhythm and every fairness proof unchanged. A refused tap stays in the buffer.
+> - **Blocked** by lake, boost, Aurora flight and its landing latch, glide, and death.
+> - **Spin:** a jump-side press in the air still starts a spin (it double-jumps if owned, and the hold
+> carries on). A slam-side press is a slam for a slam owner, so spin from that side by holding through
+> the jump. The alternative, slam on a tap's release, adds latency and touch press-timing code. Revisit
+> only if it feels bad.
+>
+> **Slam** (300). Sets `velocity.y` to 1,200 down, then gravity capped at 1,600 (the drop chasm's own
+> run-off speed, `check_slam_limits()`). One per airtime; it can only shorten a jump. It is refused
+> unless the simulated dive has ground all the way down, and refused when already falling faster
+> than 1,200, since it would slow you.
+>
+> **Double jump** (900). A ground-strength impulse (upgrade and powerup included) replacing vertical
+> speed, one per airtime, none while slamming. Reach is at most 2× a single jump.
+> - **Guardrail A:** only while the feet are above the lip (the surface fall death measures against).
+> - **Guardrail B:** a trick after a double jump pays coins, no boost.
+> - A single jump's chasm, obstacle and rare-coin bounds are unchanged. A double jump carried into a
+> void, or reaching the rare coin from level 1, is the player's call (owner default, accepted).
+> - **Plan deviation:** no formula-only "2× bound" constant check. It would re-derive its own model
+> and could not see the real code, so the chasm trials exercise the real double jump instead.
+>
+> **Shop.** `UpgradeStore.TRACKS` rows (`id`, `name`, `costs`, `hint`); `GameManager.build_shop_rows()`
+> builds one label and button each, and `JumpLabel`/`BuyJumpButton` are gone from `main.tscn`. A
+> track's max level is its cost count. Ids are save data: adding one needs no version bump, renaming one un-buys it.
+>
+> **Verified:** see the audit guide above. The throwaway runtime test described in the history log
+> became `scripts/debug/air_move_probe.gd`, a maintained gate.
+>
+> **Phone test:** section A at the top.
+>
+> ### Commits on the branch
+>
+> | Commit | Step | What |
+> |---|---|---|
+> | `413b43d` | 1 | Camera leads so the player sits 30% from the left; spawn lookaheads 800 → 1500; `check_spawn_lookahead()` |
+> | `1c59ead` | 1 | `camera_shake_probe` lag tolerance 0.01px (float32 rounding of the offset camera) |
+> | `ad9f586` | 2 | `ObstacleSpawner` becomes a pattern scheduler; one footprint guard; retry instead of drop; `check_pattern_fairness()` |
+> | `2e2738e` | 3 | Floating floe + shard; `TIER_START_TIMES`; placement check covers every kind |
+> | `2e49830` | 4 | Thin ice (`ThinIce`); Aurora director + lake probe learn it |
+> | `cf7c4ab` | fix | Hazard scenes load lazily (a load cycle left floes/shards script-less in some load orders) |
+> | `5addd81` | 5 | `TIERS`, short proven combos, forward search, fallback to singles, first-appearance rule |
+> | `4f4c2c5` | — | Cloud handoff; the session log moved to `docs/history.md` |
+> | `91a64b5` | fix | Mac review: a gliding player passes through floe/shard (decision 8) |
+> | `da4a857` | 6 | Shop rows from `UpgradeStore.TRACKS` + the slam; `check_slam_limits()`, `slam_*` chasm trials, `freeze_search --slam=1` |
+> | `e3bbf2b` | 7 | Double jump + the left/right side split; guardrails A and B; `double_*` chasm trials, `freeze_search --double=1`; `debug_unlock_air_moves` |
+> | this one | — | `air_move_probe.gd` (new maintained gate) + this handoff, the audit guide and the session log in `docs/history.md` |
+>
+> Steps 1–5 were re-verified on the Mac: `check.sh` 5/5, freeze-search 0 stalls, `chasm_probe` 48/48,
+> `aurora_calm_probe` PASS 182,974 assertions, `sky_layer_check` PASS. `camera_shake_probe` measured
+> `main` and the branch on the same Mac: follow distance mean 9.87px on both, every segment's jerk
+> within noise, so the camera move adds no shake. **Nothing was checked visually or on the phone**;
+> that part is the owner's.
+>
+> ---
+>
+> ## Decisions Claude made without the owner: ALL CONFIRMED by the owner, 2026-09-27
+>
+> 1. **Step 5 was built as "option A: density first"**, not the plan's long 2–3-piece patterns. The
+>    terrain is rarely flat for long: 400px of ≤6° fits 15–19% of start positions, 800px 6–8%, 1,200px 3–4%
+>    (3 seeds). Long combos would almost never appear. So combos are short (0.5–1.0s), fall back to a
+>    single when they don't fit, and difficulty mostly comes from density. The alternatives, not built:
+>    - **B, flatten the ground under patterns** (a write-ahead flat reservation like the lake). Every combo fits, but it is a terrain change (priority #1) armed ~3,000px ahead, and the world looks flatter. Bug-prone.
+>    - **C, prove fairness on the real hills at spawn time.** A runtime solver that must mirror player physics exactly. Heavy on phones, and a mismatch is a false "fair".
+> 2. **Thin ice is exempt from the 6° slope rule** (plan deviation). Held to it, a 1.2s patch fits ~5%
+>    of the ground. The exemption is sound only while the `weakest_hop` check passes.
+> 3. **`PATTERN_MIN_WINDOW_FRAMES` = 7**, not the plan's ~8, because today's lone spike measures exactly 7.
+> 4. **Powerup lookahead stays 1500**, not the plan's ~1800. It already clears the view with 230px spare.
+> 5. **`ice_long` opens in tier 3 with `ice_short`** (weights 1 : 2), not strictly "short first, then long".
+> 6. **Deferred to the art/audio pass:** the thin-ice crack SFX and the "player sinks" death. A crack that
+>    kills already plays the normal death sound. Both need new assets plus wiring.
+> 7. **The failed-slot retry is a real difficulty change** from the old code, which dropped ~60% of slots.
+>    Intended ("too easy" was the brief), but it is why tiers 1–2 are already denser than before.
+> 8. **A gliding player passes through floe and shard** (review on the Mac, after this handoff was
+>    first written). A glide pickup launches you 480 px/s upward whether you want it or not; even an
+>    instant thrust clears a floe's 200px top only ~0.34s (~260px) later. So a floe placed *before* the
+>    pickup and just past it was unavoidable. The "floating patterns wait out a glide" rule can't see it,
+>    since the floe was already there. Fix: `Obstacle.is_floating`, set from `PIECE_KINDS`, checked
+>    next to the boost break-through. Spikes still kill a glider. Runtime-verified (glide survives, the
+>    same launch without glide dies), and `check_spawn_placement` fails if the flag disagrees with the
+>    table (mutation-tested). The alternative was making the powerup and obstacle spawners avoid each
+>    other in both orders: more coupling for the same result.
+>
+> ## Owner checklist
+>
+> Merged into "Owner: every test nobody has done yet" at the top (section C).
+>
+>
+> ## How to run things
+>
+> - **Fast gates, before every commit:** `./scripts/check.sh` (Mac path built in; elsewhere
+>   `GODOT=/path/to/Godot ./scripts/check.sh`). ~70s.
+> - **Slow gates in seconds:** put **`--fixed-fps 60` before `--path`** and they run uncapped with
+>   identical results (verified on `aurora_calm_probe`: same assertions, same final positions, 15s instead
+>   of ~12min). Exact commands per gate are in `debugging.md`. Gates for the next steps: `check.sh`,
+>   `freeze_search`, `chasm_probe` (+ `floor_flicker_probe` for step 7).
+> - **In a cloud container** there is no Godot. Download the Linux build
+>   (`https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip`)
+>   into the scratchpad, then run **`--headless --path . --import` once** so the class cache knows `ThinIce`
+>   etc. Then `git status`: the import left `project.godot` untouched every time this session. The Android
+>   export check works there without templates.
+> - **After ANY engine run: `git status`.** Standing rule in `CLAUDE.md`.
+>
+>
+> **Docs updated this session:** `CLAUDE.md` (row 4, forward-view line), `visuals.md` (forward-view
+> table), `physics.md` (camera target), `terrain.md` (pattern failure codes, 950 clearance),
+> `debugging.md` (the new checks, `--fixed-fps`), `architecture.md` (scene graph line). Step 6 updated
+> `CLAUDE.md` row 9, `input.md` ("The air-move site"), `physics.md` (slam) and `debugging.md`. **Still to
+> update with step 7:** `CLAUDE.md` row 5 (guardrail B) and the "double jump ruled out" trap line, and
+> `physics.md`'s "Double jump — ruled out" section.
+>
+
 ## 2026-09-28/29 — audit finding 1 fixed (spike approach); `debug_start_wallet`
 
 Session on the Mac. The owner asked "read handoff.md and continue", then for free coins to test the
