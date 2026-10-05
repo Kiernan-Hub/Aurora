@@ -1,12 +1,14 @@
 # Handoff
 
-## Where the project is — 2026-10-04 (late). READ THIS FIRST
+## Where the project is — 2026-10-05. READ THIS FIRST
 
-**Everything is committed and pushed** on `claude/implementation-t58fc3` (still not merged to
-`main`). The obstacle system and the air moves are built. The owner's Mac playtest passed
-(2026-10-03), phone test A passed 6 of 8 over adb (2026-10-04), and the white void below a high
-jump is fixed and owner-approved. Those write-ups, the audit guide and the branch's commit table
-moved to the top of `docs/history.md`.
+**MERGED TO `main` 2026-10-05** (fast-forward of `claude/implementation-t58fc3`, pushed). The
+obstacle system and the air moves are built and played: the owner's Mac playtest passed
+(2026-10-03), phone test A passed 6 of 8 over adb (2026-10-04), and **the owner played the merged
+build on the phone for ~3 minutes on 2026-10-05: "everything is good"** (playtest C, tiers 1–4;
+5:00+ not yet reached). The white void below a high jump is fixed and owner-approved. Those
+write-ups, the audit guide and the branch's commit table are at the top of `docs/history.md`.
+**New work branches from `main`.**
 
 **This session: the `audit.md` cleanup pass**, one commit per item. 17 of 19 items are closed:
 - **Player-visible fixes.** With the slam or double jump owned, a tap 1–2 frames before touchdown
@@ -31,33 +33,34 @@ moved to the top of `docs/history.md`.
   actions 2), and archiving the older audits at the bottom of `audit.md` (code comments still cite
   "audit.md, finding 1"). A13 needs no action.
 
-**On the phone now (end of session, 2026-10-04 ~23:51):** this branch's HEAD as a debug build,
-installed over the old one with the save kept (all three upgrades owned, wallet ~10,400). Built with
-`debug_start_wallet` 9999 for the export only; the source is back at 0. The same APK is `aura.apk`
-on disk. **The owner said "all good", but the save showed only ~27 s of new playtime banked**
-(1716.7 → 1743.6 s), so **playtest C is still effectively open**: it needs runs past 1:00, 2:30
-and 5:00. The phone's USB-debugging permission had dropped once this session; if `adb devices`
-says `unauthorized`, tap Allow on the phone.
+**On the phone:** the merged build as a debug export, save kept (all three upgrades owned, wallet
+~10,400). Exported with `debug_start_wallet` 9999; the source is at 0. The same APK is `aura.apk` on
+disk. If `adb devices` says `unauthorized`, tap Allow on the phone (it dropped once this session).
+
+**First phone numbers for A3 (2026-10-05 logcat):** the slowest obstacle search in the owner's runs
+was **4.10 ms at 72 s** (tier 2, solo pieces), 0.25–2.5 ms before that, against a 16.7 ms physics
+tick. That is roughly 6× the Mac's solo-piece cost, so the combo tiers (Mac 6–8 ms worst, from
+2:30) could reach ~40 ms on the phone: **unmeasured, since no logged run printed a combo-tier
+sample.** One long run with logcat settles it.
 
 ### Next actions, in order
 
-1. **Owner: playtest (C) below, on the phone**, with runs long enough to reach tiers 4–6 (2:30
-   and 5:00+). Items A5/A8 by thumb if you meet them. The death-screen wallet fix (A2) can't be
-   re-checked by buying: everything is owned, and Reset Progress would wipe the lake progress and
-   achievement. `regression_probe`'s `death_stats` covers it instead.
-2. **Read logcat during that run** (`adb logcat -s godot | grep OBSTACLE_SEARCH`, `debugging.md`,
-   "Android device testing"): it says whether the obstacle search causes the late frames (A3).
-3. **Tune by feel.** The knobs are in "Where to tune". Any timing change must still pass
-   `./scripts/check.sh`, whose fairness proofs fail any pattern under 7 frames of take-off window.
-4. **Merge to `main`** once happy: `git checkout main && git pull && git merge --ff-only
-   origin/claude/implementation-t58fc3 && git push`, or ask Claude to open a PR.
-   **`debug_start_wallet` must be 0.**
-5. **Step 8, art** (owner): "Remaining plan" below.
+1. **Step 8, art** (owner): "Remaining plan" below. Branch from `main`.
+2. **One long phone run past 5:00 with logcat** (`adb logcat -s godot | grep OBSTACLE_SEARCH`,
+   `debugging.md`, "Android device testing"). It answers the rest of playtest C (does 5:00+ get
+   properly hard?) and A3 (does a combo search cost a frame?). Only if it does: optimise, which
+   changes accepted placements and must re-pass `check_placed_pattern_fairness()`.
+3. **Tune by feel** if anything reads wrong. The knobs are in "Where to tune". Any timing change
+   must still pass `./scripts/check.sh`, whose fairness proofs fail any pattern under 7 frames of
+   take-off window.
+4. Items A5/A8 below by thumb if you meet them. The death-screen wallet fix (A2) can't be
+   re-checked by buying (everything is owned, and Reset Progress wipes the lake progress and
+   achievement); `regression_probe`'s `death_stats` covers it.
 6. After opening the editor, always run `git status`. It re-saves `HANDOFF.md` with tabs (whitespace
    only: `git checkout -- HANDOFF.md`) and may strip `project.godot`'s pins (standing rule in
    `CLAUDE.md`).
 
-### Owner: tests still owed
+### Owner: tests still owed (none block anything now)
 
 **A. Phone.** 6 of 8 passed 2026-10-04 (`docs/history.md`). Not reached by blind adb taps: **5**, tap
 left over a chasm does nothing, and once you've dropped below a lip a right tap does nothing (you
@@ -65,7 +68,8 @@ die); **8**, thin ice with either thumb keeps its hop rhythm. Both are `air_move
 For a fresh export with coins, set `GameManager.debug_start_wallet` (`game_manager.gd:58`) to 9999
 locally and back to 0 before any commit (`check.sh` fails while it's on).
 
-**C. Play the obstacle half** (phone and desktop):
+**C. Play the obstacle half.** Owner, phone, ~3 min, 2026-10-05: **"everything is good"**. Kept
+for the long run in next actions 2, whose 5:00+ tiers no one has played yet:
 1. **Density.** Is 1:00–2:30 now too busy, at ~2.5× the old count? Does 5:00+ get properly hard?
    Since the 2026-09-28 fix, combos are rarer (`docs/history.md`): do tiers 4–5 still feel like new ideas?
    Spikes now sit only on flats or at the foot of a descent, never just past a climb: repetitive?
