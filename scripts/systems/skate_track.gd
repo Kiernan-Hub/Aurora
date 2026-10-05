@@ -86,8 +86,13 @@ const TRACK_LIFETIME: float = 1.15
 # flat even before the clipping.
 const TRACK_HALO_WIDTH_SCALE: float = 3.2
 const TRACK_HALO_STRENGTH: float = 0.30
-# The bright inner core, laid over the halo.
-const TRACK_CORE_STRENGTH: float = 0.95
+# The bright inner core, laid over the halo. It fades in on the SQUARE of the lake blend, so it
+# arrives later than the halo and peaks at this strength. That is the approved look, and until
+# 2026-10-04 it was an accident: the core is the halo's child and inherited its modulate, so it
+# rendered at 0.30 x 0.95 x blend^2 while the two constants read as independent (audit.md A18).
+# Each line now fades through self_modulate, which reaches no child, and these numbers are what
+# renders. Pixel-identical to before; change either one without moving the other.
+const TRACK_CORE_STRENGTH: float = 0.285
 
 # If contact is lost and regained further away than this, the line is cleared rather than
 # bridged. Jumping is suppressed on the lake, so the only way to leave the ice is to enter it
@@ -175,7 +180,7 @@ func apply_line_style(line: Line2D, line_width: float, line_gradient: Gradient) 
 	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	line.end_cap_mode = Line2D.LINE_CAP_ROUND
 	line.antialiased = true
-	line.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	line.self_modulate = Color(1.0, 1.0, 1.0, 0.0)
 
 
 # _physics_process for LakeReflection's reason: the etch is pinned to a surface y read out of
@@ -218,8 +223,8 @@ func _physics_process(delta: float) -> void:
 	# Everything cosmetic about this set piece rides the director's one ramp, so the etch cannot
 	# arrive before the ice is blue or outlast the mirror at the far shore.
 	var lake_blend: float = lake_director.get_lake_blend()
-	modulate.a = lake_blend * TRACK_HALO_STRENGTH
-	core_line.modulate.a = lake_blend * TRACK_CORE_STRENGTH
+	self_modulate.a = lake_blend * TRACK_HALO_STRENGTH
+	core_line.self_modulate.a = lake_blend * lake_blend * TRACK_CORE_STRENGTH
 
 
 # One point per physics frame, which at MAX_SPEED is a point every 12.5 world px -- dense enough

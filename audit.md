@@ -50,7 +50,7 @@ established P0/P1 blocker. Each item below states what evidence exists and what 
 - [x] **A15 / P2:** Stop late pickup callbacks from changing an already-finalized run.
 - [x] **A16 / P2:** Make physics gates fail on detected failures/incomplete runs. *(Also: `check.sh` now fails a gate whose script doesn't parse/load. Godot exits 0 then.)*
 - [x] **A17 / P3:** Reject non-finite/out-of-range save numbers field by field.
-- [ ] **A18 / P3:** Resolve the skate-track halo/core modulation contract after visual review.
+- [x] **A18 / P3:** Resolve the skate-track halo/core modulation contract after visual review. *(Owner kept the look: each line fades via self_modulate, core strength now states its real 0.285 x blend^2. Pixel-identical by construction.)*
 - [x] **A19 / P3:** Reuse unchanged Aurora streak gradients.
 
 ### A1 — Purchases report success when persistence fails
