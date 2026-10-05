@@ -3,6 +3,21 @@
 Inputs to `scripts/tools/build_ice_texture.py`, look-target references, and superseded build
 outputs kept for comparison. **Nothing in here is loaded by the game.**
 
+## What is kept, and why (2026-10-04, ~96 MiB tracked)
+
+| Folder | Size | Kind | Rule |
+|---|---|---|---|
+| `background/` | 38 MiB | **build input** (`pano.png`/`.xcf`) plus its provenance | keep; the GIMP files are the only editable source |
+| `terrain/` | 29 MiB | **build input** for the ice tiles, plus the lake's two look targets | keep while any shipped tile traces to a panel |
+| `aurora_reference/` | 6 MiB | **design authority** for the aurora's look (CLAUDE.md row 12) | keep |
+| `audits/` | 20 MiB | **historical captures** from closed aurora investigations, cited by `docs/research/aurora_borealis.md` and the 2026-09-09 reviews | add nothing new; delete only in an explicit cleanup, keeping whatever a doc cites |
+| top level | — | app-icon source, coin sources, the art-direction reference | keep |
+
+**New investigation screenshots and logs go to a scratch directory, not here**, unless a doc
+cites them. Deleting a tracked file does not shrink the git history, so a cleanup buys a smaller
+checkout, not a smaller repo; no history rewrite or LFS move is planned (`audit.md` A12).
+`scripts/check.sh` fails if this folder's `.gdignore` disappears or any of it reaches a pack.
+
 The `.gdignore` next to this file is what keeps Godot from importing the directory — without
 it every panel here would be imported to VRAM and shipped in the export for nothing.
 
@@ -14,9 +29,10 @@ level, and older docs and tool examples may still show the flat paths.
 ### `terrain/` — inputs to `build_ice_texture.py`
 
 - `one.png` … `sixteen.png` — the ice panel generations, live inputs to
-  `build_ice_texture.py`. The numbering is chronological, not meaningful; which panel built
-  which shipped tile is the table in `docs/development/biomes.md`, "Per-biome ice textures".
-  `sixteen.png` is the source of the shipped `ice_bubbled_depth.png`.
+  `build_ice_texture.py`. The numbering is chronological, not meaningful (`nine`, `ten` and
+  `thirteen` were not kept); which panel built which shipped tile is the table in
+  `docs/development/biomes.md`, "Per-biome ice textures". `sixteen.png` is the source of the
+  shipped `ice_bubbled_depth.png`.
 - `Glossy Frozen Lake.png`, `glossy biome trail.png` — the frozen lake's look targets.
 
 ### `background/` — inputs to `build_pano_strip.py`
@@ -41,7 +57,22 @@ level, and older docs and tool examples may still show the flat paths.
   `docs/research/background_differentiation.md`.
 - `archtower.png`, `spikefield.png`, `massif.png` — the three hand-picked panels that were
   stitched into `arch_spike_massif.png`. `full_strip.png` is an intermediate stitch of those
-  three, one generation further back than `pano.xcf`.
+  three, one generation further back than `pano.xcf`. `spike_massif.png` is the PNG of
+  `spike_massif.xcf`.
+- `moons.png` — eight moon panels; panel 6 is the source of the shipped moon disc
+  (`scripts/systems/sky_backdrop.gd`).
+
+### `aurora_reference/` — the aurora's look
+
+- `aurora_ref_1.png` … `aurora_ref_4.png` — the design authority for the aurora borealis
+  (CLAUDE.md row 12: open it before guessing; it settled three wrong turns).
+
+### `audits/` — historical captures
+
+One folder per aurora slice or audit (`aurora-2026-09-09`, `aurora-*-slice`,
+`aurora-flat-foundation`): screenshots behind conclusions recorded in
+`docs/research/aurora_borealis.md` and `docs/review/2026-09-09-*.md`. Evidence for closed work,
+not inputs to anything.
 
 ### Loose at the top level
 
