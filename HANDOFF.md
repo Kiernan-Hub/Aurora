@@ -24,9 +24,12 @@ moved to the top of `docs/history.md`.
 - **Cleanup.** Dead code removed (empty music player, muted jump SFX and its WAV, the pine
   generator, unused wrappers), the two reload paths merged, streak gradients built once, the skate
   trail's halo/core strengths made independent (same look), docs reconciled.
+- **Comment essays trimmed** (A9) in the four files the audit named: `world_rebaser.gd`,
+  `services.gd`, `save_store.gd`, `game_manager.gd`. Comments only, every invariant kept; other
+  files get the same treatment only when next touched.
 - **Still open:** A3, the obstacle search's cost (measurement added, needs the phone: next
-  actions), A9, trimming the comment essays in source (owner to choose how far), and archiving the
-  older audits at the bottom of `audit.md`. A13 needs no action.
+  actions 2), and archiving the older audits at the bottom of `audit.md` (code comments still cite
+  "audit.md, finding 1"). A13 needs no action.
 
 ### Next actions, in order
 
