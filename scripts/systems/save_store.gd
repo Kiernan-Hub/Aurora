@@ -2,20 +2,12 @@ extends RefCounted
 
 class_name SaveStore
 
-# Versioned read/write for user://save.dat. Owned by the Services autoload; nothing
-# else should touch the file directly.
+# Versioned read/write for user://save.dat. Owned by the Services autoload; nothing else touches
+# the file. A file with no "version" key is v0 and is upgraded in place on the next write.
 #
-# This replaces GameManager's load_best_score()/save_best_score(), which stored a bare
-# {"best_score": N} with no version field. That shape is fine for exactly one field and
-# becomes a migration for every field after it, so the version key goes in now while
-# there is only one payload to migrate. A file with no "version" key is treated as v0
-# and upgraded in place on the next write.
-#
-# Failure policy is deliberately asymmetric and matches what GameManager already did:
-# a READ that fails for any reason (missing file, unreadable, malformed JSON, wrong
-# type) silently yields defaults, because a corrupt save must never block someone from
-# playing. A WRITE that fails calls push_error, because that one is a real bug and
-# silently losing a new best score is worse than a log line.
+# FAILURE POLICY, deliberately asymmetric: a READ that fails for any reason yields defaults
+# (field by field, see _is_number), because a corrupt save must never block play. A WRITE that
+# fails calls push_error and returns false, and the live save on disk is left untouched.
 
 const SAVE_PATH: String = "user://save.dat"
 # Staging file for save_to_disk's write-then-rename. Never read back: if it exists at
@@ -33,73 +25,34 @@ var best_time: float = 0.0
 var music_volume: float = DEFAULT_MUSIC_VOLUME
 var sfx_volume: float = DEFAULT_SFX_VOLUME
 
-# Meta-progression (v2). best_score stays the run-score stat; the wallet is separate
-# spendable currency that every run banks into.
-#
-# upgrade_levels is intentionally an open dictionary keyed by upgrade id rather than a
-# named field per upgrade: adding an upgrade TYPE then needs no version bump, only a new
-# top-level concept does. Unknown ids read from a newer build's file are preserved as-is
-# and clamped to a legal level by UpgradeStore.get_level, so saves stay compatible in
-# both directions. This file must NOT reference UpgradeStore -- see its header.
+# Meta-progression (v2). The wallet is spendable currency every run banks into; best_score stays
+# the run stat. upgrade_levels is an OPEN dictionary keyed by upgrade id, so a new upgrade needs
+# no version bump; ids from a newer build are preserved and clamped by UpgradeStore.get_level.
+# This file must NOT reference UpgradeStore -- see its header.
 var coin_wallet: int = 0
 var upgrade_levels: Dictionary[String, int] = {}
 
 # Set pieces and achievements (v3).
 #
-# total_playtime_seconds is CUMULATIVE ACROSS EVERY RUN AND EVERY LAUNCH, and it is the
-# clock the frozen lake is scheduled against -- not run time, which resets, and not
-# wall-clock time, which would tick while the app is closed. GameManager owns the banking;
-# see its bank_playtime(). It only ever grows.
-#
-# achievements is an open dictionary keyed by achievement id, for exactly the reason
-# upgrade_levels above is: adding an achievement then needs no version bump. Only the
-# concept arriving needed one. An id written by a later build is preserved untouched here
-# and simply reads as unknown to this one.
-#
-# frozen_lake_count is how many lakes have been COMPLETED, so it doubles as the index of
-# the next 20-minute threshold. Kept separate from the achievement flag because the
-# achievement fires once and the lake recurs forever.
+# total_playtime_seconds is CUMULATIVE ACROSS EVERY RUN AND LAUNCH and only grows: the clock the
+# frozen lake is scheduled against (GameManager.bank_playtime() owns the banking). achievements
+# is open for the same reason upgrade_levels is. frozen_lake_count is lakes COMPLETED, which is
+# also the index of the next 20-minute threshold -- safe only because it and the playtime clock
+# were born together at v3, both 0.
 var total_playtime_seconds: float = 0.0
 var frozen_lake_count: int = 0
 var achievements: Dictionary[String, bool] = {}
 
-# How many auroras have been COMPLETED. A STATISTIC AND THE ACHIEVEMENT'S SOURCE, NOT THE
-# SCHEDULE -- next_aurora_due_seconds below is the schedule, and the split is the whole point.
-#
-# NO VERSION BUMP, DELIBERATELY, and this file's own idiom is the argument. A v3 file written
-# before the aurora existed simply has no "aurora_count" key, so .get(..., 0) yields 0 -- which
-# IS the correct state for a save that has never seen one. "Reading the fields that exist is
-# the migration" is what v0->v1, v1->v2 and v2->v3 above all say; a bump is earned by a new
-# top-level CONCEPT arriving, and cumulative-playtime-gated set-piece counts arrived at v3.
-#
-# The direction that matters is the other one, and it holds: a v3 file written by THIS build
-# carries the key, and an older build reading it ignores an unknown key and preserves nothing
-# -- so a player who downgrades loses their aurora count. Same exposure frozen_lake_count has
-# and the same one a bump would not fix.
+# Auroras COMPLETED: a statistic and the achievement's source, NEVER the schedule (that is
+# next_aurora_due_seconds). Added without a version bump: a v3 file without the key reads 0, the
+# correct state for a save that has never seen one.
 var aurora_count: int = 0
 
-# WHEN THE NEXT AURORA IS DUE, as a cumulative-playtime timestamp. -1.0 means UNSCHEDULED;
-# AuroraDirector._ready() fills it in and is its only writer.
-#
-# WHY THIS IS NOT `(aurora_count + 1) * AURORA_INTERVAL_SECONDS`, the device frozen_lake_count
-# uses. That device is only safe because frozen_lake_count and total_playtime_seconds were born
-# together at v3, both at 0, so a lake could never be retroactively owed (they are two lines
-# apart above -- that adjacency IS the argument). The aurora arrives into saves that ALREADY
-# HOLD HOURS. Against a ten-hour save, threshold 1 x 30 min is nine and a half hours in the
-# past, and so are thresholds 2 through 20: the player would be handed roughly twenty auroras
-# back to back, one per run, until the count caught up with the clock. That is the rarity of the
-# game's headline feature destroyed on the first launch after the update.
-#
-# A STORED DEADLINE HAS NO BACKLOG TO CLEAR. It is set once from where the player actually is
-# and pushed forward on completion, so "every 30 minutes" means 30 minutes BETWEEN SIGHTINGS
-# rather than 30 minutes of lifetime credit that can be spent in a burst.
-#
-# -1.0 RATHER THAN 0.0, and the sentinel is load-bearing: 0.0 reads as "due immediately" to any
-# >= comparison, so an unscheduled save would fire on the first frame -- the same bug in a new
-# hat. Everything that reads this treats a negative as NOT DUE and waits for the director to
-# schedule. Absence therefore needs no migration and no version bump: a v3 file yields -1.0 and
-# is scheduled at load, which is exactly the honest reading v2->v3 gave playtime itself -- the
-# clock starts now rather than being back-dated.
+# When the next aurora is due, as a cumulative-playtime timestamp; AuroraDirector is its only
+# writer. A STORED DEADLINE, never (aurora_count + 1) x interval: the aurora arrived into saves
+# already holding hours, and a multiple would pay that backlog out one aurora per run.
+# -1.0 means UNSCHEDULED and every reader treats a negative as NOT DUE -- 0.0 would read as "due
+# now". docs/development/aurora_borealis.md, "The schedule".
 var next_aurora_due_seconds: float = -1.0
 
 
@@ -207,21 +160,12 @@ static func _read_dictionary(source: Dictionary, key: String) -> Dictionary:
 	return value if typeof(value) == TYPE_DICTIONARY else {}
 
 
-# WRITES VIA A TEMP FILE AND A RENAME, NEVER STRAIGHT OVER THE LIVE SAVE.
-#
-# Opening SAVE_PATH with FileAccess.WRITE truncates it to zero length before a single byte
-# of the new payload lands. A kill in that window -- the OS reclaiming a backgrounded app on
-# Android is the realistic one, not a crash -- leaves a truncated or empty file, and
-# load_from_disk's deliberately silent failure policy then reads it as a fresh save. The
-# player loses their wallet, best score and every upgrade level, with no error anywhere.
-#
-# rename is atomic on POSIX, and Godot's Windows DirAccess uses MoveFileExW with
-# MOVEFILE_REPLACE_EXISTING, so the live file is either the old payload or the new one and
-# never a partial write. The cost is one extra file create per save, which is nothing next
-# to what it protects: this is the only writer of every persisted field in the project.
-#
-# The temp file is deliberately NOT cleaned up on a failed write -- if the rename is what
-# failed, that file is the only complete copy of the payload that exists.
+# WRITES VIA A TEMP FILE AND A RENAME, NEVER STRAIGHT OVER THE LIVE SAVE. Opening SAVE_PATH for
+# writing truncates it first, so an app killed mid-write (Android reclaiming a backgrounded app)
+# would leave an empty file that the silent read policy loads as a fresh save. rename is atomic,
+# so the live file is always the old payload or the new one. A failed store/flush abandons the
+# write before the rename, and the temp file is NOT cleaned up after a failed rename: it is then
+# the only complete copy of the payload.
 #
 # Returns whether the payload reached SAVE_PATH. Only a purchase acts on it (UpgradeStore rolls
 # back); every other caller's next save simply retries.
