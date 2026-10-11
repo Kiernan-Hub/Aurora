@@ -1,6 +1,6 @@
 # Handoff
 
-## Where the project is — 2026-10-05. READ THIS FIRST
+## Where the project is — 2026-10-11. READ THIS FIRST
 
 **MERGED TO `main` 2026-10-05** (fast-forward of `claude/implementation-t58fc3`, pushed). The
 obstacle system and the air moves are built and played: the owner's Mac playtest passed
@@ -10,7 +10,28 @@ build on the phone for ~3 minutes on 2026-10-05: "everything is good"** (playtes
 write-ups, the audit guide and the branch's commit table are at the top of `docs/history.md`.
 **New work branches from `main`.**
 
-**This session: the `audit.md` cleanup pass**, one commit per item. 17 of 19 items are closed:
+**Latest session (2026-10-11, a cloud container with NO Godot, the owner on a bus): docs and
+comments only.** Branch `ccr-36aa2cd9-1hvq7q`, pushed, **one commit ahead of `origin/main`, zero behind**
+(checked). **No gate has run on it**: `check.sh` needs Godot at `/Applications/Godot.app`, which a
+container lacks. The diff is only Markdown and `#` comments, so risk is low, but run
+`./scripts/check.sh` on the Mac before merging. What changed:
+- The older audits left `audit.md` for `docs/review/2026-09-27-obstacle-branch-audit.md` (the
+  "finding 1" one) and `docs/review/2026-09-24-organization-audit.md`. `audit.md` is now the
+  2026-10-04 audit only, with a pointer. Four citations re-pointed (`terrain_invariant_check.gd` ×2,
+  `obstacle_spawner.gd`, `spike_approach_fairness.md`). The old repro snippet reads the new path.
+- **A3 reviewed by reading, not measuring** (Mac/phone numbers below are unchanged): the cost is up to
+  26 candidate starts in one tick (13 for the combo, 13 more for its solo fallback), each sampling
+  terrain height every 16px plus ~19 samples per spike. About 2,000 lookups worst case, consistent
+  with the 6–8 ms Mac figure. **The phone number is still unmeasured.** The cheapest fix, if one is
+  needed, is in next actions 2 and is deliberately NOT built.
+- Next actions 2 is now a full checklist for the long phone run.
+- Nothing else touched: no gameplay, terrain, physics or scene file.
+
+**Standing preference from the owner:** if a change risks adding bugs or is much harder than an
+alternative, flag it and say so rather than building it. They want clean, lean code (e.g. add a chasm
+instead of forcing a big drop through heavy terrain changes).
+
+**Previous session (2026-10-05): the `audit.md` cleanup pass**, one commit per item. 17 of 19 items are closed:
 - **Player-visible fixes.** With the slam or double jump owned, a tap 1–2 frames before touchdown
   could become an air move instead of the landing jump; now it is always the landing jump (A14,
   `air_move_probe` `landing_edge` + `landing_model`). The death screen's wallet and best follow a
