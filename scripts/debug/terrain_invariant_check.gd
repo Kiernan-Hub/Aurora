@@ -143,7 +143,7 @@ const PATTERN_FOOTPRINT_MIN_ACCEPTANCE: Array[float] = [0.32, 0.04, 0.01]
 # A deep run is `--placed-step=10000`: 2,383 placements over the 8 seeds, all fair (2026-09-28).
 const PLACED_FAIRNESS_SAMPLE_STEP: float = 40000.0
 # Known placements of a lone spike, both on seed 683407368 (the sweep's second seed). x=21060 is
-# audit.md's finding 1: a short flat between a valley's climb out and the next hill's climb, the
+# docs/review/2026-09-27-obstacle-branch-audit.md, finding 1: a short flat between a valley's climb out and the next hill's climb, the
 # ground a level-0 jump leaves from 8-70px below the spike, 0/192 live level-0 survivors. x=72000 is
 # the control: a long flat segment, where the model must still see a fair window.
 const PLACED_FAIRNESS_CASES: Array[Dictionary] = [
@@ -1351,7 +1351,7 @@ func check_spawn_lookahead() -> Array[String]:
 #
 # THE MODEL. Flat ground here, which is what proves the TABLE; check_placed_pattern_fairness()
 # runs the same model on the real ground of placements the guard accepts, which is what proves
-# the GUARD (audit.md, finding 1: flat alone let through a spike no level-0 jump could clear).
+# the GUARD (docs/review/2026-09-27-obstacle-branch-audit.md, finding 1: flat alone let through a spike no level-0 jump could clear).
 # The player's own 60 Hz integration order: the take-off frame already applies one frame of
 # gravity, exactly as player.gd does. The capsule is modelled as its bounding rect, which contains it, so a clean
 # rect is a clean capsule. The only input is WHEN to leave the ground, and a new jump can fire on

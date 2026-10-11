@@ -36,7 +36,7 @@ same one-x slope rule). Stay-down pieces and thin ice were never affected.
 ## The model, checked against the live game
 
 `get_pattern_takeoff_window()` given the height field: every piece sits at its own surface
-height, stance and landing follow the ground. The live side is audit.md's harness (real Player,
+height, stance and landing follow the ground. The live side is docs/review/2026-09-27-obstacle-branch-audit.md's harness (real Player,
 collision, spawned spike, 48 tap frames × 4 sub-frame phases, 750 px/s), parameterised by seed/x.
 
 | Position | Guard now | Model, level 0 | Live survivors per phase |

@@ -476,7 +476,7 @@ static func get_pattern_span(pattern: Dictionary, start_x: float, speed: float) 
 #     BEFORE it, which the slope clause never looked at. A spike on a short flat at the top of
 #     a climb is effectively as much taller as the take-off ground sits lower, and the weakest
 #     jump has 14px to spare: seed 683407368's spike at x=21060 passed every other clause and no
-#     level-0 or level-1 jump could clear it (audit.md, finding 1). So over the weakest jump's
+#     level-0 or level-1 jump could clear it (docs/review/2026-09-27-obstacle-branch-audit.md, finding 1). So over the weakest jump's
 #     whole reach before each spike, the ground may not sit more than
 #     SPIKE_APPROACH_DROP_TOLERANCE below the spike's base. Ground ABOVE it only helps the jump.
 #     terrain_invariant_check re-runs the fairness proof on the real ground of accepted

@@ -30,8 +30,8 @@ write-ups, the audit guide and the branch's commit table are at the top of `docs
   `services.gd`, `save_store.gd`, `game_manager.gd`. Comments only, every invariant kept; other
   files get the same treatment only when next touched.
 - **Still open:** A3, the obstacle search's cost (measurement added, needs the phone: next
-  actions 2), and archiving the older audits at the bottom of `audit.md` (code comments still cite
-  "audit.md, finding 1"). A13 needs no action.
+  actions 2), and archiving the older audits (DONE 2026-10-11: now in `docs/review/`;
+  code comments re-pointed). A13 needs no action.
 
 **On the phone:** the merged build as a debug export, save kept (all three upgrades owned, wallet
 ~10,400). Exported with `debug_start_wallet` 9999; the source is at 0. The same APK is `aura.apk` on
@@ -46,10 +46,21 @@ sample.** One long run with logcat settles it.
 ### Next actions, in order
 
 1. **Step 8, art** (owner): "Remaining plan" below. Branch from `main`.
-2. **One long phone run past 5:00 with logcat** (`adb logcat -s godot | grep OBSTACLE_SEARCH`,
-   `debugging.md`, "Android device testing"). It answers the rest of playtest C (does 5:00+ get
-   properly hard?) and A3 (does a combo search cost a frame?). Only if it does: optimise, which
-   changes accepted placements and must re-pass `check_placed_pattern_fairness()`.
+2. **One long phone run past 5:00 with logcat.** Answers playtest C (does 5:00+ get properly hard?)
+   and A3 (does a combo search cost a frame?). Debug build, `debugging.md` "Android device testing".
+   - Terminal 1: `adb logcat -c; adb logcat -s godot | tee obstacle.log`. Then
+     `grep OBSTACLE_SEARCH obstacle.log` prints a line only when the slowest search grows.
+   - Play past **5:00** (tier 6; tier 4 starts at 2:30, tier 5 at 3:30), so the combos and the triples
+     (`spike_floe_spike`, `floe_spike_shard`) are actually drawn. Note the last `OBSTACLE_SEARCH_SLOWEST` line.
+   - **Verdict** (my thresholds, not measured ones): under ~8 ms: close A3, no code. 8–16 ms: it eats the tick, but nothing visibly late;
+     watch for a hitch just before a combo. Over ~16 ms: a dropped physics tick, so optimise.
+   - Feel questions to answer on the same run: do tiers 4–6 feel like new ideas or repeats? Is 5:00+ hard,
+     not unfair? Is the floe/shard readable at 750 px/s?
+   - **If optimising (don't pre-build it):** the least code is to fix `nominal_x` and `speed` when a
+     decision starts and test one start per physics tick (13 ticks, ≈0.2 s), so a miss costs ≤1 start a
+     frame. Placements would match today's, since the inputs are frozen, but it adds search state to
+     `ObstacleSpawner`: confirm before building. Anything that changes *which* placements are
+     accepted must re-pass `check_placed_pattern_fairness()`.
 3. **Tune by feel** if anything reads wrong. The knobs are in "Where to tune". Any timing change
    must still pass `./scripts/check.sh`, whose fairness proofs fail any pattern under 7 frames of
    take-off window.
