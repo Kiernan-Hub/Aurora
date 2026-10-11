@@ -1,5 +1,9 @@
 # Handoff
 
+**2026-10-11 audit: `docs/review/2026-10-11-project-audit.md` (findings V1–V8, nothing fixed yet).**
+Until V1 is fixed, **running a visual gate wipes `user://save.dat`** (the Mac save, not the phone's).
+Back it up first.
+
 ## Where the project is — 2026-10-05. READ THIS FIRST
 
 **MERGED TO `main` 2026-10-05** (fast-forward of `claude/implementation-t58fc3`, pushed). The
