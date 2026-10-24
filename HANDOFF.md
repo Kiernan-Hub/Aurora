@@ -10,6 +10,10 @@ build on the phone for ~3 minutes on 2026-10-05: "everything is good"** (playtes
 write-ups, the audit guide and the branch's commit table are at the top of `docs/history.md`.
 **New work branches from `main`.**
 
+**TEMPORARY HARD MODE (2026-10-24, branch `ccr-a5a3f080-mzcp1q`):** obstacle tiers compressed to
+medium at 10s, pairs at 30s, triples at 60s (`ObstacleSpawner.TIERS`). For fun, not tuning: revert
+that commit to restore the shipped values, which its comment lists.
+
 **This session: the `audit.md` cleanup pass**, one commit per item. 17 of 19 items are closed:
 - **Player-visible fixes.** With the slam or double jump owned, a tap 1–2 frames before touchdown
   could become an air move instead of the landing jump; now it is always the landing jump (A14,
