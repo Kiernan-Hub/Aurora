@@ -70,7 +70,7 @@ const MIN_SAFE_START_WORLD_X: float = 900.0
 # FIRST_PATTERN_TIME is left untouched: terrain_invariant_check derives the slowest speed a
 # pattern is ever judged against from this constant (check_obstacle_clearance() and
 # check_pattern_fairness()), and lowering it tightens those windows rather than loosening them.
-const FIRST_PATTERN_TIME: float = 10.0
+const FIRST_PATTERN_TIME: float = 20.0
 # Cadence ramps up in OBSTACLE_RAMP_WINDOW-second steps: ~1 pattern in the
 # first window, ~2 in the second, ~3 in the third, and so on, each window's
 # patterns spread by a randomized interval (not evenly spaced) drawn around
@@ -147,19 +147,13 @@ const PIECE_KINDS: Dictionary = {
 # last piece to the next pattern's first, jittered +/-BREATHING_ROOM_JITTER. Tier 1 keeps the
 # original interval ramp instead (room -1). The last tier's room keeps shrinking to the floor.
 # Starting values from the HANDOFF plan, to be tuned by playing.
-#
-# TEMPORARY HARD MODE (2026-10-24): medium at 10s, pairs at 30s, triples at 60s. Tier 2 opening
-# with tier 1 skips tier 1's slow interval ramp. Tier 6 holds only spike_shard: one real-ground
-# placement is unfair to level 0 below MAX_SPEED (6 frames at 613 px/s), so it waits for 120s.
-# Shipped values: FIRST_PATTERN_TIME 20; starts 60/105/150/210/300, rooms 6/5/4/3.5/3.5;
-# spike_shard tier 4. Revert this commit to restore them.
 const TIERS: Array[Dictionary] = [
 	{"start": FIRST_PATTERN_TIME, "room": -1.0},
-	{"start": FIRST_PATTERN_TIME, "room": 4.0},
-	{"start": 20.0, "room": 3.5},
-	{"start": 30.0, "room": 3.0},
-	{"start": 60.0, "room": 2.5},
-	{"start": 120.0, "room": 2.5},
+	{"start": 60.0, "room": 6.0},
+	{"start": 105.0, "room": 5.0},
+	{"start": 150.0, "room": 4.0},
+	{"start": 210.0, "room": 3.5},
+	{"start": 300.0, "room": 3.5},
 ]
 const BREATHING_ROOM_JITTER: float = 0.3
 const BREATHING_ROOM_SHRINK_PER_SECOND: float = 0.25 / 60.0
@@ -192,7 +186,7 @@ const PATTERNS: Array[Dictionary] = [
 	# decision"). A combo that does not fit falls back to its first piece alone.
 	# Jump early so you land before the floe / the shard (or clear the shard at level 3+).
 	{"id": &"spike_floe", "tier": 4, "weight": 1, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}, {"kind": PIECE_FLOE, "at": 0.5}]},
-	{"id": &"spike_shard", "tier": 6, "weight": 1, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}, {"kind": PIECE_SHARD, "at": 0.5}]},
+	{"id": &"spike_shard", "tier": 4, "weight": 1, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}, {"kind": PIECE_SHARD, "at": 0.5}]},
 	# Stay under, then jump right after.
 	{"id": &"floe_spike", "tier": 4, "weight": 1, "pieces": [{"kind": PIECE_FLOE, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.5}]},
 	{"id": &"shard_spike", "tier": 4, "weight": 1, "pieces": [{"kind": PIECE_SHARD, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.5}]},
