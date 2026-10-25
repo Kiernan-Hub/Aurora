@@ -191,7 +191,8 @@ const FILL_GRADIENT_DEPTH: float = 560.0
 # world-rebased" -- this introduces no new precision behaviour beyond what
 # chunk.position.x already has.)
 const ICE_TERRAIN_TEXTURE: Texture2D = preload("res://assets/textures/terrain/ice_depth_gradient.png")
-# The project's ONLY shader, on the ice band and nothing else. Its uniform defaults are exact
+# The ice band's shader, and nothing else uses it (the lake and the aurora curtains have their own;
+# three .gdshader files exist, see CLAUDE.md). Its uniform defaults are exact
 # identities, so a headless gate -- where no palette is ever applied and every uniform therefore
 # stays default -- renders exactly the pixels it rendered before the shader existed.
 const ICE_SHADER: Shader = preload("res://shaders/ice.gdshader")

@@ -5,6 +5,24 @@ session ends, its `HANDOFF.md` section moves to the top of this file and `HANDOF
 the current state. **This is history, not a to-do list**: many entries are superseded, and some
 contradict the code. `CLAUDE.md` holds the current truth.
 
+## 2026-10-24/25 — hard-mode experiment (reverted); audit; three small fixes
+
+A cloud session (Linux container, Godot 4.7 downloaded into scratch; the owner had no computer).
+HANDOFF's top section was amended, not replaced, so nothing moved here verbatim.
+
+- **Hard mode, for fun, then reverted.** `e16a434` compressed `ObstacleSpawner.TIERS` (medium at 10 s,
+  pairs at 30 s, triples at 60 s); `d0b097f` reverts it. To bring it back: `git cherry-pick e16a434`.
+  It found audit N3: `spike_shard` fails `check_placed_pattern_fairness()` below 750 px/s at one spot, so
+  it went on a 120 s tier there. A runtime switch was considered and declined (a second table the
+  fairness gate would also have to prove, and flipping it still needs a rebuild).
+- **Phone build without a Mac.** A debug APK of the hard mode was exported in the container (Ubuntu's
+  `apksigner`/`zipalign`, a stand-in SDK folder, Godot's own debug key) under a separate app id,
+  `com.kiernan.aura.hard` ("Aura Hard"), with the wallet at 9999 in that build only. A cloud-signed APK
+  can't update the Mac-signed Aura, and uninstalling Aura would wipe its save.
+- **Audit** `docs/review/2026-10-25-audit.md`: no P0/P1. N1 (retry re-searched every frame after a boost),
+  N4 (debug label in release) and N5 (stale comment) fixed, one commit each. N2 (phone numbers come from
+  debug exports) and N3 are recorded in HANDOFF. `check.sh --full` 14/14 after the fixes.
+
 ## 2026-10-03/04 — white void fixed; phone test A; the `audit.md` cleanup pass
 
 Sessions on the Mac. The owner reported the white void below a high jump (2026-10-03); it was fixed

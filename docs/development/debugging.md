@@ -962,6 +962,11 @@ Owner's phone: Galaxy S26 Ultra (`SM-S948U`, serial `R3GL20AE8BK`), 1440×3120 @
 | Install + launch | `adb install -r aura.apk`, then `adb shell monkey -p com.kiernan.aura -c android.intent.category.LAUNCHER 1` |
 | USB | Phone must be on **"Transferring files"**; Samsung sometimes flips back to "charging only" after an install |
 
+- **No Mac (Linux cloud container, 2026-10-25):** Godot 4.7 Linux + the export templates from GitHub
+  releases; `dl.google.com` was blocked, so `apt-get install apksigner zipalign adb` and point
+  `export/android/android_sdk_path` at a folder holding `build-tools/35.0.0/{apksigner,zipalign}` and
+  `platform-tools/adb` symlinks. Godot generates its own debug key. That key isn't the Mac's, so the APK
+  can't update the installed Aura: export from a scratch copy with a different `package/unique_name`.
 - **"A valid Java SDK path is required"**: set `export/android/java_sdk_path` in the global
   `editor_settings-4.7.tres` to `/Applications/Android Studio.app/Contents/jbr/Contents/Home`,
   **with every Godot editor closed**. An open editor writes its in-memory value back on quit.

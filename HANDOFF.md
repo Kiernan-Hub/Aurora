@@ -36,6 +36,8 @@ write-ups, the audit guide and the branch's commit table are at the top of `docs
 **On the phone:** the merged build as a debug export, save kept (all three upgrades owned, wallet
 ~10,400). Exported with `debug_start_wallet` 9999; the source is at 0. The same APK is `aura.apk` on
 disk. If `adb devices` says `unauthorized`, tap Allow on the phone (it dropped once this session).
+It may also have **Aura Hard** (`com.kiernan.aura.hard`): the reverted hard-mode build, its own save
+(`docs/history.md`, 2026-10-24/25). Uninstalling it doesn't touch Aura.
 
 **First phone numbers for A3 (2026-10-05 logcat):** the slowest obstacle search in the owner's runs
 was **4.10 ms at 72 s** (tier 2, solo pieces), 0.25–2.5 ms before that, against a 16.7 ms physics
@@ -46,7 +48,7 @@ sample.** One long run with logcat settles it.
 ### Next actions, in order
 
 1. **Step 8, art** (owner): "Remaining plan" below. Branch from `main`.
-   Small code fix waiting: `docs/review/2026-10-25-audit.md` N5 (N1, N4 done).
+   The 2026-10-25 audit's code fixes (N1, N4, N5) are done: `docs/review/2026-10-25-audit.md`.
 2. **One long phone run past 5:00 with logcat** (`adb logcat -s godot | grep OBSTACLE_SEARCH`,
    `debugging.md`, "Android device testing"). It answers the rest of playtest C (does 5:00+ get
    properly hard?) and A3 (does a combo search cost a frame?). Only if it does: optimise, which
