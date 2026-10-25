@@ -46,7 +46,7 @@ sample.** One long run with logcat settles it.
 ### Next actions, in order
 
 1. **Step 8, art** (owner): "Remaining plan" below. Branch from `main`.
-   Small code fixes waiting, one commit each: `docs/review/2026-10-25-audit.md` N1, N4, N5.
+   Small code fixes waiting, one commit each: `docs/review/2026-10-25-audit.md` N4, N5 (N1 done).
 2. **One long phone run past 5:00 with logcat** (`adb logcat -s godot | grep OBSTACLE_SEARCH`,
    `debugging.md`, "Android device testing"). It answers the rest of playtest C (does 5:00+ get
    properly hard?) and A3 (does a combo search cost a frame?). Only if it does: optimise, which
@@ -147,7 +147,8 @@ to it.
   its solo pattern, with **+1.5s room before and after** (the tutorial). Floating patterns wait out a
   glide; every pattern waits out a boost. Then a **forward search**: the lookahead, then every 50px up to
   600px further. A combo that fits nowhere **falls back to its first piece alone**; if even that
-  fails, retry in 1s. The next room counts from where the pattern really ended.
+  fails, retry 1s from now (it used to count from the overdue slot, so after a boost it re-searched
+  every frame: audit N1). The next room counts from where the pattern really ended.
 - **Footprint guard** (`is_footprint_legal`, static): ≤6° across the whole span (**except
   thin-ice-only patterns**), not on the lake, ground over `[start − 200, end + 950]`, off the Aurora
   flat. 950 = the boosted max jump's 848px + margin (it was 700: a late boosted jump could land in a chasm).

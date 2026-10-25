@@ -287,6 +287,10 @@ func _physics_process(_delta: float) -> void:
 # One scheduling decision, taken when a pattern is due. The pattern is drawn from
 # next_pattern_index, which only advances on success, so a retry asks for the SAME pattern
 # further along rather than re-rolling past it.
+#
+# Both early waits count from NOW, not from the slot. A boost or glide holds the slot back, so it
+# can be seconds overdue; counted from the slot, a failed retry ran the full search again on the
+# next frames (audit N1, docs/review/2026-10-25-audit.md).
 func schedule_pattern(elapsed_time: float) -> void:
 	var pattern: Dictionary = get_pattern(next_pattern_index, get_tier(elapsed_time))
 	var new_kind: StringName = get_unintroduced_kind(pattern)
@@ -294,7 +298,7 @@ func schedule_pattern(elapsed_time: float) -> void:
 		pattern = get_solo_pattern(new_kind)
 		if not is_first_appearance_room_taken:
 			is_first_appearance_room_taken = true
-			next_pattern_time += FIRST_APPEARANCE_EXTRA_ROOM
+			next_pattern_time = elapsed_time + FIRST_APPEARANCE_EXTRA_ROOM
 			return
 	# A glider steers its own altitude and could fly into a floating piece, so those patterns
 	# wait out the glide the same way every pattern waits out a boost. That only covers pieces
@@ -308,7 +312,7 @@ func schedule_pattern(elapsed_time: float) -> void:
 		pattern = get_solo_pattern(pattern["pieces"][0]["kind"])
 		search_offset = try_place_pattern(pattern)
 	if search_offset < 0.0:
-		next_pattern_time += FOOTPRINT_RETRY_DELAY
+		next_pattern_time = elapsed_time + FOOTPRINT_RETRY_DELAY
 		return
 
 	next_pattern_index += 1
