@@ -46,7 +46,7 @@ sample.** One long run with logcat settles it.
 ### Next actions, in order
 
 1. **Step 8, art** (owner): "Remaining plan" below. Branch from `main`.
-   Small code fixes waiting, one commit each: `docs/review/2026-10-25-audit.md` N4, N5 (N1 done).
+   Small code fix waiting: `docs/review/2026-10-25-audit.md` N5 (N1, N4 done).
 2. **One long phone run past 5:00 with logcat** (`adb logcat -s godot | grep OBSTACLE_SEARCH`,
    `debugging.md`, "Android device testing"). It answers the rest of playtest C (does 5:00+ get
    properly hard?) and A3 (does a combo search cost a frame?). Only if it does: optimise, which

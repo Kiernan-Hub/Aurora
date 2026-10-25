@@ -292,11 +292,14 @@ func _physics_process(delta: float) -> void:
 # leaves it on screen -- elapsed_time / timer_label keep running normally, this is a
 # separate label so "when did it stop" survives even if you looked away and came
 # back later. Overwrites on each new stuck event, but every event is also printed
-# to the console by Player, so the full history isn't lost.
+# to the console by Player, so the full history isn't lost. Debug builds only, like the player's
+# state overlay; the watchdog still recovers the player in a release build.
 func _on_player_stuck_detected(session_seed: int, world_x: float) -> void:
+	print("Player stuck at elapsed=", format_elapsed_time(elapsed_time), " seed=", session_seed, " world_x=", world_x)
+	if not OS.is_debug_build():
+		return
 	stuck_time_label.visible = true
 	stuck_time_label.text = "stuck @ %s (x=%.0f)" % [format_elapsed_time(elapsed_time), world_x]
-	print("Player stuck at elapsed=", format_elapsed_time(elapsed_time), " seed=", session_seed, " world_x=", world_x)
 
 
 func format_elapsed_time(total_seconds: float) -> String:

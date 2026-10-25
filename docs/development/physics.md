@@ -368,7 +368,8 @@ needs no rebase correction — unlike `camera_y` / `camera_baseline_y`, which do
 
 `DEBUG_SHOW_PLAYER_STATE`, `DEBUG_LOG_FREEZE_REPRO` and
 `DEBUG_ALLOW_MANUAL_SPEED_CONTROL` all default to **`OS.is_debug_build()`** — on under
-the editor, headless probes and debug exports; **off in an exported release build.**
+the editor, headless probes and debug exports; **off in an exported release build.** Main's
+"stuck @" label follows the same rule (2026-10-25, audit N4); the stuck watchdog itself runs in every build.
 
 They shipped as plain `true` until 2026-08-03. That meant the release APK ran the full
 probe rig every physics frame: `update_debug_state_label()` and
