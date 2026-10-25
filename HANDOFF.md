@@ -46,10 +46,12 @@ sample.** One long run with logcat settles it.
 ### Next actions, in order
 
 1. **Step 8, art** (owner): "Remaining plan" below. Branch from `main`.
+   Small code fixes waiting, one commit each: `docs/review/2026-10-25-audit.md` N1, N4, N5.
 2. **One long phone run past 5:00 with logcat** (`adb logcat -s godot | grep OBSTACLE_SEARCH`,
    `debugging.md`, "Android device testing"). It answers the rest of playtest C (does 5:00+ get
    properly hard?) and A3 (does a combo search cost a frame?). Only if it does: optimise, which
-   changes accepted placements and must re-pass `check_placed_pattern_fairness()`.
+   changes accepted placements and must re-pass `check_placed_pattern_fairness()`. Take the frame
+   timing on a build with the debug overlay and freeze log off (audit N2); a debug export measures them too.
 3. **Tune by feel** if anything reads wrong. The knobs are in "Where to tune". Any timing change
    must still pass `./scripts/check.sh`, whose fairness proofs fail any pattern under 7 frames of
    take-off window.
@@ -234,7 +236,7 @@ except after a double jump; the air moves split left (slam) / right (double jump
 | Hazards tied to the biome | Every headless gate is blind to biome code |
 | Moving/timed hazards as a *mechanic* | No decisions added (fixed arrival time), and they cost reading time. Decoration only |
 | Levels + infinite mode, checkpoints | They fight the seeded world; resuming mid-run rewinds ~10 systems. Tiers give the "chapter" feel |
-| Pick your difficulty | **Later, cheap now tiers exist**: "Hard" = start at tier 3. Needs separate best scores (a save change) |
+| Pick your difficulty | **Later**: "Hard" = start at tier 3. Needs separate best scores (a save change), and pairs can't open before 120 s without `spike_shard` failing the placed-fairness gate (`docs/review/2026-10-25-audit.md`, N3) |
 
 
 ---

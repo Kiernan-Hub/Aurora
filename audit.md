@@ -1,7 +1,8 @@
 # Project cleanliness and maintenance audit — 2026-10-04
 
-**Current audit: this section is Claude's action list.** The earlier audits below are preserved
-as history; their priorities, branch tables and old repro line numbers are not current.
+**Superseded as the action list by `docs/review/2026-10-25-audit.md`**, which carries this
+checklist's two open items (A3, A13). The findings below stay as history, as do the earlier audits
+under them; their priorities, branch tables and old repro line numbers are not current.
 
 Baseline: `2486c9c`, branch `claude/implementation-t58fc3`; working tree was clean at the start.
 **Only `audit.md` was changed.** No fixes, deletions, settings changes, commits, pushes or merges.
