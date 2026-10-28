@@ -278,7 +278,7 @@ func _physics_process(_delta: float) -> void:
 	modulate.a = lake_director.get_lake_blend() * CHIP_ADD_STRENGTH
 
 
-func build_process_material() -> ParticleProcessMaterial:
+static func build_process_material() -> ParticleProcessMaterial:
 	var material: ParticleProcessMaterial = ParticleProcessMaterial.new()
 	material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
 	material.emission_box_extents = CHIP_EMISSION_EXTENTS
@@ -312,7 +312,7 @@ func build_process_material() -> ParticleProcessMaterial:
 # the field shimmers instead of pulsing in unison.
 #
 # Never starts at full: a glint that exists at full brightness on its first frame pops.
-func build_twinkle_ramp() -> GradientTexture1D:
+static func build_twinkle_ramp() -> GradientTexture1D:
 	var gradient: Gradient = Gradient.new()
 	gradient.offsets = PackedFloat32Array([0.0, 0.08, 0.30, 0.50, 0.72, 1.0])
 	gradient.colors = PackedColorArray([
@@ -346,7 +346,7 @@ func build_twinkle_ramp() -> GradientTexture1D:
 # one (pow() with a negative base is undefined and NaN-propagates across a whole quad -- it bit
 # the lake's glare and ice.gdshader's gloss), but keeping one habit across both languages is
 # cheaper than remembering which file is which.
-func build_glint_texture() -> ImageTexture:
+static func build_glint_texture() -> ImageTexture:
 	var image: Image = Image.create(CHIP_TEXTURE_SIZE, CHIP_TEXTURE_SIZE, false, Image.FORMAT_RGBA8)
 	var center: float = float(CHIP_TEXTURE_SIZE - 1) * 0.5
 

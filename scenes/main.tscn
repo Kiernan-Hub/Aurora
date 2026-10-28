@@ -31,6 +31,7 @@
 [ext_resource type="Script" path="res://scripts/systems/aurora_audio.gd" id="32_aurora_audio"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_reflection.gd" id="33_aurora_reflection"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_streaks.gd" id="34_aurora_streaks"]
+[ext_resource type="Script" path="res://scripts/systems/landing_burst.gd" id="35_landing_burst"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -160,6 +161,9 @@ script = ExtResource("22_skate_track")
 [node name="SkateSpray" type="GPUParticles2D" parent="."]
 emitting = false
 script = ExtResource("21_skate_spray")
+
+[node name="LandingBurst" type="Node2D" parent="."]
+script = ExtResource("35_landing_burst")
 
 [node name="BiomeDirector" type="Node" parent="."]
 script = ExtResource("17_biome")

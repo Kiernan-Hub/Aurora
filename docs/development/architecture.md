@@ -27,6 +27,8 @@ Main (Node2D, scripts/main.gd)
 │                     surface), BELOW the spray (the etch is IN the ice)
 ├── SkateSpray        GPUParticles2D, the glints off the blades. AFTER LakeReflection or
 │                     it is spray drawn UNDER the ice. local_coords = false
+├── LandingBurst      two alternating one-shot glint bursts on Player.landed (bigger on a
+│                     slam); SkateSpray's look via its static builders. Off under --headless
 ├── BiomeDirector     the ONLY reader of a BiomePalette; returns early under --headless
 ├── Camera2D          position (0,136), zoom 0.833
 ├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP }
