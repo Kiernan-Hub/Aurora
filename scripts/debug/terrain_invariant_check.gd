@@ -782,8 +782,8 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 				kind, shape.size if shape != null else Vector2.ZERO, table_size,
 			])
 
-	# Thin ice has no body. Its node sits ON the surface at its start, and its overlay must sit
-	# OVERLAY_LIFT above the line or the chunks, added later, draw over it.
+	# Thin ice has no body. Its node sits ON the surface at its start, and its overlay's centre
+	# must sit OVERLAY_LIFT above the line or the chunks, added later, draw over the band.
 	var ice_count_before: int = obstacle_spawner.active_obstacles.size()
 	obstacle_spawner.spawn_thin_ice(probe_x, probe_x + 200.0)
 	if obstacle_spawner.active_obstacles.size() == ice_count_before:

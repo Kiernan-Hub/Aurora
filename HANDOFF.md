@@ -118,11 +118,13 @@ to it.
 
 - All three bodies run `obstacle.gd`, so hit → `absorb_hit()`, a shield absorbs one, and a boosting
   player breaks through. Thin ice: a boost skims over; a shield absorbs the crack and the patch
-  **disarms** (fades to 30%). Its overlay is a red `Line2D` **4px above** the surface line, because
-  chunks draw over anything at or below it.
-- **Spike, floe and shard are sprites** (2026-10-28, ChatGPT-generated, low-poly ice): light-greyscale
-  `Visual` `Sprite2D`s the biome's obstacle colour multiplies over, baked to exactly 3× their hitbox by
-  `scripts/tools/build_hazard_sprites.py` from `art_source/hazards/`. Thin ice is still a red `Line2D`.
+  **disarms** (fades to 30%). Its overlay is an 8px `Line2D` tiling a cracked-crust strip, its straight
+  bottom 1px under the surface line, because chunks draw over anything at or below it (and so hide the join).
+- **All four hazards are art** (2026-10-28, ChatGPT-generated, low-poly ice; the look is clean minimal
+  ice, never "cozy"): light-greyscale `Visual` `Sprite2D`s (and the thin-ice strip) that the biome's
+  obstacle colour multiplies over, baked by `scripts/tools/build_hazard_sprites.py` from
+  `art_source/hazards/`: the three bodies to exactly 3× their hitbox, the strip to 3× `OVERLAY_WIDTH`
+  with a crossfaded seam. `biome_schedule_check` holds the contrast floor on each one as drawn (lowest 0.63).
   Measured contrast of that red vs every biome's scenery and sky is **≥ 0.65** (`sunset_rose` worst),
   above the 0.5 gate.
 - **Runtime-verified** in the real scene: thin ice cracks on exactly the 13th grounded frame;
@@ -172,7 +174,7 @@ to it.
   slope exemption safe.
 - **`check_spawn_placement()`** places **every** kind and checks its height above the surface, that its real
   hitbox matches its `PIECE_KINDS` row, and that it **is an `Obstacle`** (has its script). Thin ice:
-  its height, and the overlay's 4px lift.
+  its height, and the overlay's `OVERLAY_LIFT`.
 - **`check_spawn_lookahead()`**: see Camera.
 
 ### Where to tune

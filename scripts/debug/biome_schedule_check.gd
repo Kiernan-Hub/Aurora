@@ -179,6 +179,9 @@ func _init() -> void:
 		var mean: Color = read_sprite_mean(scene_path)
 		if mean.a > 0.0:
 			hazard_sprite_means[scene_path.get_file()] = mean
+	var crack_mean: Color = read_image_mean(ThinIce.CRACK_TEXTURE.get_image(), "thin_ice.gd's CRACK_TEXTURE")
+	if crack_mean.a > 0.0:
+		hazard_sprite_means["thin ice"] = crack_mean
 	check_palettes()
 	if ice_variant_count < MIN_ICE_VARIANTS:
 		failures.append("no palette resolved an ice_texture (expected at least %d) -- every pattern variant is missing, so the whole cycle silently fell back to the smooth tile"
@@ -546,6 +549,13 @@ func read_sprite_mean(scene_path: String) -> Color:
 	if image == null:
 		failures.append("%s has no readable Visual sprite -- its drawn contrast cannot be measured" % scene_path.get_file())
 		return Color(0.0, 0.0, 0.0, 0.0)
+	return read_image_mean(image, scene_path.get_file())
+
+
+func read_image_mean(image: Image, label: String) -> Color:
+	if image == null:
+		failures.append("%s is not readable -- its drawn contrast cannot be measured" % label)
+		return Color(0.0, 0.0, 0.0, 0.0)
 	if image.is_compressed():
 		image.decompress()
 	var total: Color = Color(0.0, 0.0, 0.0, 0.0)
@@ -555,7 +565,7 @@ func read_sprite_mean(scene_path: String) -> Color:
 			if texel.a >= 0.5:
 				total += Color(texel.r * texel.a, texel.g * texel.a, texel.b * texel.a, texel.a)
 	if total.a <= 0.0:
-		failures.append("%s's sprite has no opaque pixels" % scene_path.get_file())
+		failures.append("%s has no opaque pixels" % label)
 		return Color(0.0, 0.0, 0.0, 0.0)
 	return Color(total.r / total.a, total.g / total.a, total.b / total.a, 1.0)
 

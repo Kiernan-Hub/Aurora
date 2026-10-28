@@ -20,10 +20,13 @@ class_name ThinIce
 # model assumes (13 frames crack).
 const GRACE_SECONDS: float = 0.2
 const GRACE_EPSILON: float = 0.0001
-# The overlay sits JUST ABOVE the surface line: terrain chunks are added to TerrainGenerator
-# after the spawners, so they draw over anything at or below the line, and there is no z_index.
-const OVERLAY_LIFT: float = 4.0
-const OVERLAY_WIDTH: float = 6.0
+# The overlay is a cracked-crust strip tiled along the surface, its straight bottom edge 1px
+# BELOW the line: terrain chunks are added to TerrainGenerator after the spawners, so they draw
+# over anything at or below the line (there is no z_index) and hide the join. OVERLAY_WIDTH is
+# also the strip's baked height (build_hazard_sprites.py, THIN_ICE_BAND_HEIGHT).
+const OVERLAY_WIDTH: float = 8.0
+const OVERLAY_LIFT: float = OVERLAY_WIDTH * 0.5 - 1.0
+const CRACK_TEXTURE: Texture2D = preload("res://assets/sprites/hazards/thin_ice.png")
 const OVERLAY_SAMPLE_STEP: float = 16.0
 # A patch that has cracked (through a shield) stays visible, faded, so the player sees why the
 # shield is gone.
@@ -47,6 +50,10 @@ func setup(new_player: Player, terrain: TerrainGenerator, new_start_x: float, ne
 	overlay = Line2D.new()
 	overlay.name = "Overlay"
 	overlay.width = OVERLAY_WIDTH
+	# Greyscale, so default_color tints it like an obstacle sprite's modulate.
+	overlay.texture = CRACK_TEXTURE
+	overlay.texture_mode = Line2D.LINE_TEXTURE_TILE
+	overlay.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	overlay.default_color = color
 	var sample_x: float = start_x
 	while true:
@@ -65,7 +72,8 @@ func set_visual_color(color: Color) -> void:
 
 # World-space extent, for AuroraDirector, which otherwise finds bodies by collision shape.
 func get_world_rect() -> Rect2:
-	return Rect2(global_position.x, global_position.y - OVERLAY_LIFT, end_x - start_x, OVERLAY_LIFT)
+	var band_top: float = OVERLAY_LIFT + OVERLAY_WIDTH * 0.5
+	return Rect2(global_position.x, global_position.y - band_top, end_x - start_x, band_top)
 
 
 func _physics_process(delta: float) -> void:
