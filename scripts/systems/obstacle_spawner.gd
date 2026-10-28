@@ -4,6 +4,8 @@ class_name ObstacleSpawner
 
 # Any thin-ice patch cracking, shielded or not. GameManager plays the crack sound off it.
 signal thin_ice_cracked
+# A slam broke a geode (Geode). GameManager banks the value as coins.
+signal geode_broken(value: int)
 
 # Same reasoning as CoinSpawner: a child of TerrainGenerator so world rebasing
 # (which shifts TerrainGenerator.position.y directly in main.gd) carries every
@@ -133,15 +135,23 @@ const PIECE_SPIKE: StringName = &"spike"
 const PIECE_FLOE: StringName = &"floe"
 const PIECE_SHARD: StringName = &"shard"
 const PIECE_THIN_ICE: StringName = &"thin_ice"
+const PIECE_BLACK_ICE: StringName = &"black_ice"
+const PIECE_GEODE: StringName = &"geode"
+# "scene" empty = a SPAN kind (a ThinIce node, not a body); "needs_flat" = the footprint guard's
+# slope rule applies (bodies, and the geode's flat-bottomed sprite; not the two surface strips).
 const PIECE_KINDS: Dictionary = {
 	PIECE_SPIKE: {"scene": "res://scenes/obstacles/obstacle.tscn", "half_width": 16.0, "half_height": OBSTACLE_HALF_HEIGHT,
-		"center_height": OBSTACLE_HALF_HEIGHT, "floating": false},
+		"center_height": OBSTACLE_HALF_HEIGHT, "floating": false, "needs_flat": true},
 	PIECE_FLOE: {"scene": "res://scenes/obstacles/floe.tscn", "half_width": 16.0, "half_height": 68.0,
-		"center_height": 132.0, "floating": true},
+		"center_height": 132.0, "floating": true, "needs_flat": true},
 	PIECE_SHARD: {"scene": "res://scenes/obstacles/shard.tscn", "half_width": 16.0, "half_height": 16.0,
-		"center_height": 80.0, "floating": true},
+		"center_height": 80.0, "floating": true, "needs_flat": true},
 	PIECE_THIN_ICE: {"scene": "", "half_width": 0.0, "half_height": 0.0,
-		"center_height": 0.0, "floating": false},
+		"center_height": 0.0, "floating": false, "needs_flat": false},
+	PIECE_BLACK_ICE: {"scene": "", "half_width": 0.0, "half_height": 0.0,
+		"center_height": 0.0, "floating": false, "needs_flat": false},
+	PIECE_GEODE: {"scene": "", "half_width": Geode.WORLD_WIDTH * 0.5, "half_height": 0.0,
+		"center_height": 0.0, "floating": false, "needs_flat": true},
 }
 
 # TIERS: a new idea about every minute, and less room between patterns. "start" is when a tier's
@@ -201,6 +211,15 @@ const PATTERNS: Array[Dictionary] = [
 	# The shard at 1.1s, not 1.0s: at 1.0s a level-2 jump with the powerup, carried from the spike
 	# into the shard, had exactly the 7-frame bar on flat ground and 6 on real ground 1.6px off level.
 	{"id": &"floe_spike_shard", "tier": 5, "weight": 1, "pieces": [{"kind": PIECE_FLOE, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.5}, {"kind": PIECE_SHARD, "at": 1.1}]},
+	# BLACK ICE (BlackIce): no take-off while on it. Alone it is harmless, which makes it the
+	# tutorial; before a spike it means jump from after it ends, or clear both in one jump.
+	{"id": &"black", "tier": 3, "weight": 1, "pieces": [{"kind": PIECE_BLACK_ICE, "at": 0.0, "length": 0.6}]},
+	{"id": &"black_spike", "tier": 4, "weight": 2, "pieces": [{"kind": PIECE_BLACK_ICE, "at": 0.0, "length": 0.6}, {"kind": PIECE_SPIKE, "at": 0.95}]},
+	{"id": &"spike_black_spike", "tier": 5, "weight": 1, "pieces": [{"kind": PIECE_SPIKE, "at": 0.0}, {"kind": PIECE_BLACK_ICE, "at": 0.3, "length": 0.35}, {"kind": PIECE_SPIKE, "at": 0.95}]},
+	# GEODES (Geode), only for a player who owns the slam: slam onto it for coins. Before a spike,
+	# the dive must still leave room to jump.
+	{"id": &"geode", "tier": 2, "weight": 1, "needs_slam": true, "pieces": [{"kind": PIECE_GEODE, "at": 0.0}]},
+	{"id": &"geode_spike", "tier": 4, "weight": 1, "needs_slam": true, "pieces": [{"kind": PIECE_GEODE, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.8}]},
 ]
 
 const HASH_MASK: int = 0x7fffffff
@@ -364,22 +383,26 @@ static func get_tier(elapsed_time: float) -> int:
 
 
 # Weighted draw over the PATTERNS open at this tier, a pure function of (session_seed,
-# pattern_index, tier).
+# pattern_index, tier, whether the player owns the slam).
 func get_pattern(pattern_index: int, tier: int) -> Dictionary:
 	var total_weight: int = 0
 	for pattern: Dictionary in PATTERNS:
-		if int(pattern["tier"]) <= tier:
+		if is_pattern_open(pattern, tier):
 			total_weight += int(pattern["weight"])
 	var remaining_weight: int = int(get_pattern_hash(pattern_index, HASH_CHANNEL_PATTERN) * float(total_weight))
 	var drawn: Dictionary = PATTERNS[0]
 	for pattern: Dictionary in PATTERNS:
-		if int(pattern["tier"]) > tier:
+		if not is_pattern_open(pattern, tier):
 			continue
 		drawn = pattern
 		remaining_weight -= int(pattern["weight"])
 		if remaining_weight < 0:
 			break
 	return drawn
+
+
+func is_pattern_open(pattern: Dictionary, tier: int) -> bool:
+	return int(pattern["tier"]) <= tier and (not pattern.get("needs_slam", false) or player.has_slam)
 
 
 # The first kind in the pattern this run has not shown yet, or &"".
@@ -407,11 +430,15 @@ static func get_pattern_duration(pattern: Dictionary) -> float:
 	return duration
 
 
-static func has_body_piece(pattern: Dictionary) -> bool:
+static func needs_flat_ground(pattern: Dictionary) -> bool:
 	for piece: Dictionary in pattern["pieces"]:
-		if piece["kind"] != PIECE_THIN_ICE:
+		if bool(PIECE_KINDS[piece["kind"]]["needs_flat"]):
 			return true
 	return false
+
+
+static func is_span_kind(kind: StringName) -> bool:
+	return String(PIECE_KINDS[kind]["scene"]).is_empty()
 
 
 static func has_floating_piece(pattern: Dictionary) -> bool:
@@ -433,8 +460,9 @@ func try_place_pattern(pattern: Dictionary) -> float:
 	var start_x: float = nominal_x + offset
 	for piece: Dictionary in pattern["pieces"]:
 		var piece_x: float = start_x + float(piece["at"]) * speed
-		if piece["kind"] == PIECE_THIN_ICE:
-			spawn_thin_ice(piece_x, piece_x + float(piece["length"]) * speed)
+		if is_span_kind(piece["kind"]):
+			var half_width: float = float(PIECE_KINDS[piece["kind"]]["half_width"])
+			spawn_span(piece["kind"], piece_x - half_width, piece_x + float(piece.get("length", 0.0)) * speed + half_width)
 		else:
 			spawn_obstacle(piece_x, piece["kind"])
 	return offset
@@ -488,7 +516,7 @@ static func get_pattern_span(pattern: Dictionary, start_x: float, speed: float) 
 #     spawn_thin_ice() check again, so the rule holds for callers that bypass this guard.
 static func is_footprint_legal(terrain: TerrainGenerator, pattern: Dictionary, start_x: float, speed: float) -> bool:
 	var span: Vector2 = get_pattern_span(pattern, start_x, speed)
-	if not is_span_clear(terrain, span.x, span.y, has_body_piece(pattern)):
+	if not is_span_clear(terrain, span.x, span.y, needs_flat_ground(pattern)):
 		return false
 	if not terrain.has_ground_over_world_x_span(span.x - OBSTACLE_VOID_CLEARANCE_BEHIND, span.y + OBSTACLE_VOID_CLEARANCE_AHEAD):
 		return false
@@ -551,17 +579,41 @@ func spawn_obstacle(world_x: float, kind: StringName = PIECE_SPIKE) -> void:
 	active_obstacles.append(obstacle)
 
 
-# A thin-ice stretch from start_x to end_x. Same Aurora rule as spawn_obstacle(), over the span.
+# A thin-ice stretch from start_x to end_x. Probes call it directly.
 func spawn_thin_ice(start_x: float, end_x: float) -> void:
+	spawn_span(PIECE_THIN_ICE, start_x, end_x)
+
+
+# Any span kind from start_x to end_x. Same Aurora rule as spawn_obstacle(), over the span.
+func spawn_span(kind: StringName, start_x: float, end_x: float) -> void:
 	if terrain_generator.overlaps_aurora_flat(
 			start_x - AuroraDirector.BODY_CLEARANCE, end_x + AuroraDirector.BODY_CLEARANCE):
 		return
-	var thin_ice: ThinIce = ThinIce.new()
-	thin_ice.setup(player, terrain_generator, start_x, end_x,
+	var span: ThinIce
+	if kind == PIECE_BLACK_ICE:
+		span = BlackIce.new()
+	elif kind == PIECE_GEODE:
+		span = Geode.new()
+	else:
+		span = ThinIce.new()
+	span.setup(player, terrain_generator, start_x, end_x,
 		biome_obstacle_color if has_biome_color else DEFAULT_OBSTACLE_COLOR)
-	thin_ice.cracked.connect(thin_ice_cracked.emit)
-	add_child(thin_ice)
-	active_obstacles.append(thin_ice)
+	span.cracked.connect(thin_ice_cracked.emit)
+	if span is Geode:
+		(span as Geode).broken.connect(geode_broken.emit)
+	add_child(span)
+	active_obstacles.append(span)
+
+
+# Player's one ground take-off site asks this every frame it could jump. A handful of nodes.
+func is_black_ice_at(world_x: float) -> bool:
+	for node: Node2D in active_obstacles:
+		if not is_instance_valid(node):
+			continue
+		var black_ice: BlackIce = node as BlackIce
+		if black_ice != null and black_ice.covers_x(world_x):
+			return true
+	return false
 
 
 # Repaints the obstacles already on screen along with every one spawned from here on, so a

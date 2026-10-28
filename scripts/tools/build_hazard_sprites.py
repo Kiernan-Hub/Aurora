@@ -13,9 +13,10 @@ edge lands on the box edge (and, for spike and shard, on the outline printed bel
 stops telling the player where the danger is. The faint halo the generator leaves outside the
 silhouette is dropped below SOFT_ALPHA_FLOOR rather than shipped as a grey smear.
 
-Thin ice is different: a STRIP tiled along ThinIce's Line2D, so only its height is fixed (the
-line's OVERLAY_WIDTH) and its length follows the source's aspect. The generator's "seamless"
-ends never quite match, so the last SEAM_FRACTION is crossfaded over the first and dropped.
+Thin ice and black ice are different: STRIPS tiled along ThinIce's Line2D, so only their height
+is fixed (the line's OVERLAY_WIDTH) and their length follows the source's aspect. The generator's
+"seamless" ends never quite match, so the last SEAM_FRACTION is crossfaded over the first and
+dropped. The geode is in colour (it is a reward, not tinted) and only its width is fixed.
 """
 from pathlib import Path
 
@@ -32,8 +33,15 @@ HAZARDS = {
     "floe": (32, 136),
     "shard": (32, 32),
 }
-# Must equal ThinIce.OVERLAY_WIDTH.
+# Must equal ThinIce.OVERLAY_WIDTH. Thin ice and black ice are both strips of this height.
 THIN_ICE_BAND_HEIGHT = 8
+STRIPS = ("thin_ice", "black_ice")
+# Black ice is darkened by this gamma after the bake: the generation's body sits at a mid grey
+# that the dusk sky and the green variant ice both come within reach of, and a gamma keeps the
+# gloss streaks near white while it sinks the body (mean 0.40 -> 0.21; biome_schedule_check).
+BLACK_ICE_GAMMA = 2.0
+# Must equal Geode.WORLD_WIDTH.
+GEODE_WORLD_WIDTH = 56
 SEAM_FRACTION = 0.1
 SOLID_ALPHA = 128
 SOFT_ALPHA_FLOOR = 16
@@ -108,8 +116,8 @@ def print_outline(kind: str, image: Image.Image) -> None:
           + ", ".join(f"{x:g}, {y:g}" for x, y in world) + ")")
 
 
-def bake_thin_ice() -> None:
-    strip = load_cropped("thin_ice")
+def bake_strip(kind: str) -> None:
+    strip = load_cropped(kind)
     height = THIN_ICE_BAND_HEIGHT * SCALE
     width = round(strip.width * height / strip.height)
     seam = round(width * SEAM_FRACTION)
@@ -120,10 +128,23 @@ def bake_thin_ice() -> None:
     ramp = Image.linear_gradient("L").rotate(90, expand=True).resize((seam, height))
     tiled = strip.crop((0, 0, width, height))
     tiled.paste(Image.composite(head, tail, ramp), (0, 0))
-    save("thin_ice", tiled)
+    if kind == "black_ice":
+        tiled = Image.merge("RGBA", [band.point(lambda v: round(255 * (v / 255) ** BLACK_ICE_GAMMA))
+            for band in tiled.split()[:3]] + [tiled.getchannel("A")])
+    save(kind, tiled)
+
+
+# A sprite whose WIDTH is fixed and whose height follows the source's aspect: the geode, which
+# has no hitbox (it is a slam target, not a hazard), only a footprint along the ground.
+def bake_by_width(kind: str, world_width: int) -> None:
+    image = load_cropped(kind)
+    width = world_width * SCALE
+    save(kind, image.resize((width, round(image.height * width / image.width)), Image.LANCZOS))
 
 
 if __name__ == "__main__":
     for kind, hitbox in HAZARDS.items():
         bake(kind, hitbox)
-    bake_thin_ice()
+    for kind in STRIPS:
+        bake_strip(kind)
+    bake_by_width("geode", GEODE_WORLD_WIDTH)

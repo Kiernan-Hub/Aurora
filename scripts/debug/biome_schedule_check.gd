@@ -168,6 +168,11 @@ const HAZARD_SCENES: Array[String] = [
 	"res://scenes/obstacles/shard.tscn",
 ]
 var hazard_sprite_means: Dictionary = {}
+# Black ice is drawn AS AUTHORED (never tinted), so its own mean is what is seen. It is a strip ON
+# the surface line, so only the ride surface and the sky are behind it, never the deep band. The
+# geode is deliberately absent: it is an optional reward that reads by its gold core, which a
+# mean of a mostly-ice sprite cannot see, and missing one costs the player nothing.
+var black_ice_mean: Color = Color(0.0, 0.0, 0.0, 0.0)
 
 
 func _init() -> void:
@@ -182,6 +187,7 @@ func _init() -> void:
 	var crack_mean: Color = read_image_mean(ThinIce.CRACK_TEXTURE.get_image(), "thin_ice.gd's CRACK_TEXTURE")
 	if crack_mean.a > 0.0:
 		hazard_sprite_means["thin ice"] = crack_mean
+	black_ice_mean = read_image_mean(BlackIce.BLACK_TEXTURE.get_image(), "black_ice.gd's BLACK_TEXTURE")
 	check_palettes()
 	if ice_variant_count < MIN_ICE_VARIANTS:
 		failures.append("no palette resolved an ice_texture (expected at least %d) -- every pattern variant is missing, so the whole cycle silently fell back to the smooth tile"
@@ -527,6 +533,15 @@ func check_gameplay_contrast(label: String, palette: BiomePalette) -> void:
 			if drawn_contrast < MIN_GAMEPLAY_CONTRAST:
 				failures.append("%s: the DRAWN %s (sprite x obstacle_color) is only %.3f from %s (< %.3f) -- the palette colour passes, but the sprite it multiplies has made the hazard hard to read"
 					% [label, hazard, drawn_contrast, background_field, MIN_GAMEPLAY_CONTRAST])
+
+	if black_ice_mean.a > 0.0:
+		for background_field: String in backgrounds:
+			if background_field.contains("depth"):
+				continue
+			var drawn_contrast: float = get_color_distance(black_ice_mean, palette.get(background_field) as Color)
+			if drawn_contrast < MIN_GAMEPLAY_CONTRAST:
+				failures.append("%s: black ice (drawn as authored) is only %.3f from %s (< %.3f) -- darken it (BLACK_ICE_GAMMA) or rethink its look"
+					% [label, drawn_contrast, background_field, MIN_GAMEPLAY_CONTRAST])
 
 	var coin: Color = palette.coin_color
 	if coin.r - coin.b < MIN_COIN_RED_OVER_BLUE or coin.g <= coin.b:

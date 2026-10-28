@@ -788,20 +788,38 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 				kind, shape_rect, table_size,
 			])
 
-	# Thin ice has no body. Its node sits ON the surface at its start, and its overlay's centre
-	# must sit OVERLAY_LIFT above the line or the chunks, added later, draw over the band.
-	var ice_count_before: int = obstacle_spawner.active_obstacles.size()
-	obstacle_spawner.spawn_thin_ice(probe_x, probe_x + 200.0)
-	if obstacle_spawner.active_obstacles.size() == ice_count_before:
-		violations.append("SPAWN_PLACEMENT ObstacleSpawner placed no thin ice at world_x=%.1f" % probe_x)
-	else:
-		var thin_ice: ThinIce = obstacle_spawner.active_obstacles[-1] as ThinIce
-		violations.append_array(assert_clearance(terrain_generator, "ObstacleSpawner.thin_ice", thin_ice, 0.0, 0.0))
-		var overlay: Line2D = thin_ice.get_node("Overlay") as Line2D
-		var overlay_y: float = thin_ice.global_position.y + overlay.get_point_position(0).y
-		var overlay_lift: float = terrain_generator.get_surface_world_y(thin_ice.global_position.x) - overlay_y
+	# The span kinds have no body. Each node sits ON the surface at its start and must be its own
+	# class (a plain ThinIce standing in for black ice would crack instead of banning take-off). A
+	# strip's centre sits OVERLAY_LIFT above the line or the chunks, added later, draw over the
+	# band; the geode's sprite bottom sits Geode.SINK below it, buried by exactly that much.
+	var span_classes: Dictionary = {
+		ObstacleSpawner.PIECE_THIN_ICE: "ThinIce",
+		ObstacleSpawner.PIECE_BLACK_ICE: "BlackIce",
+		ObstacleSpawner.PIECE_GEODE: "Geode",
+	}
+	for kind: StringName in span_classes:
+		var span_count_before: int = obstacle_spawner.active_obstacles.size()
+		obstacle_spawner.spawn_span(kind, probe_x, probe_x + 200.0)
+		if obstacle_spawner.active_obstacles.size() == span_count_before:
+			violations.append("SPAWN_PLACEMENT ObstacleSpawner placed no %s at world_x=%.1f" % [kind, probe_x])
+			continue
+		var span: ThinIce = obstacle_spawner.active_obstacles[-1] as ThinIce
+		if span == null or span.get_script().get_global_name() != span_classes[kind]:
+			violations.append("SPAWN_PLACEMENT ObstacleSpawner.%s spawned the wrong class" % kind)
+			continue
+		violations.append_array(assert_clearance(terrain_generator, "ObstacleSpawner.%s" % kind, span, 0.0, 0.0))
+		if span is Geode:
+			var visual: Sprite2D = (span as Geode).visual
+			var bottom_y: float = visual.global_position.y + visual.texture.get_height() * visual.scale.y * 0.5
+			var buried: float = bottom_y - terrain_generator.get_surface_world_y(probe_x + 100.0)
+			if absf(buried - Geode.SINK) > PLACEMENT_EPSILON:
+				violations.append("SPAWN_PLACEMENT geode sits %.1fpx into the surface, expected %.1f" % [buried, Geode.SINK])
+			continue
+		var overlay: Line2D = span.get_node("Overlay") as Line2D
+		var overlay_y: float = span.global_position.y + overlay.get_point_position(0).y
+		var overlay_lift: float = terrain_generator.get_surface_world_y(span.global_position.x) - overlay_y
 		if absf(overlay_lift - ThinIce.OVERLAY_LIFT) > PLACEMENT_EPSILON:
-			violations.append("SPAWN_PLACEMENT thin ice overlay sits %.1fpx above the surface, expected %.1f" % [overlay_lift, ThinIce.OVERLAY_LIFT])
+			violations.append("SPAWN_PLACEMENT %s overlay sits %.1fpx above the surface, expected %.1f" % [kind, overlay_lift, ThinIce.OVERLAY_LIFT])
 
 	var powerup_row: Dictionary = PowerupSpawner.POWERUP_TABLE[0]
 	powerup_spawner.spawn_powerup(powerup_row["scene"], probe_x, powerup_row["effect"])
@@ -1422,16 +1440,24 @@ func check_pattern_fairness() -> Array[String]:
 func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multiplier: float,
 		terrain: TerrainGenerator = null, start_x: float = 0.0, pass_mark: int = 0) -> int:
 	# Hazard rects in pattern space: x from the first piece, y = height above the ground. Thin
-	# ice is an x span instead, deadly only to standing on it too long.
+	# ice is an x span instead, deadly only to standing on it too long; black ice is an x span
+	# no take-off may leave from; a geode cannot hurt anyone and is skipped.
 	var hazards: Array[Rect2] = []
 	var ice_spans: Array[Vector2] = []
+	var black_spans: Array[Vector2] = []
 	var first_hazard_x: float = INF
 	var last_hazard_x: float = 0.0
 	for piece: Dictionary in pattern["pieces"]:
-		if piece["kind"] == ObstacleSpawner.PIECE_THIN_ICE:
-			var ice_start: float = float(piece["at"]) * speed
-			ice_spans.append(Vector2(ice_start, ice_start + float(piece["length"]) * speed))
-			last_hazard_x = maxf(last_hazard_x, ice_start + float(piece["length"]) * speed)
+		if piece["kind"] == ObstacleSpawner.PIECE_GEODE:
+			continue
+		if piece["kind"] == ObstacleSpawner.PIECE_THIN_ICE or piece["kind"] == ObstacleSpawner.PIECE_BLACK_ICE:
+			var span_start: float = float(piece["at"]) * speed
+			var span: Vector2 = Vector2(span_start, span_start + float(piece["length"]) * speed)
+			if piece["kind"] == ObstacleSpawner.PIECE_THIN_ICE:
+				ice_spans.append(span)
+			else:
+				black_spans.append(span)
+			last_hazard_x = maxf(last_hazard_x, span.y)
 			continue
 		var kind: Dictionary = ObstacleSpawner.PIECE_KINDS[piece["kind"]]
 		var half_width: float = float(kind["half_width"]) + FAIRNESS_HAZARD_MARGIN
@@ -1473,6 +1499,12 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 				clean = false
 				break
 			frame += 1
+		# Black ice: Player refuses the take-off while its x is on the span. Which frame's x that
+		# is depends on where in the tick it asks, so both this frame's and the last are banned.
+		var takeoff_x: float = first_x + takeoff * frame_step
+		for black: Vector2 in black_spans:
+			for x: float in [takeoff_x, takeoff_x - frame_step]:
+				clean = clean and not (x >= black.x and x < black.y)
 		arc_clean.append(clean)
 		landing.append(mini(frame, frame_count))
 
