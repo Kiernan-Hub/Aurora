@@ -7,7 +7,7 @@ over time, on infinite seeded procedural terrain. The look is **clean, minimal i
 upgrades and visual polish stay deprioritized until the core loop is stable.
 
 **Where the project is (2026-10-28):** core loop, both set pieces, obstacles and the air moves are built,
-played and **merged to `main`**; the hazard art pass (step 8) is built on `art/step-8`, awaiting play + merge. `HANDOFF.md` (root) holds ONLY the current
+played and **merged to `main`**; so is the hazard art pass (step 8, 2026-10-28). `HANDOFF.md` (root) holds ONLY the current
 state; at session end its section moves to the top of `docs/history.md`, which is never required reading.
 
 **Editing rules.** Find the root cause in the connected files before changing anything; prefer targeted

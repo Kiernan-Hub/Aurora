@@ -10,8 +10,8 @@ build on the phone for ~3 minutes on 2026-10-05: "everything is good"** (playtes
 write-ups, the audit guide and the branch's commit table are at the top of `docs/history.md`.
 **New work branches from `main`.**
 
-**2026-10-28: step 8 (art) is built on `art/step-8`, five commits, not merged and not yet played.**
-Next actions 1 and "Step 8" below.
+**2026-10-28: step 8 (art) played by the owner and MERGED to `main`** (fast-forward of
+`art/step-8`, not yet pushed). "Step 8" below.
 
 **This session: the `audit.md` cleanup pass**, one commit per item. 17 of 19 items are closed:
 - **Player-visible fixes.** With the slam or double jump owned, a tap 1–2 frames before touchdown
@@ -48,10 +48,9 @@ sample.** One long run with logcat settles it.
 
 ### Next actions, in order
 
-1. **Play `art/step-8`, then merge it** (owner's go): the step-8 art (8a–8e, "Step 8" below) is
-   built and gated but nobody has seen it. Watch for: the thin-ice strip's jagged edge facing up,
-   the glint bursts on the brightest biomes (`SkateSpray.CHIP_ADD_STRENGTH`), the sink, and whether
-   the death-screen fade suits every death (`GameManager.DEATH_SCREEN_FADE_SECONDS`, 0 = old snap).
+1. **Step-8 art: played by the owner and merged 2026-10-28** ("Step 8" below). Knobs if any of it
+   reads wrong later: glint brightness `SkateSpray.CHIP_ADD_STRENGTH`, the death-screen fade
+   `GameManager.DEATH_SCREEN_FADE_SECONDS` (0 = old snap), sink `Player.SINK_DEPTH`/`SINK_DURATION`.
 2. **One long phone run past 5:00 with logcat** (`adb logcat -s godot | grep OBSTACLE_SEARCH`,
    `debugging.md`, "Android device testing"). It answers the rest of playtest C (does 5:00+ get
    properly hard?) and A3 (does a combo search cost a frame?). Only if it does: optimise, which
@@ -220,7 +219,7 @@ run: `git status` (standing rule in `CLAUDE.md`).
 The air moves' design as built, including where it departs from the plan (the left/right split, no
 formula-only 2× check), is at the top of this file and in `input.md` / `physics.md`.
 
-### Step 8 — Art: DONE 2026-10-28 on `art/step-8` (unmerged, unplayed)
+### Step 8 — Art: DONE, played and merged 2026-10-28
 One commit each: **8a** spike/floe/shard sprites, **8b** thin-ice crack strip, **8c** spike and shard
 collide on their silhouette (a convex hull inside the old box, so every fairness proof still holds),
 **8d** landing/slam glint bursts (`LandingBurst`, SkateSpray's look), **8e** crack sound, sink death,
