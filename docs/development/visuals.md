@@ -283,6 +283,11 @@ field, is at `1d38bef` — it was a clean chunk-lifecycle spawner rooted with
 `get_terrain_height()`, skipping voids and the lake. **Anything that comes back must not look
 like a hazard**; obstacles take an absolute colour for the same reason.
 
+**Skipped again in the step-8 art pass (2026-10-28, owner's call).** The hazards are now ice art
+and between them cover both shapes decoration could take: anything upright reads as a
+spike/floe/shard, anything flat on the surface reads as thin ice. If it is ever revisited, the
+only safe place is OFF the ride line (a distant, desaturated, never-red layer), never on it.
+
 An additional `FarPeaks` parallax layer (behind `FarRidge`, `motion_scale.x = 0.03`) and
 taller `ridge_height_max` on the existing ridge layers exist so the skyline reads as
 mountains rather than a single flat color once the camera climbs during a glide — see

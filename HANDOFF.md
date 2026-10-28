@@ -10,6 +10,9 @@ build on the phone for ~3 minutes on 2026-10-05: "everything is good"** (playtes
 write-ups, the audit guide and the branch's commit table are at the top of `docs/history.md`.
 **New work branches from `main`.**
 
+**2026-10-28: step 8 (art) is built on `art/step-8`, five commits, not merged and not yet played.**
+Next actions 1 and "Step 8" below.
+
 **This session: the `audit.md` cleanup pass**, one commit per item. 17 of 19 items are closed:
 - **Player-visible fixes.** With the slam or double jump owned, a tap 1–2 frames before touchdown
   could become an air move instead of the landing jump; now it is always the landing jump (A14,
@@ -45,7 +48,10 @@ sample.** One long run with logcat settles it.
 
 ### Next actions, in order
 
-1. **Step 8, art** (owner): "Remaining plan" below. Branch from `main`.
+1. **Play `art/step-8`, then merge it** (owner's go): the step-8 art (8a–8e, "Step 8" below) is
+   built and gated but nobody has seen it. Watch for: the thin-ice strip's jagged edge facing up,
+   the glint bursts on the brightest biomes (`SkateSpray.CHIP_ADD_STRENGTH`), the sink, and whether
+   the death-screen fade suits every death (`GameManager.DEATH_SCREEN_FADE_SECONDS`, 0 = old snap).
 2. **One long phone run past 5:00 with logcat** (`adb logcat -s godot | grep OBSTACLE_SEARCH`,
    `debugging.md`, "Android device testing"). It answers the rest of playtest C (does 5:00+ get
    properly hard?) and A3 (does a combo search cost a frame?). Only if it does: optimise, which
@@ -83,7 +89,7 @@ player is on screen now). Cosmetic.
 (64–200px). Harmless, looks odd, not guarded.
 7. The first spike now appears no earlier than ~21.5s, not 20s (first-appearance pause and retries).
 
-**D. Visual, never checked by anyone:** hazard placeholders, the thin-ice overlay, the shop's three
+**D. Visual, never checked by anyone:** the step-8 hazard art and thin-ice strip, the shop's three
 code-built rows on a phone screen (font 13, same as the old authored row), and the slam's bigger
 landing squash.
 
@@ -112,7 +118,7 @@ to it.
 | Kind | Answer | Hitbox | Code |
 |---|---|---|---|
 | **Spike** | Jump | its silhouette (convex hull) inside a 32×32 box on the ground | `obstacle.tscn` + `obstacle.gd` |
-| **Floe** | Stay down | 32×136 column, **64→200px** above the surface. The placeholder art is exactly the hitbox | `floe.tscn` + `obstacle.gd` |
+| **Floe** | Stay down | 32×136 column, **64→200px** above the surface. The sprite is exactly the hitbox | `floe.tscn` + `obstacle.gd` |
 | **Shard** | Stay down, or clear it at jump level 3+ | its silhouette inside a 32×32 box at **64–96px** | `shard.tscn` + `obstacle.gd` |
 | **Thin ice** | Keep hopping | An x span, not a body: >**12 grounded frames** (0.2s) in a row cracks it; each landing resets | `scripts/obstacles/thin_ice.gd` (`ThinIce`) |
 
@@ -202,7 +208,7 @@ run: `git status` (standing rule in `CLAUDE.md`).
 
 ---
 
-## Remaining plan: step 8
+## The obstacle plan: done through step 8
 
 ### Core rules (still hold)
 - **No hazard touches the player's physics**: overlap checks and span checks only.
@@ -214,18 +220,20 @@ run: `git status` (standing rule in `CLAUDE.md`).
 The air moves' design as built, including where it departs from the plan (the left/right split, no
 formula-only 2× check), is at the top of this file and in `input.md` / `physics.md`.
 
-### Step 8 — Art (owner)
-Ice-crystal spike, floe + icicle (the island look must stay inside the 64–200px column, or the
-hitbox and `PIECE_KINDS` change together), shard, thin-ice cracks, the crack SFX and sink death
-(deferred from step 4), slam/landing effects, new ground decoration that must not look like a
-hazard. Mind the four art-swap couplings (`visuals.md`) and the contrast gate (hazards stay
-red-dominant unless that rule is revisited).
+### Step 8 — Art: DONE 2026-10-28 on `art/step-8` (unmerged, unplayed)
+One commit each: **8a** spike/floe/shard sprites, **8b** thin-ice crack strip, **8c** spike and shard
+collide on their silhouette (a convex hull inside the old box, so every fairness proof still holds),
+**8d** landing/slam glint bursts (`LandingBurst`, SkateSpray's look), **8e** crack sound, sink death,
+and a 0.6s death-screen fade on every death. The art came from ChatGPT; prompts must say clean,
+minimal ice, never "cozy". **Ground decoration: SKIPPED by the owner.** It was removed once
+(2026-09-27) for competing with hazards, and the hazards are now ice art that covers both
+shapes decoration could take: upright reads as a spike/floe/shard, flat reads as thin ice.
 
 ### Open questions (owner). **Defaults in bold** are what's built unless the owner says otherwise
 1. Slam **smashes a spike you land on** (like the boost)? **Off**; try it once the slam has been played.
 2. Unlock prices: **slam 300, double jump 900**. Placeholders.
 3. Should coins avoid floe columns? **No guard for now** (checklist item 6).
-4. Hazard colour stays red-family? **Yes, until the art pass.**
+4. Hazard colour stays red-family? **Yes**: the art pass kept it (greyscale sprites × the red obstacle colour).
 
 Answered and built: floating hazards wait out a glide; tier timings from the plan's table; step 5 as
 option A (owner confirmed); the rare coin stays reachable by a level-1 double jump; the trick boost stays,

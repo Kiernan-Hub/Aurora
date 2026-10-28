@@ -1,13 +1,13 @@
 # Aura — endless 2D skater (Godot 4.7, GDScript, Mobile renderer)
 
 Alto's-Adventure-style endless downhill skater: the player auto-runs right at a speed that ramps
-over time, on infinite seeded procedural terrain. Gameplay art is still placeholder rects.
+over time, on infinite seeded procedural terrain. The look is **clean, minimal ice, never "cozy"**.
 
 **Priority order:** terrain stability > physics/collision correctness > game feel. Missions,
 upgrades and visual polish stay deprioritized until the core loop is stable.
 
-**Where the project is (2026-10-05):** core loop, both set pieces, obstacles and the air moves are built,
-played and **merged to `main`**; next is the owner's art pass. `HANDOFF.md` (root) holds ONLY the current
+**Where the project is (2026-10-28):** core loop, both set pieces, obstacles and the air moves are built,
+played and **merged to `main`**; the hazard art pass (step 8) is built on `art/step-8`, awaiting play + merge. `HANDOFF.md` (root) holds ONLY the current
 state; at session end its section moves to the top of `docs/history.md`, which is never required reading.
 
 **Editing rules.** Find the root cause in the connected files before changing anything; prefer targeted
@@ -147,7 +147,7 @@ All **working** unless said otherwise. The numbers are load-bearing; the reasoni
 | 5 | Powerups | Six kinds — speed boost, jump boost, magnet, doubler, shield, glide — one `POWERUP_TABLE` row and one `active_effects` entry each. `can_end_effect()` blocks speed boost/glide expiring over a void. **Airborne tricks** pay a bonus `speed_boost` down that same path, no new velocity model — except after a double jump (coins only) |
 | 6 | Screens | START/PLAYING/PAUSED/DEAD/SHOP |
 | 7 | Audio | Six-voice one-shot SFX pool plus one scene-local Aurora ambient loop. SFX and Music use separate saved-volume buses. Both owners compute `is_headless` locally — `Services` isn't ready in harness `_init()` |
-| 8 | Visual polish | Sky + ice variation done; gameplay art still placeholder rects. **Eight `BiomePalette`s cycle every 75 000 world-px**, plus `first_light` held OUTSIDE the cycle for absolute index 0 — it opens a session once and never recurs. **The eight are ROTATED, not reordered**: each launch enters the fixed day arc at a random point. A shuffle was built and reverted; the palettes are authored as a day passing and adjacency is load-bearing. **Coins and obstacles take an authored per-biome colour, never a palette tint** (obstacles as a fill; coins *multiply* it over the gold sprite) — a biome may shift the two objects the player must *read*, never recolour them — and `biome_schedule_check` holds a contrast floor on the authored colours and on the drawn coin (sprite × tint). `biomes.md`, `visuals.md`, `ice_panels.md` |
+| 8 | Visual polish | Sky + ice variation done; hazards are greyscale ice sprites the obstacle colour multiplies over (`build_hazard_sprites.py`); **no ground decoration, by decision** (`visuals.md`). **Eight `BiomePalette`s cycle every 75 000 world-px**, plus `first_light` held OUTSIDE the cycle for absolute index 0 — it opens a session once and never recurs. **The eight are ROTATED, not reordered**: each launch enters the fixed day arc at a random point. A shuffle was built and reverted; the palettes are authored as a day passing and adjacency is load-bearing. **Coins and obstacles take an authored per-biome colour, never a palette tint** (both *multiply* it over their sprite) — a biome may shift the two objects the player must *read*, never recolour them — and `biome_schedule_check` holds a contrast floor on the authored colours and on each drawn coin and hazard (sprite × tint). `biomes.md`, `visuals.md`, `ice_panels.md` |
 | 9 | Upgrades | `UpgradeStore.TRACKS` rows (the shop builds one row each): jump (five levels), **slam** (300) and **double jump** (900). In the air, the left screen half slams and the right half double-jumps; one site in `player.gd` (`input.md`). `GameManager.debug_unlock_air_moves` grants both for testing. Missions/zones not started |
 | 10 | **Frozen lake** | The first set piece. Every 20 min of *cumulative* playtime, and only past 130s into a run, a forced 7500px flat segment is armed ahead of the player: jumping locked, every spawner suppressed, ice takes a fixed authored blue under a full-screen reflection quad. Everything cosmetic rides ONE ramp, `FrozenLakeDirector.get_lake_blend()` — including the camera's framing. Skate spray and an etched track ride it too. The first crossing grants the game's first **achievement**. `terrain.md`, `visuals.md`, `input.md` |
 | 11 | **Achievements** | `AchievementManager` is the ONLY writer of `SaveStore.achievements` (an open dictionary, so a new one needs no version bump). **Triggers come TO it** — it listens to signals systems already emit, never the reverse — so adding one is a table row plus one `.connect()`, both in that file. **Its ids are save data**: adding is free, renaming un-earns it for everyone. No gallery/rewards yet, and an addon was evaluated and declined. `architecture.md` |
