@@ -161,13 +161,24 @@ var rendered_depth_source: String = "authored endpoints (scene not read)"
 # biome's coin_color over that sprite, so the drawn coin is this times coin_color -- something the
 # raw palette colour cannot see (a darker or swapped sprite). Alpha 0 means the read failed.
 var coin_sprite_mean: Color = Color(0.0, 0.0, 0.0, 0.0)
+# The same for each hazard: obstacle.gd multiplies obstacle_color over a greyscale sprite.
+const HAZARD_SCENES: Array[String] = [
+	"res://scenes/obstacles/obstacle.tscn",
+	"res://scenes/obstacles/floe.tscn",
+	"res://scenes/obstacles/shard.tscn",
+]
+var hazard_sprite_means: Dictionary = {}
 
 
 func _init() -> void:
 	var schedule_steps: int = get_int_argument("--steps", DEFAULT_SCHEDULE_STEPS)
 
 	read_rendered_depth_range()
-	read_coin_sprite_mean()
+	coin_sprite_mean = read_sprite_mean("res://scenes/pickups/coin.tscn")
+	for scene_path: String in HAZARD_SCENES:
+		var mean: Color = read_sprite_mean(scene_path)
+		if mean.a > 0.0:
+			hazard_sprite_means[scene_path.get_file()] = mean
 	check_palettes()
 	if ice_variant_count < MIN_ICE_VARIANTS:
 		failures.append("no palette resolved an ice_texture (expected at least %d) -- every pattern variant is missing, so the whole cycle silently fell back to the smooth tile"
@@ -505,6 +516,14 @@ func check_gameplay_contrast(label: String, palette: BiomePalette) -> void:
 			if drawn_contrast < MIN_GAMEPLAY_CONTRAST:
 				failures.append("%s: the DRAWN coin (sprite x coin_color) is only %.3f from %s (< %.3f) -- the palette colour passes, but the sprite it multiplies has made the coin hard to read"
 					% [label, drawn_contrast, background_field, MIN_GAMEPLAY_CONTRAST])
+	# Measured 2026-10-28: lowest 0.63, the shard against palette 7's horizon.
+	for hazard: String in hazard_sprite_means:
+		var drawn_hazard: Color = (hazard_sprite_means[hazard] as Color) * palette.obstacle_color
+		for background_field: String in backgrounds:
+			var drawn_contrast: float = get_color_distance(drawn_hazard, palette.get(background_field) as Color)
+			if drawn_contrast < MIN_GAMEPLAY_CONTRAST:
+				failures.append("%s: the DRAWN %s (sprite x obstacle_color) is only %.3f from %s (< %.3f) -- the palette colour passes, but the sprite it multiplies has made the hazard hard to read"
+					% [label, hazard, drawn_contrast, background_field, MIN_GAMEPLAY_CONTRAST])
 
 	var coin: Color = palette.coin_color
 	if coin.r - coin.b < MIN_COIN_RED_OVER_BLUE or coin.g <= coin.b:
@@ -517,16 +536,16 @@ func check_gameplay_contrast(label: String, palette: BiomePalette) -> void:
 			% [label, obstacle.r, obstacle.g, obstacle.b])
 
 
-# Alpha-weighted mean of the coin sprite's mostly-opaque texels, from the Visual node the game
-# actually tints. A failed read is a failure, not a skipped check.
-func read_coin_sprite_mean() -> void:
-	var coin: Node = (load("res://scenes/pickups/coin.tscn") as PackedScene).instantiate()
-	var visual: Sprite2D = coin.get_node_or_null("Visual") as Sprite2D
+# Alpha-weighted mean of a sprite's mostly-opaque texels, from the Visual node the game
+# actually tints. A failed read is a failure (and alpha 0), not a skipped check.
+func read_sprite_mean(scene_path: String) -> Color:
+	var scene: Node = (load(scene_path) as PackedScene).instantiate()
+	var visual: Sprite2D = scene.get_node_or_null("Visual") as Sprite2D
 	var image: Image = visual.texture.get_image() if visual != null and visual.texture != null else null
-	coin.free()
+	scene.free()
 	if image == null:
-		failures.append("coin.tscn has no readable Visual sprite -- the drawn-coin contrast cannot be measured")
-		return
+		failures.append("%s has no readable Visual sprite -- its drawn contrast cannot be measured" % scene_path.get_file())
+		return Color(0.0, 0.0, 0.0, 0.0)
 	if image.is_compressed():
 		image.decompress()
 	var total: Color = Color(0.0, 0.0, 0.0, 0.0)
@@ -536,9 +555,9 @@ func read_coin_sprite_mean() -> void:
 			if texel.a >= 0.5:
 				total += Color(texel.r * texel.a, texel.g * texel.a, texel.b * texel.a, texel.a)
 	if total.a <= 0.0:
-		failures.append("the coin sprite has no opaque pixels")
-		return
-	coin_sprite_mean = Color(total.r / total.a, total.g / total.a, total.b / total.a, 1.0)
+		failures.append("%s's sprite has no opaque pixels" % scene_path.get_file())
+		return Color(0.0, 0.0, 0.0, 0.0)
+	return Color(total.r / total.a, total.g / total.a, total.b / total.a, 1.0)
 
 
 # Euclidean over RGB. Alpha is ignored: every colour these compare is opaque.

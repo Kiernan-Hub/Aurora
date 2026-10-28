@@ -10,6 +10,7 @@ outputs kept for comparison. **Nothing in here is loaded by the game.**
 | `background/` | 38 MiB | **build input** (`pano.png`/`.xcf`) plus its provenance | keep; the GIMP files are the only editable source |
 | `terrain/` | 29 MiB | **build input** for the ice tiles, plus the lake's two look targets | keep while any shipped tile traces to a panel |
 | `aurora_reference/` | 6 MiB | **design authority** for the aurora's look (CLAUDE.md row 12) | keep |
+| `hazards/` | 3 MiB | **build input** for `build_hazard_sprites.py` (spike, floe, shard; ChatGPT, 2026-10-28) | keep |
 | `audits/` | 20 MiB | **historical captures** from closed aurora investigations, cited by `docs/research/aurora_borealis.md` and the 2026-09-09 reviews | add nothing new; delete only in an explicit cleanup, keeping whatever a doc cites |
 | top level | — | app-icon source, coin sources, the art-direction reference | keep |
 

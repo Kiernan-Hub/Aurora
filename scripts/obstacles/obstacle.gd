@@ -15,12 +15,12 @@ func _ready() -> void:
 
 
 # Same contract as Coin.set_visual_color(): the only place that knows how an obstacle is
-# drawn, so ObstacleSpawner never touches the ColorRect by name and the eventual sprite
-# swap lands here. Callable before add_child().
+# drawn. The sprite is light greyscale, so the biome's obstacle_color MULTIPLIES over it
+# (build_hazard_sprites.py). Callable before add_child().
 func set_visual_color(color: Color) -> void:
-	var visual: ColorRect = get_node_or_null("ColorRect") as ColorRect
+	var visual: CanvasItem = get_node_or_null("Visual") as CanvasItem
 	if visual != null:
-		visual.color = color
+		visual.modulate = color
 
 
 func _on_body_entered(body: Node2D) -> void:

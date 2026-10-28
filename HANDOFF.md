@@ -120,7 +120,9 @@ to it.
   player breaks through. Thin ice: a boost skims over; a shield absorbs the crack and the patch
   **disarms** (fades to 30%). Its overlay is a red `Line2D` **4px above** the surface line, because
   chunks draw over anything at or below it.
-- Placeholder art is red `ColorRect`s / `Line2D` in the absolute obstacle colour, repainted by biome pushes.
+- **Spike, floe and shard are sprites** (2026-10-28, ChatGPT-generated, low-poly ice): light-greyscale
+  `Visual` `Sprite2D`s the biome's obstacle colour multiplies over, baked to exactly 3× their hitbox by
+  `scripts/tools/build_hazard_sprites.py` from `art_source/hazards/`. Thin ice is still a red `Line2D`.
   Measured contrast of that red vs every biome's scenery and sky is **≥ 0.65** (`sunset_rose` worst),
   above the 0.5 gate.
 - **Runtime-verified** in the real scene: thin ice cracks on exactly the 13th grounded frame;
@@ -181,7 +183,7 @@ to it.
 | Which patterns, how often, timings | `PATTERNS` (`weight`, `at`, `length`). Re-run `check.sh`: the proof has the final say |
 | The tutorial pause | `FIRST_APPEARANCE_EXTRA_ROOM` (1.5s) |
 | Thin ice forgiveness | `ThinIce.GRACE_SECONDS` (0.2) |
-| Hazard sizes | `PIECE_KINDS` **and** the scene's `RectangleShape2D`/`ColorRect` together (the check enforces they match) |
+| Hazard sizes | `PIECE_KINDS`, the scene's `RectangleShape2D` (the check enforces they match) **and** the `HAZARDS` row in `build_hazard_sprites.py`, then re-run it |
 | Forward view | `Main.PLAYER_SCREEN_X_FRACTION` (0.30). Lower = more view; lookaheads are checked against it |
 
 ---

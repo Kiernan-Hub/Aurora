@@ -166,7 +166,7 @@ footprint (`AnimatedSprite2D` at `scale 0.34`), i.e. ~2.9× — generous, and ha
 | Object | World size | Author at |
 |---|---|---|
 | Coin (`coin.tscn` `ColorRect` 16×16) | 16×16 | 32–48 px |
-| Obstacle (`obstacle.tscn` 32×32) | 32×32 | 64–96 px |
+| Obstacle (`obstacle.tscn` 32×32) | 32×32 | 64–96 px (hazards ship at 3×: `build_hazard_sprites.py`) |
 
 **Four couplings will make an art swap silently wrong rather than hard**, and none of them
 errors — fix each alongside its sprite: `obstacle_spawner.gd`'s `OBSTACLE_HALF_HEIGHT`

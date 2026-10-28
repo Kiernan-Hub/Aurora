@@ -25,7 +25,7 @@ const OBSTACLE_SCENE: PackedScene = preload("res://scenes/obstacles/obstacle.tsc
 # Half of obstacle.tscn's RectangleShape2D size (32x32), so the box sits on top of
 # the surface rather than centered on it or floating above it.
 const OBSTACLE_HALF_HEIGHT: float = 16.0
-# What the scenes' own ColorRects are authored in, for a node spawned before any biome push.
+# What the scenes' own Visual sprites are tinted with, for a node spawned before any biome push.
 const DEFAULT_OBSTACLE_COLOR: Color = Color(1.0, 0.1, 0.1, 1.0)
 # Only place on close-to-flat ground: an obstacle glued to a slope reads as
 # unfair (its hitbox stops matching what the eye expects the moment the surface
