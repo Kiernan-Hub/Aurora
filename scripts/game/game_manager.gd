@@ -18,6 +18,7 @@ class_name GameManager
 @export var powerup_manager_path: NodePath = NodePath("../PowerupManager")
 @export var biome_director_path: NodePath = NodePath("../BiomeDirector")
 @export var sfx_player_path: NodePath = NodePath("../SfxPlayer")
+@export var obstacle_spawner_path: NodePath = NodePath("../TerrainGenerator/ObstacleSpawner")
 @export var pause_screen_path: NodePath = NodePath("../CanvasLayer/PauseScreen")
 @export var pause_button_path: NodePath = NodePath("../CanvasLayer/PauseButton")
 @export var resume_button_path: NodePath = NodePath("../CanvasLayer/PauseScreen/CenterContainer/VBoxContainer/ResumeButton")
@@ -130,6 +131,8 @@ var reset_confirm_dialog: ConfirmationDialog
 # the rebuilt GameManager reads the save file in _ready(). There is deliberately no path
 # that mutates player stats mid-run.
 enum State { START, PLAYING, PAUSED, DEAD, SHOP }
+# How long the death screen takes to fade in from a death (set_state).
+const DEATH_SCREEN_FADE_SECONDS: float = 0.6
 
 signal state_changed(new_state: State)
 
@@ -214,6 +217,10 @@ func wire_scene() -> bool:
 		return false
 
 	player.trick_completed.connect(_on_player_trick_completed)
+	# Optional: a scene without obstacles just has no crack sound.
+	var obstacle_spawner: ObstacleSpawner = get_node_or_null(obstacle_spawner_path) as ObstacleSpawner
+	if obstacle_spawner != null:
+		obstacle_spawner.thin_ice_cracked.connect(sfx_player.play_crack)
 
 	start_screen = get_node_or_null(start_screen_path) as Control
 	start_button = get_node_or_null(start_button_path) as Button
@@ -371,6 +378,13 @@ func set_state(new_state: State) -> void:
 		pause_screen.visible = new_state == State.PAUSED
 	if death_screen != null:
 		death_screen.visible = new_state == State.DEAD or (new_state == State.SHOP and shop_return_state == State.DEAD)
+		# Fade in on a death rather than snapping on, so the moment of death (the thin-ice
+		# sink, a crash) is seen for a beat before the overlay dims it. Visible and live from
+		# the first frame either way; only its alpha ramps.
+		if previous_state == State.PLAYING and new_state == State.DEAD:
+			death_screen.modulate.a = 0.0
+			var fade: Tween = create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+			fade.tween_property(death_screen, "modulate:a", 1.0, DEATH_SCREEN_FADE_SECONDS)
 	if shop_screen != null:
 		shop_screen.visible = new_state == State.SHOP
 	# Hidden on the menus so it can't be tapped while a screen is up, and hidden on

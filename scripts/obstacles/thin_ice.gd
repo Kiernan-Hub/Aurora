@@ -2,6 +2,9 @@ extends Node2D
 
 class_name ThinIce
 
+# Shield or not; ObstacleSpawner forwards it as thin_ice_cracked for the sound.
+signal cracked
+
 # THIN ICE: a stretch of ground that cracks under a player who stays on it too long at a time.
 # Each landing gets a fresh GRACE_SECONDS, so it is crossed by skipping like a stone -- land,
 # tap, land, tap -- and the jump buffer makes the rhythm forgiving. A short patch is one jump.
@@ -92,4 +95,6 @@ func _physics_process(delta: float) -> void:
 		# very next frame, which it would be while the player is still standing here.
 		is_armed = false
 		overlay.modulate.a = CRACKED_ALPHA
-		player.absorb_hit()
+		cracked.emit()
+		if not player.absorb_hit():
+			player.sink_through_ice()

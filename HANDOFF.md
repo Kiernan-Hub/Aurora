@@ -118,7 +118,10 @@ to it.
 
 - All three bodies run `obstacle.gd`, so hit → `absorb_hit()`, a shield absorbs one, and a boosting
   player breaks through. Thin ice: a boost skims over; a shield absorbs the crack and the patch
-  **disarms** (fades to 30%). Its overlay is an 8px `Line2D` tiling a cracked-crust strip, its straight
+  **disarms** (fades to 30%). A crack plays `crack.wav` (synthesised, `build_crack_sfx.py`) via
+  `ObstacleSpawner.thin_ice_cracked`; a fatal one also sinks the sprite through the ice
+  (`Player.sink_through_ice`), seen because every death screen now fades in over 0.6s
+  (`GameManager.DEATH_SCREEN_FADE_SECONDS`). Its overlay is an 8px `Line2D` tiling a cracked-crust strip, its straight
   bottom 1px under the surface line, because chunks draw over anything at or below it (and so hide the join).
 - **All four hazards are art** (2026-10-28, ChatGPT-generated, low-poly ice; the look is clean minimal
   ice, never "cozy"): light-greyscale `Visual` `Sprite2D`s (and the thin-ice strip) that the biome's

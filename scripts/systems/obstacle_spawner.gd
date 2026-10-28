@@ -2,6 +2,9 @@ extends Node2D
 
 class_name ObstacleSpawner
 
+# Any thin-ice patch cracking, shielded or not. GameManager plays the crack sound off it.
+signal thin_ice_cracked
+
 # Same reasoning as CoinSpawner: a child of TerrainGenerator so world rebasing
 # (which shifts TerrainGenerator.position.y directly in main.gd) carries every
 # spawned obstacle along for free.
@@ -556,6 +559,7 @@ func spawn_thin_ice(start_x: float, end_x: float) -> void:
 	var thin_ice: ThinIce = ThinIce.new()
 	thin_ice.setup(player, terrain_generator, start_x, end_x,
 		biome_obstacle_color if has_biome_color else DEFAULT_OBSTACLE_COLOR)
+	thin_ice.cracked.connect(thin_ice_cracked.emit)
 	add_child(thin_ice)
 	active_obstacles.append(thin_ice)
 

@@ -35,6 +35,10 @@ const PLAYER_SHIELD_COLOR: Color = Color(0.4, 0.85, 1.0)
 const JUMP_STRETCH_SCALE: Vector2 = Vector2(0.72, 1.35)
 const LAND_SQUASH_SCALE: Vector2 = Vector2(1.35, 0.72)
 const SQUASH_STRETCH_DURATION: float = 0.28
+# The thin-ice death: the sprite drops through the surface. Chunks draw after the player in
+# tree order, so the ice itself hides her as she goes; the depth clears the 61px sprite.
+const SINK_DEPTH: float = 72.0
+const SINK_DURATION: float = 0.5
 # Glide lives entirely in the airborne (gravity) branch of _physics_process -- see the
 # LOAD-BEARING FOR CHASMS note below. is_using_grounded_model is never touched by it, so a
 # boosting player is unaffected and the chasm contract can't move by construction.
@@ -567,6 +571,17 @@ func play_squash_stretch(scale_multiplier: Vector2) -> void:
 	squash_stretch_tween = create_tween()
 	squash_stretch_tween.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	squash_stretch_tween.tween_property(animated_sprite, "scale", sprite_base_scale, SQUASH_STRETCH_DURATION)
+
+
+# Purely cosmetic, called by ThinIce after a crack kills. The death has already paused the tree,
+# so the tween runs in TWEEN_PAUSE_PROCESS; a restart reloads the scene and resets the sprite.
+func sink_through_ice() -> void:
+	if squash_stretch_tween:
+		squash_stretch_tween.kill()
+	animated_sprite.scale = sprite_base_scale
+	var sink: Tween = create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	sink.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	sink.tween_property(animated_sprite, "position:y", animated_sprite.position.y + SINK_DEPTH, SINK_DURATION)
 
 
 func update_visual_rotation(delta: float) -> void:

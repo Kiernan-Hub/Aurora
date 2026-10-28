@@ -15,6 +15,8 @@ const COIN_SOUND: AudioStream = preload("res://assets/audio/sfx/coin.wav")
 const POWERUP_SOUND: AudioStream = preload("res://assets/audio/sfx/powerup.wav")
 const DEATH_SOUND: AudioStream = preload("res://assets/audio/sfx/death.wav")
 const CLICK_SOUND: AudioStream = preload("res://assets/audio/sfx/click.wav")
+# Synthesised by scripts/tools/build_crack_sfx.py.
+const CRACK_SOUND: AudioStream = preload("res://assets/audio/sfx/crack.wav")
 
 const SFX_BUS: StringName = &"SFX"
 # Comfortably above the number of gameplay sounds that can land on the same frame
@@ -75,6 +77,10 @@ func play_death() -> void:
 
 func play_click() -> void:
 	play(CLICK_SOUND)
+
+
+func play_crack() -> void:
+	play(CRACK_SOUND)
 
 
 func play(stream: AudioStream) -> void:
