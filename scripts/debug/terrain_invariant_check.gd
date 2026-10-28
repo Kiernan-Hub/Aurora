@@ -775,11 +775,17 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 		var center_height: float = float(kind_spec["center_height"])
 		violations.append_array(assert_clearance(terrain_generator, "ObstacleSpawner.%s" % kind, piece,
 			center_height, center_height))
-		var shape: RectangleShape2D = (piece.get_node("CollisionShape2D") as CollisionShape2D).shape as RectangleShape2D
+		# The hitbox may be smaller than the PIECE_KINDS box (spike and shard collide on their
+		# silhouette), never larger: every fairness proof runs on the box, and only a shape
+		# inside it inherits that proof. A floor of half the box catches a lost or collapsed shape.
+		var shape: Shape2D = (piece.get_node("CollisionShape2D") as CollisionShape2D).shape
 		var table_size: Vector2 = Vector2(float(kind_spec["half_width"]), float(kind_spec["half_height"])) * 2.0
-		if shape == null or not shape.size.is_equal_approx(table_size):
-			violations.append("SPAWN_PLACEMENT ObstacleSpawner.%s hitbox %s != PIECE_KINDS %s" % [
-				kind, shape.size if shape != null else Vector2.ZERO, table_size,
+		var table_rect: Rect2 = Rect2(-table_size * 0.5, table_size).grow(PLACEMENT_EPSILON)
+		var shape_rect: Rect2 = shape.get_rect() if shape != null else Rect2()
+		if shape == null or not table_rect.encloses(shape_rect) \
+				or shape_rect.get_area() < table_size.x * table_size.y * 0.5:
+			violations.append("SPAWN_PLACEMENT ObstacleSpawner.%s hitbox bounds %s are not inside PIECE_KINDS %s (or under half of it)" % [
+				kind, shape_rect, table_size,
 			])
 
 	# Thin ice has no body. Its node sits ON the surface at its start, and its overlay's centre

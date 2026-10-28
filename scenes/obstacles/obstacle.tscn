@@ -3,8 +3,8 @@
 [ext_resource type="Script" path="res://scripts/obstacles/obstacle.gd" id="1_obstacle"]
 [ext_resource type="Texture2D" uid="uid://caxtyi8wft2ri" path="res://assets/sprites/hazards/spike.png" id="2_spike"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_obstacle"]
-size = Vector2(32, 32)
+[sub_resource type="ConvexPolygonShape2D" id="ConvexPolygonShape2D_obstacle"]
+points = PackedVector2Array(-16, -3.66667, 0, -15.6667, 0.333333, -15.6667, 16, -3.66667, 16, -3, 15.6667, 16, -15.6667, 16, -16, -3.33333)
 
 [node name="Obstacle" type="Area2D"]
 collision_layer = 1
@@ -12,7 +12,7 @@ collision_mask = 1
 script = ExtResource("1_obstacle")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("RectangleShape2D_obstacle")
+shape = SubResource("ConvexPolygonShape2D_obstacle")
 
 [node name="Visual" type="Sprite2D" parent="."]
 modulate = Color(1, 0.1, 0.1, 1)

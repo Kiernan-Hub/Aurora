@@ -111,9 +111,9 @@ to it.
 
 | Kind | Answer | Hitbox | Code |
 |---|---|---|---|
-| **Spike** | Jump | 32×32 on the ground | `obstacle.tscn` + `obstacle.gd` |
+| **Spike** | Jump | its silhouette (convex hull) inside a 32×32 box on the ground | `obstacle.tscn` + `obstacle.gd` |
 | **Floe** | Stay down | 32×136 column, **64→200px** above the surface. The placeholder art is exactly the hitbox | `floe.tscn` + `obstacle.gd` |
-| **Shard** | Stay down, or clear it at jump level 3+ | 32×32 at **64–96px** | `shard.tscn` + `obstacle.gd` |
+| **Shard** | Stay down, or clear it at jump level 3+ | its silhouette inside a 32×32 box at **64–96px** | `shard.tscn` + `obstacle.gd` |
 | **Thin ice** | Keep hopping | An x span, not a body: >**12 grounded frames** (0.2s) in a row cracks it; each landing resets | `scripts/obstacles/thin_ice.gd` (`ThinIce`) |
 
 - All three bodies run `obstacle.gd`, so hit → `absorb_hit()`, a shield absorbs one, and a boosting

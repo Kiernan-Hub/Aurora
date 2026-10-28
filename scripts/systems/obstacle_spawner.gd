@@ -22,7 +22,7 @@ class_name ObstacleSpawner
 var debug_spawning_disabled: bool = false
 
 const OBSTACLE_SCENE: PackedScene = preload("res://scenes/obstacles/obstacle.tscn")
-# Half of obstacle.tscn's RectangleShape2D size (32x32), so the box sits on top of
+# Half of the spike's 32x32 box (its silhouette hitbox lies inside it), so the box sits on top of
 # the surface rather than centered on it or floating above it.
 const OBSTACLE_HALF_HEIGHT: float = 16.0
 # What the scenes' own Visual sprites are tinted with, for a node spawned before any biome push.
