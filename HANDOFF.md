@@ -13,6 +13,17 @@ write-ups, the audit guide and the branch's commit table are at the top of `docs
 **2026-10-28: step 8 (art) played by the owner and MERGED to `main`** (fast-forward of
 `art/step-8`, not yet pushed). "Step 8" below.
 
+**2026-10-29, owner away: two UNMERGED branches off `main`, neither played.** Merge only after the owner plays them.
+- **`elements/black-ice-geode`**: black ice, slam geodes and ice vents (Hazards table below).
+- **`ui/stats-sounds-theme`**: synthesised menu sounds (`build_ui_sfx.py`: click, back, start,
+  purchase; Restart/Home play on `Services.play_across_reload()` because the reload freed the old
+  click after a frame); one flat ice theme on every screen (`assets/ui/aura_theme.tres`); a
+  **Stats** screen off START (all-time distance, longest run, runs, time, coins earned, best,
+  lakes, auroras, every achievement with its hint); distance on the death screen; four run
+  achievements (1 km and 5 km in a run, 500 coins in a run, 100 km in all). New save fields need
+  no version bump. `regression_probe` gained `save_history` and `stats_screen`. **Owner to judge
+  by ear and eye:** the four sounds and the theme. They were not heard or screenshotted.
+
 **This session: the `audit.md` cleanup pass**, one commit per item. 17 of 19 items are closed:
 - **Player-visible fixes.** With the slam or double jump owned, a tap 1–2 frames before touchdown
   could become an air move instead of the landing jump; now it is always the landing jump (A14,

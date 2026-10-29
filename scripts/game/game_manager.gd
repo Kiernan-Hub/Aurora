@@ -33,6 +33,13 @@ class_name GameManager
 @export var death_shop_button_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/ShopButton")
 @export var reset_progress_button_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/ResetProgressButton")
 @export var reset_confirm_dialog_path: NodePath = NodePath("../CanvasLayer/ShopScreen/ResetConfirmDialog")
+# The Stats screen, wired optionally like the shop.
+@export var stats_screen_path: NodePath = NodePath("../CanvasLayer/StatsScreen")
+@export var stats_grid_path: NodePath = NodePath("../CanvasLayer/StatsScreen/CenterContainer/VBoxContainer/StatsGrid")
+@export var achievements_grid_path: NodePath = NodePath("../CanvasLayer/StatsScreen/CenterContainer/VBoxContainer/AchievementsGrid")
+@export var stats_close_button_path: NodePath = NodePath("../CanvasLayer/StatsScreen/CenterContainer/VBoxContainer/CloseButton")
+@export var start_stats_button_path: NodePath = NodePath("../CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons/StatsButton")
+@export var achievement_manager_path: NodePath = NodePath("../AchievementManager")
 
 # Deliberately not @export, same reasoning as Main.world_rebase_enabled: this is
 # the "is this a real playthrough" switch, and main.tscn silently serializing it to
@@ -118,6 +125,27 @@ var shop_close_button: Button
 var death_shop_button: Button
 var reset_progress_button: Button
 var reset_confirm_dialog: ConfirmationDialog
+var stats_screen: Control
+var stats_grid: GridContainer
+var achievements_grid: GridContainer
+var stats_close_button: Button
+var start_stats_button: Button
+# UNTYPED ON PURPOSE, like Player.obstacle_spawner: AchievementManager names FrozenLakeDirector,
+# which names this class, so naming it back here would close a script load cycle (CLAUDE.md).
+# Only asked get_rows() and is_earned(); null hides the Stats screen's achievement list.
+var achievement_manager: Node
+
+# How far a run has gone, for the death screen and the Stats screen. The player's x never
+# rebases (world rebasing moves y only), so distance is just x from where the run began.
+# 32px to the metre puts the 48px-tall skater at 1.5m and MAX_SPEED at ~84 km/h.
+const PIXELS_PER_METER: float = 32.0
+# Locked achievements, and nothing else, are drawn at this alpha on the Stats screen.
+const STATS_DIM_ALPHA: float = 0.45
+var run_start_x: float = 0.0
+
+# Emitted once per real run, after the death screen is up and the run is banked: the hook for
+# run-based achievements (AchievementManager). Never in headless, where nothing is banked.
+signal run_recorded(distance_meters: float, coins: int, total_distance_meters: float)
 
 # Was previously implicit in get_tree().paused plus which Control happened to be
 # visible. That works for two screens and stops working at four -- a pause screen makes
@@ -129,19 +157,19 @@ var reset_confirm_dialog: ConfirmationDialog
 # it needs no new pause semantics: `paused = new_state != PLAYING` below already covers
 # it. Purchases apply to the NEXT run, because leaving the shop leads to a restart, and
 # the rebuilt GameManager reads the save file in _ready(). There is deliberately no path
-# that mutates player stats mid-run.
-enum State { START, PLAYING, PAUSED, DEAD, SHOP }
+# that mutates player stats mid-run. STATS is the same kind of modal, read-only, from START.
+enum State { START, PLAYING, PAUSED, DEAD, SHOP, STATS }
 # How long the death screen takes to fade in from a death (set_state).
 const DEATH_SCREEN_FADE_SECONDS: float = 0.6
 
 signal state_changed(new_state: State)
 
 var state: State = State.START
-# Which screen SHOP is a modal over: the shop is reachable from either the START
+# Which screen a modal (SHOP, STATS) is over: the shop is reachable from either the START
 # screen (the new Upgrades button) or the DEAD screen (the original entry point), and
 # closing it must return to whichever one opened it -- otherwise closing the shop from
 # the main menu would incorrectly reveal the (irrelevant, stale) death screen behind it.
-var shop_return_state: State = State.DEAD
+var modal_return_state: State = State.DEAD
 
 # Set right before a "quick restart" reload_current_scene() call and consumed by the
 # next _ready(). A local var can't survive the reload -- the whole script instance is
@@ -187,6 +215,7 @@ func _ready() -> void:
 	# read inside _physics_process, which cannot start until every _ready() completes.
 	apply_upgrades()
 	apply_debug_start_wallet()
+	run_start_x = player.global_position.x
 
 	# require_start_screen=false is the harness opt-out, and it has to skip straight to
 	# PLAYING rather than sitting on START -- see the comment on that var. A quick
@@ -355,6 +384,21 @@ func wire_scene() -> bool:
 		reset_progress_button.pressed.connect(_on_reset_progress_pressed)
 		reset_confirm_dialog.confirmed.connect(_on_reset_progress_confirmed)
 
+	# Optional too, for the shop's reason: a missing Stats screen costs the Stats screen.
+	stats_screen = get_node_or_null(stats_screen_path) as Control
+	stats_grid = get_node_or_null(stats_grid_path) as GridContainer
+	achievements_grid = get_node_or_null(achievements_grid_path) as GridContainer
+	stats_close_button = get_node_or_null(stats_close_button_path) as Button
+	start_stats_button = get_node_or_null(start_stats_button_path) as Button
+	achievement_manager = get_node_or_null(achievement_manager_path)
+	if stats_screen == null or stats_grid == null or achievements_grid == null or stats_close_button == null or start_stats_button == null:
+		push_error("GameManager could not wire the Stats screen at %s; the game runs without it." % stats_screen_path)
+		if start_stats_button != null:
+			start_stats_button.visible = false
+	else:
+		start_stats_button.pressed.connect(_on_stats_pressed)
+		stats_close_button.pressed.connect(_on_stats_close_pressed)
+
 	return true
 
 
@@ -365,19 +409,20 @@ func set_state(new_state: State) -> void:
 	state = new_state
 
 	# START/DEAD stay visible underneath SHOP: the shop is a modal over whichever screen
-	# opened it (see shop_return_state), and closing it returns there without a flicker.
+	# opened it (see modal_return_state), and closing it returns there without a flicker.
 	# EVERY SCREEN IS NULL-GUARDED, not just the optional shop, and that is what lets a failed
 	# wire_scene() still come through here. On a correctly wired scene all four are always
 	# present, so these guards never fire in a shipped build; on a broken one they are the
 	# difference between "the game runs and the log says why" and a frozen overlay. The nulls
 	# are not silently tolerated -- wire_scene() has already pushed an error naming the missing
 	# node. This only keeps that error from being followed by a crash on the next line.
+	var is_modal: bool = new_state == State.SHOP or new_state == State.STATS
 	if start_screen != null:
-		start_screen.visible = new_state == State.START or (new_state == State.SHOP and shop_return_state == State.START)
+		start_screen.visible = new_state == State.START or (is_modal and modal_return_state == State.START)
 	if pause_screen != null:
 		pause_screen.visible = new_state == State.PAUSED
 	if death_screen != null:
-		death_screen.visible = new_state == State.DEAD or (new_state == State.SHOP and shop_return_state == State.DEAD)
+		death_screen.visible = new_state == State.DEAD or (is_modal and modal_return_state == State.DEAD)
 		# Fade in on a death rather than snapping on, so the moment of death (the thin-ice
 		# sink, a crash) is seen for a beat before the overlay dims it. Visible and live from
 		# the first frame either way; only its alpha ramps.
@@ -387,6 +432,8 @@ func set_state(new_state: State) -> void:
 			fade.tween_property(death_screen, "modulate:a", 1.0, DEATH_SCREEN_FADE_SECONDS)
 	if shop_screen != null:
 		shop_screen.visible = new_state == State.SHOP
+	if stats_screen != null:
+		stats_screen.visible = new_state == State.STATS
 	# Hidden on the menus so it can't be tapped while a screen is up, and hidden on
 	# death because the death screen owns the input at that point.
 	if pause_button != null:
@@ -515,8 +562,8 @@ func _notification(what: int) -> void:
 				# "close the modal", exactly like its own Back button -- NOT quit.
 				# Without this case it falls through to the default below and exits
 				# the app from a menu.
-				State.SHOP:
-					set_state(shop_return_state)
+				State.SHOP, State.STATS:
+					set_state(modal_return_state)
 				_:
 					get_tree().quit()
 		# Focus loss: notification shade, incoming call, recents switcher. Only PLAYING
@@ -576,9 +623,22 @@ func _on_player_died() -> void:
 		# BEFORE record_run, so this run's seconds ride record_run's single disk write
 		# rather than costing a second one from set_state(DEAD) a few lines below.
 		bank_playtime()
-		last_run_is_new_best = services.save_store.record_run(coin_count, main.elapsed_time)
+		last_run_is_new_best = services.save_store.record_run(coin_count, main.elapsed_time, get_run_distance_meters())
 	refresh_death_stats()
 	set_state(State.DEAD)
+	# After set_state, so an achievement toast this grants starts on a paused tree and knows to
+	# run over the death screen (AchievementToast.show_next_name).
+	if services != null and DisplayServer.get_name() != "headless":
+		run_recorded.emit(get_run_distance_meters(), coin_count, services.save_store.total_distance_meters)
+
+
+func get_run_distance_meters() -> float:
+	return maxf(player.global_position.x - run_start_x, 0.0) / PIXELS_PER_METER
+
+
+# 850 m, then 1.24 km from a kilometre up.
+static func format_distance(meters: float) -> String:
+	return "%d m" % int(meters) if meters < 1000.0 else "%.2f km" % (meters / 1000.0)
 
 
 # Coins and Time are this run's and fixed (the tree is paused and a dead player takes no
@@ -592,7 +652,8 @@ func refresh_death_stats() -> void:
 		wallet = services.save_store.coin_wallet
 	# A reset since death zeroes the best, and "Best: 0 (New Best!)" would contradict itself.
 	var best_suffix: String = " (New Best!)" if last_run_is_new_best and best_score == coin_count else ""
-	death_stats_label.text = "Coins: %d\nTime: %s\nBest: %d%s\nWallet: %d" % [coin_count, main.format_elapsed_time(main.elapsed_time), best_score, best_suffix, wallet]
+	death_stats_label.text = "Coins: %d\nTime: %s\nDistance: %s\nBest: %d%s\nWallet: %d" % [coin_count,
+		main.format_elapsed_time(main.elapsed_time), format_distance(get_run_distance_meters()), best_score, best_suffix, wallet]
 
 
 # Session state, not save state: where this run ended is where the next one picks the day
@@ -730,7 +791,7 @@ func apply_debug_start_wallet() -> void:
 
 func _on_shop_pressed() -> void:
 	sfx_player.play_click()
-	shop_return_state = State.DEAD
+	modal_return_state = State.DEAD
 	refresh_shop()
 	set_state(State.SHOP)
 
@@ -740,14 +801,68 @@ func _on_shop_pressed() -> void:
 # run in progress to desync from.
 func _on_start_shop_pressed() -> void:
 	sfx_player.play_click()
-	shop_return_state = State.START
+	modal_return_state = State.START
 	refresh_shop()
 	set_state(State.SHOP)
 
 
 func _on_shop_close_pressed() -> void:
 	sfx_player.play_back()
-	set_state(shop_return_state)
+	set_state(modal_return_state)
+
+
+func _on_stats_pressed() -> void:
+	sfx_player.play_click()
+	modal_return_state = State.START
+	refresh_stats()
+	set_state(State.STATS)
+
+
+func _on_stats_close_pressed() -> void:
+	sfx_player.play_back()
+	set_state(modal_return_state)
+
+
+# Rebuilt on every open: a handful of labels, and it can never show a stale number.
+func refresh_stats() -> void:
+	for grid: GridContainer in [stats_grid, achievements_grid]:
+		for child: Node in grid.get_children():
+			grid.remove_child(child)
+			child.queue_free()
+	if services != null:
+		var save: SaveStore = services.save_store
+		var rows: Array = [
+			["Distance", format_distance(save.total_distance_meters)],
+			["Longest run", format_distance(save.best_distance_meters)],
+			["Runs", str(save.total_runs)],
+			["Time played", format_playtime(save.total_playtime_seconds)],
+			["Coins earned", str(save.total_coins_earned)],
+			["Best score", "%d  (%s)" % [save.best_score, main.format_elapsed_time(save.best_time)]],
+			["Frozen lakes", str(save.frozen_lake_count)],
+			["Auroras", str(save.aurora_count)],
+		]
+		for row: Array in rows:
+			add_stats_row(stats_grid, row[0], row[1], true)
+	if achievement_manager == null:
+		return
+	for row: Dictionary in achievement_manager.get_rows():
+		var earned: bool = achievement_manager.is_earned(row["id"])
+		add_stats_row(achievements_grid, row["name"], "Earned" if earned else row["hint"], earned)
+
+
+func add_stats_row(grid: GridContainer, title: String, value: String, is_lit: bool) -> void:
+	for text: String in [title, value]:
+		var label: Label = Label.new()
+		label.text = text
+		label.add_theme_font_size_override(&"font_size", 14)
+		label.modulate.a = 1.0 if is_lit else STATS_DIM_ALPHA
+		grid.add_child(label)
+
+
+# 2h 14m, or 9m under an hour.
+static func format_playtime(seconds: float) -> String:
+	var minutes: int = int(seconds / 60.0)
+	return "%dh %dm" % [minutes / 60, minutes % 60] if minutes >= 60 else "%dm" % minutes
 
 
 func _on_buy_pressed(upgrade_id: String) -> void:

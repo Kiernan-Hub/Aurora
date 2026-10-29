@@ -40,23 +40,53 @@ class_name AchievementManager
 # renaming one silently un-earns it for every existing player. SaveStore.achievements is an OPEN
 # dictionary (save_store.gd:63) precisely so ADDING a row needs no save-version bump -- that
 # guarantee does not extend to changing a row.
+#
+# "hint" is what the Stats screen shows until it is earned. Table order is display order.
 const ACHIEVEMENTS: Dictionary = {
 	"still_water": {
 		"name": "Still Water",
+		"hint": "Cross a frozen lake",
 	},
 	"under_the_aurora": {
 		"name": "Under the Aurora",
+		"hint": "Ride beneath the aurora",
+	},
+	"first_kilometre": {
+		"name": "First Kilometre",
+		"hint": "Ride 1 km in one run",
+	},
+	"long_way_down": {
+		"name": "Long Way Down",
+		"hint": "Ride 5 km in one run",
+	},
+	"golden_run": {
+		"name": "Golden Run",
+		"hint": "Bank 500 coins in one run",
+	},
+	"glacier_miles": {
+		"name": "Glacier Miles",
+		"hint": "Ride 100 km in all",
 	},
 }
 
 const STILL_WATER: String = "still_water"
 const UNDER_THE_AURORA: String = "under_the_aurora"
+const FIRST_KILOMETRE: String = "first_kilometre"
+const LONG_WAY_DOWN: String = "long_way_down"
+const GOLDEN_RUN: String = "golden_run"
+const GLACIER_MILES: String = "glacier_miles"
+# The thresholds, in the units GameManager.run_recorded carries (metres, coins).
+const FIRST_KILOMETRE_METERS: float = 1000.0
+const LONG_WAY_DOWN_METERS: float = 5000.0
+const GOLDEN_RUN_COINS: int = 500
+const GLACIER_MILES_METERS: float = 100000.0
 
 # Carries the display name as well as the id so the toast never has to know about this table.
 signal achievement_granted(id: String, display_name: String)
 
 @export var lake_director_path: NodePath = NodePath("../FrozenLakeDirector")
 @export var aurora_director_path: NodePath = NodePath("../AuroraDirector")
+@export var game_manager_path: NodePath = NodePath("../GameManager")
 
 var services: GameServices
 var lake_director: FrozenLakeDirector
@@ -93,6 +123,16 @@ func connect_triggers() -> void:
 		# Emitted only after a complete, non-preview encounter has advanced and saved progress.
 		aurora_director.aurora_finished.connect(_on_aurora_finished)
 
+	# UNTYPED, and connected by name, to keep this file out of GameManager's load graph: a script
+	# load cycle fails silently (CLAUDE.md), and GameManager's side of this pair already has to be
+	# untyped for that reason. run_recorded comes only from a real, non-headless run -- see the
+	# trap note at the bottom.
+	var game_manager: Node = get_node_or_null(game_manager_path)
+	if game_manager == null or not game_manager.has_signal(&"run_recorded"):
+		push_warning("AchievementManager: no GameManager at %s; the run achievements cannot be earned." % game_manager_path)
+	else:
+		game_manager.connect(&"run_recorded", _on_run_recorded)
+
 
 func _on_lake_finished(_total_lakes: int) -> void:
 	# GATED ON THE FLAG, NEVER ON `_total_lakes == 1`, and save_store.gd:59 spells out why the two
@@ -104,6 +144,31 @@ func _on_lake_finished(_total_lakes: int) -> void:
 
 func _on_aurora_finished(_total_auroras: int) -> void:
 	grant(UNDER_THE_AURORA)
+
+
+func _on_run_recorded(distance_meters: float, coins: int, total_distance_meters: float) -> void:
+	if distance_meters >= FIRST_KILOMETRE_METERS:
+		grant(FIRST_KILOMETRE)
+	if distance_meters >= LONG_WAY_DOWN_METERS:
+		grant(LONG_WAY_DOWN)
+	if coins >= GOLDEN_RUN_COINS:
+		grant(GOLDEN_RUN)
+	if total_distance_meters >= GLACIER_MILES_METERS:
+		grant(GLACIER_MILES)
+
+
+# For the Stats screen: every row in table order, each with its id.
+func get_rows() -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	for id: String in ACHIEVEMENTS:
+		var row: Dictionary = (ACHIEVEMENTS[id] as Dictionary).duplicate()
+		row["id"] = id
+		rows.append(row)
+	return rows
+
+
+func is_earned(id: String) -> bool:
+	return services != null and services.save_store != null and services.save_store.achievements.get(id, false)
 
 
 # The single entry point. Idempotent by design -- callers may fire it on every occurrence of
@@ -128,11 +193,13 @@ func grant(id: String) -> void:
 	achievement_granted.emit(id, display_name)
 
 
-# ================= A TRAP FOR WHOEVER ADDS ACHIEVEMENT #3 =================
+# ================= A TRAP FOR WHOEVER ADDS THE NEXT TRIGGER =================
 #
-# THIS FILE HAS NO HEADLESS GUARD, AND THAT IS ONLY SAFE BECAUSE BOTH OF ITS TRIGGERS COME FROM
-# directors that hard-skip headless. Their maintained probes inject an in-memory SaveStore before
-# driving either completion signal explicitly. There is also no per-frame work here to switch off.
+# THIS FILE HAS NO HEADLESS GUARD, AND THAT IS ONLY SAFE BECAUSE EVERY TRIGGER IS HEADLESS-PROOF AT
+# ITS SOURCE: the two set pieces come from directors that hard-skip headless, and run_recorded is
+# emitted only inside GameManager's non-headless banking branch. The directors' maintained probes
+# inject an in-memory SaveStore before driving either completion signal explicitly. There is also
+# no per-frame work here to switch off.
 #
 # THE MOMENT A TRIGGER IS ADDED THAT DOES RUN HEADLESS -- anything hung off score, coins,
 # distance or death, all of which the gates exercise for millions of frames -- THIS FILE STARTS

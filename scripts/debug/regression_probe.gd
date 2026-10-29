@@ -20,6 +20,10 @@ extends SceneTree
 #   reload_banking     Home and Restart from PAUSED bank the biome phase, unpause and really
 #                      reload; only Restart sets the quick-restart flag (2026-09-20 audit P2,
 #                      audit A8). Each reload's fresh scene is freed at once.
+#   save_history       record_run() adds up the all-time stats, the loader rejects bad ones, and
+#                      a reset clears them (the Stats screen, 2026-10-29).
+#   stats_screen       Stats opens over START with every stat and achievement row, and both its
+#                      Back button and the Android back gesture return to START.
 #
 # Usage:
 #   godot --headless --fixed-fps 60 --path . --script res://scripts/debug/regression_probe.gd
@@ -68,6 +72,8 @@ func run() -> void:
 	await death_stats()
 	await death_pickups()
 	await reload_banking()
+	save_history()
+	await stats_screen()
 
 	print("REGRESSION_PROBE_RESULT cases=%d failures=%d status=%s" % [cases, failures, "PASS" if failures == 0 else "FAIL"])
 	quit(0 if failures == 0 else 1)
@@ -163,11 +169,11 @@ func death_stats() -> void:
 	store.coin_wallet = 1000
 	store.upgrade_levels.clear()
 	player.die()
-	var at_death: String = stats_line(2) + " / " + stats_line(3)
+	var at_death: String = stats_line(3) + " / " + stats_line(4)
 	game_manager._on_buy_pressed(UpgradeStore.SLAM_UPGRADE_ID)
-	var after_buy: String = stats_line(2) + " / " + stats_line(3)
+	var after_buy: String = stats_line(3) + " / " + stats_line(4)
 	game_manager._on_reset_progress_confirmed()
-	var after_reset: String = stats_line(2) + " / " + stats_line(3)
+	var after_reset: String = stats_line(3) + " / " + stats_line(4)
 	var expected_after_buy: String = "Best: 50 / Wallet: %d" % (1000 - UpgradeStore.SLAM_UPGRADE_COST)
 	expect("death_stats", at_death == "Best: 50 / Wallet: 1000" and after_buy == expected_after_buy
 		and after_reset == "Best: 0 / Wallet: 0",
@@ -230,6 +236,42 @@ func reload_banking() -> void:
 		outcomes.append("%s: banked=%s unpaused=%s quick=%s reloaded=%s" % [
 			"restart" if quick_start else "home", banked, was_unpaused, flag, did_reload])
 	expect("reload_banking", passed, ", ".join(outcomes))
+
+
+func save_history() -> void:
+	var history: MemorySaveStore = MemorySaveStore.new()
+	history.record_run(40, 30.0, 1200.0)
+	history.record_run(10, 12.0, 300.0)
+	var added: bool = history.total_runs == 2 and history.total_coins_earned == 50 \
+		and is_equal_approx(history.total_distance_meters, 1500.0) and is_equal_approx(history.best_distance_meters, 1200.0)
+	var totals: String = "runs=%d coins=%d distance=%.0f best=%.0f" % [
+		history.total_runs, history.total_coins_earned, history.total_distance_meters, history.best_distance_meters]
+	var loaded: MemorySaveStore = MemorySaveStore.new()
+	loaded.load_from_data(JSON.parse_string("""{"version": 3, "total_runs": -3, "total_coins_earned": 1e309,
+		"total_distance_meters": -5.0, "best_distance_meters": "far"}"""))
+	var rejected: bool = loaded.total_runs == 0 and loaded.total_coins_earned == 0 \
+		and loaded.total_distance_meters == 0.0 and loaded.best_distance_meters == 0.0
+	history.reset_progress()
+	var cleared: bool = history.total_runs == 0 and history.total_distance_meters == 0.0
+	expect("save_history", added and rejected and cleared, "%s; bad fields rejected=%s; reset cleared=%s" % [totals, rejected, cleared])
+
+
+func stats_screen() -> void:
+	await new_scene()
+	game_manager.set_state(GameManager.State.START)
+	game_manager._on_stats_pressed()
+	var opened: bool = game_manager.state == GameManager.State.STATS and game_manager.stats_screen.visible \
+		and game_manager.start_screen.visible
+	var stat_rows: int = game_manager.stats_grid.get_child_count() / 2
+	var achievement_rows: int = game_manager.achievements_grid.get_child_count() / 2
+	game_manager._on_stats_close_pressed()
+	var closed: bool = game_manager.state == GameManager.State.START and not game_manager.stats_screen.visible
+	game_manager._on_stats_pressed()
+	game_manager._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	var backed: bool = game_manager.state == GameManager.State.START
+	expect("stats_screen", opened and closed and backed and stat_rows == 8
+		and achievement_rows == AchievementManager.ACHIEVEMENTS.size(),
+		"opened=%s stat rows=%d achievement rows=%d closed=%s back gesture=%s" % [opened, stat_rows, achievement_rows, closed, backed])
 
 
 # A fresh scene, settled on the ground at START_X with nothing spawning. Frees the previous one.
