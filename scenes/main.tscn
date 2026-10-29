@@ -32,6 +32,7 @@
 [ext_resource type="Script" path="res://scripts/systems/aurora_reflection.gd" id="33_aurora_reflection"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_streaks.gd" id="34_aurora_streaks"]
 [ext_resource type="Script" path="res://scripts/systems/landing_burst.gd" id="35_landing_burst"]
+[ext_resource type="Theme" path="res://assets/ui/aura_theme.tres" id="36_ui_theme"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -203,6 +204,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("36_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/StartScreen" unique_id=1601690253]
 layout_mode = 0
@@ -235,7 +237,7 @@ horizontal_alignment = 1
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "Tap / Space to jump
-Grab the balls, dodge the red boxes"
+Grab the gold, dodge the red ice"
 horizontal_alignment = 1
 
 [node name="MenuButtons" type="HBoxContainer" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer" unique_id=2122975043]
@@ -263,6 +265,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("36_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/DeathScreen" unique_id=1305968060]
 layout_mode = 0
@@ -367,6 +370,7 @@ offset_top = 8.0
 offset_right = 48.0
 offset_bottom = 40.0
 focus_mode = 0
+theme = ExtResource("36_ui_theme")
 theme_override_font_sizes/font_size = 16
 text = "||"
 
@@ -379,6 +383,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("36_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/PauseScreen" unique_id=166305575]
 layout_mode = 0
@@ -447,6 +452,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("36_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/ShopScreen" unique_id=1608509594]
 layout_mode = 0
@@ -488,3 +494,4 @@ text = "Back"
 title = "Reset Progress?"
 ok_button_text = "Reset Everything"
 dialog_text = "This permanently deletes your best score, coin wallet, and every upgrade level. This cannot be undone."
+
