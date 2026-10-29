@@ -262,6 +262,12 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Stats"
 
+[node name="SkinsButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons"]
+custom_minimum_size = Vector2(100, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Skaters"
+
 [node name="DeathScreen" type="Control" parent="CanvasLayer" unique_id=262636423]
 process_mode = 3
 visible = false
@@ -556,4 +562,45 @@ columns = 2
 
 [node name="CloseButton" type="Button" parent="CanvasLayer/StatsScreen/CenterContainer/VBoxContainer"]
 layout_mode = 2
+text = "Back"
+
+[node name="SkinsScreen" type="Control" parent="CanvasLayer"]
+process_mode = 3
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("36_ui_theme")
+
+[node name="Overlay" type="ColorRect" parent="CanvasLayer/SkinsScreen"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.06, 0.1, 0.94)
+
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/SkinsScreen"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/SkinsScreen/CenterContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "Skaters"
+horizontal_alignment = 1
+
+[node name="SkinsRow" type="HBoxContainer" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="CloseButton" type="Button" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 4
 text = "Back"

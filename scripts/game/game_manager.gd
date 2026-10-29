@@ -40,6 +40,11 @@ class_name GameManager
 @export var stats_close_button_path: NodePath = NodePath("../CanvasLayer/StatsScreen/CenterContainer/VBoxContainer/CloseButton")
 @export var start_stats_button_path: NodePath = NodePath("../CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons/StatsButton")
 @export var achievement_manager_path: NodePath = NodePath("../AchievementManager")
+# The Skaters screen, wired optionally like the shop.
+@export var skins_screen_path: NodePath = NodePath("../CanvasLayer/SkinsScreen")
+@export var skins_row_path: NodePath = NodePath("../CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer/SkinsRow")
+@export var skins_close_button_path: NodePath = NodePath("../CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer/CloseButton")
+@export var start_skins_button_path: NodePath = NodePath("../CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons/SkinsButton")
 
 # Deliberately not @export, same reasoning as Main.world_rebase_enabled: this is
 # the "is this a real playthrough" switch, and main.tscn silently serializing it to
@@ -134,6 +139,12 @@ var start_stats_button: Button
 # which names this class, so naming it back here would close a script load cycle (CLAUDE.md).
 # Only asked get_rows() and is_earned(); null hides the Stats screen's achievement list.
 var achievement_manager: Node
+var skins_screen: Control
+var skins_row: HBoxContainer
+var skins_close_button: Button
+var start_skins_button: Button
+# One per Skins.SKINS row, keyed by id, built in code (build_skin_buttons) like the shop rows.
+var skin_buttons: Dictionary[String, Button] = {}
 
 # How far a run has gone, for the death screen and the Stats screen. The player's x never
 # rebases (world rebasing moves y only), so distance is just x from where the run began.
@@ -141,6 +152,8 @@ var achievement_manager: Node
 const PIXELS_PER_METER: float = 32.0
 # Locked achievements, and nothing else, are drawn at this alpha on the Stats screen.
 const STATS_DIM_ALPHA: float = 0.45
+# A skin button: room for the frame (150x180 source, drawn shrunk) above its name.
+const SKIN_BUTTON_SIZE: Vector2 = Vector2(96, 150)
 var run_start_x: float = 0.0
 
 # Emitted once per real run, after the death screen is up and the run is banked: the hook for
@@ -157,15 +170,15 @@ signal run_recorded(distance_meters: float, coins: int, total_distance_meters: f
 # it needs no new pause semantics: `paused = new_state != PLAYING` below already covers
 # it. Purchases apply to the NEXT run, because leaving the shop leads to a restart, and
 # the rebuilt GameManager reads the save file in _ready(). There is deliberately no path
-# that mutates player stats mid-run. STATS is the same kind of modal, read-only, from START.
-enum State { START, PLAYING, PAUSED, DEAD, SHOP, STATS }
+# that mutates player stats mid-run. STATS and SKINS are the same kind of modal, from START.
+enum State { START, PLAYING, PAUSED, DEAD, SHOP, STATS, SKINS }
 # How long the death screen takes to fade in from a death (set_state).
 const DEATH_SCREEN_FADE_SECONDS: float = 0.6
 
 signal state_changed(new_state: State)
 
 var state: State = State.START
-# Which screen a modal (SHOP, STATS) is over: the shop is reachable from either the START
+# Which screen a modal (SHOP, STATS, SKINS) is over: the shop is reachable from either the START
 # screen (the new Upgrades button) or the DEAD screen (the original entry point), and
 # closing it must return to whichever one opened it -- otherwise closing the shop from
 # the main menu would incorrectly reveal the (irrelevant, stale) death screen behind it.
@@ -214,6 +227,7 @@ func _ready() -> void:
 	# in main.tscn so its _ready() has already run, and upgrade_jump_multiplier is only
 	# read inside _physics_process, which cannot start until every _ready() completes.
 	apply_upgrades()
+	apply_skin()
 	apply_debug_start_wallet()
 	run_start_x = player.global_position.x
 
@@ -399,6 +413,19 @@ func wire_scene() -> bool:
 		start_stats_button.pressed.connect(_on_stats_pressed)
 		stats_close_button.pressed.connect(_on_stats_close_pressed)
 
+	skins_screen = get_node_or_null(skins_screen_path) as Control
+	skins_row = get_node_or_null(skins_row_path) as HBoxContainer
+	skins_close_button = get_node_or_null(skins_close_button_path) as Button
+	start_skins_button = get_node_or_null(start_skins_button_path) as Button
+	if skins_screen == null or skins_row == null or skins_close_button == null or start_skins_button == null:
+		push_error("GameManager could not wire the Skaters screen at %s; the game runs without it." % skins_screen_path)
+		if start_skins_button != null:
+			start_skins_button.visible = false
+	else:
+		build_skin_buttons()
+		start_skins_button.pressed.connect(_on_skins_pressed)
+		skins_close_button.pressed.connect(_on_skins_close_pressed)
+
 	return true
 
 
@@ -416,7 +443,7 @@ func set_state(new_state: State) -> void:
 	# difference between "the game runs and the log says why" and a frozen overlay. The nulls
 	# are not silently tolerated -- wire_scene() has already pushed an error naming the missing
 	# node. This only keeps that error from being followed by a crash on the next line.
-	var is_modal: bool = new_state == State.SHOP or new_state == State.STATS
+	var is_modal: bool = new_state == State.SHOP or new_state == State.STATS or new_state == State.SKINS
 	if start_screen != null:
 		start_screen.visible = new_state == State.START or (is_modal and modal_return_state == State.START)
 	if pause_screen != null:
@@ -434,6 +461,8 @@ func set_state(new_state: State) -> void:
 		shop_screen.visible = new_state == State.SHOP
 	if stats_screen != null:
 		stats_screen.visible = new_state == State.STATS
+	if skins_screen != null:
+		skins_screen.visible = new_state == State.SKINS
 	# Hidden on the menus so it can't be tapped while a screen is up, and hidden on
 	# death because the death screen owns the input at that point.
 	if pause_button != null:
@@ -562,7 +591,7 @@ func _notification(what: int) -> void:
 				# "close the modal", exactly like its own Back button -- NOT quit.
 				# Without this case it falls through to the default below and exits
 				# the app from a menu.
-				State.SHOP, State.STATS:
+				State.SHOP, State.STATS, State.SKINS:
 					set_state(modal_return_state)
 				_:
 					get_tree().quit()
@@ -777,6 +806,18 @@ func apply_upgrades() -> void:
 	player.has_double_jump = debug_unlock_air_moves or services.upgrades.get_level(UpgradeStore.DOUBLE_JUMP_UPGRADE_ID) > 0
 
 
+# Puts the saved skater on the Player. Looks only -- the capsule is the hitbox -- but headless is
+# skipped all the same, for apply_upgrades()'s reason: a gate never reads the developer's save.
+func apply_skin() -> void:
+	if services == null or player == null or DisplayServer.get_name() == "headless":
+		return
+	var frames: SpriteFrames = load(String(Skins.get_skin(services.save_store.selected_skin)["frames"])) as SpriteFrames
+	if frames == null or player.animated_sprite.sprite_frames == frames:
+		return
+	player.animated_sprite.sprite_frames = frames
+	player.animated_sprite.play(&"skate")
+
+
 # See debug_start_wallet. Headless is skipped for apply_upgrades()'s reason: a probe must never
 # write the developer's own save.dat.
 func apply_debug_start_wallet() -> void:
@@ -857,6 +898,53 @@ func add_stats_row(grid: GridContainer, title: String, value: String, is_lit: bo
 		label.add_theme_font_size_override(&"font_size", 14)
 		label.modulate.a = 1.0 if is_lit else STATS_DIM_ALPHA
 		grid.add_child(label)
+
+
+func _on_skins_pressed() -> void:
+	sfx_player.play_click()
+	modal_return_state = State.START
+	refresh_skin_buttons()
+	set_state(State.SKINS)
+
+
+func _on_skins_close_pressed() -> void:
+	sfx_player.play_back()
+	set_state(modal_return_state)
+
+
+# One toggle per skin, its first frame as the picture; a ButtonGroup makes them a radio set, and
+# the theme's pressed style is what marks the current one.
+func build_skin_buttons() -> void:
+	var group: ButtonGroup = ButtonGroup.new()
+	for skin: Dictionary in Skins.SKINS:
+		var frames: SpriteFrames = load(String(skin["frames"])) as SpriteFrames
+		var button: Button = Button.new()
+		button.text = skin["name"]
+		button.toggle_mode = true
+		button.button_group = group
+		button.icon = frames.get_frame_texture(&"skate", 0) if frames != null else null
+		button.expand_icon = true
+		button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		button.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		button.custom_minimum_size = SKIN_BUTTON_SIZE
+		button.pressed.connect(_on_skin_picked.bind(String(skin["id"])))
+		skins_row.add_child(button)
+		skin_buttons[String(skin["id"])] = button
+
+
+func refresh_skin_buttons() -> void:
+	var selected: String = Skins.get_skin(services.save_store.selected_skin if services != null else Skins.DEFAULT_ID)["id"]
+	for id: String in skin_buttons:
+		skin_buttons[id].set_pressed_no_signal(id == selected)
+
+
+func _on_skin_picked(id: String) -> void:
+	sfx_player.play_click()
+	if services == null:
+		return
+	services.save_store.selected_skin = id
+	services.save_store.save_to_disk()
+	apply_skin()
 
 
 # 2h 14m, or 9m under an hour.

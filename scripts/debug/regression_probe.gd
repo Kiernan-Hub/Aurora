@@ -24,6 +24,9 @@ extends SceneTree
 #                      a reset clears them (the Stats screen, 2026-10-29).
 #   stats_screen       Stats opens over START with every stat and achievement row, and both its
 #                      Back button and the Android back gesture return to START.
+#   skins              every Skins row loads as a 4-frame "skate" animation the original's size;
+#                      an unknown or wrong-typed saved skin reads as the default; the Skaters
+#                      screen has a button per skin and a pick is saved.
 #
 # Usage:
 #   godot --headless --fixed-fps 60 --path . --script res://scripts/debug/regression_probe.gd
@@ -74,6 +77,7 @@ func run() -> void:
 	await reload_banking()
 	save_history()
 	await stats_screen()
+	await skins()
 
 	print("REGRESSION_PROBE_RESULT cases=%d failures=%d status=%s" % [cases, failures, "PASS" if failures == 0 else "FAIL"])
 	quit(0 if failures == 0 else 1)
@@ -272,6 +276,32 @@ func stats_screen() -> void:
 	expect("stats_screen", opened and closed and backed and stat_rows == 8
 		and achievement_rows == AchievementManager.ACHIEVEMENTS.size(),
 		"opened=%s stat rows=%d achievement rows=%d closed=%s back gesture=%s" % [opened, stat_rows, achievement_rows, closed, backed])
+
+
+func skins() -> void:
+	var original: Texture2D = (load(String(Skins.SKINS[0]["frames"])) as SpriteFrames).get_frame_texture(&"skate", 0)
+	var broken: Array[String] = []
+	for skin: Dictionary in Skins.SKINS:
+		var frames: SpriteFrames = load(String(skin["frames"])) as SpriteFrames
+		if frames == null or not frames.has_animation(&"skate") or frames.get_frame_count(&"skate") != 4:
+			broken.append(String(skin["id"]))
+			continue
+		for index: int in range(4):
+			if frames.get_frame_texture(&"skate", index).get_size() != original.get_size():
+				broken.append("%s frame %d" % [skin["id"], index])
+	var loaded: MemorySaveStore = MemorySaveStore.new()
+	loaded.load_from_data(JSON.parse_string("""{"version": 3, "selected_skin": 7}"""))
+	var typed_default: bool = loaded.selected_skin == Skins.DEFAULT_ID
+	var unknown_default: bool = Skins.get_skin("retired_skin")["id"] == Skins.DEFAULT_ID
+	await new_scene()
+	game_manager._on_skins_pressed()
+	var buttons: int = game_manager.skins_row.get_child_count()
+	game_manager._on_skin_picked("dad")
+	var picked: bool = store.selected_skin == "dad" and game_manager.state == GameManager.State.SKINS
+	store.selected_skin = Skins.DEFAULT_ID
+	expect("skins", broken.is_empty() and typed_default and unknown_default and buttons == Skins.SKINS.size() and picked,
+		"broken=%s wrong-typed->default=%s unknown->default=%s buttons=%d picked saved=%s" % [
+			broken, typed_default, unknown_default, buttons, picked])
 
 
 # A fresh scene, settled on the ground at START_X with nothing spawning. Frees the previous one.

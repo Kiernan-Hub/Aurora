@@ -64,6 +64,10 @@ var total_coins_earned: int = 0
 var total_distance_meters: float = 0.0
 var best_distance_meters: float = 0.0
 
+# The skater picked on the Skaters screen, a Skins.SKINS id. A preference, not progress: a reset
+# keeps it, like the volumes. Unknown ids read back as the default through Skins.get_skin().
+var selected_skin: String = "kid"
+
 
 # Not named load(): that would shadow GDScript's global load() inside this class.
 func load_from_disk() -> void:
@@ -133,6 +137,9 @@ func load_from_data(data: Dictionary) -> void:
 		total_coins_earned = _read_count(data, "total_coins_earned")
 		total_distance_meters = maxf(_read_number(data, "total_distance_meters", 0.0), 0.0)
 		best_distance_meters = maxf(_read_number(data, "best_distance_meters", 0.0), 0.0)
+		var stored_skin: Variant = data.get("selected_skin", selected_skin)
+		if typeof(stored_skin) == TYPE_STRING:
+			selected_skin = stored_skin
 		# Copied key by key for the same reason upgrade_levels above is -- JSON hands back
 		# an UNTYPED Dictionary, which cannot be assigned into a Dictionary[String, bool].
 		var stored_achievements: Dictionary = _read_dictionary(data, "achievements")
@@ -202,6 +209,7 @@ func save_to_disk() -> bool:
 		"total_coins_earned": total_coins_earned,
 		"total_distance_meters": total_distance_meters,
 		"best_distance_meters": best_distance_meters,
+		"selected_skin": selected_skin,
 		"achievements": achievements,
 		"settings": {
 			"music_volume": music_volume,

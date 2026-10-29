@@ -31,7 +31,7 @@ Main (Node2D, scripts/main.gd)
 │                     slam); SkateSpray's look via its static builders. Off under --headless
 ├── BiomeDirector     the ONLY reader of a BiomePalette; returns early under --headless
 ├── Camera2D          position (0,136), zoom 0.833
-├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP, STATS }
+├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP, STATS, SKINS }
 ├── PowerupManager    effect timers; drives Player.start_boost etc.
 ├── FrozenLakeDirector  owns WHEN a lake happens; returns early under --headless
 ├── AuroraDirector    owns Aurora lifecycle and the single presentation clock
@@ -39,7 +39,7 @@ Main (Node2D, scripts/main.gd)
 ├── AchievementManager  the ONLY writer of SaveStore.achievements; triggers come to it
 ├── SfxPlayer         6-voice AudioStreamPlayer pool on the SFX bus; menu sounds that
 │                     outlive a reload go through Services.play_across_reload()
-└── CanvasLayer       Start/Pause/Death/Shop/StatsScreen (all process_mode=ALWAYS, all
+└── CanvasLayer       Start/Pause/Death/Shop/Stats/SkinsScreen (all process_mode=ALWAYS, all
                       themed by assets/ui/aura_theme.tres, as is PauseButton),
                       PauseButton, Timer/Coin/Powerup labels,
                       AchievementToast (after the labels, BEFORE Pause/Shop/Stats so those
@@ -116,7 +116,7 @@ moving right into fresh ground.
 
 ## GameManager owns all state transitions
 
-`GameManager` runs an explicit `State { START, PLAYING, PAUSED, DEAD, SHOP, STATS }` machine.
+`GameManager` runs an explicit `State { START, PLAYING, PAUSED, DEAD, SHOP, STATS, SKINS }` machine.
 `set_state()` is the **only** place in the project allowed to touch `get_tree().paused`
 or any screen's visibility — don't set either anywhere else. Adding a transition means
 adding it to the enum, not writing `paused = true` somewhere new.
@@ -127,7 +127,10 @@ button), so `modal_return_state` records which, and that screen stays visible un
 closing returns there rather than always to DEAD. Purchases apply to the next run, and there
 is deliberately no path that mutates player stats mid-run. `STATS` (2026-10-29) is the same kind
 of modal, read-only, opened from START's Stats button; its rows are built in code on every open
-(`refresh_stats()`), the shop's pattern, so a new stat is one row and no new node.
+(`refresh_stats()`), the shop's pattern, so a new stat is one row and no new node. `SKINS`
+(Skaters, 2026-10-29) likewise: one toggle per `Skins.SKINS` row in a `ButtonGroup`, a pick saved
+to `SaveStore.selected_skin` (a preference: a reset keeps it) and put on the Player by
+`apply_skin()`, which skips headless like `apply_upgrades()`.
 
 This was previously implicit in "`get_tree().paused` plus whichever `Control` happens to
 be visible". That works for two screens and stops working at four: a pause screen makes
