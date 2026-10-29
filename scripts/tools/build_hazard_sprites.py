@@ -16,11 +16,12 @@ silhouette is dropped below SOFT_ALPHA_FLOOR rather than shipped as a grey smear
 Thin ice and black ice are different: STRIPS tiled along ThinIce's Line2D, so only their height
 is fixed (the line's OVERLAY_WIDTH) and their length follows the source's aspect. The generator's
 "seamless" ends never quite match, so the last SEAM_FRACTION is crossfaded over the first and
-dropped. The geode is in colour (it is a reward, not tinted) and only its width is fixed.
+dropped. The geode and the vent are in colour (SpriteSpan: authored, never tinted) and only
+their width is fixed.
 """
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_DIR = ROOT / "art_source" / "hazards"
@@ -40,8 +41,13 @@ STRIPS = ("thin_ice", "black_ice")
 # that the dusk sky and the green variant ice both come within reach of, and a gamma keeps the
 # gloss streaks near white while it sinks the body (mean 0.40 -> 0.21; biome_schedule_check).
 BLACK_ICE_GAMMA = 2.0
-# Must equal Geode.WORLD_WIDTH.
-GEODE_WORLD_WIDTH = 56
+# Must equal Geode.WORLD_WIDTH and Vent.WORLD_WIDTH.
+BY_WIDTH = {"geode": 56, "vent": 48}
+# The vent's generation is pale cyan -- the colour of the ice itself in most biomes, so it vanished
+# (0.09 from the ride surface; biome_schedule_check wants 0.5). Its brightness is remapped onto this
+# deep-teal ramp instead: red is danger, gold is a coin, grey-black is black ice, and teal this
+# dark clears both the pale biomes and the night ones.
+VENT_RAMP = ((0, 18, 22), (20, 105, 105))
 SEAM_FRACTION = 0.1
 SOLID_ALPHA = 128
 SOFT_ALPHA_FLOOR = 16
@@ -134,10 +140,13 @@ def bake_strip(kind: str) -> None:
     save(kind, tiled)
 
 
-# A sprite whose WIDTH is fixed and whose height follows the source's aspect: the geode, which
-# has no hitbox (it is a slam target, not a hazard), only a footprint along the ground.
+# A sprite whose WIDTH is fixed and whose height follows the source's aspect: the geode and the
+# vent, which have no hitbox, only a footprint along the ground.
 def bake_by_width(kind: str, world_width: int) -> None:
     image = load_cropped(kind)
+    if kind == "vent":
+        image = ImageOps.colorize(image.convert("L"), *VENT_RAMP).convert("RGBA")
+        image.putalpha(load_cropped(kind).getchannel("A"))
     width = world_width * SCALE
     save(kind, image.resize((width, round(image.height * width / image.width)), Image.LANCZOS))
 
@@ -147,4 +156,5 @@ if __name__ == "__main__":
         bake(kind, hitbox)
     for kind in STRIPS:
         bake_strip(kind)
-    bake_by_width("geode", GEODE_WORLD_WIDTH)
+    for kind, world_width in BY_WIDTH.items():
+        bake_by_width(kind, world_width)

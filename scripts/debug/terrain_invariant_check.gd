@@ -791,11 +791,12 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 	# The span kinds have no body. Each node sits ON the surface at its start and must be its own
 	# class (a plain ThinIce standing in for black ice would crack instead of banning take-off). A
 	# strip's centre sits OVERLAY_LIFT above the line or the chunks, added later, draw over the
-	# band; the geode's sprite bottom sits Geode.SINK below it, buried by exactly that much.
+	# band; a sprite span's (geode, vent) bottom sits SpriteSpan.SINK below it, buried by exactly that.
 	var span_classes: Dictionary = {
 		ObstacleSpawner.PIECE_THIN_ICE: "ThinIce",
 		ObstacleSpawner.PIECE_BLACK_ICE: "BlackIce",
 		ObstacleSpawner.PIECE_GEODE: "Geode",
+		ObstacleSpawner.PIECE_VENT: "Vent",
 	}
 	for kind: StringName in span_classes:
 		var span_count_before: int = obstacle_spawner.active_obstacles.size()
@@ -808,12 +809,12 @@ func check_spawn_placement(session_seed: int) -> Array[String]:
 			violations.append("SPAWN_PLACEMENT ObstacleSpawner.%s spawned the wrong class" % kind)
 			continue
 		violations.append_array(assert_clearance(terrain_generator, "ObstacleSpawner.%s" % kind, span, 0.0, 0.0))
-		if span is Geode:
-			var visual: Sprite2D = (span as Geode).visual
+		if span is SpriteSpan:
+			var visual: Sprite2D = (span as SpriteSpan).visual
 			var bottom_y: float = visual.global_position.y + visual.texture.get_height() * visual.scale.y * 0.5
 			var buried: float = bottom_y - terrain_generator.get_surface_world_y(probe_x + 100.0)
-			if absf(buried - Geode.SINK) > PLACEMENT_EPSILON:
-				violations.append("SPAWN_PLACEMENT geode sits %.1fpx into the surface, expected %.1f" % [buried, Geode.SINK])
+			if absf(buried - SpriteSpan.SINK) > PLACEMENT_EPSILON:
+				violations.append("SPAWN_PLACEMENT %s sits %.1fpx into the surface, expected %.1f" % [kind, buried, SpriteSpan.SINK])
 			continue
 		var overlay: Line2D = span.get_node("Overlay") as Line2D
 		var overlay_y: float = span.global_position.y + overlay.get_point_position(0).y
@@ -1441,10 +1442,12 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 		terrain: TerrainGenerator = null, start_x: float = 0.0, pass_mark: int = 0) -> int:
 	# Hazard rects in pattern space: x from the first piece, y = height above the ground. Thin
 	# ice is an x span instead, deadly only to standing on it too long; black ice is an x span
-	# no take-off may leave from; a geode cannot hurt anyone and is skipped.
+	# no take-off may leave from; a vent is an x span that FORCES one; a geode cannot hurt anyone
+	# and is skipped.
 	var hazards: Array[Rect2] = []
 	var ice_spans: Array[Vector2] = []
 	var black_spans: Array[Vector2] = []
+	var vent_spans: Array[Vector2] = []
 	var first_hazard_x: float = INF
 	var last_hazard_x: float = 0.0
 	for piece: Dictionary in pattern["pieces"]:
@@ -1458,6 +1461,11 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 			else:
 				black_spans.append(span)
 			last_hazard_x = maxf(last_hazard_x, span.y)
+			continue
+		if piece["kind"] == ObstacleSpawner.PIECE_VENT:
+			var vent_x: float = float(piece["at"]) * speed
+			vent_spans.append(Vector2(vent_x - Vent.WORLD_WIDTH * 0.5, vent_x + Vent.WORLD_WIDTH * 0.5))
+			last_hazard_x = maxf(last_hazard_x, vent_x + Vent.WORLD_WIDTH * 0.5)
 			continue
 		var kind: Dictionary = ObstacleSpawner.PIECE_KINDS[piece["kind"]]
 		var half_width: float = float(kind["half_width"]) + FAIRNESS_HAZARD_MARGIN
@@ -1543,17 +1551,32 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 				end_frame = mini(end_frame, first_on_ice + ice_grace_frames)
 		walk_end[frame] = end_frame
 
+	# next_vent[t]: the first take-off frame at or after t that a vent forces -- the player stood
+	# on it the frame before, or stands on it now (same both-frames rule as black ice).
+	# frame_count when none.
+	var next_vent: Array[int] = []
+	next_vent.resize(frame_count + 2)
+	next_vent[frame_count] = frame_count
+	next_vent[frame_count + 1] = frame_count
+	for takeoff: int in range(frame_count - 1, -1, -1):
+		var takeoff_x: float = first_x + takeoff * frame_step
+		var on_vent: bool = false
+		for vent: Vector2 in vent_spans:
+			for x: float in [takeoff_x, takeoff_x - frame_step]:
+				on_vent = on_vent or (x >= vent.x and x < vent.y)
+		next_vent[takeoff] = takeoff if on_vent else next_vent[takeoff + 1]
+
 	if pass_mark > 0:
-		return pass_mark if is_pattern_survivable(pass_mark, frame_count, walk_end, arc_clean, landing) else 0
-	if not is_pattern_survivable(1, frame_count, walk_end, arc_clean, landing):
+		return pass_mark if is_pattern_survivable(pass_mark, frame_count, walk_end, arc_clean, landing, next_vent) else 0
+	if not is_pattern_survivable(1, frame_count, walk_end, arc_clean, landing, next_vent):
 		return 0
-	if is_pattern_survivable(PATTERN_WINDOW_CAP_FRAMES, frame_count, walk_end, arc_clean, landing):
+	if is_pattern_survivable(PATTERN_WINDOW_CAP_FRAMES, frame_count, walk_end, arc_clean, landing, next_vent):
 		return PATTERN_WINDOW_CAP_FRAMES
 	var low: int = 1
 	var high: int = PATTERN_WINDOW_CAP_FRAMES - 1
 	while low < high:
 		var middle: int = (low + high + 1) / 2
-		if is_pattern_survivable(middle, frame_count, walk_end, arc_clean, landing):
+		if is_pattern_survivable(middle, frame_count, walk_end, arc_clean, landing, next_vent):
 			low = middle
 		else:
 			high = middle - 1
@@ -1563,7 +1586,12 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 # Can a player grounded at frame 0 get through, using only take-offs that sit in a run of at
 # least min_window consecutive usable take-off frames? Frames run backward so that every landing
 # (always later than its take-off) is already decided when a take-off is judged.
-func is_pattern_survivable(min_window: int, frame_count: int, walk_end: Array[int], arc_clean: Array[bool], landing: Array[int]) -> bool:
+#
+# A vent ends the choice: walking onto one, the take-off is forced, on its first frame or the one
+# after (which tick sees the player on it is not the player's to pick), so BOTH must be usable;
+# the only alternative is a window that closes before it.
+func is_pattern_survivable(min_window: int, frame_count: int, walk_end: Array[int], arc_clean: Array[bool],
+		landing: Array[int], next_vent: Array[int]) -> bool:
 	var survivable: Array[bool] = []
 	survivable.resize(frame_count + 1)
 	survivable[frame_count] = true
@@ -1574,19 +1602,23 @@ func is_pattern_survivable(min_window: int, frame_count: int, walk_end: Array[in
 		# The last frame that can be stood on walking from here; a take-off may fire on any frame
 		# up to one past it, since it needs only the ground of the frame before.
 		var last_standing: int = walk_end[frame] - 1
-		if last_standing >= frame_count - 1:
+		var window_end: int = last_standing + 2
+		var vent_takeoff: int = next_vent[frame + 1]
+		var is_forced: bool = vent_takeoff < frame_count and vent_takeoff < window_end
+		if is_forced:
+			window_end = vent_takeoff
+		if not is_forced and last_standing >= frame_count - 1:
 			survivable[frame] = true
 		else:
+			# The later of the two forced frames also needs the vent frame itself safe to stand on.
+			var found: bool = is_forced and usable_takeoff[vent_takeoff] and (vent_takeoff + 1 >= frame_count \
+				or (vent_takeoff <= last_standing and usable_takeoff[vent_takeoff + 1]))
 			var run: int = 0
-			var found: bool = false
-			for takeoff: int in range(frame + 1, last_standing + 2):
-				if usable_takeoff[takeoff]:
-					run += 1
-					if run >= min_window:
-						found = true
-						break
-				else:
-					run = 0
+			var takeoff: int = frame + 1
+			while not found and takeoff < window_end:
+				run = run + 1 if usable_takeoff[takeoff] else 0
+				found = run >= min_window
+				takeoff += 1
 			survivable[frame] = found
 		usable_takeoff[frame] = arc_clean[frame] and survivable[landing[frame]]
 	return survivable[0]

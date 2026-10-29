@@ -137,8 +137,9 @@ const PIECE_SHARD: StringName = &"shard"
 const PIECE_THIN_ICE: StringName = &"thin_ice"
 const PIECE_BLACK_ICE: StringName = &"black_ice"
 const PIECE_GEODE: StringName = &"geode"
+const PIECE_VENT: StringName = &"vent"
 # "scene" empty = a SPAN kind (a ThinIce node, not a body); "needs_flat" = the footprint guard's
-# slope rule applies (bodies, and the geode's flat-bottomed sprite; not the two surface strips).
+# slope rule applies (bodies, and the two flat-bottomed sprites; not the two surface strips).
 const PIECE_KINDS: Dictionary = {
 	PIECE_SPIKE: {"scene": "res://scenes/obstacles/obstacle.tscn", "half_width": 16.0, "half_height": OBSTACLE_HALF_HEIGHT,
 		"center_height": OBSTACLE_HALF_HEIGHT, "floating": false, "needs_flat": true},
@@ -151,6 +152,8 @@ const PIECE_KINDS: Dictionary = {
 	PIECE_BLACK_ICE: {"scene": "", "half_width": 0.0, "half_height": 0.0,
 		"center_height": 0.0, "floating": false, "needs_flat": false},
 	PIECE_GEODE: {"scene": "", "half_width": Geode.WORLD_WIDTH * 0.5, "half_height": 0.0,
+		"center_height": 0.0, "floating": false, "needs_flat": true},
+	PIECE_VENT: {"scene": "", "half_width": Vent.WORLD_WIDTH * 0.5, "half_height": 0.0,
 		"center_height": 0.0, "floating": false, "needs_flat": true},
 }
 
@@ -220,6 +223,11 @@ const PATTERNS: Array[Dictionary] = [
 	# the dive must still leave room to jump.
 	{"id": &"geode", "tier": 2, "weight": 1, "needs_slam": true, "pieces": [{"kind": PIECE_GEODE, "at": 0.0}]},
 	{"id": &"geode_spike", "tier": 4, "weight": 1, "needs_slam": true, "pieces": [{"kind": PIECE_GEODE, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.8}]},
+	# VENTS (Vent): skate onto one and it launches you. Alone, free airtime. Before a floe, being
+	# launched carries you into it, so jump EARLY over the vent and be down before the floe. The
+	# floe's time sets how early: 0.5s is a 28-frame window, 0.9s let 52 frames through.
+	{"id": &"vent", "tier": 3, "weight": 1, "pieces": [{"kind": PIECE_VENT, "at": 0.0}]},
+	{"id": &"vent_floe", "tier": 4, "weight": 2, "pieces": [{"kind": PIECE_VENT, "at": 0.0}, {"kind": PIECE_FLOE, "at": 0.5}]},
 ]
 
 const HASH_MASK: int = 0x7fffffff
@@ -594,6 +602,8 @@ func spawn_span(kind: StringName, start_x: float, end_x: float) -> void:
 		span = BlackIce.new()
 	elif kind == PIECE_GEODE:
 		span = Geode.new()
+	elif kind == PIECE_VENT:
+		span = Vent.new()
 	else:
 		span = ThinIce.new()
 	span.setup(player, terrain_generator, start_x, end_x,
@@ -605,13 +615,18 @@ func spawn_span(kind: StringName, start_x: float, end_x: float) -> void:
 	active_obstacles.append(span)
 
 
-# Player's one ground take-off site asks this every frame it could jump. A handful of nodes.
+# Player's one ground take-off site asks these every frame it could jump. A handful of nodes.
 func is_black_ice_at(world_x: float) -> bool:
+	return is_span_at(world_x, BlackIce)
+
+
+func is_vent_at(world_x: float) -> bool:
+	return is_span_at(world_x, Vent)
+
+
+func is_span_at(world_x: float, span_class: Script) -> bool:
 	for node: Node2D in active_obstacles:
-		if not is_instance_valid(node):
-			continue
-		var black_ice: BlackIce = node as BlackIce
-		if black_ice != null and black_ice.covers_x(world_x):
+		if is_instance_valid(node) and is_instance_of(node, span_class) and (node as ThinIce).covers_x(world_x):
 			return true
 	return false
 
