@@ -24,9 +24,10 @@ extends SceneTree
 #                      a reset clears them (the Stats screen, 2026-10-29).
 #   stats_screen       Stats opens over START with every stat and achievement row, and both its
 #                      Back button and the Android back gesture return to START.
-#   skins              every Skins row loads as a 4-frame "skate" animation the original's size;
-#                      an unknown or wrong-typed saved skin reads as the default; the Skaters
-#                      screen has a button per skin and a pick is saved.
+#   skins              every Skins row loads as a 4-frame "skate" animation the original's size,
+#                      and every one but the default has a shop track; an unknown or wrong-typed
+#                      saved skin reads as the default; a locked skin cannot be picked, buying
+#                      one wears it, and a reset un-buys it back to the default.
 #
 # Usage:
 #   godot --headless --fixed-fps 60 --path . --script res://scripts/debug/regression_probe.gd
@@ -289,19 +290,32 @@ func skins() -> void:
 		for index: int in range(4):
 			if frames.get_frame_texture(&"skate", index).get_size() != original.get_size():
 				broken.append("%s frame %d" % [skin["id"], index])
+		var track: Dictionary = UpgradeStore.get_track(Skins.get_track_id(skin["id"]))
+		if skin["id"] != Skins.DEFAULT_ID and (track.get("skin", "") != skin["id"] or UpgradeStore.get_max_level(track.get("id", "")) != 1):
+			broken.append("%s has no one-level shop track" % skin["id"])
 	var loaded: MemorySaveStore = MemorySaveStore.new()
 	loaded.load_from_data(JSON.parse_string("""{"version": 3, "selected_skin": 7}"""))
 	var typed_default: bool = loaded.selected_skin == Skins.DEFAULT_ID
 	var unknown_default: bool = Skins.get_skin("retired_skin")["id"] == Skins.DEFAULT_ID
 	await new_scene()
+	store.upgrade_levels.clear()
+	store.coin_wallet = 1000
+	store.selected_skin = Skins.DEFAULT_ID
 	game_manager._on_skins_pressed()
 	var buttons: int = game_manager.skins_row.get_child_count()
+	var locked_shown: bool = game_manager.skin_buttons["dad"].disabled and not game_manager.skin_buttons[Skins.DEFAULT_ID].disabled
 	game_manager._on_skin_picked("dad")
-	var picked: bool = store.selected_skin == "dad" and game_manager.state == GameManager.State.SKINS
+	var locked_refused: bool = store.selected_skin == Skins.DEFAULT_ID
+	game_manager._on_buy_pressed(Skins.get_track_id("dad"))
+	var bought_worn: bool = store.selected_skin == "dad" and game_manager.get_worn_skin_id() == "dad" \
+		and store.coin_wallet == 1000 - UpgradeStore.SKIN_PARENT_COST
+	game_manager._on_reset_progress_confirmed()
+	var reset_default: bool = game_manager.get_worn_skin_id() == Skins.DEFAULT_ID
 	store.selected_skin = Skins.DEFAULT_ID
-	expect("skins", broken.is_empty() and typed_default and unknown_default and buttons == Skins.SKINS.size() and picked,
-		"broken=%s wrong-typed->default=%s unknown->default=%s buttons=%d picked saved=%s" % [
-			broken, typed_default, unknown_default, buttons, picked])
+	expect("skins", broken.is_empty() and typed_default and unknown_default and buttons == Skins.SKINS.size()
+		and locked_shown and locked_refused and bought_worn and reset_default,
+		"broken=%s wrong-typed->default=%s unknown->default=%s buttons=%d locked shown=%s refused=%s bought+worn=%s reset->default=%s" % [
+			broken, typed_default, unknown_default, buttons, locked_shown, locked_refused, bought_worn, reset_default])
 
 
 # A fresh scene, settled on the ground at START_X with nothing spawning. Frees the previous one.

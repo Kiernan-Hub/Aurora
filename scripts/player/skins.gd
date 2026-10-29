@@ -2,8 +2,10 @@ extends RefCounted
 
 class_name Skins
 
-# The skaters a player can pick on the start screen's Skaters modal. Each is one SpriteFrames
-# with the same "skate" animation as the original, and only the look changes: the hitbox is the
+# The skaters a player can pick on the start screen's Skaters modal. Every one but the default is
+# BOUGHT in the shop: its price is a one-level UpgradeStore.TRACKS row with id get_track_id(id).
+# Each is one SpriteFrames with the same "skate" animation as the original, and only the look
+# changes: the hitbox is the
 # Player's capsule, so every skin is drawn the SAME HEIGHT as the girl (scripts/tools/
 # build_skin_frames.py normalises them) or a taller one would look like it clips floes it clears.
 #
@@ -17,6 +19,10 @@ const SKINS: Array[Dictionary] = [
 	{"id": "dad", "name": "Dad", "frames": "res://assets/sprites/player/dad/frames.tres"},
 ]
 const DEFAULT_ID: String = "kid"
+
+
+static func get_track_id(id: String) -> String:
+	return "skin_" + id
 
 
 # The row for id, or the default's for an unknown one (a save from a newer build, or a hand edit).

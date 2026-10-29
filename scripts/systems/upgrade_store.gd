@@ -78,14 +78,26 @@ const SLAM_UPGRADE_COST: int = 300
 const DOUBLE_JUMP_UPGRADE_ID: String = "double_jump"
 const DOUBLE_JUMP_UPGRADE_COST: int = 900
 
+# SKATERS are one-level tracks too, looks only: "skin" names the Skins.SKINS row a purchase
+# unlocks (Skins.get_track_id() is the other half of the naming). Priced as goals beyond the
+# gameplay tracks' 2,330: a first one after a few good runs, the parents after the double jump.
+const SKIN_TEEN_COST: int = 250
+const SKIN_TWENTIES_COST: int = 500
+const SKIN_PARENT_COST: int = 750
+
 # THE SHOP, one row per track in display order; GameManager builds its rows from this, so a new
-# track is a row here plus its one line in GameManager.apply_upgrades(). "costs"[i] buys level
-# i -> i+1, so a track's max level is costs.size(). An id is SAVE DATA (SaveStore.upgrade_levels
-# keys on it): adding a track needs no version bump, renaming one un-buys it for everyone.
+# track is a row here plus its one line in GameManager.apply_upgrades() (a skin needs none).
+# "costs"[i] buys level i -> i+1, so a track's max level is costs.size(). An id is SAVE DATA
+# (SaveStore.upgrade_levels keys on it): adding a track needs no version bump, renaming one
+# un-buys it for everyone.
 const TRACKS: Array[Dictionary] = [
 	{"id": JUMP_UPGRADE_ID, "name": "Jump", "costs": JUMP_UPGRADE_COSTS, "hint": ""},
 	{"id": SLAM_UPGRADE_ID, "name": "Slam", "costs": [SLAM_UPGRADE_COST], "hint": "tap left in the air to dive"},
 	{"id": DOUBLE_JUMP_UPGRADE_ID, "name": "Double Jump", "costs": [DOUBLE_JUMP_UPGRADE_COST], "hint": "tap right in the air"},
+	{"id": "skin_teen", "name": "Teen skater", "costs": [SKIN_TEEN_COST], "skin": "teen"},
+	{"id": "skin_twenties", "name": "Twenties skater", "costs": [SKIN_TWENTIES_COST], "skin": "twenties"},
+	{"id": "skin_mom", "name": "Mom skater", "costs": [SKIN_PARENT_COST], "skin": "mom"},
+	{"id": "skin_dad", "name": "Dad skater", "costs": [SKIN_PARENT_COST], "skin": "dad"},
 ]
 
 const NO_COST: int = -1

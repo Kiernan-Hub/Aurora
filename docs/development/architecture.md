@@ -130,7 +130,10 @@ of modal, read-only, opened from START's Stats button; its rows are built in cod
 (`refresh_stats()`), the shop's pattern, so a new stat is one row and no new node. `SKINS`
 (Skaters, 2026-10-29) likewise: one toggle per `Skins.SKINS` row in a `ButtonGroup`, a pick saved
 to `SaveStore.selected_skin` (a preference: a reset keeps it) and put on the Player by
-`apply_skin()`, which skips headless like `apply_upgrades()`.
+`apply_skin()`, which skips headless like `apply_upgrades()`. Every skin but the girl is BOUGHT:
+a one-level `UpgradeStore.TRACKS` row (`"skin"` names it, `Skins.get_track_id()` builds its id),
+so it rides the shop's purchase and rollback. `get_worn_skin_id()` wears the pick only if it is
+still owned, which is what makes a reset safe.
 
 This was previously implicit in "`get_tree().paused` plus whichever `Control` happens to
 be visible". That works for two screens and stops working at four: a pause screen makes

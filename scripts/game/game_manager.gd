@@ -66,7 +66,7 @@ var require_start_screen: bool = true
 var debug_unlock_air_moves: bool = false
 # TEMP knob for testing the shop without earning coins: above 0, every scene load (launch or
 # restart) tops the SAVED wallet up to this many, so a purchase still visibly drops it. Buying
-# everything costs 2,330. Debug builds only, never headless; shipping_values_check fails the build
+# everything costs 4,580 (2,330 of upgrades, 2,250 of skaters). Debug builds only, never headless; shipping_values_check fails the build
 # if it is left above 0.
 var debug_start_wallet: int = 0
 
@@ -811,7 +811,7 @@ func apply_upgrades() -> void:
 func apply_skin() -> void:
 	if services == null or player == null or DisplayServer.get_name() == "headless":
 		return
-	var frames: SpriteFrames = load(String(Skins.get_skin(services.save_store.selected_skin)["frames"])) as SpriteFrames
+	var frames: SpriteFrames = load(String(Skins.get_skin(get_worn_skin_id())["frames"])) as SpriteFrames
 	if frames == null or player.animated_sprite.sprite_frames == frames:
 		return
 	player.animated_sprite.sprite_frames = frames
@@ -932,15 +932,34 @@ func build_skin_buttons() -> void:
 		skin_buttons[String(skin["id"])] = button
 
 
+# A skin not bought yet shows its price and cannot be picked: the shop sells it.
 func refresh_skin_buttons() -> void:
+	var worn: String = get_worn_skin_id()
+	for skin: Dictionary in Skins.SKINS:
+		var id: String = skin["id"]
+		var button: Button = skin_buttons[id]
+		var owned: bool = is_skin_owned(id)
+		button.text = skin["name"] if owned \
+			else "%s  %d" % [skin["name"], UpgradeStore.get_upgrade_cost(Skins.get_track_id(id), 0)]
+		button.disabled = not owned
+		button.set_pressed_no_signal(id == worn)
+
+
+func is_skin_owned(id: String) -> bool:
+	return id == Skins.DEFAULT_ID or (services != null and services.upgrades.get_level(Skins.get_track_id(id)) > 0)
+
+
+# The saved pick if it is still owned, else the default: Reset Progress un-buys every skin but
+# keeps the pick, which is a preference.
+func get_worn_skin_id() -> String:
 	var selected: String = Skins.get_skin(services.save_store.selected_skin if services != null else Skins.DEFAULT_ID)["id"]
-	for id: String in skin_buttons:
-		skin_buttons[id].set_pressed_no_signal(id == selected)
+	return selected if is_skin_owned(selected) else Skins.DEFAULT_ID
 
 
 func _on_skin_picked(id: String) -> void:
 	sfx_player.play_click()
-	if services == null:
+	if services == null or not is_skin_owned(id):
+		refresh_skin_buttons()
 		return
 	services.save_store.selected_skin = id
 	services.save_store.save_to_disk()
@@ -962,6 +981,12 @@ func _on_buy_pressed(upgrade_id: String) -> void:
 		shop_wallet_label.text = "Couldn't save. Try again."
 		return
 	sfx_player.play_purchase()
+	# A bought skater is worn at once: the purchase's payoff is seeing it.
+	var skin_id: String = String(UpgradeStore.get_track(upgrade_id).get("skin", ""))
+	if not skin_id.is_empty():
+		services.save_store.selected_skin = skin_id
+		services.save_store.save_to_disk()
+		apply_skin()
 	# Applied immediately even though the current run is over: keeping this next to the
 	# purchase means there is exactly one ordering to reason about, and the restart that
 	# follows re-derives the same value from disk anyway.
@@ -971,21 +996,25 @@ func _on_buy_pressed(upgrade_id: String) -> void:
 
 
 # One row per UpgradeStore.TRACKS entry, inserted under the wallet line in table order. The
-# label's font size matches the one row main.tscn used to author by hand.
+# label's font size matches the one row main.tscn used to author by hand. A skater row is its
+# button alone: its name says it all, and seven labelled rows overflow a 648px-tall screen.
 func build_shop_rows() -> void:
 	var container: Node = shop_wallet_label.get_parent()
 	var insert_index: int = shop_wallet_label.get_index() + 1
 	for track: Dictionary in UpgradeStore.TRACKS:
-		var label: Label = Label.new()
-		label.add_theme_font_size_override(&"font_size", 13)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var label: Label = null
+		if not track.has("skin"):
+			label = Label.new()
+			label.add_theme_font_size_override(&"font_size", 13)
+			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			container.add_child(label)
+			container.move_child(label, insert_index)
+			insert_index += 1
 		var button: Button = Button.new()
 		button.pressed.connect(_on_buy_pressed.bind(String(track["id"])))
-		container.add_child(label)
-		container.move_child(label, insert_index)
 		container.add_child(button)
-		container.move_child(button, insert_index + 1)
-		insert_index += 2
+		container.move_child(button, insert_index)
+		insert_index += 1
 		shop_rows[String(track["id"])] = {"label": label, "button": button}
 
 
@@ -1005,6 +1034,9 @@ func refresh_shop() -> void:
 			label.text = "Jump  Lv %d/%d  (x%.2f)" % [level, max_level, UpgradeStore.get_jump_multiplier(level)]
 			button.text = "Jump  MAX" if next_cost == UpgradeStore.NO_COST \
 				else "Jump  ->  x%.2f   (%d)" % [UpgradeStore.get_jump_multiplier(level + 1), next_cost]
+		elif track.has("skin"):
+			button.text = "%s  OWNED" % track["name"] if next_cost == UpgradeStore.NO_COST \
+				else "%s   (%d)" % [track["name"], next_cost]
 		else:
 			# A one-level track is an unlock.
 			label.text = "%s  (%s)" % [track["name"], track["hint"]]
@@ -1030,5 +1062,6 @@ func _on_reset_progress_confirmed() -> void:
 		# Same reasoning as _on_buy_pressed: sync the now-reset levels onto the live
 		# player immediately rather than waiting for the next reload.
 		apply_upgrades()
+		apply_skin()
 	refresh_shop()
 	refresh_death_stats()
