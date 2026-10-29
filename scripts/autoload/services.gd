@@ -35,6 +35,9 @@ var save_store: SaveStore = SaveStore.new()
 # headless probes that have no autoload at all.
 var upgrades: UpgradeStore = UpgradeStore.new()
 var is_headless: bool = false
+# One voice for a menu sound that must outlive the scene: Restart and Home reload main.tscn, which
+# frees SfxPlayer's pool mid-sound. Built on first use; never in headless.
+var ui_voice: AudioStreamPlayer
 
 
 # Returns null when the node is not in a tree with the autoload (an off-tree probe object).
@@ -94,6 +97,17 @@ func apply_sfx_volume() -> void:
 	if is_headless:
 		return
 	set_bus_volume(SFX_BUS, save_store.sfx_volume)
+
+
+func play_across_reload(stream: AudioStream) -> void:
+	if is_headless:
+		return
+	if ui_voice == null:
+		ui_voice = AudioStreamPlayer.new()
+		ui_voice.bus = SFX_BUS
+		add_child(ui_voice)
+	ui_voice.stream = stream
+	ui_voice.play()
 
 
 func set_bus_volume(bus_name: StringName, linear_value: float) -> void:

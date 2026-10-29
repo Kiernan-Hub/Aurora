@@ -529,7 +529,7 @@ func _notification(what: int) -> void:
 
 
 func _on_start_pressed() -> void:
-	sfx_player.play_click()
+	sfx_player.play_start()
 	set_state(State.PLAYING)
 	# InputSetup binds a mouse-button event to "ui_accept" so taps also register as
 	# that action (see input_setup.gd) -- meaning the SAME tap that just dismissed
@@ -654,7 +654,9 @@ func _on_quick_restart_pressed() -> void:
 # true would rebuild the scene into a frozen world. The reloaded GameManager sets its own
 # state in _ready().
 func reload_scene(quick_start: bool) -> void:
-	sfx_player.play_click()
+	# Restart starts a run; Home goes back. Played on the Services voice: the reload below frees
+	# SfxPlayer's pool, which cut the old click off after a frame.
+	sfx_player.play_across_reload(SfxPlayer.START_SOUND if quick_start else SfxPlayer.BACK_SOUND)
 	# From DEAD, _on_player_died already banked it.
 	if state == State.PAUSED:
 		bank_biome_phase()
@@ -744,7 +746,7 @@ func _on_start_shop_pressed() -> void:
 
 
 func _on_shop_close_pressed() -> void:
-	sfx_player.play_click()
+	sfx_player.play_back()
 	set_state(shop_return_state)
 
 
@@ -756,7 +758,7 @@ func _on_buy_pressed(upgrade_id: String) -> void:
 		# and was rolled back. The next refresh_shop() restores the wallet line.
 		shop_wallet_label.text = "Couldn't save. Try again."
 		return
-	sfx_player.play_powerup()
+	sfx_player.play_purchase()
 	# Applied immediately even though the current run is over: keeping this next to the
 	# purchase means there is exactly one ordering to reason about, and the restart that
 	# follows re-derives the same value from disk anyway.

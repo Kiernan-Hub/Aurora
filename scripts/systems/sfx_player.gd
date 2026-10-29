@@ -14,7 +14,12 @@ class_name SfxPlayer
 const COIN_SOUND: AudioStream = preload("res://assets/audio/sfx/coin.wav")
 const POWERUP_SOUND: AudioStream = preload("res://assets/audio/sfx/powerup.wav")
 const DEATH_SOUND: AudioStream = preload("res://assets/audio/sfx/death.wav")
+# The four menu sounds are synthesised by scripts/tools/build_ui_sfx.py: forward, back, a run
+# starting, and a purchase, all one struck-glass voice.
 const CLICK_SOUND: AudioStream = preload("res://assets/audio/sfx/click.wav")
+const BACK_SOUND: AudioStream = preload("res://assets/audio/sfx/back.wav")
+const START_SOUND: AudioStream = preload("res://assets/audio/sfx/start.wav")
+const PURCHASE_SOUND: AudioStream = preload("res://assets/audio/sfx/purchase.wav")
 # Synthesised by scripts/tools/build_crack_sfx.py.
 const CRACK_SOUND: AudioStream = preload("res://assets/audio/sfx/crack.wav")
 
@@ -79,8 +84,30 @@ func play_click() -> void:
 	play(CLICK_SOUND)
 
 
+func play_back() -> void:
+	play(BACK_SOUND)
+
+
+func play_start() -> void:
+	play(START_SOUND)
+
+
+func play_purchase() -> void:
+	play(PURCHASE_SOUND)
+
+
 func play_crack() -> void:
 	play(CRACK_SOUND)
+
+
+# For the sound of a click that reloads the scene, which frees this whole pool before a tink
+# has rung out. Falls back to the pool off-tree.
+func play_across_reload(stream: AudioStream) -> void:
+	var services: GameServices = GameServices.resolve(self)
+	if services == null:
+		play(stream)
+		return
+	services.play_across_reload(stream)
 
 
 func play(stream: AudioStream) -> void:
