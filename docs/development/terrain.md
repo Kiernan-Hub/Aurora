@@ -279,6 +279,37 @@ Window 0 is a drop, so the **first void of every run is the survivable one** —
 learns what a void looks like before one can kill them. The cost is that the first *hazard*
 chasm now arrives one chasm later than it used to.
 
+## Island chasms (2026-10-29)
+
+A long crossing hopped in three jumps: run-up, gap, island, gap, island, gap, far side. Every 4th
+chasm window at phase 3 (`CHASM_ISLANDS_WINDOW_PERIOD`/`PHASE`, never a drop window), from segment
+168, which is past the end of the speed ramp. Variant `chasm_islands` is the head; the next
+`ISLAND_CHAIN.size()` segments are its **links**, found by `get_island_link()` (a bounded lookback
+of O(1) placement tests, no cache read).
+
+**It is built only from what a chasm already is.** Each link is its own FLAT segment holding one
+level-lipped void that runs to the segment's end, so the next segment's start is the far lip and
+**one void per segment** still holds: every void query, lip vertex, fill run, fall death and the
+boosted skim is unchanged. **Every island is at lip height**: the field stays one flat value
+across the crossing (nothing the player physics reads changes) and an island has no side face to
+run into. A raised island would be the `large_valley` wall-wedge by construction, and a second
+walkable layer is the bug-prone version this replaced (HANDOFF, "Ideas flagged").
+
+**The floe look is fill-only.** An island run's fill and ice band stop at a tapered underside
+(`close_island_run`, `get_island_floe_depth`: `ISLAND_FLOE_DEPTH` 110 at the middle,
+`ISLAND_FLOE_EDGE_SHARE` of it at the lips) instead of running to the fill floor, so the void
+shows beneath. Pure in world_x and the island's span, so an island cut by a chunk boundary meets
+itself. The band's V is cut with it, not squashed.
+
+**Its numbers are proven, not chosen.** `check_island_chasm_fairness()` lays the gaps end to end
+and runs the obstacle fairness model over them (now taking `void_spans`: standing over one, or an
+arc coming down over one, is a fall; widened by `VOID_FAIRNESS_MARGIN` 8px each side) at every
+jump level ± the powerup. The binding case is the STRONGEST jump, whose 848px arc overshoots a
+short island into the next gap: 420px islands gave it 5 frames, 540 give 11 (bar 7). Each gap is
+also an ordinary void to `check_one_chasm`. Arming steps past links too (`is_void_segment_index`),
+and spacing counts heads only. `chasm_probe` (`--chasms=7` in `check.sh`) adds three trials over
+the whole crossing (strongest jump, weakest jump, a speed-boost skim), all with 0 stall recoveries.
+
 ## The frozen lake — the one runtime input to the height field
 
 A **7500px dead-flat segment** injected at runtime for the frozen lake set piece. Every other

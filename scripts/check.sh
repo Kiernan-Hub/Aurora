@@ -70,7 +70,7 @@ FREEZE_SEARCH_ARGS="--seed=941462462 --warp=175000 --to=178000 --phases=8 --phas
 FULL_GATES=(
 	"air_moves|air_move_probe.gd|"
 	"aurora_calm|aurora_calm_probe.gd|"
-	"chasm|chasm_probe.gd|--seed=683407368 --chasms=3 --phases=4"
+	"chasm|chasm_probe.gd|--seed=683407368 --chasms=7 --phases=4"
 	"freeze_search|freeze_search.gd|$FREEZE_SEARCH_ARGS"
 	"freeze_slam|freeze_search.gd|$FREEZE_SEARCH_ARGS --slam=1"
 	"freeze_double|freeze_search.gd|$FREEZE_SEARCH_ARGS --double=1"

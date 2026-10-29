@@ -138,7 +138,7 @@ func check_geometry(seed_value: int) -> void:
 		expect(absf(terrain.get_terrain_height(edge - 0.01) - terrain.get_terrain_height(edge + 0.01)) < 0.01,
 			"Discontinuous flat seam")
 	for index: int in range(reserved_index - 1, reserved_index + 2):
-		expect(not terrain.is_chasm_segment_index(index), "Chasm at reserved segment or neighbour")
+		expect(not terrain.is_void_segment_index(index), "Chasm at reserved segment or neighbour")
 	expect(not terrain.arm_aurora_flat(LENGTH * 2.0), "Second arm accepted")
 	expect(terrain.aurora_segment_index == reserved_index and terrain.aurora_segment_length == LENGTH,
 		"Second arm changed reservation")

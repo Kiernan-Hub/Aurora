@@ -124,6 +124,9 @@ const FAIRNESS_HAZARD_MARGIN: float = 1.0
 # check_obstacle_clearance() could not reproduce, because that check ignores the player's own
 # 32px width. 4 frames (67ms) is the absolute floor any tier may lower this to.
 const PATTERN_MIN_WINDOW_FRAMES: int = 7
+# How much wider than its gap a void counts in the fairness model, each side: half the capsule, so
+# a stance or a landing whose centre is within 8px of a lip is a fall rather than a lucky catch.
+const VOID_FAIRNESS_MARGIN: float = PLAYER_CAPSULE_RADIUS * 0.5
 # Windows are searched up to here and reported as ">=" beyond it: a pattern that needs no jump
 # at all (stay down) has an unlimited one.
 const PATTERN_WINDOW_CAP_FRAMES: int = 60
@@ -261,6 +264,7 @@ func _init() -> void:
 	variant_violations.append_array(check_obstacle_clearance())
 	variant_violations.append_array(check_spawn_lookahead())
 	variant_violations.append_array(check_pattern_fairness())
+	variant_violations.append_array(check_island_chasm_fairness())
 
 	# Needs a scene (the generator must be in the tree to have a seed), so it cannot join the
 	# three constant-only checks above -- but it is still seed-independent in everything it
@@ -424,7 +428,7 @@ func check_frozen_lake(session_seed: int) -> Array[String]:
 	#    at runtime; with a PINNED index it cannot, so a hit here means the pinned index is
 	#    unsuitable for the gate rather than that the feature is broken -- the message says so.
 	for offset: int in [-1, 0, 1]:
-		if terrain_generator.is_chasm_segment_index(LAKE_TEST_SEGMENT_INDEX + offset):
+		if terrain_generator.is_void_segment_index(LAKE_TEST_SEGMENT_INDEX + offset):
 			violations.append("LAKE_TEST_INDEX_MEETS_CHASM index=%d offset=%d -- pick a different LAKE_TEST_SEGMENT_INDEX" % [
 				LAKE_TEST_SEGMENT_INDEX, offset,
 			])
@@ -565,7 +569,7 @@ func check_lake_arming(session_seed: int) -> Array[String]:
 	#    chasm. Unlike the pinned check above, a hit HERE is a real defect rather than a badly
 	#    chosen test index, because this index is the one the runtime actually picked.
 	for offset: int in [-1, 0, 1]:
-		if terrain_generator.is_chasm_segment_index(armed_index + offset):
+		if terrain_generator.is_void_segment_index(armed_index + offset):
 			violations.append("LAKE_ARM_MEETS_CHASM armed_index=%d offset=%d" % [armed_index, offset])
 
 	# 6. THE ONE THAT MATCHES THE REAL FAILURE MODE. Everything above interrogates the generator
@@ -962,6 +966,10 @@ func check_chasm_variant_table() -> Array[String]:
 		#    the rest of the fall, so the landing flat must outlast the longest crossing, which
 		#    is the one taken at MAX_SPEED.
 		var variant_segment_length: float = float(variant.get("segment_length", TerrainGenerator.CHASM_SEGMENT_LENGTH))
+		# An island chasm's head ends AT its far lip; the flat beyond is the first island, which
+		# check_island_chasm_fairness() holds to its own minimum.
+		if bool(variant.get("islands", false)):
+			variant_segment_length += float(TerrainGenerator.ISLAND_CHAIN[0]["island"])
 		var required_segment_length: float = TerrainGenerator.CHASM_LEAD_IN_LENGTH + void_length + CHASM_LIP_FLATNESS_MARGIN
 		if variant_exit_drop > 0.0:
 			var longest_crossing: float = SpeedManager.MAX_SPEED * sqrt(2.0 * variant_exit_drop / Player.GRAVITY)
@@ -1413,14 +1421,68 @@ func check_pattern_fairness() -> Array[String]:
 	return violations
 
 
+# THE ISLAND CHASM, proven like a pattern. Its gaps, laid end to end from the head's near lip, run
+# through check_pattern_fairness()'s model as voids, at every jump level +/- the jump powerup and
+# at the slowest and fastest speed the chasm can be met at; the best line through the WHOLE
+# crossing must leave a take-off window of PATTERN_MIN_WINDOW_FRAMES, the bar a spike is held to.
+# A stance that lands on an island and has to jump again inside it is exactly what that model
+# already searches. Also the shape the per-chasm lip checks need: each island at least twice
+# CHASM_LIP_FLATNESS_MARGIN (it is the far side of one gap and the near side of the next) and the
+# landing flat at least one.
+func check_island_chasm_fairness() -> Array[String]:
+	var violations: Array[String] = []
+	var variant: Dictionary = TerrainGenerator.get_islands_chasm_variant()
+	if variant.is_empty():
+		return violations
+
+	var void_spans: Array[Vector2] = [Vector2(0.0, float(variant["void_length"]))]
+	var x: float = float(variant["void_length"])
+	for link: Dictionary in TerrainGenerator.ISLAND_CHAIN:
+		x += float(link["island"])
+		void_spans.append(Vector2(x, x + float(link["gap"])))
+		x += float(link["gap"])
+		if float(link["island"]) < 2.0 * CHASM_LIP_FLATNESS_MARGIN:
+			violations.append("ISLAND_TOO_SHORT island=%.1f min=%.1f" % [float(link["island"]), 2.0 * CHASM_LIP_FLATNESS_MARGIN])
+	var landing_flat: float = float(TerrainGenerator.ISLAND_CHAIN[-1]["exit"])
+	if landing_flat < CHASM_LIP_FLATNESS_MARGIN:
+		violations.append("ISLAND_LANDING_TOO_SHORT exit=%.1f min=%.1f" % [landing_flat, CHASM_LIP_FLATNESS_MARGIN])
+
+	var earliest_void_x: float = float(variant["min_segment_index"]) * TerrainGenerator.SMALL_SEGMENT_LENGTH + TerrainGenerator.CHASM_LEAD_IN_LENGTH
+	var no_pieces: Dictionary = {"pieces": []}
+	var tightest_window: int = PATTERN_WINDOW_CAP_FRAMES
+	var tightest_case: String = "no jump needed"
+	for speed: float in [get_min_speed_at_world_x(earliest_void_x), SpeedManager.MAX_SPEED]:
+		for level: int in range(UpgradeStore.JUMP_MULTIPLIERS.size()):
+			for boost_multiplier: float in [1.0, PowerupManager.JUMP_BOOST_VELOCITY_MULTIPLIER]:
+				var window: int = get_pattern_takeoff_window(no_pieces, speed,
+					UpgradeStore.JUMP_MULTIPLIERS[level] * boost_multiplier, null, 0.0, 0, void_spans)
+				if window < tightest_window:
+					tightest_window = window
+					tightest_case = "level %d%s at %.1f px/s" % [level, " +boost" if boost_multiplier > 1.0 else "", speed]
+	if tightest_window < PATTERN_MIN_WINDOW_FRAMES:
+		violations.append("ISLAND_CHASM_UNFAIR tightest take-off window %d frames (%s) < %d" % [
+			tightest_window, tightest_case, PATTERN_MIN_WINDOW_FRAMES])
+	print("TERRAIN_INVARIANT_ISLAND_CHASM gaps=%d window=%d frames (%s) min=%d" % [
+		void_spans.size(), tightest_window, tightest_case, PATTERN_MIN_WINDOW_FRAMES],
+		" status=", "PASS" if violations.is_empty() else "FAIL")
+	for violation: String in violations:
+		print("    ", violation)
+	return violations
+
+
 # The tightest take-off window, in frames, the best line through this pattern needs at this
 # speed and jump strength. 0 means no line survives; PATTERN_WINDOW_CAP_FRAMES means none is tight
 # (or no jump is needed at all). Flat ground by default; given a terrain, the pattern's first
 # piece sits at start_x on the real height field and every piece, stance and landing follows it.
 # A pass_mark > 0 only asks whether the window reaches it: pass_mark or 0, one pass of the search
 # instead of about eight.
+#
+# void_spans are x spans with no ground (an island chasm's gaps), in the same space: standing over
+# one is a fall, and an arc that comes down over one is a fall. Widened by VOID_FAIRNESS_MARGIN on
+# each side, so a landing that only catches a lip with the capsule's edge is not counted.
 func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multiplier: float,
-		terrain: TerrainGenerator = null, start_x: float = 0.0, pass_mark: int = 0) -> int:
+		terrain: TerrainGenerator = null, start_x: float = 0.0, pass_mark: int = 0,
+		void_spans: Array[Vector2] = []) -> int:
 	# Hazard rects in pattern space: x from the first piece, y = height above the ground. Thin
 	# ice is an x span instead, deadly only to standing on it too long.
 	var hazards: Array[Rect2] = []
@@ -1442,6 +1504,9 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 		last_hazard_x = maxf(last_hazard_x, center.x + half_width)
 		first_hazard_x = minf(first_hazard_x, center.x - half_width)
 
+	for void_span: Vector2 in void_spans:
+		last_hazard_x = maxf(last_hazard_x, void_span.y + VOID_FAIRNESS_MARGIN)
+
 	var frame_step: float = speed * FAIRNESS_FRAME_TIME
 	var first_x: float = -FAIRNESS_LEAD_SECONDS * speed
 	# Past the last frame the player's back edge has cleared every hazard; nothing can hit.
@@ -1451,7 +1516,8 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 	var grounded_safe: Array[bool] = []
 	for frame: int in range(frame_count):
 		ground.append(get_ground_height(terrain, start_x, first_x + frame * frame_step))
-		grounded_safe.append(not does_player_hit(hazards, first_x + frame * frame_step, ground[frame]))
+		grounded_safe.append(not does_player_hit(hazards, first_x + frame * frame_step, ground[frame])
+			and not is_over_void(void_spans, first_x + frame * frame_step))
 
 	# One arc per take-off frame. landing == frame_count means it came down past everything.
 	var arc_clean: Array[bool] = []
@@ -1466,6 +1532,7 @@ func get_pattern_takeoff_window(pattern: Dictionary, speed: float, jump_multipli
 			vertical_speed -= Player.GRAVITY * FAIRNESS_FRAME_TIME
 			height += vertical_speed * FAIRNESS_FRAME_TIME
 			if height <= ground[frame]:
+				clean = not is_over_void(void_spans, first_x + frame * frame_step)
 				break
 			# Short-circuit first: most arc frames are nowhere near a piece.
 			if first_x + frame * frame_step + PLAYER_CAPSULE_RADIUS >= first_hazard_x \
@@ -1558,6 +1625,13 @@ func is_pattern_survivable(min_window: int, frame_count: int, walk_end: Array[in
 			survivable[frame] = found
 		usable_takeoff[frame] = arc_clean[frame] and survivable[landing[frame]]
 	return survivable[0]
+
+
+func is_over_void(void_spans: Array[Vector2], player_x: float) -> bool:
+	for void_span: Vector2 in void_spans:
+		if player_x >= void_span.x - VOID_FAIRNESS_MARGIN and player_x < void_span.y + VOID_FAIRNESS_MARGIN:
+			return true
+	return false
 
 
 # Height of the ground above the first piece's base, pattern_x from it. 0 without a terrain.
@@ -1738,7 +1812,9 @@ func check_chasms(terrain_generator: TerrainGenerator, start_world_x: float, end
 				max_width = void_width
 			min_width = minf(min_width, void_width)
 			max_width = maxf(max_width, void_width)
-			void_starts.append(void_start_x)
+			# An island chasm's links are one crossing with its head, so only heads are spaced.
+			if terrain_generator.get_island_link(segment_index) == 0:
+				void_starts.append(void_start_x)
 
 			for violation: String in check_one_chasm(terrain_generator, segment_index, void_start_x, void_end_x):
 				violation_count += 1

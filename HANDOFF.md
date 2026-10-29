@@ -13,6 +13,16 @@ write-ups, the audit guide and the branch's commit table are at the top of `docs
 **2026-10-28: step 8 (art) played by the owner and MERGED to `main`** (fast-forward of
 `art/step-8`, not yet pushed). "Step 8" below.
 
+**2026-10-29, owner away: three UNMERGED branches off `main`, none played.** This one,
+`terrain/island-chasm`: an island chasm every 4th chasm window (from ~3:30), hopping two floating
+ice floes over one long void, three gaps in all (`terrain.md`, "Island chasms"). Islands sit at
+lip height, so the player physics is untouched. The other two are `elements/black-ice-geode`
+(black ice, geodes, vents) and `ui/stats-sounds-theme` (sounds, theme, stats, skins, sparkles).
+**Merge note:** this branch and `elements/black-ice-geode` both extend
+`get_pattern_takeoff_window()` (void spans here; black ice and vents there), so whichever merges
+second needs a hand merge there. `ui/stats-sounds-theme` and the elements branch both touch
+`HANDOFF.md`, `CLAUDE.md` and `game_manager.gd`.
+
 **This session: the `audit.md` cleanup pass**, one commit per item. 17 of 19 items are closed:
 - **Player-visible fixes.** With the slam or double jump owned, a tap 1–2 frames before touchdown
   could become an air move instead of the landing jump; now it is always the landing jump (A14,

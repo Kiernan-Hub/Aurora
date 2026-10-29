@@ -50,6 +50,14 @@ extends SceneTree
 #               when the body has already sunk below it. Guardrail A must refuse every one, so a
 #               hazard chasm kills exactly as no_jump does (a drop chasm is survived either way).
 #
+# An ISLAND CHASM's head (TerrainGenerator.ISLAND_CHAIN) adds three trials over the WHOLE crossing,
+# each gap jumped the way "jump" jumps one, and cleared only by landing past the last far lip:
+#   islands       -- the probe's own jump (x1.0, the strongest).
+#   islands_weak  -- the weakest jump the game has (jump level 0), whose reach the islands are
+#               spaced against.
+#   islands_boost -- a speed boost taken into the crossing must skim every gap, as it skims one.
+# Every gap is also a void of its own to the trials above, so --chasms must reach past the chain.
+#
 # Usage:
 #   godot --headless --path . --script res://scripts/debug/chasm_probe.gd -- \
 #       [--seed=683407368] [--chasms=3] [--glide=1]
@@ -118,7 +126,10 @@ func _init() -> void:
 	var failures: int = 0
 	var trials: int = 0
 	for void_span: Dictionary in void_spans:
-		for trial_mode: String in trial_modes:
+		var modes: Array[String] = trial_modes.duplicate()
+		if void_span.has("chain"):
+			modes.append_array(["islands", "islands_weak", "islands_boost"])
+		for trial_mode: String in modes:
 			for phase_index: int in range(phase_count):
 				trials += 1
 				var passed: bool = await run_trial(void_span, trial_mode, float(phase_index) * PHASE_STEP_WORLD_X)
@@ -138,6 +149,12 @@ func find_void_spans(chasm_budget: int) -> Array[Dictionary]:
 		terrain_generator.ensure_segment_cache_through(segment_index)
 		var void_span: Dictionary = terrain_generator.get_void_span_for_segment(segment_index)
 		if not void_span.is_empty():
+			# An island chasm's head carries every gap of its crossing, for the islands trials.
+			if bool(terrain_generator.get_segment_spec(segment_index).get("islands", false)):
+				var chain: Array[Dictionary] = [void_span]
+				for link: int in range(1, TerrainGenerator.ISLAND_CHAIN.size() + 1):
+					chain.append(terrain_generator.get_void_span_for_segment(segment_index + link))
+				void_span["chain"] = chain
 			void_spans.append(void_span)
 		segment_index += 1
 	return void_spans
@@ -149,6 +166,13 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 	var far_lip_x: float = float(void_span["end_x"])
 	# Probes get no upgrades (GameManager.apply_upgrades() skips headless), so the air-move trials
 	# grant their move here and every other trial measures the player who owns nothing.
+	var is_island_trial: bool = trial_mode.begins_with("islands")
+	# The gaps this trial must jump, in order, and the far lip it must land past.
+	var gaps: Array[Dictionary] = [void_span]
+	if is_island_trial:
+		gaps.assign(void_span["chain"])
+		far_lip_x = float(gaps[-1]["end_x"])
+	var next_gap: int = 0
 	var is_slam_trial: bool = trial_mode.begins_with("slam")
 	var is_double_trial: bool = trial_mode.begins_with("double")
 	var is_rescue_trial: bool = trial_mode == "double_rescue" or trial_mode == "double_boost"
@@ -164,8 +188,9 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 	player.has_double_jump = is_double_trial
 	if jump_multiplier > 1.0:
 		player.start_jump_boost(jump_multiplier)
+	player.upgrade_jump_multiplier = UpgradeStore.get_min_jump_multiplier() if trial_mode == "islands_weak" else 1.0
 
-	if trial_mode == "boost":
+	if trial_mode == "boost" or trial_mode == "islands_boost":
 		(main.get_node("PowerupManager") as PowerupManager).start_speed_boost()
 	elif trial_mode == "glide":
 		# Held for the whole trial, same as a player who jumps into a void and holds to
@@ -193,6 +218,12 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 	for _frame_index: int in range(TRIAL_FRAME_BUDGET):
 		var player_x: float = player.global_position.x
 		var is_over_void: bool = player_x >= near_lip_x and player_x < far_lip_x
+		# Each gap of the crossing jumped as "jump" jumps one: from half its width before its lip.
+		if (trial_mode == "islands" or trial_mode == "islands_weak") and next_gap < gaps.size():
+			var gap_start: float = float(gaps[next_gap]["start_x"])
+			if player_x >= gap_start - (float(gaps[next_gap]["end_x"]) - gap_start) * 0.5 and player.is_on_floor():
+				player.buffer_jump()
+				next_gap += 1
 		if (trial_mode == "jump" or trial_mode == "late" or is_slam_trial or is_double_trial) \
 				and not has_jumped and player_x >= jump_trigger_x:
 			player.buffer_jump()
@@ -245,6 +276,7 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 	# supposed to make impossible.
 	var passed: bool = survived == expects_survival and recoveries == 0
 
+	player.upgrade_jump_multiplier = 1.0
 	print("  CHASM_TRIAL void=[%.1f, %.1f] mode=%-7s speed=%.0f survived=%s expected=%s reached=%.1f recoveries=%d %s" % [
 		near_lip_x, far_lip_x, trial_mode, player.speed_manager.current_speed,
 		survived, expects_survival, reached_x, recoveries,

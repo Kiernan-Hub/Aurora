@@ -435,7 +435,47 @@ const CHASM_VARIANTS: Array[Dictionary] = [
 	{"label": "chasm", "void_length": 220.0, "min_segment_index": 28, "weight": 4, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": 1600.0},
 	{"label": "chasm_wide", "void_length": 280.0, "min_segment_index": 112, "weight": 3, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": 1600.0},
 	{"label": "chasm_drop", "void_length": 320.0, "min_segment_index": 28, "weight": 0, "exit_drop": 800.0, "must_be_jumped": false, "segment_length": 2400.0},
+	# The ISLAND CHASM's head: an ordinary run-up and first gap, but the gap runs to the segment's
+	# end and the next ISLAND_CHAIN.size() segments are the islands. Placed by period, not weight.
+	{"label": "chasm_islands", "void_length": 180.0, "min_segment_index": 168, "weight": 0, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": CHASM_LEAD_IN_LENGTH + 180.0, "islands": true},
 ]
+# THE ISLAND CHASM (2026-10-29): a long void crossed by hopping between floating ice islands --
+# run-up, gap, island, gap, island, gap, far side. Built ONLY from what a chasm already is: each
+# link below is its own FLAT segment holding one level-lipped void that runs to the segment's end,
+# so the next segment's start is the far lip and every void query in the game (one void per
+# segment, lip vertices, fill runs, fall death, the boosted skim) is unchanged.
+#
+# EVERY ISLAND IS AT LIP HEIGHT, and that is the whole safety argument. The height field stays one
+# flat value across the crossing, so nothing the player physics reads changes, and an island has
+# no side face to run into -- a raised one would be the large_valley wall-wedge by construction.
+# They read as floating because their fill is a shallow floe (ISLAND_FLOE_DEPTH), not a column
+# down to the fill floor, with the void showing beneath and between them.
+#
+# Sized at MAX_SPEED (min_segment_index 168 is past the end of the speed ramp), and the numbers
+# are terrain_invariant_check's, not taste: check_island_chasm_fairness() runs the obstacle
+# fairness model over the whole chain at every jump level +/- the jump powerup and holds the
+# tightest take-off window to the same 7-frame bar as a spike. Each gap is also an ordinary void
+# to check_one_chasm (flat lips, lip vertices, reach fraction).
+#
+# "island" is the ground before the link's gap; the last link's "exit" is the landing flat after
+# the final gap, which a chasm segment normally carries itself.
+#
+# 540px islands, measured (2026-10-29): the binding case is the STRONGEST jump, a max-level one
+# with the powerup, whose 848px arc overshoots a short island into the next gap. 420 left it 5
+# frames, 480 left 8, 540 leaves 11 -- and past ~600 the weakest jump binds instead.
+const ISLAND_CHAIN: Array[Dictionary] = [
+	{"island": 540.0, "gap": 180.0, "exit": 0.0},
+	{"island": 540.0, "gap": 180.0, "exit": 700.0},
+]
+# Every CHASM_ISLANDS_WINDOW_PERIOD-th window, at this phase, gets the island chasm. Odd, so it never
+# collides with CHASM_DROP_WINDOW_PERIOD's even windows: drop, hazard, drop, ISLANDS, drop, ...
+const CHASM_ISLANDS_WINDOW_PERIOD: int = 4
+const CHASM_ISLANDS_WINDOW_PHASE: int = 3
+# How deep an island's ice reaches below its surface at the middle, tapering toward each lip.
+const ISLAND_FLOE_DEPTH: float = 110.0
+# The floe's thickness at its very ends, as a share of ISLAND_FLOE_DEPTH, so a lip never ends in a
+# knife edge.
+const ISLAND_FLOE_EDGE_SHARE: float = 0.35
 # Every Nth chasm is a drop chasm. Exactly one chasm exists per placement window, so the
 # window index IS the chasm ordinal and this is a plain period on it -- O(1), no extra hash,
 # no state.
@@ -818,18 +858,28 @@ func build_chunk_fill(chunk: StaticBody2D, terrain_fill: Polygon2D, surface_poin
 		terrain_fill.polygon = PackedVector2Array()
 		return
 
-	terrain_fill.polygon = close_fill_run(ground_runs[0], fill_bottom_y)
-	terrain_fill.vertex_colors = build_fill_vertex_colors(ground_runs[0])
-	for run_index: int in range(1, ground_runs.size()):
-		var extra_fill: Polygon2D = Polygon2D.new()
-		extra_fill.name = "TerrainFill%d" % run_index
-		extra_fill.polygon = close_fill_run(ground_runs[run_index], fill_bottom_y)
-		extra_fill.vertex_colors = build_fill_vertex_colors(ground_runs[run_index])
-		chunk.add_child(extra_fill)
+	# An island chasm's island is a FLOE: its fill and band stop at a tapered underside instead
+	# of running down to the fill floor, so the void shows beneath it. Decided per run by the
+	# run's middle, which is always strictly inside whatever ground it belongs to.
+	var world_x_offset: float = chunk_start_x + (chunk_width * 0.5)
+	var island_spans: Array[Array] = []
+	for run: PackedVector2Array in ground_runs:
+		island_spans.append(get_island_span_at_world_x((run[0].x + run[run.size() - 1].x) * 0.5 + world_x_offset))
+
+	for run_index: int in range(ground_runs.size()):
+		var fill: Polygon2D = terrain_fill
+		if run_index > 0:
+			fill = Polygon2D.new()
+			fill.name = "TerrainFill%d" % run_index
+			chunk.add_child(fill)
+		var island_span: Array = island_spans[run_index]
+		fill.polygon = close_fill_run(ground_runs[run_index], fill_bottom_y) if island_span.is_empty() \
+			else close_island_run(ground_runs[run_index], world_x_offset, island_span)
+		fill.vertex_colors = build_fill_vertex_colors(fill.polygon.size())
 	# Bands last, so every one of them draws over every fill -- including the extra fills a
 	# chasm chunk adds, which are siblings added above.
 	for run_index: int in range(ground_runs.size()):
-		build_ice_band(chunk, ground_runs[run_index], chunk_start_x, run_index)
+		build_ice_band(chunk, ground_runs[run_index], chunk_start_x, run_index, island_spans[run_index])
 	# Caps last of all, so settled snow draws over the ice it is sitting on.
 	for run_index: int in range(ground_runs.size()):
 		build_snow_cap(chunk, ground_runs[run_index], chunk_start_x, run_index)
@@ -869,7 +919,7 @@ func build_chunk_fill(chunk: StaticBody2D, terrain_fill: Polygon2D, surface_poin
 # DISSOLVE rather than a uniform alpha fade, so the new pattern arrives in patches instead of
 # the whole screen ghosting through a half-and-half state. The band still owns the outgoing
 # tile as its own texture, so the geometry, the UVs and the vertex tints are untouched.
-func build_ice_band(chunk: StaticBody2D, run_points: PackedVector2Array, chunk_start_x: float, run_index: int) -> void:
+func build_ice_band(chunk: StaticBody2D, run_points: PackedVector2Array, chunk_start_x: float, run_index: int, island_span: Array = []) -> void:
 	var sample_count: int = run_points.size()
 	if sample_count < 2:
 		return
@@ -896,9 +946,14 @@ func build_ice_band(chunk: StaticBody2D, run_points: PackedVector2Array, chunk_s
 		band_points[sample_index] = surface_point
 		band_uv[sample_index] = Vector2(texture_u, 0.0)
 		# The lower row follows the surface rather than sitting on a flat line, which is
-		# what makes V mean the same thing at every x no matter what the terrain does.
-		band_points[sample_count + sample_index] = Vector2(surface_point.x, surface_point.y + ICE_BAND_DEPTH)
-		band_uv[sample_count + sample_index] = Vector2(texture_u, deep_v)
+		# what makes V mean the same thing at every x no matter what the terrain does. On an
+		# island floe it stops at the floe's underside, and V stops with it (the tile is cut,
+		# not squashed).
+		var band_depth: float = ICE_BAND_DEPTH
+		if not island_span.is_empty():
+			band_depth = minf(band_depth, get_island_floe_depth(surface_point.x + world_x_offset, island_span))
+		band_points[sample_count + sample_index] = Vector2(surface_point.x, surface_point.y + band_depth)
+		band_uv[sample_count + sample_index] = Vector2(texture_u, deep_v * band_depth / ICE_BAND_DEPTH)
 
 	var quads: Array[PackedInt32Array] = []
 	for sample_index: int in range(sample_count - 1):
@@ -1157,6 +1212,23 @@ func close_fill_run(run_points: PackedVector2Array, fill_bottom_y: float) -> Pac
 	return fill_points
 
 
+# An island's fill: the surface, then back along the floe's underside.
+func close_island_run(run_points: PackedVector2Array, world_x_offset: float, island_span: Array) -> PackedVector2Array:
+	var fill_points: PackedVector2Array = run_points.duplicate()
+	for sample_index: int in range(run_points.size() - 1, -1, -1):
+		var point: Vector2 = run_points[sample_index]
+		fill_points.append(Vector2(point.x, point.y + get_island_floe_depth(point.x + world_x_offset, island_span)))
+	return fill_points
+
+
+# How far below the surface an island's underside sits at world_x: ISLAND_FLOE_DEPTH at the
+# middle, ISLAND_FLOE_EDGE_SHARE of it at each lip. Pure in world_x and the island's span, so an
+# island cut by a chunk boundary meets itself without a step.
+func get_island_floe_depth(world_x: float, island_span: Array) -> float:
+	var progress: float = clampf((world_x - float(island_span[0])) / (float(island_span[1]) - float(island_span[0])), 0.0, 1.0)
+	return ISLAND_FLOE_DEPTH * lerpf(ISLAND_FLOE_EDGE_SHARE, 1.0, sin(PI * progress))
+
+
 func get_shallowest_y(points: PackedVector2Array) -> float:
 	var shallowest_y: float = points[0].y
 	for point: Vector2 in points:
@@ -1164,15 +1236,10 @@ func get_shallowest_y(points: PackedVector2Array) -> float:
 	return shallowest_y
 
 
-# Parallels close_fill_run() vertex-for-vertex: light at every surface sample, dark from
-# the gradient-stop pair down through the two far bottom corners (same color for both, so
-# nothing continues to darken past FILL_GRADIENT_DEPTH -- it does not need to, that far
-# down is already off the bottom of the glide-view case this exists for). Godot
-# interpolates Polygon2D.vertex_colors per pixel across the triangulated fill, so this
-# alone is what turns close_fill_run()'s output into a gradient instead of a flat fill.
-func build_fill_vertex_colors(run_points: PackedVector2Array) -> PackedColorArray:
+# One colour per vertex of a fill polygon, from close_fill_run() or close_island_run().
+func build_fill_vertex_colors(vertex_count: int) -> PackedColorArray:
 	var vertex_colors: PackedColorArray = PackedColorArray()
-	vertex_colors.resize(run_points.size() + 4)
+	vertex_colors.resize(vertex_count)
 	# FLAT, every vertex. The ice band covers the top ICE_BAND_DEPTH of this polygon and is
 	# the only part with structure; everything below simply has to continue the band's
 	# bottom row without a step. A gradient here would only reintroduce one, because the
@@ -1425,6 +1492,38 @@ func is_chasm_segment_index(segment_index: int) -> bool:
 	return offset_in_window == chasm_offset
 
 
+# Which island of an island chasm segment_index is: 0 for none, n for the n-th link after the
+# chasm's head. ISLAND_CHAIN.size() calls of the O(1) placement test, no cache read, so it is safe
+# from build_segment_spec. A chain can never reach the next window's chasm: offsets stop
+# CHASM_WINDOW_EDGE_MARGIN_SEGMENTS short of a window's end, far more than the chain is long.
+func get_island_link(segment_index: int) -> int:
+	for link: int in range(1, ISLAND_CHAIN.size() + 1):
+		var head_index: int = segment_index - link
+		if is_chasm_segment_index(head_index) and bool(get_chasm_variant(head_index).get("islands", false)):
+			return link
+	return 0
+
+
+# Any segment holding a void: a chasm, or one of an island chasm's links. What the set-piece
+# arming steps past, so a lake or aurora flat can never cut into, or sit against, a crossing.
+func is_void_segment_index(segment_index: int) -> bool:
+	return is_chasm_segment_index(segment_index) or get_island_link(segment_index) > 0
+
+
+# Is world_x on an island's ground (between two of an island chasm's gaps)? For the floe fill.
+# Returns the island's [start_x, end_x] or an empty array.
+func get_island_span_at_world_x(world_x: float) -> Array[float]:
+	ensure_segment_cache_for_world_x(world_x)
+	var segment_index: int = find_segment_index_at_x(world_x)
+	if get_island_link(segment_index) == 0:
+		return []
+	var start_x: float = segment_start_x_cache[segment_index]
+	var end_x: float = start_x + float(get_segment_spec(segment_index)["void_start_offset"])
+	if world_x < start_x or world_x > end_x:
+		return []
+	return [start_x, end_x]
+
+
 # O(1), reads no cache, and safe to call from build_segment_spec for the same reasons
 # is_chasm_segment_index() is: an int compare touches none of the segment caches.
 func is_lake_segment_index(segment_index: int) -> bool:
@@ -1459,9 +1558,9 @@ func arm_lake() -> bool:
 
 	var candidate: int = highest_cached_segment_index + LAKE_ARM_LEAD_SEGMENTS
 	while segment_spec_cache.has(candidate) \
-			or is_chasm_segment_index(candidate) \
-			or is_chasm_segment_index(candidate - 1) \
-			or is_chasm_segment_index(candidate + 1):
+			or is_void_segment_index(candidate) \
+			or is_void_segment_index(candidate - 1) \
+			or is_void_segment_index(candidate + 1):
 		candidate += 1
 	lake_segment_index = candidate
 	return true
@@ -1482,8 +1581,8 @@ func arm_aurora_flat(length: float) -> bool:
 	var candidate: int = last_observed + LAKE_ARM_LEAD_SEGMENTS
 	# Keep a normal, grounded neighbour on both sides. This does not promise the
 	# whole approach is safe; live entry must wait until the reserved flat is reached.
-	while is_chasm_segment_index(candidate - 1) or is_chasm_segment_index(candidate) \
-			or is_chasm_segment_index(candidate + 1):
+	while is_void_segment_index(candidate - 1) or is_void_segment_index(candidate) \
+			or is_void_segment_index(candidate + 1):
 		candidate += 1
 	aurora_segment_length = length
 	aurora_segment_index = candidate
@@ -1593,6 +1692,11 @@ func get_chasm_variant(segment_index: int) -> Dictionary:
 		var drop_variant: Dictionary = get_drop_chasm_variant()
 		if not drop_variant.is_empty() and segment_index >= int(drop_variant["min_segment_index"]):
 			return drop_variant
+	# Same shape for the island chasm: its window, if the variant is legal this far in.
+	if (get_chasm_window_index(segment_index) % CHASM_ISLANDS_WINDOW_PERIOD) == CHASM_ISLANDS_WINDOW_PHASE:
+		var islands_variant: Dictionary = get_islands_chasm_variant()
+		if not islands_variant.is_empty() and segment_index >= int(islands_variant["min_segment_index"]):
+			return islands_variant
 
 	var total_weight: int = 0
 	for variant: Dictionary in CHASM_VARIANTS:
@@ -1621,6 +1725,13 @@ func get_chasm_variant(segment_index: int) -> Dictionary:
 func get_drop_chasm_variant() -> Dictionary:
 	for variant: Dictionary in CHASM_VARIANTS:
 		if float(variant.get("exit_drop", 0.0)) > 0.0:
+			return variant
+	return {}
+
+
+static func get_islands_chasm_variant() -> Dictionary:
+	for variant: Dictionary in CHASM_VARIANTS:
+		if bool(variant.get("islands", false)):
 			return variant
 	return {}
 
@@ -1868,6 +1979,23 @@ func build_segment_spec(segment_index: int) -> Dictionary:
 			"label": "frozen_lake",
 		}
 
+	# An island chasm's link: its island, then its gap to the segment's end (the last link adds
+	# the landing flat). Ahead of the chasm test, which a link never passes anyway.
+	var island_link: int = get_island_link(segment_index)
+	if island_link > 0:
+		var link: Dictionary = ISLAND_CHAIN[island_link - 1]
+		return {
+			"type": SEGMENT_TYPE_FLAT,
+			"tier": SEGMENT_TIER_MEDIUM,
+			"length": float(link["island"]) + float(link["gap"]) + float(link["exit"]),
+			"magnitude": 0.0,
+			"label": "chasm_island",
+			"void_start_offset": float(link["island"]),
+			"void_length": float(link["gap"]),
+			"exit_drop": 0.0,
+			"must_be_jumped": true,
+		}
+
 	if is_chasm_segment_index(segment_index):
 		var chasm_variant: Dictionary = get_chasm_variant(segment_index)
 		return {
@@ -1880,6 +2008,7 @@ func build_segment_spec(segment_index: int) -> Dictionary:
 			"void_length": float(chasm_variant["void_length"]),
 			"exit_drop": float(chasm_variant.get("exit_drop", CHASM_EXIT_DROP)),
 			"must_be_jumped": bool(chasm_variant.get("must_be_jumped", true)),
+			"islands": bool(chasm_variant.get("islands", false)),
 		}
 
 	var segment_selection: int = get_segment_selection(segment_index)
