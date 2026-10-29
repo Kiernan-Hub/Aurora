@@ -21,6 +21,37 @@ const SKINS: Array[Dictionary] = [
 const DEFAULT_ID: String = "kid"
 
 
+# SPARKLES: the colour of the landing glints (LandingBurst) and the glide trail (FlightTrail), a
+# tint over both, whose authored look is white -- so Ice, the default, is exactly the old look.
+# Every other colour is an ACHIEVEMENT REWARD, unlocked by the AchievementManager id in
+# "achievement": the first thing an achievement pays. The ids are strings because naming that
+# class here would close a load cycle; regression_probe checks each one exists. Sparkle ids are
+# save data (SaveStore.selected_sparkle), like skin ids.
+const SPARKLES: Array[Dictionary] = [
+	{"id": "ice", "name": "Ice", "color": Color(1.0, 1.0, 1.0), "achievement": ""},
+	{"id": "amber", "name": "Amber", "color": Color(1.0, 0.8, 0.45), "achievement": "first_kilometre"},
+	{"id": "rose", "name": "Rose", "color": Color(1.0, 0.6, 0.8), "achievement": "golden_run"},
+	{"id": "violet", "name": "Violet", "color": Color(0.75, 0.6, 1.0), "achievement": "long_way_down"},
+	{"id": "aurora", "name": "Aurora", "color": Color(0.5, 1.0, 0.7), "achievement": "under_the_aurora"},
+]
+const DEFAULT_SPARKLE_ID: String = "ice"
+
+
+static func get_sparkle(id: String) -> Dictionary:
+	for sparkle: Dictionary in SPARKLES:
+		if sparkle["id"] == id:
+			return sparkle
+	return SPARKLES[0]
+
+
+# The sparkle an achievement unlocks, or {} for none.
+static func get_sparkle_for_achievement(achievement_id: String) -> Dictionary:
+	for sparkle: Dictionary in SPARKLES:
+		if sparkle["achievement"] == achievement_id:
+			return sparkle
+	return {}
+
+
 static func get_track_id(id: String) -> String:
 	return "skin_" + id
 

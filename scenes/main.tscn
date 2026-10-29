@@ -600,6 +600,16 @@ horizontal_alignment = 1
 layout_mode = 2
 alignment = 1
 
+[node name="SparkleLabel" type="Label" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Sparkle"
+horizontal_alignment = 1
+
+[node name="SparklesRow" type="HBoxContainer" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
 [node name="CloseButton" type="Button" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 4

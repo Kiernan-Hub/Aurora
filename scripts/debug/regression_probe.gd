@@ -28,6 +28,8 @@ extends SceneTree
 #                      and every one but the default has a shop track; an unknown or wrong-typed
 #                      saved skin reads as the default; a locked skin cannot be picked, buying
 #                      one wears it, and a reset un-buys it back to the default.
+#   sparkles           every sparkle's unlocking achievement exists; a locked one cannot be
+#                      picked, an earned one can, and a reset relocks it back to Ice.
 #
 # Usage:
 #   godot --headless --fixed-fps 60 --path . --script res://scripts/debug/regression_probe.gd
@@ -79,6 +81,7 @@ func run() -> void:
 	save_history()
 	await stats_screen()
 	await skins()
+	await sparkles()
 
 	print("REGRESSION_PROBE_RESULT cases=%d failures=%d status=%s" % [cases, failures, "PASS" if failures == 0 else "FAIL"])
 	quit(0 if failures == 0 else 1)
@@ -316,6 +319,31 @@ func skins() -> void:
 		and locked_shown and locked_refused and bought_worn and reset_default,
 		"broken=%s wrong-typed->default=%s unknown->default=%s buttons=%d locked shown=%s refused=%s bought+worn=%s reset->default=%s" % [
 			broken, typed_default, unknown_default, buttons, locked_shown, locked_refused, bought_worn, reset_default])
+
+
+func sparkles() -> void:
+	var unknown: Array[String] = []
+	for sparkle: Dictionary in Skins.SPARKLES:
+		var achievement: String = sparkle["achievement"]
+		if not achievement.is_empty() and not AchievementManager.ACHIEVEMENTS.has(achievement):
+			unknown.append("%s needs '%s'" % [sparkle["id"], achievement])
+	await new_scene()
+	store.achievements.clear()
+	store.selected_sparkle = Skins.DEFAULT_SPARKLE_ID
+	game_manager._on_skins_pressed()
+	var buttons: int = game_manager.sparkles_row.get_child_count()
+	game_manager._on_sparkle_picked("amber")
+	var locked_refused: bool = store.selected_sparkle == Skins.DEFAULT_SPARKLE_ID and game_manager.sparkle_buttons["amber"].disabled
+	store.achievements[Skins.get_sparkle("amber")["achievement"]] = true
+	game_manager.refresh_skin_buttons()
+	game_manager._on_sparkle_picked("amber")
+	var earned_picked: bool = store.selected_sparkle == "amber" and game_manager.get_worn_sparkle_id() == "amber"
+	game_manager._on_reset_progress_confirmed()
+	var reset_relocked: bool = game_manager.get_worn_sparkle_id() == Skins.DEFAULT_SPARKLE_ID
+	store.selected_sparkle = Skins.DEFAULT_SPARKLE_ID
+	expect("sparkles", unknown.is_empty() and buttons == Skins.SPARKLES.size() and locked_refused and earned_picked and reset_relocked,
+		"unknown achievements=%s buttons=%d locked refused=%s earned picked=%s reset relocked=%s" % [
+			unknown, buttons, locked_refused, earned_picked, reset_relocked])
 
 
 # A fresh scene, settled on the ground at START_X with nothing spawning. Frees the previous one.

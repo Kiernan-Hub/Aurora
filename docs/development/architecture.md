@@ -133,7 +133,10 @@ to `SaveStore.selected_skin` (a preference: a reset keeps it) and put on the Pla
 `apply_skin()`, which skips headless like `apply_upgrades()`. Every skin but the girl is BOUGHT:
 a one-level `UpgradeStore.TRACKS` row (`"skin"` names it, `Skins.get_track_id()` builds its id),
 so it rides the shop's purchase and rollback. `get_worn_skin_id()` wears the pick only if it is
-still owned, which is what makes a reset safe.
+still owned, which is what makes a reset safe. The same screen's **Sparkle** row picks a
+`Skins.SPARKLES` colour (`SaveStore.selected_sparkle`), unlocked by an achievement and applied by
+`apply_sparkle()` as a `modulate` on `LandingBurst` and the player's `FlightTrail`, which both draw
+white by design.
 
 This was previously implicit in "`get_tree().paused` plus whichever `Control` happens to
 be visible". That works for two screens and stops working at four: a pause screen makes
@@ -246,10 +249,12 @@ holds still behind the pause menu.
 
 **The gallery is the Stats screen** (2026-10-29): every row, earned or dimmed with its `hint`,
 read through `get_rows()` / `is_earned()` on an UNTYPED node (naming the class from
-`GameManager` closes a load cycle through `FrozenLakeDirector`). **Not built:** progress bars and
-reward payloads.
+`GameManager` closes a load cycle through `FrozenLakeDirector`). **Rewards** are sparkle colours:
+`Skins.SPARKLES` names the achievement each needs, so the reward table lives with the cosmetics and
+the manager still knows nothing of it. **Not built:** progress bars.
 `ACHIEVEMENTS` values are Dictionaries so a payload field can be added without changing the
-table's shape or any reader, but there is no reward field today — nothing can consume one.
+table's shape or any reader, but there is still no reward field: the one reward kind keys off the
+achievement id from the cosmetics side.
 **A Godot achievement addon was evaluated and declined (2026-08-15).** The addons on offer bundle
 persistence, a gallery and a popup; persistence is the part already built, so they would have
 brought a **second autoload** (this project has exactly one by hard rule, and a global identifier

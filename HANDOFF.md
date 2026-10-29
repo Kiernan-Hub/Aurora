@@ -28,7 +28,11 @@ write-ups, the audit guide and the branch's commit table are at the top of `docs
   to her exact height and footing (the capsule is every skin's hitbox). **Bought in the shop**
   (owner, 2026-10-29) as one-level `UpgradeStore.TRACKS` rows: teen 250, twenties 500, mom and dad
   750 each (2,250 on top of the upgrades' 2,330). Buying one wears it; locked ones show their price
-  on the Skaters screen; Reset Progress un-buys them back to the girl. Prices are first guesses. Mom and the twenties man took a second pass to read their
+  on the Skaters screen; Reset Progress un-buys them back to the girl. Prices are first guesses.
+  **Sparkle colours (Skaters screen, second row):** tints the landing glints and the glide trail
+  (a `modulate` on `LandingBurst` and `FlightTrail`; Ice = white = the old look). The first
+  achievement rewards: Amber (1 km), Rose (500 coins), Violet (5 km), Aurora (the aurora); Stats
+  shows each reward. `Skins.SPARKLES`; a reset relocks them. Mom and the twenties man took a second pass to read their
   age, and mom a third (a painted checkerboard, then solid black, which the bake now keys).
 
 **This session: the `audit.md` cleanup pass**, one commit per item. 17 of 19 items are closed:

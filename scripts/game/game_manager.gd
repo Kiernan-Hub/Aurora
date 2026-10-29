@@ -45,6 +45,9 @@ class_name GameManager
 @export var skins_row_path: NodePath = NodePath("../CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer/SkinsRow")
 @export var skins_close_button_path: NodePath = NodePath("../CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer/CloseButton")
 @export var start_skins_button_path: NodePath = NodePath("../CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons/SkinsButton")
+@export var sparkles_row_path: NodePath = NodePath("../CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer/SparklesRow")
+# What a sparkle tints. Optional: a missing one just keeps its authored white.
+@export var landing_burst_path: NodePath = NodePath("../LandingBurst")
 
 # Deliberately not @export, same reasoning as Main.world_rebase_enabled: this is
 # the "is this a real playthrough" switch, and main.tscn silently serializing it to
@@ -145,6 +148,9 @@ var skins_close_button: Button
 var start_skins_button: Button
 # One per Skins.SKINS row, keyed by id, built in code (build_skin_buttons) like the shop rows.
 var skin_buttons: Dictionary[String, Button] = {}
+var sparkles_row: HBoxContainer
+var sparkle_buttons: Dictionary[String, Button] = {}
+var landing_burst: Node2D
 
 # How far a run has gone, for the death screen and the Stats screen. The player's x never
 # rebases (world rebasing moves y only), so distance is just x from where the run began.
@@ -228,6 +234,7 @@ func _ready() -> void:
 	# read inside _physics_process, which cannot start until every _ready() completes.
 	apply_upgrades()
 	apply_skin()
+	apply_sparkle()
 	apply_debug_start_wallet()
 	run_start_x = player.global_position.x
 
@@ -253,6 +260,7 @@ func _ready() -> void:
 func wire_scene() -> bool:
 	services = GameServices.resolve(self)
 	main = get_parent() as Main
+	landing_burst = get_node_or_null(landing_burst_path) as Node2D
 	player = get_node_or_null(player_path) as Player
 	sfx_player = get_node_or_null(sfx_player_path) as SfxPlayer
 	if main == null or player == null or sfx_player == null:
@@ -417,7 +425,8 @@ func wire_scene() -> bool:
 	skins_row = get_node_or_null(skins_row_path) as HBoxContainer
 	skins_close_button = get_node_or_null(skins_close_button_path) as Button
 	start_skins_button = get_node_or_null(start_skins_button_path) as Button
-	if skins_screen == null or skins_row == null or skins_close_button == null or start_skins_button == null:
+	sparkles_row = get_node_or_null(sparkles_row_path) as HBoxContainer
+	if skins_screen == null or skins_row == null or sparkles_row == null or skins_close_button == null or start_skins_button == null:
 		push_error("GameManager could not wire the Skaters screen at %s; the game runs without it." % skins_screen_path)
 		if start_skins_button != null:
 			start_skins_button.visible = false
@@ -888,7 +897,11 @@ func refresh_stats() -> void:
 		return
 	for row: Dictionary in achievement_manager.get_rows():
 		var earned: bool = achievement_manager.is_earned(row["id"])
-		add_stats_row(achievements_grid, row["name"], "Earned" if earned else row["hint"], earned)
+		var value: String = "Earned" if earned else row["hint"]
+		var reward: Dictionary = Skins.get_sparkle_for_achievement(row["id"])
+		if not reward.is_empty():
+			value += "  +%s sparkle" % reward["name"]
+		add_stats_row(achievements_grid, row["name"], value, earned)
 
 
 func add_stats_row(grid: GridContainer, title: String, value: String, is_lit: bool) -> void:
@@ -930,6 +943,18 @@ func build_skin_buttons() -> void:
 		button.pressed.connect(_on_skin_picked.bind(String(skin["id"])))
 		skins_row.add_child(button)
 		skin_buttons[String(skin["id"])] = button
+	var sparkle_group: ButtonGroup = ButtonGroup.new()
+	for sparkle: Dictionary in Skins.SPARKLES:
+		var button: Button = Button.new()
+		button.text = sparkle["name"]
+		button.toggle_mode = true
+		button.button_group = sparkle_group
+		# The name is drawn in its own colour: the swatch is the label.
+		for font_color: StringName in [&"font_color", &"font_pressed_color", &"font_hover_color", &"font_focus_color"]:
+			button.add_theme_color_override(font_color, sparkle["color"])
+		button.pressed.connect(_on_sparkle_picked.bind(String(sparkle["id"])))
+		sparkles_row.add_child(button)
+		sparkle_buttons[String(sparkle["id"])] = button
 
 
 # A skin not bought yet shows its price and cannot be picked: the shop sells it.
@@ -943,6 +968,10 @@ func refresh_skin_buttons() -> void:
 			else "%s  %d" % [skin["name"], UpgradeStore.get_upgrade_cost(Skins.get_track_id(id), 0)]
 		button.disabled = not owned
 		button.set_pressed_no_signal(id == worn)
+	var worn_sparkle: String = get_worn_sparkle_id()
+	for id: String in sparkle_buttons:
+		sparkle_buttons[id].disabled = not is_sparkle_unlocked(id)
+		sparkle_buttons[id].set_pressed_no_signal(id == worn_sparkle)
 
 
 func is_skin_owned(id: String) -> bool:
@@ -954,6 +983,38 @@ func is_skin_owned(id: String) -> bool:
 func get_worn_skin_id() -> String:
 	var selected: String = Skins.get_skin(services.save_store.selected_skin if services != null else Skins.DEFAULT_ID)["id"]
 	return selected if is_skin_owned(selected) else Skins.DEFAULT_ID
+
+
+func is_sparkle_unlocked(id: String) -> bool:
+	var achievement: String = Skins.get_sparkle(id)["achievement"]
+	return achievement.is_empty() or (services != null and services.save_store.achievements.get(achievement, false))
+
+
+# Same rule as get_worn_skin_id(): the pick if still unlocked (a reset relocks), else Ice.
+func get_worn_sparkle_id() -> String:
+	var selected: String = Skins.get_sparkle(services.save_store.selected_sparkle if services != null else Skins.DEFAULT_SPARKLE_ID)["id"]
+	return selected if is_sparkle_unlocked(selected) else Skins.DEFAULT_SPARKLE_ID
+
+
+# Tints the landing glints and the glide trail. Both draw white by design, so Ice -- white -- is
+# their authored look, and a modulate on the parent node colours every child it makes.
+func apply_sparkle() -> void:
+	if player == null or DisplayServer.get_name() == "headless":
+		return
+	var color: Color = Skins.get_sparkle(get_worn_sparkle_id())["color"]
+	if landing_burst != null:
+		landing_burst.modulate = color
+	player.flight_trail.modulate = color
+
+
+func _on_sparkle_picked(id: String) -> void:
+	sfx_player.play_click()
+	if services == null or not is_sparkle_unlocked(id):
+		refresh_skin_buttons()
+		return
+	services.save_store.selected_sparkle = id
+	services.save_store.save_to_disk()
+	apply_sparkle()
 
 
 func _on_skin_picked(id: String) -> void:
@@ -1063,5 +1124,6 @@ func _on_reset_progress_confirmed() -> void:
 		# player immediately rather than waiting for the next reload.
 		apply_upgrades()
 		apply_skin()
+		apply_sparkle()
 	refresh_shop()
 	refresh_death_stats()
