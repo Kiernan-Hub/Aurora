@@ -33,8 +33,10 @@ write-ups, the audit guide and the branch's commit table are at the top of `docs
   `services.gd`, `save_store.gd`, `game_manager.gd`. Comments only, every invariant kept; other
   files get the same treatment only when next touched.
 - **Still open:** A3, the obstacle search's cost (measurement added, needs the phone: next
-  actions 2), and archiving the older audits at the bottom of `audit.md` (code comments still cite
-  "audit.md, finding 1"). A13 needs no action.
+  actions 2). A13 needs no action. **2026-11-01:** the two older audits that sat at the bottom of
+  `audit.md` are archived as `docs/review/2026-09-27-obstacle-branch-audit.md` and
+  `2026-09-24-organization-audit.md`; the four comments citing "audit.md, finding 1" now name the
+  first. Text moved verbatim (plus an archive note and the repro's new path); no code changed.
 
 **On the phone:** the merged build as a debug export, save kept (all three upgrades owned, wallet
 ~10,400). Exported with `debug_start_wallet` 9999; the source is at 0. The same APK is `aura.apk` on
