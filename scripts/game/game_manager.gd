@@ -33,6 +33,11 @@ class_name GameManager
 @export var death_shop_button_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/ShopButton")
 @export var reset_progress_button_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/ResetProgressButton")
 @export var reset_confirm_dialog_path: NodePath = NodePath("../CanvasLayer/ShopScreen/ResetConfirmDialog")
+# The records screen and its two entry buttons, wired optionally like the shop.
+@export var records_screen_path: NodePath = NodePath("../CanvasLayer/RecordsScreen")
+@export var start_records_button_path: NodePath = NodePath("../CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons/RecordsButton")
+@export var death_records_button_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/RecordsButton")
+@export var start_summary_label_path: NodePath = NodePath("../CanvasLayer/StartScreen/CenterContainer/VBoxContainer/SummaryLabel")
 
 # Deliberately not @export, same reasoning as Main.world_rebase_enabled: this is
 # the "is this a real playthrough" switch, and main.tscn silently serializing it to
@@ -118,6 +123,8 @@ var shop_close_button: Button
 var death_shop_button: Button
 var reset_progress_button: Button
 var reset_confirm_dialog: ConfirmationDialog
+var records_screen: RecordsScreen
+var start_summary_label: Label
 
 # Was previously implicit in get_tree().paused plus which Control happened to be
 # visible. That works for two screens and stops working at four -- a pause screen makes
@@ -130,18 +137,22 @@ var reset_confirm_dialog: ConfirmationDialog
 # it. Purchases apply to the NEXT run, because leaving the shop leads to a restart, and
 # the rebuilt GameManager reads the save file in _ready(). There is deliberately no path
 # that mutates player stats mid-run.
-enum State { START, PLAYING, PAUSED, DEAD, SHOP }
+#
+# RECORDS (the stats/achievements/history screen) is the second modal and follows the shop's
+# rules exactly: entered from START or DEAD, returns there, no pause semantics of its own.
+enum State { START, PLAYING, PAUSED, DEAD, SHOP, RECORDS }
 # How long the death screen takes to fade in from a death (set_state).
 const DEATH_SCREEN_FADE_SECONDS: float = 0.6
 
 signal state_changed(new_state: State)
+# A finished run has been written to the save (record_run). Never emitted headless.
+signal run_recorded
 
 var state: State = State.START
-# Which screen SHOP is a modal over: the shop is reachable from either the START
-# screen (the new Upgrades button) or the DEAD screen (the original entry point), and
-# closing it must return to whichever one opened it -- otherwise closing the shop from
-# the main menu would incorrectly reveal the (irrelevant, stale) death screen behind it.
-var shop_return_state: State = State.DEAD
+# Which screen a modal (SHOP or RECORDS) is over: both are reachable from the START screen
+# and the DEAD screen, and closing one must return to whichever opened it -- otherwise closing
+# it from the main menu would incorrectly reveal the (irrelevant, stale) death screen behind it.
+var modal_return_state: State = State.DEAD
 
 # Set right before a "quick restart" reload_current_scene() call and consumed by the
 # next _ready(). A local var can't survive the reload -- the whole script instance is
@@ -349,11 +360,25 @@ func wire_scene() -> bool:
 		push_error("GameManager could not wire the upgrade shop at %s; the game runs without it." % shop_screen_path)
 	else:
 		build_shop_rows()
-		shop_close_button.pressed.connect(_on_shop_close_pressed)
+		shop_close_button.pressed.connect(_on_modal_close_pressed)
 		death_shop_button.pressed.connect(_on_shop_pressed)
 		start_upgrades_button.pressed.connect(_on_start_shop_pressed)
 		reset_progress_button.pressed.connect(_on_reset_progress_pressed)
 		reset_confirm_dialog.confirmed.connect(_on_reset_progress_confirmed)
+
+	# Optional for the shop's reason. RecordsScreen builds its own children in its _ready(),
+	# which runs AFTER this one (CanvasLayer is a later sibling), so only its signal is touched.
+	records_screen = get_node_or_null(records_screen_path) as RecordsScreen
+	var start_records_button: Button = get_node_or_null(start_records_button_path) as Button
+	var death_records_button: Button = get_node_or_null(death_records_button_path) as Button
+	if records_screen == null or start_records_button == null or death_records_button == null:
+		records_screen = null
+		push_error("GameManager could not wire the records screen at %s; the game runs without it." % records_screen_path)
+	else:
+		records_screen.close_requested.connect(_on_modal_close_pressed)
+		start_records_button.pressed.connect(open_records.bind(State.START))
+		death_records_button.pressed.connect(open_records.bind(State.DEAD))
+	start_summary_label = get_node_or_null(start_summary_label_path) as Label
 
 	return true
 
@@ -364,20 +389,24 @@ func set_state(new_state: State) -> void:
 	var previous_state: State = state
 	state = new_state
 
-	# START/DEAD stay visible underneath SHOP: the shop is a modal over whichever screen
-	# opened it (see shop_return_state), and closing it returns there without a flicker.
-	# EVERY SCREEN IS NULL-GUARDED, not just the optional shop, and that is what lets a failed
+	# START/DEAD stay visible underneath SHOP and RECORDS: each is a modal over whichever screen
+	# opened it (see modal_return_state), and closing it returns there without a flicker.
+	# EVERY SCREEN IS NULL-GUARDED, not just the optional modals, and that is what lets a failed
 	# wire_scene() still come through here. On a correctly wired scene all four are always
 	# present, so these guards never fire in a shipped build; on a broken one they are the
 	# difference between "the game runs and the log says why" and a frozen overlay. The nulls
 	# are not silently tolerated -- wire_scene() has already pushed an error naming the missing
 	# node. This only keeps that error from being followed by a crash on the next line.
+	var is_modal: bool = new_state == State.SHOP or new_state == State.RECORDS
 	if start_screen != null:
-		start_screen.visible = new_state == State.START or (new_state == State.SHOP and shop_return_state == State.START)
+		start_screen.visible = new_state == State.START or (is_modal and modal_return_state == State.START)
+		# Every way onto START passes here, including closing a shop that changed the wallet.
+		if new_state == State.START:
+			refresh_start_summary()
 	if pause_screen != null:
 		pause_screen.visible = new_state == State.PAUSED
 	if death_screen != null:
-		death_screen.visible = new_state == State.DEAD or (new_state == State.SHOP and shop_return_state == State.DEAD)
+		death_screen.visible = new_state == State.DEAD or (is_modal and modal_return_state == State.DEAD)
 		# Fade in on a death rather than snapping on, so the moment of death (the thin-ice
 		# sink, a crash) is seen for a beat before the overlay dims it. Visible and live from
 		# the first frame either way; only its alpha ramps.
@@ -387,6 +416,8 @@ func set_state(new_state: State) -> void:
 			fade.tween_property(death_screen, "modulate:a", 1.0, DEATH_SCREEN_FADE_SECONDS)
 	if shop_screen != null:
 		shop_screen.visible = new_state == State.SHOP
+	if records_screen != null:
+		records_screen.visible = new_state == State.RECORDS
 	# Hidden on the menus so it can't be tapped while a screen is up, and hidden on
 	# death because the death screen owns the input at that point.
 	if pause_button != null:
@@ -511,12 +542,12 @@ func _notification(what: int) -> void:
 					set_state(State.PAUSED)
 				State.PAUSED:
 					_on_resume_pressed()
-				# The shop is a modal over whichever screen opened it, so back means
-				# "close the modal", exactly like its own Back button -- NOT quit.
-				# Without this case it falls through to the default below and exits
+				# The shop and records are modals over whichever screen opened them, so
+				# back means "close the modal", exactly like their own Back buttons -- NOT
+				# quit. Without this case it falls through to the default below and exits
 				# the app from a menu.
-				State.SHOP:
-					set_state(shop_return_state)
+				State.SHOP, State.RECORDS:
+					set_state(modal_return_state)
 				_:
 					get_tree().quit()
 		# Focus loss: notification shade, incoming call, recents switcher. Only PLAYING
@@ -572,13 +603,20 @@ func _on_player_died() -> void:
 	# Script harnesses can have a real Services autoload. bank_playtime() already
 	# skips headless, but record_run() itself writes coins/bests even when banking
 	# returned false. A regression probe's deliberate death must never save a run.
+	var run_was_recorded: bool = false
 	if services != null and DisplayServer.get_name() != "headless":
 		# BEFORE record_run, so this run's seconds ride record_run's single disk write
 		# rather than costing a second one from set_state(DEAD) a few lines below.
 		bank_playtime()
 		last_run_is_new_best = services.save_store.record_run(coin_count, main.elapsed_time)
+		run_was_recorded = true
 	refresh_death_stats()
 	set_state(State.DEAD)
+	# Only for a run that really reached the save, which is what keeps AchievementManager's
+	# run-record grants out of every headless probe (its footer). After DEAD, so a notice it
+	# raises fades in over the death screen.
+	if run_was_recorded:
+		run_recorded.emit()
 
 
 # Coins and Time are this run's and fixed (the tree is paused and a dead player takes no
@@ -728,7 +766,7 @@ func apply_debug_start_wallet() -> void:
 
 func _on_shop_pressed() -> void:
 	sfx_player.play_click()
-	shop_return_state = State.DEAD
+	modal_return_state = State.DEAD
 	refresh_shop()
 	set_state(State.SHOP)
 
@@ -738,14 +776,37 @@ func _on_shop_pressed() -> void:
 # run in progress to desync from.
 func _on_start_shop_pressed() -> void:
 	sfx_player.play_click()
-	shop_return_state = State.START
+	modal_return_state = State.START
 	refresh_shop()
 	set_state(State.SHOP)
 
 
-func _on_shop_close_pressed() -> void:
+# Both modals' Back buttons.
+func _on_modal_close_pressed() -> void:
 	sfx_player.play_click()
-	set_state(shop_return_state)
+	set_state(modal_return_state)
+
+
+# The Records button on START or DEAD. Read-only over the save, so it is rebuilt on every open
+# rather than kept in sync.
+func open_records(return_state: State) -> void:
+	sfx_player.play_click()
+	modal_return_state = return_state
+	records_screen.refresh(services.save_store if services != null else SaveStore.new())
+	set_state(State.RECORDS)
+
+
+# The start screen's one-line summary. Optional, like the shop.
+func refresh_start_summary() -> void:
+	if start_summary_label == null:
+		return
+	if services == null:
+		start_summary_label.text = ""
+		return
+	var save: SaveStore = services.save_store
+	start_summary_label.text = "Best %d   ·   Wallet %d   ·   Achievements %d/%d" % [
+		save.best_score, save.coin_wallet, AchievementManager.count_earned(save),
+		AchievementManager.ACHIEVEMENTS.size()]
 
 
 func _on_buy_pressed(upgrade_id: String) -> void:

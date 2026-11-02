@@ -32,6 +32,8 @@
 [ext_resource type="Script" path="res://scripts/systems/aurora_reflection.gd" id="33_aurora_reflection"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_streaks.gd" id="34_aurora_streaks"]
 [ext_resource type="Script" path="res://scripts/systems/landing_burst.gd" id="35_landing_burst"]
+[ext_resource type="Script" path="res://scripts/systems/records_screen.gd" id="36_records_screen"]
+[ext_resource type="Theme" path="res://resources/ui/aura_theme.tres" id="37_ui_theme"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -203,6 +205,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("37_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/StartScreen" unique_id=1601690253]
 layout_mode = 0
@@ -217,6 +220,7 @@ anchor_bottom = 1.0
 
 [node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/StartScreen/CenterContainer" unique_id=857622420]
 layout_mode = 2
+theme_override_constants/separation = 10
 alignment = 1
 
 [node name="TitleLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer" unique_id=87483162]
@@ -234,12 +238,18 @@ horizontal_alignment = 1
 [node name="InstructionsLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer" unique_id=1287256151]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "Tap / Space to jump
-Grab the balls, dodge the red boxes"
+text = "Tap or Space to jump
+Collect diamonds, dodge the ice"
+horizontal_alignment = 1
+
+[node name="SummaryLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
 horizontal_alignment = 1
 
 [node name="MenuButtons" type="HBoxContainer" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer" unique_id=2122975043]
 layout_mode = 2
+theme_override_constants/separation = 10
 alignment = 1
 
 [node name="StartButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons" unique_id=1810347507]
@@ -254,6 +264,12 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Upgrades"
 
+[node name="RecordsButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons"]
+custom_minimum_size = Vector2(100, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Records"
+
 [node name="DeathScreen" type="Control" parent="CanvasLayer" unique_id=262636423]
 process_mode = 3
 visible = false
@@ -263,6 +279,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("37_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/DeathScreen" unique_id=1305968060]
 layout_mode = 0
@@ -296,6 +313,10 @@ horizontal_alignment = 1
 layout_mode = 2
 text = "Upgrades"
 
+[node name="RecordsButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+text = "Records"
+
 [node name="RestartButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer" unique_id=146141358]
 layout_mode = 2
 text = "Restart"
@@ -305,6 +326,8 @@ layout_mode = 2
 text = "Home"
 
 [node name="TimerLabel" type="Label" parent="CanvasLayer" unique_id=738491056]
+theme = ExtResource("37_ui_theme")
+theme_type_variation = &"HudLabel"
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
@@ -329,6 +352,8 @@ theme_override_font_sizes/font_size = 12
 horizontal_alignment = 2
 
 [node name="CoinLabel" type="Label" parent="CanvasLayer" unique_id=382659027]
+theme = ExtResource("37_ui_theme")
+theme_type_variation = &"HudLabel"
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
@@ -341,6 +366,8 @@ text = "Coins: 0"
 horizontal_alignment = 2
 
 [node name="PowerupLabel" type="Label" parent="CanvasLayer" unique_id=2098674924]
+theme = ExtResource("37_ui_theme")
+theme_type_variation = &"HudLabel"
 visible = false
 anchors_preset = 1
 anchor_left = 1.0
@@ -353,14 +380,8 @@ theme_override_font_sizes/font_size = 12
 text = "BOOST!"
 horizontal_alignment = 2
 
-[node name="AchievementToast" type="Control" parent="CanvasLayer"]
-visible = false
-layout_mode = 3
-anchors_preset = 0
-mouse_filter = 2
-script = ExtResource("24_achievement_toast")
-
 [node name="PauseButton" type="Button" parent="CanvasLayer" unique_id=1389630751]
+theme = ExtResource("37_ui_theme")
 visible = false
 offset_left = 8.0
 offset_top = 8.0
@@ -379,6 +400,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("37_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/PauseScreen" unique_id=166305575]
 layout_mode = 0
@@ -438,6 +460,13 @@ max_value = 1.0
 step = 0.05
 value = 1.0
 
+[node name="AchievementToast" type="Control" parent="CanvasLayer"]
+visible = false
+layout_mode = 3
+anchors_preset = 0
+mouse_filter = 2
+script = ExtResource("24_achievement_toast")
+
 [node name="ShopScreen" type="Control" parent="CanvasLayer" unique_id=1828391378]
 process_mode = 3
 visible = false
@@ -447,6 +476,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("37_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/ShopScreen" unique_id=1608509594]
 layout_mode = 0
@@ -487,4 +517,16 @@ text = "Back"
 [node name="ResetConfirmDialog" type="ConfirmationDialog" parent="CanvasLayer/ShopScreen" unique_id=434660687]
 title = "Reset Progress?"
 ok_button_text = "Reset Everything"
-dialog_text = "This permanently deletes your best score, coin wallet, and every upgrade level. This cannot be undone."
+dialog_text = "This permanently deletes your best score, coin wallet, upgrades, achievements and run history. This cannot be undone."
+
+[node name="RecordsScreen" type="Control" parent="CanvasLayer"]
+process_mode = 3
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("37_ui_theme")
+script = ExtResource("36_records_screen")

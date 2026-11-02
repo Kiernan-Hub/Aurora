@@ -55,6 +55,17 @@ var aurora_count: int = 0
 # now". docs/development/aurora_borealis.md, "The schedule".
 var next_aurora_due_seconds: float = -1.0
 
+# Run records (Records screen), all written only by record_run(). Added without a version bump,
+# like aurora_count: a v3 file without the keys reads 0 / empty, so an existing player's counts
+# start at this build. longest_time is the exception -- it falls back to best_time, which no run
+# can have outlasted the longest one.
+# run_history is NEWEST FIRST and capped at RUN_HISTORY_LIMIT, each entry {"coins", "seconds"}.
+const RUN_HISTORY_LIMIT: int = 10
+var total_runs: int = 0
+var lifetime_coins: int = 0
+var longest_time: float = 0.0
+var run_history: Array[Dictionary] = []
+
 
 # Not named load(): that would shadow GDScript's global load() inside this class.
 func load_from_disk() -> void:
@@ -126,6 +137,24 @@ func load_from_data(data: Dictionary) -> void:
 		for achievement_id: Variant in stored_achievements.keys():
 			if typeof(stored_achievements[achievement_id]) == TYPE_BOOL:
 				achievements[String(achievement_id)] = stored_achievements[achievement_id]
+		# Run records: see the fields' note.
+		total_runs = _read_count(data, "total_runs")
+		lifetime_coins = _read_count(data, "lifetime_coins")
+		# Entry by entry, so one bad run is dropped rather than the whole list.
+		for entry: Variant in _read_array(data, "run_history"):
+			if run_history.size() >= RUN_HISTORY_LIMIT:
+				break
+			if typeof(entry) != TYPE_DICTIONARY:
+				continue
+			var run: Dictionary = entry
+			var coins: Variant = run.get("coins")
+			var seconds: Variant = run.get("seconds")
+			if _is_count(coins) and _is_number(seconds) and float(seconds) >= 0.0:
+				run_history.append({"coins": int(coins), "seconds": float(seconds)})
+
+	# Outside every version gate: any file with a best_time already has a run at least that long.
+	# maxf also covers a stored value that is corrupt or smaller than best_time.
+	longest_time = maxf(_read_number(data, "longest_time", best_time), best_time)
 
 
 # FIELD-BY-FIELD VALIDATION, NEVER A CAST. A cast of the wrong type (`[] as Dictionary`,
@@ -160,6 +189,11 @@ static func _read_dictionary(source: Dictionary, key: String) -> Dictionary:
 	return value if typeof(value) == TYPE_DICTIONARY else {}
 
 
+static func _read_array(source: Dictionary, key: String) -> Array:
+	var value: Variant = source.get(key, [])
+	return value if typeof(value) == TYPE_ARRAY else []
+
+
 # WRITES VIA A TEMP FILE AND A RENAME, NEVER STRAIGHT OVER THE LIVE SAVE. Opening SAVE_PATH for
 # writing truncates it first, so an app killed mid-write (Android reclaiming a backgrounded app)
 # would leave an empty file that the silent read policy loads as a fresh save. rename is atomic,
@@ -186,6 +220,10 @@ func save_to_disk() -> bool:
 		"aurora_count": aurora_count,
 		"next_aurora_due_seconds": next_aurora_due_seconds,
 		"achievements": achievements,
+		"total_runs": total_runs,
+		"lifetime_coins": lifetime_coins,
+		"longest_time": longest_time,
+		"run_history": run_history,
 		"settings": {
 			"music_volume": music_volume,
 			"sfx_volume": sfx_volume,
@@ -227,7 +265,15 @@ func record_run(coin_count: int, elapsed_time: float) -> bool:
 		best_score = coin_count
 		best_time = elapsed_time
 
-	coin_wallet += maxi(coin_count, 0)
+	var banked_coins: int = maxi(coin_count, 0)
+	var run_seconds: float = maxf(elapsed_time, 0.0)
+	coin_wallet += banked_coins
+	lifetime_coins += banked_coins
+	total_runs += 1
+	longest_time = maxf(longest_time, run_seconds)
+	run_history.push_front({"coins": banked_coins, "seconds": run_seconds})
+	if run_history.size() > RUN_HISTORY_LIMIT:
+		run_history.resize(RUN_HISTORY_LIMIT)
 	save_to_disk()
 	return is_new_best
 
@@ -252,4 +298,8 @@ func reset_progress() -> void:
 	# Until then is_aurora_due() reads the negative and answers false.
 	next_aurora_due_seconds = -1.0
 	achievements.clear()
+	total_runs = 0
+	lifetime_coins = 0
+	longest_time = 0.0
+	run_history.clear()
 	save_to_disk()

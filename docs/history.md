@@ -5,6 +5,17 @@ session ends, its `HANDOFF.md` section moves to the top of this file and `HANDOF
 the current state. **This is history, not a to-do list**: many entries are superseded, and some
 contradict the code. `CLAUDE.md` holds the current truth.
 
+## 2026-11-02 — Records screen, run history, six achievements, UI theme (cloud session)
+
+The owner asked for "better UI, a dashboard, achievements and history". Built in one cloud session on
+`ccr-2b2668f2-3nb81w` without an engine: Godot was not installed and fetching it was refused, so
+**nothing was run**. Delivered: a Records modal (Overview / Achievements / History tabs), run
+records in `SaveStore` written only by `record_run()`, six table-driven achievement rows granted off
+a new `GameManager.run_recorded` signal (emitted only after a real save write, which is the headless
+guard), the toast running while paused so death-time notices show, one shared `Theme`, a start-screen
+summary line, and three `regression_probe` cases. `shop_return_state` became `modal_return_state`
+(shared by both modals). Current state and the owner's first steps: `HANDOFF.md`'s top section.
+
 ## 2026-10-03/04 — white void fixed; phone test A; the `audit.md` cleanup pass
 
 Sessions on the Mac. The owner reported the white void below a high jump (2026-10-03); it was fixed

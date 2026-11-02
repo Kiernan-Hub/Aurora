@@ -8,9 +8,10 @@ class_name AchievementToast
 # WHY THIS IS NOT A GameManager.State AND NOT A SCREEN. GameManager.set_state() is the only thing
 # in the project allowed to touch get_tree().paused or a screen's visibility (CLAUDE.md, hard
 # rule). Every other Control under CanvasLayer is either a full-screen modal that set_state()
-# owns, or a permanent HUD label that is simply always there. This is neither: the game stays
-# PLAYING throughout, exactly as the frozen lake itself does, and this node owns its own
-# visibility the way LakeReflection owns the mirror's. Nothing here reaches for GameManager.
+# owns, or a permanent HUD label that is simply always there. This is neither: it never changes
+# the game's state (a lake's notice arrives mid-run in PLAYING, a run record's over DEAD), and
+# this node owns its own visibility the way LakeReflection owns the mirror's. Nothing here
+# reaches for GameManager.
 #
 # DIVISION OF LABOUR, matching the lake's. AchievementManager owns WHETHER and WHEN and is the
 # only writer of save data; this file owns nothing but the look, and is handed a display name it
@@ -59,9 +60,13 @@ var achievement_manager: AchievementManager
 var kicker_label: Label
 var name_label: Label
 
-# This node's own clock, advanced in _process. Not Time.get_ticks_msec(), which keeps running
-# while the tree is paused and would age a notice out behind the pause menu -- the same reasoning
-# SkateTrack.track_time and LakeReflection.wobble_time are built on.
+# This node's own clock, advanced in _process. It RUNS WHILE PAUSED (process_mode ALWAYS, set in
+# _ready) because run-record achievements are granted after GameManager has entered DEAD, and a
+# paused clock would leave their notice stuck at alpha 0 until the reload destroyed it. That is
+# safe only because this node sits AFTER PauseScreen in main.tscn: a notice running when the
+# player pauses draws over the pause menu (it is bottom-centre, clear of the menu's buttons)
+# instead of ageing out unseen behind it. The shop and records modals still draw over it, and the
+# Records screen lists every achievement, so a notice missed there is not lost.
 var toast_time: float = 0.0
 
 # Names still waiting to be shown. Two achievements landing in one frame is not reachable today
@@ -73,6 +78,8 @@ var pending_names: PackedStringArray = PackedStringArray()
 func _ready() -> void:
 	visible = false
 	set_process(false)
+	# See toast_time. _process only runs while a notice is up, so this costs nothing otherwise.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 
 	# A full-width Control across the bottom of the screen would otherwise sit in front of
 	# anything placed there and swallow touches. Nothing here is interactive.

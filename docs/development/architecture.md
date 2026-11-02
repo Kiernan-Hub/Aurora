@@ -31,17 +31,19 @@ Main (Node2D, scripts/main.gd)
 │                     slam); SkateSpray's look via its static builders. Off under --headless
 ├── BiomeDirector     the ONLY reader of a BiomePalette; returns early under --headless
 ├── Camera2D          position (0,136), zoom 0.833
-├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP }
+├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP, RECORDS }
 ├── PowerupManager    effect timers; drives Player.start_boost etc.
 ├── FrozenLakeDirector  owns WHEN a lake happens; returns early under --headless
 ├── AuroraDirector    owns Aurora lifecycle and the single presentation clock
 ├── AuroraAudio       one event-only loop on the Music bus; absent under --headless
 ├── AchievementManager  the ONLY writer of SaveStore.achievements; triggers come to it
 ├── SfxPlayer         6-voice AudioStreamPlayer pool on the SFX bus
-└── CanvasLayer       Start/Pause/Death/ShopScreen (all process_mode=ALWAYS),
-                      PauseButton, Timer/Coin/Powerup labels,
-                      AchievementToast (after the labels, BEFORE Pause/Shop so those
-                      overlays draw over it)
+└── CanvasLayer       Start/Death screens, Timer/Coin/Powerup labels, PauseButton,
+                      PauseScreen, AchievementToast, ShopScreen, RecordsScreen.
+                      Every screen is process_mode=ALWAYS and takes the one Theme
+                      (resources/ui/aura_theme.tres). The toast sits AFTER PauseScreen
+                      (it runs while paused, so it must draw over the pause menu, not
+                      age out behind it) and BEFORE Shop/Records, which draw over it
 ```
 
 **Draw order is tree order plus `CanvasLayer.layer`, and there is no `z_index` anywhere.**
@@ -121,9 +123,24 @@ adding it to the enum, not writing `paused = true` somewhere new.
 
 `SHOP` needs no pause semantics of its own — `paused = new_state != PLAYING` already covers
 it. It is a *modal* over whichever screen opened it (START's Upgrades button or DEAD's Shop
-button), so `shop_return_state` records which, and that screen stays visible underneath;
+button), so `modal_return_state` records which, and that screen stays visible underneath;
 closing returns there rather than always to DEAD. Purchases apply to the next run, and there
 is deliberately no path that mutates player stats mid-run.
+
+`RECORDS` (2026-11-02) is the second modal and follows the same rules through the same
+`modal_return_state`, Back button and Android back. `RecordsScreen`
+(`scripts/systems/records_screen.gd`) is one node in `main.tscn` that builds its own children,
+like `AchievementToast`; it is **read-only over the save** (`refresh(save_store)` on every open)
+and talks to `GameManager` through one signal, `close_requested`. Its `_ready()` runs *after*
+`GameManager`'s (CanvasLayer is a later sibling), so nothing may reach for its children while
+wiring. Its three tabs: Overview (stat tiles from the `TILES` table + a bar chart of the last
+runs), Achievements (the `ACHIEVEMENTS` table in row order) and History.
+
+**The look is one `Theme`** (`resources/ui/aura_theme.tres`), set on each top-level `Control`
+under `CanvasLayer` (a `CanvasLayer` is not a `Control`, so nothing inherits from it). Code-built
+UI picks styles by `theme_type_variation` (`RecordTile`, `ValueLabel`, `CaptionLabel`,
+`AccentLabel`, `HudLabel` — the outlined HUD text) rather than per-node colour overrides. The
+toast keeps its own overrides: it must read over any biome.
 
 This was previously implicit in "`get_tree().paused` plus whichever `Control` happens to
 be visible". That works for two screens and stops working at four: a pause screen makes
@@ -185,6 +202,13 @@ lands, and a kill in that window (Android reclaiming a backgrounded app, not a c
 truncated file that the silent-read policy above then reads as a fresh save. Wallet, best score
 and every upgrade level, gone, with no error anywhere.
 
+**Run records (2026-11-02, no version bump)** — `total_runs`, `lifetime_coins`,
+`longest_time` and `run_history` (newest first, capped at `RUN_HISTORY_LIMIT` = 10, each
+`{coins, seconds}`). All four are written only by `record_run()`, so they ride its one write per
+death. A save without them reads 0 / empty, except `longest_time`, which falls back to (and never
+reads below) `best_time`. History entries are validated one by one; a bad entry is dropped, not
+the list.
+
 `total_playtime_seconds` is BANKED, not wall-clock — `GameManager.bank_playtime()` owns it, so
 it cannot tick while the app is closed. `frozen_lake_count` counts *completed* lakes, so it
 doubles as the index of the next 20-minute threshold.
@@ -205,6 +229,12 @@ in `connect_triggers()`, so that question has one answer.
 on a signal the relevant system **already emits**. If a system has no suitable signal, add the
 signal *there* — do not add an achievement check there.
 
+**A row with `"stat"` and `"at_least"` is one edit** (2026-11-02): it names a numeric `SaveStore`
+field and is checked after every recorded run, on `GameManager.run_recorded`. Save fields, not
+this run's numbers, on purpose — `best_score` and `longest_time` already hold every earlier run,
+so a save from before a row existed earns what it has already done on its next run.
+`regression_probe`'s `run_achievements` case fails on a `stat` that is not a numeric field.
+
 Three traps:
 
 - **`ACHIEVEMENTS` keys are save data.** An id is written verbatim into `save.dat` forever.
@@ -212,19 +242,24 @@ Three traps:
 - **Gate on the flag, never on a count.** The lake recurs every 20 minutes forever and the
   achievement fires once — which is exactly why `frozen_lake_count` and `achievements` are
   separate fields. `reset_progress()` clears achievements deliberately, so they can be re-earned.
-- **The manager has no headless guard, and that is only safe while its triggers come from the lake
-  and Aurora directors** (which both hard-skip headless; their explicit probes inject memory saves).
+- **The manager has no headless guard, and that is only safe while every trigger is headless-free
+  at its source**: the lake and Aurora directors hard-skip headless (their explicit probes inject
+  memory saves), and `run_recorded` is emitted only after `record_run()` really wrote, which
+  `_on_player_died()` never does headless. `regression_probe` calls `_on_run_recorded()` directly
+  against its in-memory store, which is why the guard sits at the emitter.
   A trigger hung off score, coins, distance or death — all of which
   the gates exercise for millions of frames — would start writing to the developer's real
   `save.dat` during every probe. That is the `apply_upgrades()` class of bug, and this project
   has already lost a save file to a probe. The file's footer carries the guard to add.
 
 `AchievementToast` owns nothing but the look and is handed a display name, so it never reads the
-table. It is **not** a `GameManager.State` and not a screen: the game stays `PLAYING`, exactly
-as it does on the lake, and the node owns its own visibility. It queues rather than overwrites,
-so two unlocks in one frame show in sequence.
+table. It is **not** a `GameManager.State` and not a screen: it never changes state, and the node owns
+its own visibility. It queues rather than overwrites, so two unlocks in one frame show in
+sequence. **It runs while paused** (`PROCESS_MODE_ALWAYS`) because run-record grants arrive after
+`DEAD`; see the scene graph for why that fixes its place in the tree.
 
-**Deliberately not built yet:** an achievements gallery, progress bars and reward payloads.
+**The gallery is the Records screen's Achievements tab** (2026-11-02). **Deliberately not built
+yet:** progress bars and reward payloads.
 `ACHIEVEMENTS` values are Dictionaries so a payload field can be added without changing the
 table's shape or any reader, but there is no reward field today — nothing can consume one.
 **A Godot achievement addon was evaluated and declined (2026-08-15).** The addons on offer bundle

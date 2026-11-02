@@ -20,6 +20,15 @@ extends SceneTree
 #   reload_banking     Home and Restart from PAUSED bank the biome phase, unpause and really
 #                      reload; only Restart sets the quick-restart flag (2026-09-20 audit P2,
 #                      audit A8). Each reload's fresh scene is freed at once.
+#   save_history       record_run keeps the newest RUN_HISTORY_LIMIT runs and the lifetime totals;
+#                      the loader drops bad history entries one by one, a wrong-typed list loses
+#                      only itself, longest_time never reads below best_time, and a reset clears all.
+#   run_achievements   every "stat" an achievement row or a Records tile names is a numeric save
+#                      field; a recorded run grants exactly the rows at or past their threshold,
+#                      once; count_earned ignores ids with no row.
+#   records_screen     Records opens over DEAD or START and closes (Back button or Android back) to
+#                      the screen that opened it, listing the saved history; START's summary line
+#                      reads the save.
 #
 # Usage:
 #   godot --headless --fixed-fps 60 --path . --script res://scripts/debug/regression_probe.gd
@@ -68,6 +77,9 @@ func run() -> void:
 	await death_stats()
 	await death_pickups()
 	await reload_banking()
+	save_history()
+	await run_achievements()
+	await records_screen()
 
 	print("REGRESSION_PROBE_RESULT cases=%d failures=%d status=%s" % [cases, failures, "PASS" if failures == 0 else "FAIL"])
 	quit(0 if failures == 0 else 1)
@@ -230,6 +242,107 @@ func reload_banking() -> void:
 		outcomes.append("%s: banked=%s unpaused=%s quick=%s reloaded=%s" % [
 			"restart" if quick_start else "home", banked, was_unpaused, flag, did_reload])
 	expect("reload_banking", passed, ", ".join(outcomes))
+
+
+func save_history() -> void:
+	var played: MemorySaveStore = MemorySaveStore.new()
+	var run_count: int = SaveStore.RUN_HISTORY_LIMIT + 2
+	for run: int in range(run_count):
+		played.record_run(run, 10.0 * run)
+	var newest: Dictionary = played.run_history[0]
+	var oldest: Dictionary = played.run_history[played.run_history.size() - 1]
+	var kept_newest: bool = played.run_history.size() == SaveStore.RUN_HISTORY_LIMIT \
+		and int(newest["coins"]) == run_count - 1 and int(oldest["coins"]) == run_count - SaveStore.RUN_HISTORY_LIMIT
+	var totals: bool = played.total_runs == run_count and played.lifetime_coins == run_count * (run_count - 1) / 2 \
+		and played.longest_time == 10.0 * (run_count - 1)
+
+	var loaded: MemorySaveStore = MemorySaveStore.new()
+	loaded.load_from_data(JSON.parse_string("""{"version": 3, "best_time": 90.0, "longest_time": 12.0,
+		"total_runs": 4, "run_history": [{"coins": 5, "seconds": 61.5}, {"coins": -1, "seconds": 3},
+		"run", {"coins": 2}, {"coins": 7, "seconds": 1e309}, {"coins": 3, "seconds": 20}]}"""))
+	var filtered: bool = loaded.run_history.size() == 2 and loaded.total_runs == 4 and loaded.longest_time == 90.0 \
+		and int(loaded.run_history[0]["coins"]) == 5 and float(loaded.run_history[0]["seconds"]) == 61.5 \
+		and int(loaded.run_history[1]["coins"]) == 3 and float(loaded.run_history[1]["seconds"]) == 20.0
+	var wrong_type: MemorySaveStore = MemorySaveStore.new()
+	wrong_type.load_from_data(JSON.parse_string("""{"version": 3, "run_history": {"coins": 5}, "lifetime_coins": 40}"""))
+	var contained: bool = wrong_type.run_history.is_empty() and wrong_type.lifetime_coins == 40
+
+	played.reset_progress()
+	var cleared: bool = played.run_history.is_empty() and played.total_runs == 0 and played.lifetime_coins == 0 \
+		and played.longest_time == 0.0
+	expect("save_history", kept_newest and totals and filtered and contained and cleared,
+		"kept newest=%s totals=%s filtered=%s (%s) wrong type contained=%s reset cleared=%s" % [
+			kept_newest, totals, filtered, loaded.run_history, contained, cleared])
+
+
+func run_achievements() -> void:
+	await new_scene()
+	var manager: AchievementManager = main.get_node("AchievementManager") as AchievementManager
+	var bad_stats: Array[String] = []
+	for id: String in AchievementManager.ACHIEVEMENTS:
+		var row: Dictionary = AchievementManager.ACHIEVEMENTS[id]
+		if row.has("stat") and not is_numeric_field(store, String(row["stat"])):
+			bad_stats.append(id)
+	for tile: Dictionary in RecordsScreen.TILES:
+		if not is_numeric_field(store, String(tile["stat"])):
+			bad_stats.append(String(tile["stat"]))
+
+	store.achievements.clear()
+	store.total_runs = 1
+	store.best_score = 150
+	store.longest_time = 119.9
+	store.lifetime_coins = 0
+	var granted: Array[String] = []
+	manager.achievement_granted.connect(func(id: String, _name: String) -> void: granted.append(id))
+	manager._on_run_recorded()
+	manager._on_run_recorded()
+	store.achievements["no_such_row"] = true
+	var expected: Array[String] = ["first_tracks", "glimmer", "diamond_dust"]
+	expect("run_achievements", bad_stats.is_empty() and granted == expected
+		and AchievementManager.count_earned(store) == expected.size(),
+		"bad stats %s, granted %s, counted %d" % [bad_stats, granted, AchievementManager.count_earned(store)])
+	store.achievements.clear()
+
+
+func is_numeric_field(save_store: SaveStore, field: String) -> bool:
+	var value: Variant = save_store.get(field)
+	return typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT
+
+
+func records_screen() -> void:
+	await new_scene()
+	var records: RecordsScreen = game_manager.records_screen
+	if records == null:
+		expect("records_screen", false, "RecordsScreen not wired")
+		return
+	store.run_history.clear()
+	for coins: int in [12, 40, 7]:
+		store.run_history.append({"coins": coins, "seconds": 30.0})
+	store.total_runs = 3
+	store.best_score = 40
+	player.die()
+	game_manager.open_records(GameManager.State.DEAD)
+	var over_death: bool = game_manager.state == GameManager.State.RECORDS and records.visible \
+		and game_manager.death_screen.visible and not game_manager.start_screen.visible and paused
+	# One header row and one row per run, one label per column.
+	var listed: bool = records.history_grid.get_child_count() == (store.run_history.size() + 1) * records.history_grid.columns
+	game_manager._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	var back_to_death: bool = game_manager.state == GameManager.State.DEAD and not records.visible \
+		and game_manager.death_screen.visible
+
+	game_manager.set_state(GameManager.State.START)
+	var summary: String = game_manager.start_summary_label.text
+	game_manager.open_records(GameManager.State.START)
+	var over_start: bool = records.visible and game_manager.start_screen.visible and not game_manager.death_screen.visible
+	game_manager._on_modal_close_pressed()
+	var back_to_start: bool = game_manager.state == GameManager.State.START and not records.visible
+	expect("records_screen", over_death and listed and back_to_death and over_start and back_to_start
+		and summary.begins_with("Best 40"),
+		"over death=%s listed=%s back to death=%s over start=%s back to start=%s summary [%s]" % [
+			over_death, listed, back_to_death, over_start, back_to_start, summary])
+	store.run_history.clear()
+	store.total_runs = 0
+	store.best_score = 0
 
 
 # A fresh scene, settled on the ground at START_X with nothing spawning. Frees the previous one.
