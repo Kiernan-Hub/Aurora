@@ -53,13 +53,17 @@ three times (plain, `--slam=1`, `--double=1`), `floor_flicker_probe` and `freeze
 with the arguments in this file's sections below. `camera_shake_probe` stays manual: it only
 prints metrics.
 
-### `regression_probe` — save, shop, death screen, touch, reload
+### `regression_probe` — save, shop, death screen, touch, reload, records
 
 Seven cases, each a bug that shipped or was reproduced once (2026-09-20 audit, `audit.md` A1, A2,
 A15, A17): a purchase whose save fails rolls back; the loader rejects INF/out-of-range/negative
 counts and wrong-typed containers field by field; one lifted finger keeps the glide hold; the
 death screen follows a shop purchase and a reset; a coin touched in the death step counts only if
-it came first; Home and Restart from PAUSED bank the biome phase. ~3s. **It swaps an in-memory
+it came first; Home and Restart from PAUSED bank the biome phase. Plus three that pin the Records
+work (2026-11-02, written before any engine run): run history caps, dates and validates entry by
+entry; run-record achievements grant at their threshold once, every `stat` names a numeric save
+field, and the two live triggers grant nothing headless; the Records modal opens over DEAD or START
+and closes back to it. ~3s. **It swaps an in-memory
 `SaveStore` into the `Services` autoload before the scene exists**, so it never reads the
 developer's save for a verdict and never writes it — copy that pattern for any new test that
 buys, resets or leaves PLAYING. Mutation-tested: dropping the death-screen refresh or the reload's

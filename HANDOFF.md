@@ -12,8 +12,14 @@ the house patterns and was reviewed by hand, line by line. Treat it as unverifie
    also add `unique_id`s and `.uid` files for the new nodes/scripts, which is fine to commit).
 2. **`./scripts/check.sh`.** `regression_probe` has three new cases: `save_history`,
    `run_achievements`, `records_screen`. Any parse error in the new code surfaces there too.
-   (Every changed `.gd` file does pass `gdtoolkit`'s parser — syntax only, no types — run in the
-   cloud session as a stand-in.)
+   **Checked without an engine (cloud session):** every changed `.gd` file passes `gdtoolkit`'s
+   parser (syntax only). All 110 Godot API names the new code and theme use (properties,
+   methods, constants, signals, theme items) match the **4.7-stable class reference**, and the
+   theme's slider/scrollbar items match the type names the engine's own default theme registers
+   (`HSlider`, `VScrollBar`). `main.tscn` was checked structurally: 87 nodes, no orphan or duplicate
+   paths, every resource id declared, and all 39 `NodePath` defaults in GameManager,
+   AchievementManager and the toast resolve. **Not checkable that way:** GDScript type errors,
+   anything at runtime, and how it looks.
 3. **Look at it** (nothing visual here has been seen by anyone): Start (new summary line, Records
    button, new instructions text), Pause, Death (Records button), Shop, the reset dialog, the
    Records screen's three tabs, and the HUD labels' new outline. Then on the phone: tab tap
