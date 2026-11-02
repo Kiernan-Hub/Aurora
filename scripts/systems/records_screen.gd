@@ -46,7 +46,9 @@ const TILES: Array[Dictionary] = [
 	{"stat": "aurora_count", "caption": "Auroras"},
 ]
 
-const HISTORY_HEADERS: Array[String] = ["Run", "Coins", "Time", ""]
+const HISTORY_HEADERS: Array[String] = ["Run", "When", "Coins", "Time", ""]
+const MONTH_NAMES: Array[String] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
+	"Oct", "Nov", "Dec"]
 
 var tile_values: Array[Label] = []
 var run_chart: RunChart
@@ -184,13 +186,7 @@ func refresh(save: SaveStore) -> void:
 	for index: int in TILES.size():
 		var tile: Dictionary = TILES[index]
 		var value: float = AchievementManager.get_stat(save, String(tile["stat"]))
-		match String(tile.get("format", "count")):
-			"run_time":
-				tile_values[index].text = format_run_time(value)
-			"playtime":
-				tile_values[index].text = format_playtime(value)
-			_:
-				tile_values[index].text = format_count(int(value))
+		tile_values[index].text = format_stat(value, String(tile.get("format", "count")))
 	refresh_chart(save)
 	refresh_achievements(save)
 	refresh_history(save)
@@ -214,10 +210,23 @@ func refresh_achievements(save: SaveStore) -> void:
 	for id: String in achievement_rows:
 		var earned: bool = bool(save.achievements.get(id, false))
 		var row: Dictionary = achievement_rows[id]
-		(row["status"] as Label).text = "Earned" if earned else "Locked"
+		(row["status"] as Label).text = "Earned" if earned else get_progress_text(save, id)
 		(row["panel"] as Control).modulate.a = 1.0 if earned else LOCKED_ALPHA
 	achievement_summary.text = "%d of %d earned" % [
 		AchievementManager.count_earned(save), AchievementManager.ACHIEVEMENTS.size()]
+
+
+# "38 / 50" for a locked stat row, "Locked" for any other. The value is capped at the target: a
+# save can already meet a threshold it has not been granted yet (it is granted on the next
+# recorded run), and "128 / 50" would read as a bug.
+static func get_progress_text(save: SaveStore, id: String) -> String:
+	var definition: Dictionary = AchievementManager.ACHIEVEMENTS[id]
+	if not definition.has("stat"):
+		return "Locked"
+	var target: float = float(definition["at_least"])
+	var value: float = minf(AchievementManager.get_stat(save, String(definition["stat"])), target)
+	var format: String = String(definition.get("format", "count"))
+	return "%s / %s" % [format_stat(value, format), format_stat(target, format)]
 
 
 # Rebuilt from scratch: at most RUN_HISTORY_LIMIT rows, only on open.
@@ -242,6 +251,7 @@ func refresh_history(save: SaveStore) -> void:
 		var is_best: bool = coins > 0 and coins == save.best_score
 		var cells: Array[String] = [
 			"#%d" % run_number if run_number > 0 else "",
+			format_date(String(run.get("date", ""))),
 			format_count(coins),
 			format_run_time(float(run["seconds"])),
 			"Best" if is_best else "",
@@ -249,14 +259,14 @@ func refresh_history(save: SaveStore) -> void:
 		add_history_row(cells, false)
 
 
-# One label per column: the run number reads left-aligned, the figures right-aligned. The last
-# column is the "Best" marker, so it takes the accent.
+# One label per column: the run number and day read left-aligned, the figures right-aligned. The
+# last column is the "Best" marker, so it takes the accent.
 func add_history_row(cells: Array[String], is_header: bool) -> void:
 	for column: int in cells.size():
 		var variation: StringName = &"CaptionLabel" if is_header else (&"AccentLabel" if column == cells.size() - 1 else &"")
 		var label: Label = make_label(cells[column], variation)
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if column == 0 else HORIZONTAL_ALIGNMENT_RIGHT
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if column <= 1 else HORIZONTAL_ALIGNMENT_RIGHT
 		history_grid.add_child(label)
 
 
@@ -273,6 +283,30 @@ static func make_label(text: String, variation: StringName = &"") -> Label:
 	label.text = text
 	label.theme_type_variation = variation
 	return label
+
+
+# One number, as a TILES row or an achievement's progress names it.
+static func format_stat(value: float, format: String) -> String:
+	match format:
+		"run_time":
+			return format_run_time(value)
+		"playtime":
+			return format_playtime(value)
+	return format_count(int(value))
+
+
+# "2026-11-02" -> "Today" or "Nov 2". The year is left off: these are the last ten runs. Anything
+# else (an entry from before dates were saved) reads as blank.
+static func format_date(date: String) -> String:
+	if date.is_empty():
+		return ""
+	if date == Time.get_date_string_from_system():
+		return "Today"
+	var parts: PackedStringArray = date.split("-")
+	var month: int = parts[1].to_int() if parts.size() == 3 else 0
+	if month < 1 or month > MONTH_NAMES.size():
+		return ""
+	return "%s %d" % [MONTH_NAMES[month - 1], parts[2].to_int()]
 
 
 # 12345 -> "12,345".

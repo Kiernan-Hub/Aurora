@@ -47,6 +47,7 @@ class_name AchievementManager
 # that field reaches "at_least". Adding one is that row and nothing else -- the trigger
 # (GameManager.run_recorded) is already wired. Rows without "stat" have their own trigger in
 # connect_triggers(). Row order is the Records screen's order: roughly easiest first.
+# "format": "run_time" marks a stat in seconds, so the Records screen shows its progress as 1:12.
 #
 # The stats are SAVE fields, not this run's numbers, on purpose: best_score and longest_time
 # already hold every earlier run, so a save from before these rows existed earns what it has
@@ -57,6 +58,10 @@ const ACHIEVEMENTS: Dictionary = {
 		"hint": "Finish your first run",
 		"stat": "total_runs", "at_least": 1,
 	},
+	"full_turn": {
+		"name": "Full Turn",
+		"hint": "Land a spin in the air",
+	},
 	"glimmer": {
 		"name": "Glimmer",
 		"hint": "Score 50 in one run",
@@ -65,7 +70,11 @@ const ACHIEVEMENTS: Dictionary = {
 	"full_speed": {
 		"name": "Full Speed",
 		"hint": "Last 2:00 in one run",
-		"stat": "longest_time", "at_least": 120,
+		"stat": "longest_time", "at_least": 120, "format": "run_time",
+	},
+	"rare_find": {
+		"name": "Rare Find",
+		"hint": "Catch a rare coin",
 	},
 	"diamond_dust": {
 		"name": "Diamond Dust",
@@ -79,7 +88,7 @@ const ACHIEVEMENTS: Dictionary = {
 	"long_descent": {
 		"name": "Long Descent",
 		"hint": "Last 5:00 in one run",
-		"stat": "longest_time", "at_least": 300,
+		"stat": "longest_time", "at_least": 300, "format": "run_time",
 	},
 	"under_the_aurora": {
 		"name": "Under the Aurora",
@@ -94,6 +103,8 @@ const ACHIEVEMENTS: Dictionary = {
 
 const STILL_WATER: String = "still_water"
 const UNDER_THE_AURORA: String = "under_the_aurora"
+const FULL_TURN: String = "full_turn"
+const RARE_FIND: String = "rare_find"
 
 # Carries the display name as well as the id so the toast never has to know about this table.
 signal achievement_granted(id: String, display_name: String)
@@ -101,6 +112,8 @@ signal achievement_granted(id: String, display_name: String)
 @export var lake_director_path: NodePath = NodePath("../FrozenLakeDirector")
 @export var aurora_director_path: NodePath = NodePath("../AuroraDirector")
 @export var game_manager_path: NodePath = NodePath("../GameManager")
+@export var player_path: NodePath = NodePath("../Player")
+@export var rare_coin_spawner_path: NodePath = NodePath("../TerrainGenerator/RareCoinSpawner")
 
 var services: GameServices
 var lake_director: FrozenLakeDirector
@@ -145,6 +158,19 @@ func connect_triggers() -> void:
 		# Every row with a "stat". Never emitted headless -- see the footer.
 		game_manager.run_recorded.connect(_on_run_recorded)
 
+	# The two LIVE triggers. Both also fire inside headless probes, so their handlers carry the
+	# footer's guard.
+	var player: Player = get_node_or_null(player_path) as Player
+	if player == null:
+		push_warning("AchievementManager: no Player at %s; 'Full Turn' cannot be earned." % player_path)
+	else:
+		player.trick_completed.connect(_on_trick_completed)
+	var rare_coin_spawner: RareCoinSpawner = get_node_or_null(rare_coin_spawner_path) as RareCoinSpawner
+	if rare_coin_spawner == null:
+		push_warning("AchievementManager: no RareCoinSpawner at %s; 'Rare Find' cannot be earned." % rare_coin_spawner_path)
+	else:
+		rare_coin_spawner.coin_collected.connect(_on_rare_coin_collected)
+
 
 func _on_lake_finished(_total_lakes: int) -> void:
 	# GATED ON THE FLAG, NEVER ON `_total_lakes == 1`, and save_store.gd:59 spells out why the two
@@ -156,6 +182,19 @@ func _on_lake_finished(_total_lakes: int) -> void:
 
 func _on_aurora_finished(_total_auroras: int) -> void:
 	grant(UNDER_THE_AURORA)
+
+
+# air_move_probe lands spins headless, and any long probe run can catch a rare coin.
+func _on_trick_completed(_spin_count: int) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	grant(FULL_TURN)
+
+
+func _on_rare_coin_collected(_value: int) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	grant(RARE_FIND)
 
 
 # After record_run() has written the run, so every stat below already includes it.
@@ -212,15 +251,20 @@ func grant(id: String) -> void:
 
 # ================= A TRAP FOR WHOEVER ADDS A TRIGGER =================
 #
-# THIS FILE HAS NO HEADLESS GUARD, AND THAT IS ONLY SAFE BECAUSE ALL THREE OF ITS TRIGGERS ARE
-# headless-free at the source. The lake and Aurora directors hard-skip headless (their probes
-# inject an in-memory SaveStore before driving the completion signals explicitly), and
-# GameManager emits run_recorded only after record_run() really wrote a run -- which
-# _on_player_died() never does headless. regression_probe calls _on_run_recorded() directly
-# against its in-memory store, which is why the guard is at the emitter and not in the handler.
-# There is also no per-frame work here to switch off.
+# grant() HAS NO HEADLESS GUARD, SO EVERY TRIGGER MUST BE HEADLESS-SAFE ON ITS OWN. Two kinds:
 #
-# THE MOMENT A TRIGGER IS ADDED THAT DOES RUN HEADLESS -- anything hung off score, coins,
+#   Headless-free at the source, no guard here: the lake and Aurora directors hard-skip headless
+#   (their probes inject an in-memory SaveStore before driving the completion signals
+#   explicitly), and GameManager emits run_recorded only after record_run() really wrote a run --
+#   which _on_player_died() never does headless. regression_probe calls _on_run_recorded()
+#   directly against its in-memory store, which is why that guard is at the emitter.
+#
+#   Fires headless, guarded in the handler: trick_completed and the rare coin's coin_collected.
+#   regression_probe asserts both handlers grant nothing headless.
+#
+# There is no per-frame work here to switch off.
+#
+# A NEW TRIGGER THAT DOES RUN HEADLESS AND SKIPS THE GUARD -- anything hung off score, coins,
 # distance or death, all of which the gates exercise for millions of frames -- THIS FILE STARTS
 # WRITING TO THE DEVELOPER'S REAL save.dat DURING EVERY PROBE. That is the same class of bug as
 # GameManager.apply_upgrades() reading upgrade levels in a gate (measured: 48/48 chasms -> 8

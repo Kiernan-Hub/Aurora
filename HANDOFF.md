@@ -1,6 +1,6 @@
 # Handoff
 
-## 2026-11-02 — Records screen, six achievements, one UI theme. ON A BRANCH, NEVER RUN
+## 2026-11-02 — Records screen, eight achievements, one UI theme. ON A BRANCH, NEVER RUN
 
 Branch `ccr-2b2668f2-3nb81w` (a cloud session; not merged). **None of this has been run in Godot.**
 The container had no engine and downloading one was refused, so `check.sh` did not run. It follows
@@ -12,6 +12,8 @@ the house patterns and was reviewed by hand, line by line. Treat it as unverifie
    also add `unique_id`s and `.uid` files for the new nodes/scripts, which is fine to commit).
 2. **`./scripts/check.sh`.** `regression_probe` has three new cases: `save_history`,
    `run_achievements`, `records_screen`. Any parse error in the new code surfaces there too.
+   (Every changed `.gd` file does pass `gdtoolkit`'s parser — syntax only, no types — run in the
+   cloud session as a stand-in.)
 3. **Look at it** (nothing visual here has been seen by anyone): Start (new summary line, Records
    button, new instructions text), Pause, Death (Records button), Shop, the reset dialog, the
    Records screen's three tabs, and the HUD labels' new outline. Then on the phone: tab tap
@@ -21,25 +23,32 @@ the house patterns and was reviewed by hand, line by line. Treat it as unverifie
 - **Records screen** (`scripts/systems/records_screen.gd`, `GameManager.State.RECORDS`). It opens
   from Start or Death, like the shop, and returns there via Back or Android back. **Overview:** 8 stat
   tiles plus a bar chart of the last 10 runs' coins, newest highlighted. **Achievements:** every
-  row, earned or locked, with its hint. **History:** the last 10 runs (number, coins, time, "Best").
-- **Save** (`SaveStore`, no version bump): `run_history` (newest first, cap 10), `total_runs`,
+  row with its hint; a locked stat row shows its progress ("38 / 50", "1:12 / 2:00", capped at the
+  target). **History:** the last 10 runs (number, day — "Today" / "Nov 2" — coins, time, "Best").
+- **Save** (`SaveStore`, no version bump): `run_history` (newest first, cap 10, each with its
+  local date), `total_runs`,
   `lifetime_coins`, `longest_time`. They are written only by `record_run()`, validated entry by entry, and cleared by reset.
   Existing saves start counting runs and coins from this build. `longest_time` starts at `best_time`.
-- **Achievements:** 6 new rows: First Tracks (1 run), Glimmer (score 50), Full Speed (last 2:00),
-  Diamond Dust (score 150), Long Descent (5:00), Glacier (5,000 coins total). A row with `stat` +
-  `at_least` is granted off the new `GameManager.run_recorded` signal, so each one is just a row. They
-  read save fields (`best_score`, `longest_time`, …), so **an existing save earns what it has already
-  done on its next death**: expect a few notices at once the first time.
+- **Achievements:** 8 new rows. Six on run records: First Tracks (1 run), Glimmer (score 50), Full
+  Speed (last 2:00), Diamond Dust (score 150), Long Descent (5:00), Glacier (5,000 coins total). A
+  row with `stat` + `at_least` is granted off the new `GameManager.run_recorded` signal, so each one
+  is just a row. They read save fields (`best_score`, `longest_time`, …), so **an existing save
+  earns what it has already done on its next death**: expect a few notices at once the first time.
+  Two live, mid-run: **Full Turn** (land a spin, `Player.trick_completed`) and **Rare Find** (catch a
+  rare coin). Both of those signals fire inside headless probes, so both handlers carry the
+  documented `DisplayServer` headless guard, and `regression_probe` asserts they grant nothing headless.
 - **Notices at death:** `AchievementToast` now runs while paused and sits after `PauseScreen`, so a
   run-record notice fades in over the death screen (and over the pause menu, never behind it).
 - **One theme**, `resources/ui/aura_theme.tres`: rounded translucent ice buttons, tabs, tiles,
   slider, scrollbar, outlined HUD text. Set on each top-level `Control` under `CanvasLayer`.
 
 **Flagged, not built (your rule):**
-- **Trick / purchase / rare-coin achievements.** They need new triggers, and `trick_completed` and coin
-  pickups fire inside headless probes, so each needs the headless guard (the manager's footer).
-  Doable, but more places to get wrong; say if you want them.
-- **Dates on history rows.** `Time` hands back UTC, so local dates need time-zone handling. Left out.
+- **Purchase achievements** (e.g. "own every upgrade"). Upgrades live in a dictionary, not a
+  numeric save field, so it would need a new signal from the shop rather than a table row.
+- **Visual probes can grant a live achievement into your real save.** The visual three run with a
+  display, so the headless guard does not apply; if one ever lets the player catch a rare coin it
+  would write that flag to `save.dat`. It is the same exposure `record_run()` already has there, and
+  it only adds a flag (nothing is lost), so it is left as is.
 - **The reset dialog is still Godot's default panel**; only its buttons take the theme. Restyling a
   `Window` border means matching its title-bar margins by eye, which I couldn't do without the engine.
 

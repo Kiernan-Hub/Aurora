@@ -204,7 +204,8 @@ and every upgrade level, gone, with no error anywhere.
 
 **Run records (2026-11-02, no version bump)** — `total_runs`, `lifetime_coins`,
 `longest_time` and `run_history` (newest first, capped at `RUN_HISTORY_LIMIT` = 10, each
-`{coins, seconds}`). All four are written only by `record_run()`, so they ride its one write per
+`{coins, seconds, date}`; `date` is the **local** day, `"YYYY-MM-DD"`, display-only, and blank
+rather than fatal when missing or malformed). All four are written only by `record_run()`, so they ride its one write per
 death. A save without them reads 0 / empty, except `longest_time`, which falls back to (and never
 reads below) `best_time`. History entries are validated one by one; a bad entry is dropped, not
 the list.
@@ -242,11 +243,14 @@ Three traps:
 - **Gate on the flag, never on a count.** The lake recurs every 20 minutes forever and the
   achievement fires once — which is exactly why `frozen_lake_count` and `achievements` are
   separate fields. `reset_progress()` clears achievements deliberately, so they can be re-earned.
-- **The manager has no headless guard, and that is only safe while every trigger is headless-free
-  at its source**: the lake and Aurora directors hard-skip headless (their explicit probes inject
+- **`grant()` has no headless guard, so every trigger must be headless-safe on its own.** Either
+  at its source — the lake and Aurora directors hard-skip headless (their explicit probes inject
   memory saves), and `run_recorded` is emitted only after `record_run()` really wrote, which
-  `_on_player_died()` never does headless. `regression_probe` calls `_on_run_recorded()` directly
-  against its in-memory store, which is why the guard sits at the emitter.
+  `_on_player_died()` never does headless (`regression_probe` drives `_on_run_recorded()` directly
+  against its in-memory store, which is why that guard sits at the emitter) — or **in the
+  handler**, for the two live triggers that do fire headless: `Player.trick_completed`
+  (`air_move_probe` lands spins) and the rare coin's `coin_collected`. `regression_probe` asserts
+  both handlers grant nothing headless.
   A trigger hung off score, coins, distance or death — all of which
   the gates exercise for millions of frames — would start writing to the developer's real
   `save.dat` during every probe. That is the `apply_upgrades()` class of bug, and this project

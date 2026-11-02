@@ -20,12 +20,15 @@ extends SceneTree
 #   reload_banking     Home and Restart from PAUSED bank the biome phase, unpause and really
 #                      reload; only Restart sets the quick-restart flag (2026-09-20 audit P2,
 #                      audit A8). Each reload's fresh scene is freed at once.
-#   save_history       record_run keeps the newest RUN_HISTORY_LIMIT runs and the lifetime totals;
-#                      the loader drops bad history entries one by one, a wrong-typed list loses
-#                      only itself, longest_time never reads below best_time, and a reset clears all.
+#   save_history       record_run keeps the newest RUN_HISTORY_LIMIT runs, dated, and the lifetime
+#                      totals; the loader drops bad history entries one by one and blanks a bad
+#                      date without dropping its run, a wrong-typed list loses only itself,
+#                      longest_time never reads below best_time, and a reset clears all.
 #   run_achievements   every "stat" an achievement row or a Records tile names is a numeric save
 #                      field; a recorded run grants exactly the rows at or past their threshold,
-#                      once; count_earned ignores ids with no row.
+#                      once; a spin or a rare coin grants nothing headless; count_earned ignores
+#                      ids with no row; locked progress reads capped and formatted, and dates
+#                      format as "Today" / "Mar 7" / blank.
 #   records_screen     Records opens over DEAD or START and closes (Back button or Android back) to
 #                      the screen that opened it, listing the saved history; START's summary line
 #                      reads the save.
@@ -252,17 +255,21 @@ func save_history() -> void:
 	var newest: Dictionary = played.run_history[0]
 	var oldest: Dictionary = played.run_history[played.run_history.size() - 1]
 	var kept_newest: bool = played.run_history.size() == SaveStore.RUN_HISTORY_LIMIT \
-		and int(newest["coins"]) == run_count - 1 and int(oldest["coins"]) == run_count - SaveStore.RUN_HISTORY_LIMIT
+		and int(newest["coins"]) == run_count - 1 and int(oldest["coins"]) == run_count - SaveStore.RUN_HISTORY_LIMIT \
+		and String(newest["date"]) == Time.get_date_string_from_system()
 	var totals: bool = played.total_runs == run_count and played.lifetime_coins == run_count * (run_count - 1) / 2 \
 		and played.longest_time == 10.0 * (run_count - 1)
 
 	var loaded: MemorySaveStore = MemorySaveStore.new()
 	loaded.load_from_data(JSON.parse_string("""{"version": 3, "best_time": 90.0, "longest_time": 12.0,
-		"total_runs": 4, "run_history": [{"coins": 5, "seconds": 61.5}, {"coins": -1, "seconds": 3},
-		"run", {"coins": 2}, {"coins": 7, "seconds": 1e309}, {"coins": 3, "seconds": 20}]}"""))
+		"total_runs": 4, "run_history": [{"coins": 5, "seconds": 61.5, "date": "11-02-2026"},
+		{"coins": -1, "seconds": 3}, "run", {"coins": 2}, {"coins": 7, "seconds": 1e309},
+		{"coins": 3, "seconds": 20, "date": "2026-11-02"}]}"""))
 	var filtered: bool = loaded.run_history.size() == 2 and loaded.total_runs == 4 and loaded.longest_time == 90.0 \
 		and int(loaded.run_history[0]["coins"]) == 5 and float(loaded.run_history[0]["seconds"]) == 61.5 \
-		and int(loaded.run_history[1]["coins"]) == 3 and float(loaded.run_history[1]["seconds"]) == 20.0
+		and String(loaded.run_history[0]["date"]) == "" \
+		and int(loaded.run_history[1]["coins"]) == 3 and float(loaded.run_history[1]["seconds"]) == 20.0 \
+		and String(loaded.run_history[1]["date"]) == "2026-11-02"
 	var wrong_type: MemorySaveStore = MemorySaveStore.new()
 	wrong_type.load_from_data(JSON.parse_string("""{"version": 3, "run_history": {"coins": 5}, "lifetime_coins": 40}"""))
 	var contained: bool = wrong_type.run_history.is_empty() and wrong_type.lifetime_coins == 40
@@ -296,12 +303,27 @@ func run_achievements() -> void:
 	manager.achievement_granted.connect(func(id: String, _name: String) -> void: granted.append(id))
 	manager._on_run_recorded()
 	manager._on_run_recorded()
+	# Both live triggers fire inside headless probes; their guard must hold.
+	manager._on_trick_completed(1)
+	manager._on_rare_coin_collected(25)
 	store.achievements["no_such_row"] = true
 	var expected: Array[String] = ["first_tracks", "glimmer", "diamond_dust"]
+
+	var progress: Array[String] = [RecordsScreen.get_progress_text(store, "full_speed"),
+		RecordsScreen.get_progress_text(store, AchievementManager.STILL_WATER)]
+	store.lifetime_coins = 9000
+	progress.append(RecordsScreen.get_progress_text(store, "glacier"))
+	var expected_progress: Array[String] = ["1:59 / 2:00", "Locked", "5,000 / 5,000"]
+	var dates: Array[String] = [RecordsScreen.format_date(Time.get_date_string_from_system()),
+		RecordsScreen.format_date("2001-03-07"), RecordsScreen.format_date(""), RecordsScreen.format_date("2026-13-01")]
+	var expected_dates: Array[String] = ["Today", "Mar 7", "", ""]
 	expect("run_achievements", bad_stats.is_empty() and granted == expected
-		and AchievementManager.count_earned(store) == expected.size(),
-		"bad stats %s, granted %s, counted %d" % [bad_stats, granted, AchievementManager.count_earned(store)])
+		and AchievementManager.count_earned(store) == expected.size()
+		and progress == expected_progress and dates == expected_dates,
+		"bad stats %s, granted %s, counted %d, progress %s, dates %s" % [
+			bad_stats, granted, AchievementManager.count_earned(store), progress, dates])
 	store.achievements.clear()
+	store.lifetime_coins = 0
 
 
 func is_numeric_field(save_store: SaveStore, field: String) -> bool:

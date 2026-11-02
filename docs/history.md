@@ -14,7 +14,7 @@ records in `SaveStore` written only by `record_run()`, six table-driven achievem
 a new `GameManager.run_recorded` signal (emitted only after a real save write, which is the headless
 guard), the toast running while paused so death-time notices show, one shared `Theme`, a start-screen
 summary line, and three `regression_probe` cases. `shop_return_state` became `modal_return_state`
-(shared by both modals). Current state and the owner's first steps: `HANDOFF.md`'s top section.
+(shared by both modals). A follow-up the same day ("keep it going") added local dates to history rows, progress text on locked stat achievements, and two live achievements (a landed spin, a rare coin) whose handlers carry the headless guard; `gdtoolkit`'s parser was used as a syntax-only stand-in for the missing engine. Current state and the owner's first steps: `HANDOFF.md`'s top section.
 
 ## 2026-10-03/04 — white void fixed; phone test A; the `audit.md` cleanup pass
 

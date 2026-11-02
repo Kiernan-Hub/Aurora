@@ -59,7 +59,9 @@ var next_aurora_due_seconds: float = -1.0
 # like aurora_count: a v3 file without the keys reads 0 / empty, so an existing player's counts
 # start at this build. longest_time is the exception -- it falls back to best_time, which no run
 # can have outlasted the longest one.
-# run_history is NEWEST FIRST and capped at RUN_HISTORY_LIMIT, each entry {"coins", "seconds"}.
+# run_history is NEWEST FIRST and capped at RUN_HISTORY_LIMIT, each entry {"coins", "seconds",
+# "date"}. "date" is the LOCAL calendar day as "YYYY-MM-DD", or "" when unknown (an entry written
+# before dates were recorded, or a bad value); it is display-only and never invalidates an entry.
 const RUN_HISTORY_LIMIT: int = 10
 var total_runs: int = 0
 var lifetime_coins: int = 0
@@ -150,7 +152,8 @@ func load_from_data(data: Dictionary) -> void:
 			var coins: Variant = run.get("coins")
 			var seconds: Variant = run.get("seconds")
 			if _is_count(coins) and _is_number(seconds) and float(seconds) >= 0.0:
-				run_history.append({"coins": int(coins), "seconds": float(seconds)})
+				run_history.append({"coins": int(coins), "seconds": float(seconds),
+					"date": _read_date(run)})
 
 	# Outside every version gate: any file with a best_time already has a run at least that long.
 	# maxf also covers a stored value that is corrupt or smaller than best_time.
@@ -187,6 +190,20 @@ static func _read_count(source: Dictionary, key: String) -> int:
 static func _read_dictionary(source: Dictionary, key: String) -> Dictionary:
 	var value: Variant = source.get(key, {})
 	return value if typeof(value) == TYPE_DICTIONARY else {}
+
+
+# A run's "date": exactly what record_run writes ("YYYY-MM-DD", digits and dashes), else "".
+static func _read_date(source: Dictionary) -> String:
+	var value: Variant = source.get("date", "")
+	if typeof(value) != TYPE_STRING:
+		return ""
+	var parts: PackedStringArray = String(value).split("-")
+	if parts.size() != 3 or parts[0].length() != 4 or parts[1].length() != 2 or parts[2].length() != 2:
+		return ""
+	for part: String in parts:
+		if not part.is_valid_int():
+			return ""
+	return String(value)
 
 
 static func _read_array(source: Dictionary, key: String) -> Array:
@@ -271,7 +288,9 @@ func record_run(coin_count: int, elapsed_time: float) -> bool:
 	lifetime_coins += banked_coins
 	total_runs += 1
 	longest_time = maxf(longest_time, run_seconds)
-	run_history.push_front({"coins": banked_coins, "seconds": run_seconds})
+	# Local, not UTC: it is shown as the day the player remembers playing.
+	run_history.push_front({"coins": banked_coins, "seconds": run_seconds,
+		"date": Time.get_date_string_from_system()})
 	if run_history.size() > RUN_HISTORY_LIMIT:
 		run_history.resize(RUN_HISTORY_LIMIT)
 	save_to_disk()
