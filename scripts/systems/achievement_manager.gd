@@ -24,7 +24,9 @@ class_name AchievementManager
 # kind is two edits, both in this file: a row, and one `.connect(...)` in connect_triggers()
 # pointing at a signal the relevant system ALREADY emits. If a system has no suitable signal, add
 # the signal there -- do not add an achievement check there. The Aurora follows this rule through
-# its existing `aurora_finished` signal, and run records through GameManager.run_recorded.
+# its existing `aurora_finished` signal, and run records through GameManager.run_recorded. AND IF
+# THAT SIGNAL CAN FIRE INSIDE A HEADLESS PROBE, ITS HANDLER NEEDS THE GUARD IN THE FOOTER -- grant()
+# has none, so forgetting it writes the developer's real save.dat from every probe.
 #
 # IT IS NOT A GameManager.State AND IT TOUCHES NO SCREEN. GameManager.set_state() remains the
 # only thing allowed near get_tree().paused or a screen's visibility (CLAUDE.md states it as a
@@ -201,20 +203,29 @@ func _on_rare_coin_collected(_value: int) -> void:
 func _on_run_recorded() -> void:
 	if services == null or services.save_store == null:
 		return
+	var reached: Array[String] = []
 	for id: String in ACHIEVEMENTS:
 		var row: Dictionary = ACHIEVEMENTS[id]
 		if row.has("stat") and get_stat(services.save_store, String(row["stat"])) >= float(row["at_least"]):
-			grant(id)
+			reached.append(id)
+	# One call, so one save however many rows this run earned (an old save's first run earns several).
+	grant_all(reached)
 
 
 # A SaveStore field by name. Loud on a typo'd or non-numeric field, which would otherwise make
 # its row silently unearnable. regression_probe's run_achievements case checks every row's stat.
 static func get_stat(save_store: SaveStore, stat: String) -> float:
-	var value: Variant = save_store.get(stat)
-	if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
+	if not is_stat(save_store, stat):
 		push_error("AchievementManager: '%s' is not a numeric SaveStore field." % stat)
 		return 0.0
-	return float(value)
+	return float(save_store.get(stat))
+
+
+# Whether `stat` names a numeric SaveStore field -- the one definition, shared with
+# regression_probe's check of every row and Records tile.
+static func is_stat(save_store: SaveStore, stat: String) -> bool:
+	var value: Variant = save_store.get(stat)
+	return typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT
 
 
 # How many of the rows in ACHIEVEMENTS this save has earned. Ids in the save that no longer have
@@ -230,23 +241,33 @@ static func count_earned(save_store: SaveStore) -> int:
 # The single entry point. Idempotent by design -- callers may fire it on every occurrence of
 # whatever they watch and let this decide, which is what keeps the trigger sites down to one line.
 func grant(id: String) -> void:
-	if not ACHIEVEMENTS.has(id):
-		# Loud, because the only way to reach this is a typo'd id, and a typo'd id fails SILENTLY
-		# otherwise: SaveStore.achievements is an open dictionary and would happily persist it.
-		push_error("AchievementManager.grant: unknown achievement id '%s'." % id)
-		return
+	grant_all([id])
 
+
+# Several at once: every id not yet earned is flagged, then the save is written ONCE, then each is
+# announced. A recorded run can earn several rows, and record_run() promises one disk write per
+# death -- this adds at most one more, and only on a death that earned something.
+func grant_all(ids: Array[String]) -> void:
 	if services == null or services.save_store == null:
 		return
 
-	if services.save_store.achievements.get(id, false):
+	var earned: Array[String] = []
+	for id: String in ids:
+		if not ACHIEVEMENTS.has(id):
+			# Loud, because the only way to reach this is a typo'd id, and a typo'd id fails SILENTLY
+			# otherwise: SaveStore.achievements is an open dictionary and would happily persist it.
+			push_error("AchievementManager.grant: unknown achievement id '%s'." % id)
+			continue
+		if services.save_store.achievements.get(id, false):
+			continue
+		services.save_store.achievements[id] = true
+		earned.append(id)
+	if earned.is_empty():
 		return
 
-	services.save_store.achievements[id] = true
 	services.save_store.save_to_disk()
-
-	var display_name: String = String(ACHIEVEMENTS[id].get("name", id))
-	achievement_granted.emit(id, display_name)
+	for id: String in earned:
+		achievement_granted.emit(id, String(ACHIEVEMENTS[id].get("name", id)))
 
 
 # ================= A TRAP FOR WHOEVER ADDS A TRIGGER =================

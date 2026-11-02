@@ -288,10 +288,10 @@ func run_achievements() -> void:
 	var bad_stats: Array[String] = []
 	for id: String in AchievementManager.ACHIEVEMENTS:
 		var row: Dictionary = AchievementManager.ACHIEVEMENTS[id]
-		if row.has("stat") and not is_numeric_field(store, String(row["stat"])):
+		if row.has("stat") and not AchievementManager.is_stat(store, String(row["stat"])):
 			bad_stats.append(id)
 	for tile: Dictionary in RecordsScreen.TILES:
-		if not is_numeric_field(store, String(tile["stat"])):
+		if not AchievementManager.is_stat(store, String(tile["stat"])):
 			bad_stats.append(String(tile["stat"]))
 
 	store.achievements.clear()
@@ -322,13 +322,8 @@ func run_achievements() -> void:
 		and progress == expected_progress and dates == expected_dates,
 		"bad stats %s, granted %s, counted %d, progress %s, dates %s" % [
 			bad_stats, granted, AchievementManager.count_earned(store), progress, dates])
-	store.achievements.clear()
-	store.lifetime_coins = 0
-
-
-func is_numeric_field(save_store: SaveStore, field: String) -> bool:
-	var value: Variant = save_store.get(field)
-	return typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT
+	# Every field this case set, back to a fresh save, so no later case depends on case order.
+	store.reset_progress()
 
 
 func records_screen() -> void:
@@ -362,9 +357,7 @@ func records_screen() -> void:
 		and summary.begins_with("Best 40"),
 		"over death=%s listed=%s back to death=%s over start=%s back to start=%s summary [%s]" % [
 			over_death, listed, back_to_death, over_start, back_to_start, summary])
-	store.run_history.clear()
-	store.total_runs = 0
-	store.best_score = 0
+	store.reset_progress()
 
 
 # A fresh scene, settled on the ground at START_X with nothing spawning. Frees the previous one.

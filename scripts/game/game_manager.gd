@@ -630,7 +630,7 @@ func refresh_death_stats() -> void:
 		wallet = services.save_store.coin_wallet
 	# A reset since death zeroes the best, and "Best: 0 (New Best!)" would contradict itself.
 	var best_suffix: String = " (New Best!)" if last_run_is_new_best and best_score == coin_count else ""
-	death_stats_label.text = "Coins: %d\nTime: %s\nBest: %d%s\nWallet: %d" % [coin_count, main.format_elapsed_time(main.elapsed_time), best_score, best_suffix, wallet]
+	death_stats_label.text = "Coins: %d\nTime: %s\nBest: %d%s\nWallet: %d" % [coin_count, Main.format_elapsed_time(main.elapsed_time), best_score, best_suffix, wallet]
 
 
 # Session state, not save state: where this run ended is where the next one picks the day

@@ -381,7 +381,6 @@ text = "BOOST!"
 horizontal_alignment = 2
 
 [node name="PauseButton" type="Button" parent="CanvasLayer" unique_id=1389630751]
-theme = ExtResource("37_ui_theme")
 visible = false
 offset_left = 8.0
 offset_top = 8.0

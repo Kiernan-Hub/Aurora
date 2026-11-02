@@ -137,7 +137,9 @@ wiring. Its three tabs: Overview (stat tiles from the `TILES` table + a bar char
 runs), Achievements (the `ACHIEVEMENTS` table in row order) and History.
 
 **The look is one `Theme`** (`resources/ui/aura_theme.tres`), set on each top-level `Control`
-under `CanvasLayer` (a `CanvasLayer` is not a `Control`, so nothing inherits from it). Code-built
+under `CanvasLayer` (a `CanvasLayer` is not a `Control`, so nothing inherits from it) **except
+`PauseButton`**: the theme's button padding outgrew its 40×32 rect, and that rect is the touch zone
+`Main._input` exempts from jumping, so it keeps the default look and its exact size. Code-built
 UI picks styles by `theme_type_variation` (`RecordTile`, `ValueLabel`, `CaptionLabel`,
 `AccentLabel`, `HudLabel` — the outlined HUD text) rather than per-node colour overrides. The
 toast keeps its own overrides: it must read over any biome.
@@ -258,8 +260,9 @@ Three traps:
 
 `AchievementToast` owns nothing but the look and is handed a display name, so it never reads the
 table. It is **not** a `GameManager.State` and not a screen: it never changes state, and the node owns
-its own visibility. It queues rather than overwrites, so two unlocks in one frame show in
-sequence. **It runs while paused** (`PROCESS_MODE_ALWAYS`) because run-record grants arrive after
+its own visibility. It never overwrites: everything granted in one frame (a recorded run can earn
+several) goes up as **one** notice, "3 ACHIEVEMENTS / Glimmer and 2 more", and anything arriving
+mid-notice waits for the next. `grant_all()` writes all of a run's grants in one save. **It runs while paused** (`PROCESS_MODE_ALWAYS`) because run-record grants arrive after
 `DEAD`; see the scene graph for why that fixes its place in the tree.
 
 **The gallery is the Records screen's Achievements tab** (2026-11-02). **Deliberately not built

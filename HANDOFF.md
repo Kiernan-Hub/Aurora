@@ -19,7 +19,11 @@ the house patterns and was reviewed by hand, line by line. Treat it as unverifie
    (`HSlider`, `VScrollBar`). `main.tscn` was checked structurally: 87 nodes, no orphan or duplicate
    paths, every resource id declared, and all 39 `NodePath` defaults in GameManager,
    AchievementManager and the toast resolve. **Not checkable that way:** GDScript type errors,
-   anything at runtime, and how it looks.
+   anything at runtime, and how it looks. A code review of the whole branch then found seven
+   real issues, all fixed: one save per death however many achievements it earns
+   (`grant_all`), same-frame notices folded into one, "Best" marks only the run that set it, the
+   pause button left un-themed (see below), one shared time formatter (`Main.format_elapsed_time`
+   is now static), and the new probe cases no longer leak state into later ones.
 3. **Look at it** (nothing visual here has been seen by anyone): Start (new summary line, Records
    button, new instructions text), Pause, Death (Records button), Shop, the reset dialog, the
    Records screen's three tabs, and the HUD labels' new outline. Then on the phone: tab tap
@@ -45,8 +49,11 @@ the house patterns and was reviewed by hand, line by line. Treat it as unverifie
   documented `DisplayServer` headless guard, and `regression_probe` asserts they grant nothing headless.
 - **Notices at death:** `AchievementToast` now runs while paused and sits after `PauseScreen`, so a
   run-record notice fades in over the death screen (and over the pause menu, never behind it).
+  Several at once read as one notice: "3 ACHIEVEMENTS / Glimmer and 2 more".
 - **One theme**, `resources/ui/aura_theme.tres`: rounded translucent ice buttons, tabs, tiles,
-  slider, scrollbar, outlined HUD text. Set on each top-level `Control` under `CanvasLayer`.
+  slider, scrollbar, outlined HUD text. Set on each top-level `Control` under `CanvasLayer` except
+  the in-run pause button: themed, it grew past its 40×32 rect, and that rect is the corner where
+  a tap pauses instead of jumping. It keeps the old look and exact size.
 
 **Flagged, not built (your rule):**
 - **Purchase achievements** (e.g. "own every upgrade"). Upgrades live in a dictionary, not a
@@ -57,6 +64,12 @@ the house patterns and was reviewed by hand, line by line. Treat it as unverifie
   it only adds a flag (nothing is lost), so it is left as is.
 - **The reset dialog is still Godot's default panel**; only its buttons take the theme. Restyling a
   `Window` border means matching its title-bar margins by eye, which I couldn't do without the engine.
+
+- **Recommended, not done (changes existing architecture):** make `SaveStore.save_to_disk()`
+  itself refuse to write under a headless `DisplayServer`. Every probe that needs saving already
+  swaps in a `MemorySaveStore`, which overrides that method, so one guard there would retire the
+  per-trigger guards and the "forgot the guard" bug class for achievements, `record_run`,
+  playtime and settings at once. It touches the save path everything uses, so it's your call.
 
 **Knobs:** names, hints, thresholds and order in `AchievementManager.ACHIEVEMENTS` (ids are save
 data: never rename one); `SaveStore.RUN_HISTORY_LIMIT`; colours in `aura_theme.tres`; layout

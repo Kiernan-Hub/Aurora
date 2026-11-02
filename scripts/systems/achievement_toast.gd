@@ -69,9 +69,10 @@ var name_label: Label
 # Records screen lists every achievement, so a notice missed there is not lost.
 var toast_time: float = 0.0
 
-# Names still waiting to be shown. Two achievements landing in one frame is not reachable today
-# with a single trigger, but it is reachable the moment there are two, and the alternative is
-# that one of them is silently overwritten mid-fade.
+# Names still waiting to be shown. Everything waiting when a notice starts goes up as ONE notice
+# ("3 ACHIEVEMENTS" / "Glimmer and 2 more"): a recorded run can earn several in one frame -- an
+# old save's first death earns about five -- and queuing them one by one ran ~18s over the death
+# screen, most of it destroyed unread by Restart. The Records screen lists every name.
 var pending_names: PackedStringArray = PackedStringArray()
 
 
@@ -150,10 +151,11 @@ func make_label(text_value: String, font_size: int, font_color: Color) -> Label:
 
 func _on_achievement_granted(_id: String, display_name: String) -> void:
 	pending_names.append(display_name)
-	# Only start the queue if nothing is on screen; a notice already fading gets to finish, and
-	# show_next_name() picks the new one up when it does.
-	if not visible:
-		show_next_name()
+	# Only start a notice if nothing is on screen; one already fading gets to finish, and
+	# show_next_name() picks the rest up when it does. Deferred, and only by the first arrival, so
+	# every grant of the same frame is in the queue before the notice is composed.
+	if not visible and pending_names.size() == 1:
+		show_next_name.call_deferred()
 
 
 func show_next_name() -> void:
@@ -162,8 +164,10 @@ func show_next_name() -> void:
 		set_process(false)
 		return
 
-	name_label.text = pending_names[0]
-	pending_names.remove_at(0)
+	var count: int = pending_names.size()
+	kicker_label.text = "ACHIEVEMENT" if count == 1 else "%d ACHIEVEMENTS" % count
+	name_label.text = pending_names[0] if count == 1 else "%s and %d more" % [pending_names[0], count - 1]
+	pending_names.clear()
 	toast_time = 0.0
 	modulate.a = 0.0
 	visible = true
@@ -182,6 +186,5 @@ func _process(delta: float) -> void:
 		modulate.a = 1.0 - (toast_time - fade_out_start) / FADE_OUT_TIME
 	else:
 		modulate.a = 0.0
-		# Straight into the next queued name if there is one, so a pair of simultaneous unlocks
-		# reads as two notices in sequence rather than one of them being lost.
+		# Straight into whatever arrived while this one was up, if anything did.
 		show_next_name()

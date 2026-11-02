@@ -299,7 +299,8 @@ func _on_player_stuck_detected(session_seed: int, world_x: float) -> void:
 	print("Player stuck at elapsed=", format_elapsed_time(elapsed_time), " seed=", session_seed, " world_x=", world_x)
 
 
-func format_elapsed_time(total_seconds: float) -> String:
+# Static so the Records screen shows run times exactly as the HUD timer does, from one copy.
+static func format_elapsed_time(total_seconds: float) -> String:
 	var whole_seconds: int = int(total_seconds)
 	var minutes: int = whole_seconds / 60
 	var seconds: int = whole_seconds % 60

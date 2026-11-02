@@ -248,12 +248,14 @@ func refresh_history(save: SaveStore) -> void:
 		# count is behind its history (hand-edited, or a corrupt count read back as 0) loses the
 		# number rather than showing a zero or negative one.
 		var run_number: int = save.total_runs - index
-		var is_best: bool = coins > 0 and coins == save.best_score
+		# The run that SET the best, not every tie: record_run writes the same seconds to best_time.
+		var is_best: bool = coins > 0 and coins == save.best_score \
+			and is_equal_approx(float(run["seconds"]), save.best_time)
 		var cells: Array[String] = [
 			"#%d" % run_number if run_number > 0 else "",
 			format_date(String(run.get("date", ""))),
 			format_count(coins),
-			format_run_time(float(run["seconds"])),
+			Main.format_elapsed_time(float(run["seconds"])),
 			"Best" if is_best else "",
 		]
 		add_history_row(cells, false)
@@ -289,7 +291,7 @@ static func make_label(text: String, variation: StringName = &"") -> Label:
 static func format_stat(value: float, format: String) -> String:
 	match format:
 		"run_time":
-			return format_run_time(value)
+			return Main.format_elapsed_time(value)
 		"playtime":
 			return format_playtime(value)
 	return format_count(int(value))
@@ -317,12 +319,6 @@ static func format_count(value: int) -> String:
 		grouped = "," + digits.right(3) + grouped
 		digits = digits.left(digits.length() - 3)
 	return ("-" if value < 0 else "") + digits + grouped
-
-
-# A run's length, as the HUD timer shows it (Main.format_elapsed_time).
-static func format_run_time(seconds: float) -> String:
-	var whole_seconds: int = int(seconds)
-	return "%d:%02d" % [whole_seconds / 60, whole_seconds % 60]
 
 
 # Cumulative playtime: "42m", then "3h 07m".
