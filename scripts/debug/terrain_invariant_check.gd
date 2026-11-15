@@ -147,11 +147,12 @@ const PATTERN_FOOTPRINT_MIN_ACCEPTANCE: Array[float] = [0.32, 0.04, 0.01]
 const PLACED_FAIRNESS_SAMPLE_STEP: float = 40000.0
 # Known placements of a lone spike, both on seed 683407368 (the sweep's second seed). x=21060 is
 # audit.md's finding 1: a short flat between a valley's climb out and the next hill's climb, the
-# ground a level-0 jump leaves from 8-70px below the spike, 0/192 live level-0 survivors. x=72000 is
-# the control: a long flat segment, where the model must still see a fair window.
+# ground a level-0 jump leaves from 8-70px below the spike, 0/192 live level-0 survivors. x=43000 is
+# the control: a flat segment, where the model must still see a fair window. Both sit before
+# TerrainGenerator.MOUNTAIN_MIN_SEGMENT_INDEX, where no later terrain feature moves the ground.
 const PLACED_FAIRNESS_CASES: Array[Dictionary] = [
 	{"seed": 683407368, "x": 21060.0, "fair": false},
-	{"seed": 683407368, "x": 72000.0, "fair": true},
+	{"seed": 683407368, "x": 43000.0, "fair": true},
 ]
 # The shortest hop the weakest jump may make up the steepest terrain for thin ice to stay
 # crossable without the footprint's slope rule. Measured ~8 frames at 20.13 degrees.

@@ -435,6 +435,10 @@ const CHASM_VARIANTS: Array[Dictionary] = [
 	{"label": "chasm", "void_length": 220.0, "min_segment_index": 28, "weight": 4, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": 1600.0},
 	{"label": "chasm_wide", "void_length": 280.0, "min_segment_index": 112, "weight": 3, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": 1600.0},
 	{"label": "chasm_drop", "void_length": 320.0, "min_segment_index": 28, "weight": 0, "exit_drop": 800.0, "must_be_jumped": false, "segment_length": 2400.0},
+	# THE PLUNGE (2026-11-15): the drop chasm, deeper. 1,400px is 1.32s of fall, landing at
+	# 2,117 px/s; nothing else differs, so it is this one row plus CHASM_PLUNGE_WINDOW_PERIOD.
+	# segment_length covers the 992px crossing at MAX_SPEED (check_chasm_variant_table).
+	{"label": "chasm_plunge", "void_length": 320.0, "min_segment_index": 112, "weight": 0, "exit_drop": 1400.0, "must_be_jumped": false, "segment_length": 2800.0},
 	# The ISLAND CHASM's head: an ordinary run-up and first gap, but the gap runs to the segment's
 	# end and the next ISLAND_CHAIN.size() segments are the islands. Placed by period, not weight.
 	{"label": "chasm_islands", "void_length": 180.0, "min_segment_index": 168, "weight": 0, "exit_drop": 0.0, "must_be_jumped": true, "segment_length": CHASM_LEAD_IN_LENGTH + 180.0, "islands": true},
@@ -499,6 +503,11 @@ const ISLAND_FLOE_EDGE_SHARE: float = 0.35
 # the survivable void before one that can kill them. The cost, accepted: the first hazard
 # chasm now arrives one chasm later than it did.
 const CHASM_DROP_WINDOW_PERIOD: int = 2
+# Every CHASM_PLUNGE_WINDOW_PERIOD-th window (at this phase, always a drop window) the drop is
+# the plunge instead: drop, hazard, PLUNGE, islands, drop, ... The first is window 2, where its
+# min_segment_index starts.
+const CHASM_PLUNGE_WINDOW_PERIOD: int = 4
+const CHASM_PLUNGE_WINDOW_PHASE: int = 2
 # Default far-lip height for a variant that does not state one. Kept at 0 so the hazard
 # variants above stay exactly as phase 2 shipped them.
 #
@@ -659,6 +668,16 @@ const BIG_HILL_SCALES: Array[float] = [1.5, 2.0]
 # Salt so which hills grow is uncorrelated with the shape draw that chose them -- without it
 # get_segment_hash's sequence would decide both.
 const BIG_HILL_HASH_SALT: int = 0x2b7e1516
+# MOUNTAINS (2026-11-15): the same both-axes scaling taken further, so the same safety argument
+# (peak slope is the ratio, 20.13deg at every scale). From MOUNTAIN_MIN_SEGMENT_INDEX on, oversized
+# hills are LATE_BIG_HILL_CHANCE_PERCENT likely and MOUNTAIN_SHARE_PERCENT of them draw from
+# MOUNTAIN_SCALES instead: a x4 medium hill is 2,560px long and 296px tall, about 3.4s at
+# MAX_SPEED. Gated on index so the opening minute keeps the terrain it has always had; 60
+# segments is at least 28,800 world_x. Valleys scale the same way.
+const MOUNTAIN_MIN_SEGMENT_INDEX: int = 60
+const LATE_BIG_HILL_CHANCE_PERCENT: int = 18
+const MOUNTAIN_SHARE_PERCENT: int = 35
+const MOUNTAIN_SCALES: Array[float] = [3.0, 4.0]
 const DEFAULT_WEIGHT_FLAT: int = 16
 const DEFAULT_WEIGHT_SMALL_HILL: int = 16
 const DEFAULT_WEIGHT_MEDIUM_HILL_VALLEY_MIX: int = 42
@@ -1689,7 +1708,10 @@ func get_chasm_variant(segment_index: int) -> Dictionary:
 	# early, so raising its min_segment_index later degrades to "no drop yet" rather than
 	# placing one the speed ramp cannot carry the player across.
 	if debug_drop_chasm_rehearsal or (get_chasm_window_index(segment_index) % CHASM_DROP_WINDOW_PERIOD) == 0:
-		var drop_variant: Dictionary = get_drop_chasm_variant()
+		var is_plunge_window: bool = (get_chasm_window_index(segment_index) % CHASM_PLUNGE_WINDOW_PERIOD) == CHASM_PLUNGE_WINDOW_PHASE
+		var drop_variant: Dictionary = get_chasm_variant_by_label("chasm_plunge") if is_plunge_window and not debug_drop_chasm_rehearsal else {}
+		if drop_variant.is_empty() or segment_index < int(drop_variant["min_segment_index"]):
+			drop_variant = get_drop_chasm_variant()
 		if not drop_variant.is_empty() and segment_index >= int(drop_variant["min_segment_index"]):
 			return drop_variant
 	# Same shape for the island chasm: its window, if the variant is legal this far in.
@@ -1720,11 +1742,18 @@ func get_chasm_variant(segment_index: int) -> Dictionary:
 	return CHASM_VARIANTS[0]
 
 
-# The one drop variant in the table, or {} if a future edit removes it. Identified by
-# exit_drop rather than by label so the two callers cannot disagree with the table.
+# The FIRST drop variant in the table (the ordinary drop; the plunge is fetched by label), or {}
+# if a future edit removes it. Identified by exit_drop so the callers cannot disagree with the table.
 func get_drop_chasm_variant() -> Dictionary:
 	for variant: Dictionary in CHASM_VARIANTS:
 		if float(variant.get("exit_drop", 0.0)) > 0.0:
+			return variant
+	return {}
+
+
+static func get_chasm_variant_by_label(label: String) -> Dictionary:
+	for variant: Dictionary in CHASM_VARIANTS:
+		if String(variant["label"]) == label:
 			return variant
 	return {}
 
@@ -2083,8 +2112,12 @@ func build_segment_spec(segment_index: int) -> Dictionary:
 # bits for which scale) so the scale picked is independent of whether the hill grew at all.
 func get_hill_scale(segment_index: int) -> float:
 	var hill_hash: int = get_big_hill_hash(segment_index)
-	if (hill_hash % 100) >= BIG_HILL_CHANCE_PERCENT:
+	var is_late: bool = segment_index >= MOUNTAIN_MIN_SEGMENT_INDEX
+	if (hill_hash % 100) >= (LATE_BIG_HILL_CHANCE_PERCENT if is_late else BIG_HILL_CHANCE_PERCENT):
 		return 1.0
+	# A third bit range again, so being a mountain is independent of both draws above.
+	if is_late and ((hill_hash >> 16) % 100) < MOUNTAIN_SHARE_PERCENT:
+		return MOUNTAIN_SCALES[(hill_hash >> 8) % MOUNTAIN_SCALES.size()]
 	return BIG_HILL_SCALES[(hill_hash >> 8) % BIG_HILL_SCALES.size()]
 
 
@@ -2104,7 +2137,7 @@ func get_big_hill_hash(segment_index: int) -> int:
 func get_hill_label(base_label: String, hill_scale: float) -> String:
 	if is_equal_approx(hill_scale, 1.0):
 		return base_label
-	return "%s_big" % base_label
+	return "%s_%s" % [base_label, "mountain" if hill_scale >= MOUNTAIN_SCALES[0] else "big"]
 
 
 func get_mega_drop_angle() -> float:
