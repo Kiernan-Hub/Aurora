@@ -1094,54 +1094,133 @@ func _on_buy_pressed(upgrade_id: String) -> void:
 	refresh_death_stats()
 
 
-# One row per UpgradeStore.TRACKS entry, inserted under the wallet line in table order. The
-# label's font size matches the one row main.tscn used to author by hand. A skater row is its
-# button alone: its name says it all, and seven labelled rows overflow a 648px-tall screen.
+# THE SHOP IS CARDS, built from UpgradeStore.TRACKS (2026-11-15; it was one column of identical
+# buttons). Upgrades in one row, skaters with their picture in a second, each card a name, one
+# line of what it does, level pips for a track with more than one level, and its price button.
+# shop_rows keeps "label" and "button" per track id, which air_move_probe reads.
+const SHOP_CARD_WIDTH: float = 176.0
+const SHOP_CARD_COLOR: Color = Color(0.09, 0.13, 0.2)
+const SHOP_CARD_BORDER: Color = Color(0.36, 0.52, 0.72)
+const SHOP_PIP_SIZE: Vector2 = Vector2(18, 6)
+const SHOP_PIP_ON: Color = Color(1.0, 0.82, 0.4)
+const SHOP_PIP_OFF: Color = Color(1.0, 1.0, 1.0, 0.16)
+const SHOP_SKATER_PICTURE_SIZE: Vector2 = Vector2(72, 96)
+# A card the wallet cannot buy yet is dimmed to this.
+const SHOP_CARD_DIM_ALPHA: float = 0.7
+
+
 func build_shop_rows() -> void:
 	var container: Node = shop_wallet_label.get_parent()
+	var upgrades_row: HBoxContainer = make_shop_row()
+	var skaters_title: Label = make_shop_label("Skaters", 16)
+	var skaters_row: HBoxContainer = make_shop_row()
 	var insert_index: int = shop_wallet_label.get_index() + 1
-	for track: Dictionary in UpgradeStore.TRACKS:
-		var label: Label = null
-		if not track.has("skin"):
-			label = Label.new()
-			label.add_theme_font_size_override(&"font_size", 13)
-			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			container.add_child(label)
-			container.move_child(label, insert_index)
-			insert_index += 1
-		var button: Button = Button.new()
-		button.pressed.connect(_on_buy_pressed.bind(String(track["id"])))
-		container.add_child(button)
-		container.move_child(button, insert_index)
+	for node: Control in [upgrades_row, skaters_title, skaters_row]:
+		container.add_child(node)
+		container.move_child(node, insert_index)
 		insert_index += 1
-		shop_rows[String(track["id"])] = {"label": label, "button": button}
+
+	var card_style: StyleBoxFlat = StyleBoxFlat.new()
+	card_style.bg_color = SHOP_CARD_COLOR
+	card_style.border_color = SHOP_CARD_BORDER
+	card_style.set_border_width_all(1)
+	card_style.set_corner_radius_all(8)
+	card_style.set_content_margin_all(12)
+
+	for track: Dictionary in UpgradeStore.TRACKS:
+		var upgrade_id: String = String(track["id"])
+		var card: PanelContainer = PanelContainer.new()
+		card.custom_minimum_size = Vector2(SHOP_CARD_WIDTH, 0)
+		card.add_theme_stylebox_override(&"panel", card_style)
+		var column: VBoxContainer = VBoxContainer.new()
+		column.alignment = BoxContainer.ALIGNMENT_CENTER
+		card.add_child(column)
+
+		if track.has("skin"):
+			var frames: SpriteFrames = load(String(Skins.get_skin(track["skin"])["frames"])) as SpriteFrames
+			var picture: TextureRect = TextureRect.new()
+			picture.texture = frames.get_frame_texture(&"skate", 0) if frames != null else null
+			picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			picture.custom_minimum_size = SHOP_SKATER_PICTURE_SIZE
+			column.add_child(picture)
+		column.add_child(make_shop_label(String(track["name"]).trim_suffix(" skater"), 17))
+		var label: Label = make_shop_label("", 12)
+		label.modulate.a = 0.65
+		column.add_child(label)
+
+		var pips: Array[ColorRect] = []
+		var max_level: int = UpgradeStore.get_max_level(upgrade_id)
+		if max_level > 1:
+			var pip_row: HBoxContainer = HBoxContainer.new()
+			pip_row.alignment = BoxContainer.ALIGNMENT_CENTER
+			for _level: int in range(max_level):
+				var pip: ColorRect = ColorRect.new()
+				pip.custom_minimum_size = SHOP_PIP_SIZE
+				pip_row.add_child(pip)
+				pips.append(pip)
+			column.add_child(pip_row)
+
+		var button: Button = Button.new()
+		button.pressed.connect(_on_buy_pressed.bind(upgrade_id))
+		column.add_child(button)
+		(skaters_row if track.has("skin") else upgrades_row).add_child(card)
+		shop_rows[upgrade_id] = {"label": label, "button": button, "pips": pips, "card": card}
+
+	# Back is the way out; Reset Progress is quiet and last, where a thumb leaving does not land.
+	shop_close_button.custom_minimum_size = Vector2(260, 0)
+	shop_close_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	container.move_child(reset_progress_button, -1)
+	reset_progress_button.flat = true
+	reset_progress_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	reset_progress_button.add_theme_font_size_override(&"font_size", 11)
+	reset_progress_button.modulate.a = 0.55
+
+
+func make_shop_row() -> HBoxContainer:
+	var row: HBoxContainer = HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override(&"separation", 12)
+	return row
+
+
+func make_shop_label(text: String, font_size: int) -> Label:
+	var label: Label = Label.new()
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override(&"font_size", font_size)
+	return label
 
 
 func refresh_shop() -> void:
 	if shop_screen == null or shop_rows.is_empty():
 		return
 
-	shop_wallet_label.text = "Wallet: %d" % (services.upgrades.get_wallet() if services != null else 0)
+	shop_wallet_label.text = "Wallet: %d coins" % (services.upgrades.get_wallet() if services != null else 0)
+	var worn_skin: String = get_worn_skin_id()
 	for track: Dictionary in UpgradeStore.TRACKS:
 		var upgrade_id: String = String(track["id"])
 		var level: int = services.upgrades.get_level(upgrade_id) if services != null else 0
 		var next_cost: int = UpgradeStore.get_upgrade_cost(upgrade_id, level)
-		var max_level: int = UpgradeStore.get_max_level(upgrade_id)
-		var label: Label = shop_rows[upgrade_id]["label"]
-		var button: Button = shop_rows[upgrade_id]["button"]
+		var is_complete: bool = next_cost == UpgradeStore.NO_COST
+		var row: Dictionary = shop_rows[upgrade_id]
+		var label: Label = row["label"]
+		var button: Button = row["button"]
 		if upgrade_id == UpgradeStore.JUMP_UPGRADE_ID:
-			label.text = "Jump  Lv %d/%d  (x%.2f)" % [level, max_level, UpgradeStore.get_jump_multiplier(level)]
-			button.text = "Jump  MAX" if next_cost == UpgradeStore.NO_COST \
-				else "Jump  ->  x%.2f   (%d)" % [UpgradeStore.get_jump_multiplier(level + 1), next_cost]
+			label.text = "jump height x%.2f" % UpgradeStore.get_jump_multiplier(level)
+			button.text = "MAX" if is_complete else "x%.2f for %d" % [UpgradeStore.get_jump_multiplier(level + 1), next_cost]
 		elif track.has("skin"):
-			button.text = "%s  OWNED" % track["name"] if next_cost == UpgradeStore.NO_COST \
-				else "%s   (%d)" % [track["name"], next_cost]
+			label.text = "wearing" if worn_skin == track["skin"] else ("owned" if is_complete else "skater")
+			button.text = "OWNED" if is_complete else "%d coins" % next_cost
 		else:
 			# A one-level track is an unlock.
-			label.text = "%s  (%s)" % [track["name"], track["hint"]]
-			button.text = "%s  OWNED" % track["name"] if next_cost == UpgradeStore.NO_COST \
-				else "Unlock %s   (%d)" % [track["name"], next_cost]
-		button.disabled = services == null or not services.upgrades.can_purchase(upgrade_id)
+			label.text = String(track["hint"])
+			button.text = "OWNED" if is_complete else "%d coins" % next_cost
+		for pip_index: int in range(row["pips"].size()):
+			(row["pips"][pip_index] as ColorRect).color = SHOP_PIP_ON if pip_index < level else SHOP_PIP_OFF
+		var can_buy: bool = services != null and services.upgrades.can_purchase(upgrade_id)
+		button.disabled = not can_buy
+		(row["card"] as Control).modulate.a = 1.0 if can_buy or is_complete else SHOP_CARD_DIM_ALPHA
 
 
 # Just opens the confirmation -- the actual wipe is in _on_reset_progress_confirmed,

@@ -470,7 +470,7 @@ theme = ExtResource("36_ui_theme")
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.04, 0.06, 0.1, 0.94)
+color = Color(0.04, 0.06, 0.1, 1)
 
 [node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/ShopScreen" unique_id=1813352781]
 layout_mode = 0
@@ -485,7 +485,7 @@ alignment = 1
 [node name="TitleLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=1602399790]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
-text = "Upgrades"
+text = "Shop"
 horizontal_alignment = 1
 
 [node name="WalletLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=1058992387]
@@ -522,7 +522,7 @@ theme = ExtResource("36_ui_theme")
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.04, 0.06, 0.1, 0.94)
+color = Color(0.04, 0.06, 0.1, 1)
 
 [node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/StatsScreen"]
 layout_mode = 0
@@ -579,7 +579,7 @@ theme = ExtResource("36_ui_theme")
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.04, 0.06, 0.1, 0.94)
+color = Color(0.04, 0.06, 0.1, 1)
 
 [node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/SkinsScreen"]
 layout_mode = 0
