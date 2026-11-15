@@ -234,13 +234,15 @@ func chests() -> void:
 	var hud: String = game_manager.coin_label.text
 	player.die()
 	var death_ok: bool = hud.begins_with("Chests: 2") and game_manager.chest_rewards.size() == 2 \
-		and game_manager.chest_reveal.get_child_count() == 2 and game_manager.chest_reveal.visible
+		and game_manager.chest_reveal.visible
 	# Let the reveal run on the paused tree: both rows must have opened into what they held.
 	if death_ok:
 		await game_manager.chest_reveal.reveal_tween.finished
+	var opened_rows: int = 0
 	for row: Node in game_manager.chest_reveal.get_children():
-		var text: String = (row as Label).text
-		death_ok = death_ok and (text.contains("coins") or text.contains("SKATER"))
+		if row is Label and row.visible and (row.text.contains("coins") or row.text.contains("SKATER")):
+			opened_rows += 1
+	death_ok = death_ok and opened_rows == 2 and game_manager.chest_reveal.stage.is_open
 	expect("chests", rolls_ok and skins_seen > 0 and no_repeat and is_coin and reach_ok and grant_ok and death_ok,
 		"rolls=%s skins_seen=%d no_repeat=%s is_coin=%s reach=%s (bottom %.0f, weakest top %.0f) grant=%s death=%s hud=[%s]" % [
 			rolls_ok, skins_seen, no_repeat, is_coin, reach_ok, hitbox_bottom, weakest_top, grant_ok, death_ok, hud])
