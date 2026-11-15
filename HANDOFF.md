@@ -26,10 +26,20 @@ three unplayed branches below and adds four things. Nothing here has been seen o
 - **Late tiers:** tier 7 (6:30) adds five mixed pairs, tier 8 (8:00) three triples, and the room
   floor is 2.0s (was 2.5), reached about 11:00. Every row has 9+ frames in the proof.
 - **HUD:** run distance beside the clock (`TimerLabel`, widened to 192px).
+- **Chests:** a glowing pickup every 80–120s (first at 30–50s) at 84px, which every jump level
+  reaches; "Chests: N" on the HUD. At death `ChestRewards.TABLE` rolls each one (15–35 coins 55%,
+  50–90 30%, jackpot 200–300 10%, an unowned skater 5%), the rewards ride `record_run`'s write,
+  and `ChestReveal` rattles and opens them on the death screen. The chest is drawn from polygons
+  in `chest.tscn`: placeholder art. `regression_probe` gained `chests` (it caught a crash in the
+  reveal before anyone saw it). Chest and rare coin now skip any spot within 500px or 1s of a
+  hazard (`ObstacleSpawner.is_clear_for_pickup`), which closes old checklist item 6.
+- **Shop as cards:** an upgrades row and a skaters row with pictures, level pips on Jump, prices
+  on the buttons, unaffordable cards dimmed, Reset Progress small and last. The shop, stats and
+  skaters backdrops are opaque now: the death screen was showing through them.
 
 **Owner to check by playing:** the plunge's landing and camera (1.3s of fall, the landing is off
 screen when you leave the lip); mountains at speed; whether 8:00+ is hard in a good way; the HUD
-text on a phone. **Flagged, not done:** the 2.0s floor means more obstacle searches per minute, and
+text on a phone; the chest's look and its reveal timing; the card shop (built blind, never seen). **Flagged, not done:** the 2.0s floor means more obstacle searches per minute, and
 A3 (search cost on the phone at combo tiers) is still unmeasured. If late frames show up past
 8:00, set `BREATHING_ROOM_FLOOR` back to 2.5 first.
 
