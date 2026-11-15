@@ -170,12 +170,14 @@ const TIERS: Array[Dictionary] = [
 	{"start": 150.0, "room": 4.0},
 	{"start": 210.0, "room": 3.5},
 	{"start": 300.0, "room": 3.5},
+	{"start": 390.0, "room": 3.0},
+	{"start": 480.0, "room": 2.75},
 ]
 const BREATHING_ROOM_JITTER: float = 0.3
 const BREATHING_ROOM_SHRINK_PER_SECOND: float = 0.25 / 60.0
 # terrain_invariant_check asserts this stays above the longest jump plus a margin, so the end of
 # one pattern can never land the player inside the next and the per-pattern proofs compose.
-const BREATHING_ROOM_FLOOR: float = 2.5
+const BREATHING_ROOM_FLOOR: float = 2.0
 # The first time a kind appears in a run it comes ALONE -- a solo pattern stands in for whatever
 # was drawn -- with this much extra room before and after it. That is the whole tutorial.
 const FIRST_APPEARANCE_EXTRA_ROOM: float = 1.5
@@ -228,6 +230,20 @@ const PATTERNS: Array[Dictionary] = [
 	# floe's time sets how early: 0.5s is a 28-frame window, 0.9s let 52 frames through.
 	{"id": &"vent", "tier": 3, "weight": 1, "pieces": [{"kind": PIECE_VENT, "at": 0.0}]},
 	{"id": &"vent_floe", "tier": 4, "weight": 2, "pieces": [{"kind": PIECE_VENT, "at": 0.0}, {"kind": PIECE_FLOE, "at": 0.5}]},
+	# LATE TIERS (2026-11-15): the newer elements mixed with the old, pairs from 6:30 and triples
+	# from 8:00. Each row was kept because the proof gives it room (9 frames or more); three
+	# candidates that sat exactly on the 7-frame bar and three under it were dropped.
+	# Hop the ice, and be down again before the floe.
+	{"id": &"ice_floe", "tier": 7, "weight": 1, "pieces": [{"kind": PIECE_THIN_ICE, "at": 0.0, "length": 0.5}, {"kind": PIECE_FLOE, "at": 0.9}]},
+	# Stay under the shard, then start hopping at once.
+	{"id": &"shard_ice", "tier": 7, "weight": 1, "pieces": [{"kind": PIECE_SHARD, "at": 0.0}, {"kind": PIECE_THIN_ICE, "at": 0.3, "length": 0.5}]},
+	# The vent's launch carries you into the shard, onto the spike or onto the ice: jump early.
+	{"id": &"vent_shard", "tier": 7, "weight": 1, "pieces": [{"kind": PIECE_VENT, "at": 0.0}, {"kind": PIECE_SHARD, "at": 0.5}]},
+	{"id": &"vent_spike", "tier": 7, "weight": 1, "pieces": [{"kind": PIECE_VENT, "at": 0.0}, {"kind": PIECE_SPIKE, "at": 0.6}]},
+	{"id": &"vent_ice", "tier": 7, "weight": 1, "pieces": [{"kind": PIECE_VENT, "at": 0.0}, {"kind": PIECE_THIN_ICE, "at": 0.3, "length": 0.6}]},
+	{"id": &"black_floe_spike", "tier": 8, "weight": 2, "pieces": [{"kind": PIECE_BLACK_ICE, "at": 0.0, "length": 0.5}, {"kind": PIECE_FLOE, "at": 0.25}, {"kind": PIECE_SPIKE, "at": 0.85}]},
+	{"id": &"vent_floe_spike", "tier": 8, "weight": 2, "pieces": [{"kind": PIECE_VENT, "at": 0.0}, {"kind": PIECE_FLOE, "at": 0.5}, {"kind": PIECE_SPIKE, "at": 1.0}]},
+	{"id": &"ice_spike_floe", "tier": 8, "weight": 2, "pieces": [{"kind": PIECE_THIN_ICE, "at": 0.0, "length": 0.5}, {"kind": PIECE_SPIKE, "at": 0.8}, {"kind": PIECE_FLOE, "at": 1.3}]},
 ]
 
 const HASH_MASK: int = 0x7fffffff
