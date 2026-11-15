@@ -31,17 +31,19 @@ Main (Node2D, scripts/main.gd)
 │                     slam); SkateSpray's look via its static builders. Off under --headless
 ├── BiomeDirector     the ONLY reader of a BiomePalette; returns early under --headless
 ├── Camera2D          position (0,136), zoom 0.833
-├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP }
+├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP, STATS, SKINS }
 ├── PowerupManager    effect timers; drives Player.start_boost etc.
 ├── FrozenLakeDirector  owns WHEN a lake happens; returns early under --headless
 ├── AuroraDirector    owns Aurora lifecycle and the single presentation clock
 ├── AuroraAudio       one event-only loop on the Music bus; absent under --headless
 ├── AchievementManager  the ONLY writer of SaveStore.achievements; triggers come to it
-├── SfxPlayer         6-voice AudioStreamPlayer pool on the SFX bus
-└── CanvasLayer       Start/Pause/Death/ShopScreen (all process_mode=ALWAYS),
+├── SfxPlayer         6-voice AudioStreamPlayer pool on the SFX bus; menu sounds that
+│                     outlive a reload go through Services.play_across_reload()
+└── CanvasLayer       Start/Pause/Death/Shop/Stats/SkinsScreen (all process_mode=ALWAYS, all
+                      themed by assets/ui/aura_theme.tres, as is PauseButton),
                       PauseButton, Timer/Coin/Powerup labels,
-                      AchievementToast (after the labels, BEFORE Pause/Shop so those
-                      overlays draw over it)
+                      AchievementToast (after the labels, BEFORE Pause/Shop/Stats so those
+                      overlays draw over it; AFTER Death, so a run achievement shows on it)
 ```
 
 **Draw order is tree order plus `CanvasLayer.layer`, and there is no `z_index` anywhere.**
@@ -114,16 +116,27 @@ moving right into fresh ground.
 
 ## GameManager owns all state transitions
 
-`GameManager` runs an explicit `State { START, PLAYING, PAUSED, DEAD, SHOP }` machine.
+`GameManager` runs an explicit `State { START, PLAYING, PAUSED, DEAD, SHOP, STATS, SKINS }` machine.
 `set_state()` is the **only** place in the project allowed to touch `get_tree().paused`
 or any screen's visibility — don't set either anywhere else. Adding a transition means
 adding it to the enum, not writing `paused = true` somewhere new.
 
 `SHOP` needs no pause semantics of its own — `paused = new_state != PLAYING` already covers
 it. It is a *modal* over whichever screen opened it (START's Upgrades button or DEAD's Shop
-button), so `shop_return_state` records which, and that screen stays visible underneath;
+button), so `modal_return_state` records which, and that screen stays visible underneath;
 closing returns there rather than always to DEAD. Purchases apply to the next run, and there
-is deliberately no path that mutates player stats mid-run.
+is deliberately no path that mutates player stats mid-run. `STATS` (2026-10-29) is the same kind
+of modal, read-only, opened from START's Stats button; its rows are built in code on every open
+(`refresh_stats()`), the shop's pattern, so a new stat is one row and no new node. `SKINS`
+(Skaters, 2026-10-29) likewise: one toggle per `Skins.SKINS` row in a `ButtonGroup`, a pick saved
+to `SaveStore.selected_skin` (a preference: a reset keeps it) and put on the Player by
+`apply_skin()`, which skips headless like `apply_upgrades()`. Every skin but the girl is BOUGHT:
+a one-level `UpgradeStore.TRACKS` row (`"skin"` names it, `Skins.get_track_id()` builds its id),
+so it rides the shop's purchase and rollback. `get_worn_skin_id()` wears the pick only if it is
+still owned, which is what makes a reset safe. The same screen's **Sparkle** row picks a
+`Skins.SPARKLES` colour (`SaveStore.selected_sparkle`), unlocked by an achievement and applied by
+`apply_sparkle()` as a `modulate` on `LandingBurst` and the player's `FlightTrail`, which both draw
+white by design.
 
 This was previously implicit in "`get_tree().paused` plus whichever `Control` happens to
 be visible". That works for two screens and stops working at four: a pause screen makes
@@ -185,6 +198,12 @@ lands, and a kill in that window (Android reclaiming a backgrounded app, not a c
 truncated file that the silent-read policy above then reads as a fresh save. Wallet, best score
 and every upgrade level, gone, with no error anywhere.
 
+**All-time history (2026-10-29, no version bump, like `aurora_count`):** `total_runs`,
+`total_coins_earned`, `total_distance_meters`, `best_distance_meters`, all banked by
+`record_run(coins, time, distance)` in its one write and cleared by `reset_progress()`.
+Statistics only: nothing schedules off them. Distance is `GameManager.get_run_distance_meters()`,
+the player's x from where the run began at `PIXELS_PER_METER` 32 (world rebasing moves only y).
+
 `total_playtime_seconds` is BANKED, not wall-clock — `GameManager.bank_playtime()` owns it, so
 it cannot tick while the app is closed. `frozen_lake_count` counts *completed* lakes, so it
 doubles as the index of the next 20-minute threshold.
@@ -212,8 +231,10 @@ Three traps:
 - **Gate on the flag, never on a count.** The lake recurs every 20 minutes forever and the
   achievement fires once — which is exactly why `frozen_lake_count` and `achievements` are
   separate fields. `reset_progress()` clears achievements deliberately, so they can be re-earned.
-- **The manager has no headless guard, and that is only safe while its triggers come from the lake
-  and Aurora directors** (which both hard-skip headless; their explicit probes inject memory saves).
+- **The manager has no headless guard, and that is only safe while every trigger is headless-proof
+  at its source**: the lake and Aurora directors hard-skip headless (their explicit probes inject
+  memory saves), and `GameManager.run_recorded` — the four run achievements, 2026-10-29 — is
+  emitted only inside its non-headless banking branch, after `set_state(DEAD)`.
   A trigger hung off score, coins, distance or death — all of which
   the gates exercise for millions of frames — would start writing to the developer's real
   `save.dat` during every probe. That is the `apply_upgrades()` class of bug, and this project
@@ -222,11 +243,18 @@ Three traps:
 `AchievementToast` owns nothing but the look and is handed a display name, so it never reads the
 table. It is **not** a `GameManager.State` and not a screen: the game stays `PLAYING`, exactly
 as it does on the lake, and the node owns its own visibility. It queues rather than overwrites,
-so two unlocks in one frame show in sequence.
+so two unlocks in one frame show in sequence. A notice that **starts on a paused tree** (a run
+achievement, granted on the death screen) runs `PROCESS_MODE_ALWAYS`; one started mid-run still
+holds still behind the pause menu.
 
-**Deliberately not built yet:** an achievements gallery, progress bars and reward payloads.
+**The gallery is the Stats screen** (2026-10-29): every row, earned or dimmed with its `hint`,
+read through `get_rows()` / `is_earned()` on an UNTYPED node (naming the class from
+`GameManager` closes a load cycle through `FrozenLakeDirector`). **Rewards** are sparkle colours:
+`Skins.SPARKLES` names the achievement each needs, so the reward table lives with the cosmetics and
+the manager still knows nothing of it. **Not built:** progress bars.
 `ACHIEVEMENTS` values are Dictionaries so a payload field can be added without changing the
-table's shape or any reader, but there is no reward field today — nothing can consume one.
+table's shape or any reader, but there is still no reward field: the one reward kind keys off the
+achievement id from the cosmetics side.
 **A Godot achievement addon was evaluated and declined (2026-08-15).** The addons on offer bundle
 persistence, a gallery and a popup; persistence is the part already built, so they would have
 brought a **second autoload** (this project has exactly one by hard rule, and a global identifier

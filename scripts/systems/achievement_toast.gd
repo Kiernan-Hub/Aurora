@@ -160,6 +160,10 @@ func show_next_name() -> void:
 	toast_time = 0.0
 	modulate.a = 0.0
 	visible = true
+	# A notice that STARTS on a paused tree is the death screen's (a run achievement, granted
+	# after set_state(DEAD)), and must play over it. One started mid-run keeps the clock rule
+	# above: it holds still behind the pause menu rather than ageing out unseen.
+	process_mode = Node.PROCESS_MODE_ALWAYS if get_tree().paused else Node.PROCESS_MODE_INHERIT
 	set_process(true)
 
 

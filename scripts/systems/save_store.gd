@@ -55,6 +55,22 @@ var aurora_count: int = 0
 # now". docs/development/aurora_borealis.md, "The schedule".
 var next_aurora_due_seconds: float = -1.0
 
+# All-time history for the Stats screen, banked by record_run() once per death. Added without a
+# version bump, like aurora_count: a v3 file without them reads 0, the honest state for a save
+# that never counted (its history starts now). Statistics only: nothing schedules off them, so a
+# reset clearing them changes no gameplay.
+var total_runs: int = 0
+var total_coins_earned: int = 0
+var total_distance_meters: float = 0.0
+var best_distance_meters: float = 0.0
+
+# The skater picked on the Skaters screen, a Skins.SKINS id. A preference, not progress: a reset
+# keeps it, like the volumes. Unknown ids read back as the default through Skins.get_skin().
+var selected_skin: String = "kid"
+# The landing-glint colour, a Skins.SPARKLES id. A preference too; whether it is unlocked is read
+# from achievements, so a reset relocks it without touching this.
+var selected_sparkle: String = "ice"
+
 
 # Not named load(): that would shadow GDScript's global load() inside this class.
 func load_from_disk() -> void:
@@ -120,6 +136,16 @@ func load_from_data(data: Dictionary) -> void:
 		# backlog bug the sentinel exists to prevent. Absent in a pre-aurora save, where -1.0
 		# is exactly right: AuroraDirector schedules it at load from where the player is.
 		next_aurora_due_seconds = _read_number(data, "next_aurora_due_seconds", -1.0)
+		total_runs = _read_count(data, "total_runs")
+		total_coins_earned = _read_count(data, "total_coins_earned")
+		total_distance_meters = maxf(_read_number(data, "total_distance_meters", 0.0), 0.0)
+		best_distance_meters = maxf(_read_number(data, "best_distance_meters", 0.0), 0.0)
+		var stored_skin: Variant = data.get("selected_skin", selected_skin)
+		if typeof(stored_skin) == TYPE_STRING:
+			selected_skin = stored_skin
+		var stored_sparkle: Variant = data.get("selected_sparkle", selected_sparkle)
+		if typeof(stored_sparkle) == TYPE_STRING:
+			selected_sparkle = stored_sparkle
 		# Copied key by key for the same reason upgrade_levels above is -- JSON hands back
 		# an UNTYPED Dictionary, which cannot be assigned into a Dictionary[String, bool].
 		var stored_achievements: Dictionary = _read_dictionary(data, "achievements")
@@ -185,6 +211,12 @@ func save_to_disk() -> bool:
 		"frozen_lake_count": frozen_lake_count,
 		"aurora_count": aurora_count,
 		"next_aurora_due_seconds": next_aurora_due_seconds,
+		"total_runs": total_runs,
+		"total_coins_earned": total_coins_earned,
+		"total_distance_meters": total_distance_meters,
+		"best_distance_meters": best_distance_meters,
+		"selected_skin": selected_skin,
+		"selected_sparkle": selected_sparkle,
 		"achievements": achievements,
 		"settings": {
 			"music_volume": music_volume,
@@ -221,13 +253,17 @@ func save_to_disk() -> bool:
 # coins into the wallet, so there is always something to persist; a run that failed to
 # beat the best but earned 40 coins toward an upgrade must not be silently dropped. It
 # is still exactly one disk write per death.
-func record_run(coin_count: int, elapsed_time: float) -> bool:
+func record_run(coin_count: int, elapsed_time: float, distance_meters: float) -> bool:
 	var is_new_best: bool = coin_count > best_score
 	if is_new_best:
 		best_score = coin_count
 		best_time = elapsed_time
 
 	coin_wallet += maxi(coin_count, 0)
+	total_runs += 1
+	total_coins_earned += maxi(coin_count, 0)
+	total_distance_meters += maxf(distance_meters, 0.0)
+	best_distance_meters = maxf(best_distance_meters, distance_meters)
 	save_to_disk()
 	return is_new_best
 
@@ -251,5 +287,9 @@ func reset_progress() -> void:
 	# interval -- AuroraDirector reschedules from 0 on its next IDLE tick or scene load.
 	# Until then is_aurora_due() reads the negative and answers false.
 	next_aurora_due_seconds = -1.0
+	total_runs = 0
+	total_coins_earned = 0
+	total_distance_meters = 0.0
+	best_distance_meters = 0.0
 	achievements.clear()
 	save_to_disk()

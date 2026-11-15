@@ -32,6 +32,7 @@
 [ext_resource type="Script" path="res://scripts/systems/aurora_reflection.gd" id="33_aurora_reflection"]
 [ext_resource type="Script" path="res://scripts/systems/aurora_streaks.gd" id="34_aurora_streaks"]
 [ext_resource type="Script" path="res://scripts/systems/landing_burst.gd" id="35_landing_burst"]
+[ext_resource type="Theme" path="res://assets/ui/aura_theme.tres" id="36_ui_theme"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -203,6 +204,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("36_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/StartScreen" unique_id=1601690253]
 layout_mode = 0
@@ -235,7 +237,7 @@ horizontal_alignment = 1
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "Tap / Space to jump
-Grab the balls, dodge the red boxes"
+Grab the gold, dodge the red ice"
 horizontal_alignment = 1
 
 [node name="MenuButtons" type="HBoxContainer" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer" unique_id=2122975043]
@@ -254,6 +256,18 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Upgrades"
 
+[node name="StatsButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons"]
+custom_minimum_size = Vector2(100, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Stats"
+
+[node name="SkinsButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons"]
+custom_minimum_size = Vector2(100, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Skaters"
+
 [node name="DeathScreen" type="Control" parent="CanvasLayer" unique_id=262636423]
 process_mode = 3
 visible = false
@@ -263,6 +277,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("36_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/DeathScreen" unique_id=1305968060]
 layout_mode = 0
@@ -367,6 +382,7 @@ offset_top = 8.0
 offset_right = 48.0
 offset_bottom = 40.0
 focus_mode = 0
+theme = ExtResource("36_ui_theme")
 theme_override_font_sizes/font_size = 16
 text = "||"
 
@@ -379,6 +395,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("36_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/PauseScreen" unique_id=166305575]
 layout_mode = 0
@@ -447,6 +464,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("36_ui_theme")
 
 [node name="Overlay" type="ColorRect" parent="CanvasLayer/ShopScreen" unique_id=1608509594]
 layout_mode = 0
@@ -487,4 +505,112 @@ text = "Back"
 [node name="ResetConfirmDialog" type="ConfirmationDialog" parent="CanvasLayer/ShopScreen" unique_id=434660687]
 title = "Reset Progress?"
 ok_button_text = "Reset Everything"
-dialog_text = "This permanently deletes your best score, coin wallet, and every upgrade level. This cannot be undone."
+dialog_text = "This permanently deletes your best score, coin wallet, every upgrade level, your stats and your achievements. This cannot be undone."
+
+[node name="StatsScreen" type="Control" parent="CanvasLayer"]
+process_mode = 3
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("36_ui_theme")
+
+[node name="Overlay" type="ColorRect" parent="CanvasLayer/StatsScreen"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.06, 0.1, 0.94)
+
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/StatsScreen"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/StatsScreen/CenterContainer"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="CanvasLayer/StatsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "Stats"
+horizontal_alignment = 1
+
+[node name="StatsGrid" type="GridContainer" parent="CanvasLayer/StatsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/h_separation = 32
+theme_override_constants/v_separation = 2
+columns = 2
+
+[node name="AchievementsLabel" type="Label" parent="CanvasLayer/StatsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Achievements"
+horizontal_alignment = 1
+
+[node name="AchievementsGrid" type="GridContainer" parent="CanvasLayer/StatsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/h_separation = 32
+theme_override_constants/v_separation = 2
+columns = 2
+
+[node name="CloseButton" type="Button" parent="CanvasLayer/StatsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+text = "Back"
+
+[node name="SkinsScreen" type="Control" parent="CanvasLayer"]
+process_mode = 3
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("36_ui_theme")
+
+[node name="Overlay" type="ColorRect" parent="CanvasLayer/SkinsScreen"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.06, 0.1, 0.94)
+
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/SkinsScreen"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/SkinsScreen/CenterContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "Skaters"
+horizontal_alignment = 1
+
+[node name="SkinsRow" type="HBoxContainer" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="SparkleLabel" type="Label" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Sparkle"
+horizontal_alignment = 1
+
+[node name="SparklesRow" type="HBoxContainer" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="CloseButton" type="Button" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Back"

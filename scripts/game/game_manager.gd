@@ -33,6 +33,21 @@ class_name GameManager
 @export var death_shop_button_path: NodePath = NodePath("../CanvasLayer/DeathScreen/CenterContainer/VBoxContainer/ShopButton")
 @export var reset_progress_button_path: NodePath = NodePath("../CanvasLayer/ShopScreen/CenterContainer/VBoxContainer/ResetProgressButton")
 @export var reset_confirm_dialog_path: NodePath = NodePath("../CanvasLayer/ShopScreen/ResetConfirmDialog")
+# The Stats screen, wired optionally like the shop.
+@export var stats_screen_path: NodePath = NodePath("../CanvasLayer/StatsScreen")
+@export var stats_grid_path: NodePath = NodePath("../CanvasLayer/StatsScreen/CenterContainer/VBoxContainer/StatsGrid")
+@export var achievements_grid_path: NodePath = NodePath("../CanvasLayer/StatsScreen/CenterContainer/VBoxContainer/AchievementsGrid")
+@export var stats_close_button_path: NodePath = NodePath("../CanvasLayer/StatsScreen/CenterContainer/VBoxContainer/CloseButton")
+@export var start_stats_button_path: NodePath = NodePath("../CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons/StatsButton")
+@export var achievement_manager_path: NodePath = NodePath("../AchievementManager")
+# The Skaters screen, wired optionally like the shop.
+@export var skins_screen_path: NodePath = NodePath("../CanvasLayer/SkinsScreen")
+@export var skins_row_path: NodePath = NodePath("../CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer/SkinsRow")
+@export var skins_close_button_path: NodePath = NodePath("../CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer/CloseButton")
+@export var start_skins_button_path: NodePath = NodePath("../CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons/SkinsButton")
+@export var sparkles_row_path: NodePath = NodePath("../CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer/SparklesRow")
+# What a sparkle tints. Optional: a missing one just keeps its authored white.
+@export var landing_burst_path: NodePath = NodePath("../LandingBurst")
 
 # Deliberately not @export, same reasoning as Main.world_rebase_enabled: this is
 # the "is this a real playthrough" switch, and main.tscn silently serializing it to
@@ -54,7 +69,7 @@ var require_start_screen: bool = true
 var debug_unlock_air_moves: bool = false
 # TEMP knob for testing the shop without earning coins: above 0, every scene load (launch or
 # restart) tops the SAVED wallet up to this many, so a purchase still visibly drops it. Buying
-# everything costs 2,330. Debug builds only, never headless; shipping_values_check fails the build
+# everything costs 4,580 (2,330 of upgrades, 2,250 of skaters). Debug builds only, never headless; shipping_values_check fails the build
 # if it is left above 0.
 var debug_start_wallet: int = 0
 
@@ -118,6 +133,38 @@ var shop_close_button: Button
 var death_shop_button: Button
 var reset_progress_button: Button
 var reset_confirm_dialog: ConfirmationDialog
+var stats_screen: Control
+var stats_grid: GridContainer
+var achievements_grid: GridContainer
+var stats_close_button: Button
+var start_stats_button: Button
+# UNTYPED ON PURPOSE, like Player.obstacle_spawner: AchievementManager names FrozenLakeDirector,
+# which names this class, so naming it back here would close a script load cycle (CLAUDE.md).
+# Only asked get_rows() and is_earned(); null hides the Stats screen's achievement list.
+var achievement_manager: Node
+var skins_screen: Control
+var skins_row: HBoxContainer
+var skins_close_button: Button
+var start_skins_button: Button
+# One per Skins.SKINS row, keyed by id, built in code (build_skin_buttons) like the shop rows.
+var skin_buttons: Dictionary[String, Button] = {}
+var sparkles_row: HBoxContainer
+var sparkle_buttons: Dictionary[String, Button] = {}
+var landing_burst: Node2D
+
+# How far a run has gone, for the death screen and the Stats screen. The player's x never
+# rebases (world rebasing moves y only), so distance is just x from where the run began.
+# 32px to the metre puts the 48px-tall skater at 1.5m and MAX_SPEED at ~84 km/h.
+const PIXELS_PER_METER: float = 32.0
+# Locked achievements, and nothing else, are drawn at this alpha on the Stats screen.
+const STATS_DIM_ALPHA: float = 0.45
+# A skin button: room for the frame (150x180 source, drawn shrunk) above its name.
+const SKIN_BUTTON_SIZE: Vector2 = Vector2(96, 150)
+var run_start_x: float = 0.0
+
+# Emitted once per real run, after the death screen is up and the run is banked: the hook for
+# run-based achievements (AchievementManager). Never in headless, where nothing is banked.
+signal run_recorded(distance_meters: float, coins: int, total_distance_meters: float)
 
 # Was previously implicit in get_tree().paused plus which Control happened to be
 # visible. That works for two screens and stops working at four -- a pause screen makes
@@ -129,19 +176,19 @@ var reset_confirm_dialog: ConfirmationDialog
 # it needs no new pause semantics: `paused = new_state != PLAYING` below already covers
 # it. Purchases apply to the NEXT run, because leaving the shop leads to a restart, and
 # the rebuilt GameManager reads the save file in _ready(). There is deliberately no path
-# that mutates player stats mid-run.
-enum State { START, PLAYING, PAUSED, DEAD, SHOP }
+# that mutates player stats mid-run. STATS and SKINS are the same kind of modal, from START.
+enum State { START, PLAYING, PAUSED, DEAD, SHOP, STATS, SKINS }
 # How long the death screen takes to fade in from a death (set_state).
 const DEATH_SCREEN_FADE_SECONDS: float = 0.6
 
 signal state_changed(new_state: State)
 
 var state: State = State.START
-# Which screen SHOP is a modal over: the shop is reachable from either the START
+# Which screen a modal (SHOP, STATS, SKINS) is over: the shop is reachable from either the START
 # screen (the new Upgrades button) or the DEAD screen (the original entry point), and
 # closing it must return to whichever one opened it -- otherwise closing the shop from
 # the main menu would incorrectly reveal the (irrelevant, stale) death screen behind it.
-var shop_return_state: State = State.DEAD
+var modal_return_state: State = State.DEAD
 
 # Set right before a "quick restart" reload_current_scene() call and consumed by the
 # next _ready(). A local var can't survive the reload -- the whole script instance is
@@ -186,7 +233,10 @@ func _ready() -> void:
 	# in main.tscn so its _ready() has already run, and upgrade_jump_multiplier is only
 	# read inside _physics_process, which cannot start until every _ready() completes.
 	apply_upgrades()
+	apply_skin()
+	apply_sparkle()
 	apply_debug_start_wallet()
+	run_start_x = player.global_position.x
 
 	# require_start_screen=false is the harness opt-out, and it has to skip straight to
 	# PLAYING rather than sitting on START -- see the comment on that var. A quick
@@ -210,6 +260,7 @@ func _ready() -> void:
 func wire_scene() -> bool:
 	services = GameServices.resolve(self)
 	main = get_parent() as Main
+	landing_burst = get_node_or_null(landing_burst_path) as Node2D
 	player = get_node_or_null(player_path) as Player
 	sfx_player = get_node_or_null(sfx_player_path) as SfxPlayer
 	if main == null or player == null or sfx_player == null:
@@ -356,6 +407,35 @@ func wire_scene() -> bool:
 		reset_progress_button.pressed.connect(_on_reset_progress_pressed)
 		reset_confirm_dialog.confirmed.connect(_on_reset_progress_confirmed)
 
+	# Optional too, for the shop's reason: a missing Stats screen costs the Stats screen.
+	stats_screen = get_node_or_null(stats_screen_path) as Control
+	stats_grid = get_node_or_null(stats_grid_path) as GridContainer
+	achievements_grid = get_node_or_null(achievements_grid_path) as GridContainer
+	stats_close_button = get_node_or_null(stats_close_button_path) as Button
+	start_stats_button = get_node_or_null(start_stats_button_path) as Button
+	achievement_manager = get_node_or_null(achievement_manager_path)
+	if stats_screen == null or stats_grid == null or achievements_grid == null or stats_close_button == null or start_stats_button == null:
+		push_error("GameManager could not wire the Stats screen at %s; the game runs without it." % stats_screen_path)
+		if start_stats_button != null:
+			start_stats_button.visible = false
+	else:
+		start_stats_button.pressed.connect(_on_stats_pressed)
+		stats_close_button.pressed.connect(_on_stats_close_pressed)
+
+	skins_screen = get_node_or_null(skins_screen_path) as Control
+	skins_row = get_node_or_null(skins_row_path) as HBoxContainer
+	skins_close_button = get_node_or_null(skins_close_button_path) as Button
+	start_skins_button = get_node_or_null(start_skins_button_path) as Button
+	sparkles_row = get_node_or_null(sparkles_row_path) as HBoxContainer
+	if skins_screen == null or skins_row == null or sparkles_row == null or skins_close_button == null or start_skins_button == null:
+		push_error("GameManager could not wire the Skaters screen at %s; the game runs without it." % skins_screen_path)
+		if start_skins_button != null:
+			start_skins_button.visible = false
+	else:
+		build_skin_buttons()
+		start_skins_button.pressed.connect(_on_skins_pressed)
+		skins_close_button.pressed.connect(_on_skins_close_pressed)
+
 	return true
 
 
@@ -366,19 +446,20 @@ func set_state(new_state: State) -> void:
 	state = new_state
 
 	# START/DEAD stay visible underneath SHOP: the shop is a modal over whichever screen
-	# opened it (see shop_return_state), and closing it returns there without a flicker.
+	# opened it (see modal_return_state), and closing it returns there without a flicker.
 	# EVERY SCREEN IS NULL-GUARDED, not just the optional shop, and that is what lets a failed
 	# wire_scene() still come through here. On a correctly wired scene all four are always
 	# present, so these guards never fire in a shipped build; on a broken one they are the
 	# difference between "the game runs and the log says why" and a frozen overlay. The nulls
 	# are not silently tolerated -- wire_scene() has already pushed an error naming the missing
 	# node. This only keeps that error from being followed by a crash on the next line.
+	var is_modal: bool = new_state == State.SHOP or new_state == State.STATS or new_state == State.SKINS
 	if start_screen != null:
-		start_screen.visible = new_state == State.START or (new_state == State.SHOP and shop_return_state == State.START)
+		start_screen.visible = new_state == State.START or (is_modal and modal_return_state == State.START)
 	if pause_screen != null:
 		pause_screen.visible = new_state == State.PAUSED
 	if death_screen != null:
-		death_screen.visible = new_state == State.DEAD or (new_state == State.SHOP and shop_return_state == State.DEAD)
+		death_screen.visible = new_state == State.DEAD or (is_modal and modal_return_state == State.DEAD)
 		# Fade in on a death rather than snapping on, so the moment of death (the thin-ice
 		# sink, a crash) is seen for a beat before the overlay dims it. Visible and live from
 		# the first frame either way; only its alpha ramps.
@@ -388,6 +469,10 @@ func set_state(new_state: State) -> void:
 			fade.tween_property(death_screen, "modulate:a", 1.0, DEATH_SCREEN_FADE_SECONDS)
 	if shop_screen != null:
 		shop_screen.visible = new_state == State.SHOP
+	if stats_screen != null:
+		stats_screen.visible = new_state == State.STATS
+	if skins_screen != null:
+		skins_screen.visible = new_state == State.SKINS
 	# Hidden on the menus so it can't be tapped while a screen is up, and hidden on
 	# death because the death screen owns the input at that point.
 	if pause_button != null:
@@ -516,8 +601,8 @@ func _notification(what: int) -> void:
 				# "close the modal", exactly like its own Back button -- NOT quit.
 				# Without this case it falls through to the default below and exits
 				# the app from a menu.
-				State.SHOP:
-					set_state(shop_return_state)
+				State.SHOP, State.STATS, State.SKINS:
+					set_state(modal_return_state)
 				_:
 					get_tree().quit()
 		# Focus loss: notification shade, incoming call, recents switcher. Only PLAYING
@@ -530,7 +615,7 @@ func _notification(what: int) -> void:
 
 
 func _on_start_pressed() -> void:
-	sfx_player.play_click()
+	sfx_player.play_start()
 	set_state(State.PLAYING)
 	# InputSetup binds a mouse-button event to "ui_accept" so taps also register as
 	# that action (see input_setup.gd) -- meaning the SAME tap that just dismissed
@@ -577,9 +662,22 @@ func _on_player_died() -> void:
 		# BEFORE record_run, so this run's seconds ride record_run's single disk write
 		# rather than costing a second one from set_state(DEAD) a few lines below.
 		bank_playtime()
-		last_run_is_new_best = services.save_store.record_run(coin_count, main.elapsed_time)
+		last_run_is_new_best = services.save_store.record_run(coin_count, main.elapsed_time, get_run_distance_meters())
 	refresh_death_stats()
 	set_state(State.DEAD)
+	# After set_state, so an achievement toast this grants starts on a paused tree and knows to
+	# run over the death screen (AchievementToast.show_next_name).
+	if services != null and DisplayServer.get_name() != "headless":
+		run_recorded.emit(get_run_distance_meters(), coin_count, services.save_store.total_distance_meters)
+
+
+func get_run_distance_meters() -> float:
+	return maxf(player.global_position.x - run_start_x, 0.0) / PIXELS_PER_METER
+
+
+# 850 m, then 1.24 km from a kilometre up.
+static func format_distance(meters: float) -> String:
+	return "%d m" % int(meters) if meters < 1000.0 else "%.2f km" % (meters / 1000.0)
 
 
 # Coins and Time are this run's and fixed (the tree is paused and a dead player takes no
@@ -593,7 +691,8 @@ func refresh_death_stats() -> void:
 		wallet = services.save_store.coin_wallet
 	# A reset since death zeroes the best, and "Best: 0 (New Best!)" would contradict itself.
 	var best_suffix: String = " (New Best!)" if last_run_is_new_best and best_score == coin_count else ""
-	death_stats_label.text = "Coins: %d\nTime: %s\nBest: %d%s\nWallet: %d" % [coin_count, main.format_elapsed_time(main.elapsed_time), best_score, best_suffix, wallet]
+	death_stats_label.text = "Coins: %d\nTime: %s\nDistance: %s\nBest: %d%s\nWallet: %d" % [coin_count,
+		main.format_elapsed_time(main.elapsed_time), format_distance(get_run_distance_meters()), best_score, best_suffix, wallet]
 
 
 # Session state, not save state: where this run ended is where the next one picks the day
@@ -655,7 +754,9 @@ func _on_quick_restart_pressed() -> void:
 # true would rebuild the scene into a frozen world. The reloaded GameManager sets its own
 # state in _ready().
 func reload_scene(quick_start: bool) -> void:
-	sfx_player.play_click()
+	# Restart starts a run; Home goes back. Played on the Services voice: the reload below frees
+	# SfxPlayer's pool, which cut the old click off after a frame.
+	sfx_player.play_across_reload(SfxPlayer.START_SOUND if quick_start else SfxPlayer.BACK_SOUND)
 	# From DEAD, _on_player_died already banked it.
 	if state == State.PAUSED:
 		bank_biome_phase()
@@ -721,6 +822,18 @@ func apply_upgrades() -> void:
 	player.has_double_jump = debug_unlock_air_moves or services.upgrades.get_level(UpgradeStore.DOUBLE_JUMP_UPGRADE_ID) > 0
 
 
+# Puts the saved skater on the Player. Looks only -- the capsule is the hitbox -- but headless is
+# skipped all the same, for apply_upgrades()'s reason: a gate never reads the developer's save.
+func apply_skin() -> void:
+	if services == null or player == null or DisplayServer.get_name() == "headless":
+		return
+	var frames: SpriteFrames = load(String(Skins.get_skin(get_worn_skin_id())["frames"])) as SpriteFrames
+	if frames == null or player.animated_sprite.sprite_frames == frames:
+		return
+	player.animated_sprite.sprite_frames = frames
+	player.animated_sprite.play(&"skate")
+
+
 # See debug_start_wallet. Headless is skipped for apply_upgrades()'s reason: a probe must never
 # write the developer's own save.dat.
 func apply_debug_start_wallet() -> void:
@@ -735,7 +848,7 @@ func apply_debug_start_wallet() -> void:
 
 func _on_shop_pressed() -> void:
 	sfx_player.play_click()
-	shop_return_state = State.DEAD
+	modal_return_state = State.DEAD
 	refresh_shop()
 	set_state(State.SHOP)
 
@@ -745,14 +858,186 @@ func _on_shop_pressed() -> void:
 # run in progress to desync from.
 func _on_start_shop_pressed() -> void:
 	sfx_player.play_click()
-	shop_return_state = State.START
+	modal_return_state = State.START
 	refresh_shop()
 	set_state(State.SHOP)
 
 
 func _on_shop_close_pressed() -> void:
+	sfx_player.play_back()
+	set_state(modal_return_state)
+
+
+func _on_stats_pressed() -> void:
 	sfx_player.play_click()
-	set_state(shop_return_state)
+	modal_return_state = State.START
+	refresh_stats()
+	set_state(State.STATS)
+
+
+func _on_stats_close_pressed() -> void:
+	sfx_player.play_back()
+	set_state(modal_return_state)
+
+
+# Rebuilt on every open: a handful of labels, and it can never show a stale number.
+func refresh_stats() -> void:
+	for grid: GridContainer in [stats_grid, achievements_grid]:
+		for child: Node in grid.get_children():
+			grid.remove_child(child)
+			child.queue_free()
+	if services != null:
+		var save: SaveStore = services.save_store
+		var rows: Array = [
+			["Distance", format_distance(save.total_distance_meters)],
+			["Longest run", format_distance(save.best_distance_meters)],
+			["Runs", str(save.total_runs)],
+			["Time played", format_playtime(save.total_playtime_seconds)],
+			["Coins earned", str(save.total_coins_earned)],
+			["Best score", "%d  (%s)" % [save.best_score, main.format_elapsed_time(save.best_time)]],
+			["Frozen lakes", str(save.frozen_lake_count)],
+			["Auroras", str(save.aurora_count)],
+		]
+		for row: Array in rows:
+			add_stats_row(stats_grid, row[0], row[1], true)
+	if achievement_manager == null:
+		return
+	for row: Dictionary in achievement_manager.get_rows():
+		var earned: bool = achievement_manager.is_earned(row["id"])
+		var value: String = "Earned" if earned else row["hint"]
+		var reward: Dictionary = Skins.get_sparkle_for_achievement(row["id"])
+		if not reward.is_empty():
+			value += "  +%s sparkle" % reward["name"]
+		add_stats_row(achievements_grid, row["name"], value, earned)
+
+
+func add_stats_row(grid: GridContainer, title: String, value: String, is_lit: bool) -> void:
+	for text: String in [title, value]:
+		var label: Label = Label.new()
+		label.text = text
+		label.add_theme_font_size_override(&"font_size", 14)
+		label.modulate.a = 1.0 if is_lit else STATS_DIM_ALPHA
+		grid.add_child(label)
+
+
+func _on_skins_pressed() -> void:
+	sfx_player.play_click()
+	modal_return_state = State.START
+	refresh_skin_buttons()
+	set_state(State.SKINS)
+
+
+func _on_skins_close_pressed() -> void:
+	sfx_player.play_back()
+	set_state(modal_return_state)
+
+
+# One toggle per skin, its first frame as the picture; a ButtonGroup makes them a radio set, and
+# the theme's pressed style is what marks the current one.
+func build_skin_buttons() -> void:
+	var group: ButtonGroup = ButtonGroup.new()
+	for skin: Dictionary in Skins.SKINS:
+		var frames: SpriteFrames = load(String(skin["frames"])) as SpriteFrames
+		var button: Button = Button.new()
+		button.text = skin["name"]
+		button.toggle_mode = true
+		button.button_group = group
+		button.icon = frames.get_frame_texture(&"skate", 0) if frames != null else null
+		button.expand_icon = true
+		button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		button.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		button.custom_minimum_size = SKIN_BUTTON_SIZE
+		button.pressed.connect(_on_skin_picked.bind(String(skin["id"])))
+		skins_row.add_child(button)
+		skin_buttons[String(skin["id"])] = button
+	var sparkle_group: ButtonGroup = ButtonGroup.new()
+	for sparkle: Dictionary in Skins.SPARKLES:
+		var button: Button = Button.new()
+		button.text = sparkle["name"]
+		button.toggle_mode = true
+		button.button_group = sparkle_group
+		# The name is drawn in its own colour: the swatch is the label.
+		for font_color: StringName in [&"font_color", &"font_pressed_color", &"font_hover_color", &"font_focus_color"]:
+			button.add_theme_color_override(font_color, sparkle["color"])
+		button.pressed.connect(_on_sparkle_picked.bind(String(sparkle["id"])))
+		sparkles_row.add_child(button)
+		sparkle_buttons[String(sparkle["id"])] = button
+
+
+# A skin not bought yet shows its price and cannot be picked: the shop sells it.
+func refresh_skin_buttons() -> void:
+	var worn: String = get_worn_skin_id()
+	for skin: Dictionary in Skins.SKINS:
+		var id: String = skin["id"]
+		var button: Button = skin_buttons[id]
+		var owned: bool = is_skin_owned(id)
+		button.text = skin["name"] if owned \
+			else "%s  %d" % [skin["name"], UpgradeStore.get_upgrade_cost(Skins.get_track_id(id), 0)]
+		button.disabled = not owned
+		button.set_pressed_no_signal(id == worn)
+	var worn_sparkle: String = get_worn_sparkle_id()
+	for id: String in sparkle_buttons:
+		sparkle_buttons[id].disabled = not is_sparkle_unlocked(id)
+		sparkle_buttons[id].set_pressed_no_signal(id == worn_sparkle)
+
+
+func is_skin_owned(id: String) -> bool:
+	return id == Skins.DEFAULT_ID or (services != null and services.upgrades.get_level(Skins.get_track_id(id)) > 0)
+
+
+# The saved pick if it is still owned, else the default: Reset Progress un-buys every skin but
+# keeps the pick, which is a preference.
+func get_worn_skin_id() -> String:
+	var selected: String = Skins.get_skin(services.save_store.selected_skin if services != null else Skins.DEFAULT_ID)["id"]
+	return selected if is_skin_owned(selected) else Skins.DEFAULT_ID
+
+
+func is_sparkle_unlocked(id: String) -> bool:
+	var achievement: String = Skins.get_sparkle(id)["achievement"]
+	return achievement.is_empty() or (services != null and services.save_store.achievements.get(achievement, false))
+
+
+# Same rule as get_worn_skin_id(): the pick if still unlocked (a reset relocks), else Ice.
+func get_worn_sparkle_id() -> String:
+	var selected: String = Skins.get_sparkle(services.save_store.selected_sparkle if services != null else Skins.DEFAULT_SPARKLE_ID)["id"]
+	return selected if is_sparkle_unlocked(selected) else Skins.DEFAULT_SPARKLE_ID
+
+
+# Tints the landing glints and the glide trail. Both draw white by design, so Ice -- white -- is
+# their authored look, and a modulate on the parent node colours every child it makes.
+func apply_sparkle() -> void:
+	if player == null or DisplayServer.get_name() == "headless":
+		return
+	var color: Color = Skins.get_sparkle(get_worn_sparkle_id())["color"]
+	if landing_burst != null:
+		landing_burst.modulate = color
+	player.flight_trail.modulate = color
+
+
+func _on_sparkle_picked(id: String) -> void:
+	sfx_player.play_click()
+	if services == null or not is_sparkle_unlocked(id):
+		refresh_skin_buttons()
+		return
+	services.save_store.selected_sparkle = id
+	services.save_store.save_to_disk()
+	apply_sparkle()
+
+
+func _on_skin_picked(id: String) -> void:
+	sfx_player.play_click()
+	if services == null or not is_skin_owned(id):
+		refresh_skin_buttons()
+		return
+	services.save_store.selected_skin = id
+	services.save_store.save_to_disk()
+	apply_skin()
+
+
+# 2h 14m, or 9m under an hour.
+static func format_playtime(seconds: float) -> String:
+	var minutes: int = int(seconds / 60.0)
+	return "%dh %dm" % [minutes / 60, minutes % 60] if minutes >= 60 else "%dm" % minutes
 
 
 func _on_buy_pressed(upgrade_id: String) -> void:
@@ -763,7 +1048,13 @@ func _on_buy_pressed(upgrade_id: String) -> void:
 		# and was rolled back. The next refresh_shop() restores the wallet line.
 		shop_wallet_label.text = "Couldn't save. Try again."
 		return
-	sfx_player.play_powerup()
+	sfx_player.play_purchase()
+	# A bought skater is worn at once: the purchase's payoff is seeing it.
+	var skin_id: String = String(UpgradeStore.get_track(upgrade_id).get("skin", ""))
+	if not skin_id.is_empty():
+		services.save_store.selected_skin = skin_id
+		services.save_store.save_to_disk()
+		apply_skin()
 	# Applied immediately even though the current run is over: keeping this next to the
 	# purchase means there is exactly one ordering to reason about, and the restart that
 	# follows re-derives the same value from disk anyway.
@@ -773,21 +1064,25 @@ func _on_buy_pressed(upgrade_id: String) -> void:
 
 
 # One row per UpgradeStore.TRACKS entry, inserted under the wallet line in table order. The
-# label's font size matches the one row main.tscn used to author by hand.
+# label's font size matches the one row main.tscn used to author by hand. A skater row is its
+# button alone: its name says it all, and seven labelled rows overflow a 648px-tall screen.
 func build_shop_rows() -> void:
 	var container: Node = shop_wallet_label.get_parent()
 	var insert_index: int = shop_wallet_label.get_index() + 1
 	for track: Dictionary in UpgradeStore.TRACKS:
-		var label: Label = Label.new()
-		label.add_theme_font_size_override(&"font_size", 13)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var label: Label = null
+		if not track.has("skin"):
+			label = Label.new()
+			label.add_theme_font_size_override(&"font_size", 13)
+			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			container.add_child(label)
+			container.move_child(label, insert_index)
+			insert_index += 1
 		var button: Button = Button.new()
 		button.pressed.connect(_on_buy_pressed.bind(String(track["id"])))
-		container.add_child(label)
-		container.move_child(label, insert_index)
 		container.add_child(button)
-		container.move_child(button, insert_index + 1)
-		insert_index += 2
+		container.move_child(button, insert_index)
+		insert_index += 1
 		shop_rows[String(track["id"])] = {"label": label, "button": button}
 
 
@@ -807,6 +1102,9 @@ func refresh_shop() -> void:
 			label.text = "Jump  Lv %d/%d  (x%.2f)" % [level, max_level, UpgradeStore.get_jump_multiplier(level)]
 			button.text = "Jump  MAX" if next_cost == UpgradeStore.NO_COST \
 				else "Jump  ->  x%.2f   (%d)" % [UpgradeStore.get_jump_multiplier(level + 1), next_cost]
+		elif track.has("skin"):
+			button.text = "%s  OWNED" % track["name"] if next_cost == UpgradeStore.NO_COST \
+				else "%s   (%d)" % [track["name"], next_cost]
 		else:
 			# A one-level track is an unlock.
 			label.text = "%s  (%s)" % [track["name"], track["hint"]]
@@ -832,5 +1130,7 @@ func _on_reset_progress_confirmed() -> void:
 		# Same reasoning as _on_buy_pressed: sync the now-reset levels onto the live
 		# player immediately rather than waiting for the next reload.
 		apply_upgrades()
+		apply_skin()
+		apply_sparkle()
 	refresh_shop()
 	refresh_death_stats()

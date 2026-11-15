@@ -20,6 +20,16 @@ extends SceneTree
 #   reload_banking     Home and Restart from PAUSED bank the biome phase, unpause and really
 #                      reload; only Restart sets the quick-restart flag (2026-09-20 audit P2,
 #                      audit A8). Each reload's fresh scene is freed at once.
+#   save_history       record_run() adds up the all-time stats, the loader rejects bad ones, and
+#                      a reset clears them (the Stats screen, 2026-10-29).
+#   stats_screen       Stats opens over START with every stat and achievement row, and both its
+#                      Back button and the Android back gesture return to START.
+#   skins              every Skins row loads as a 4-frame "skate" animation the original's size,
+#                      and every one but the default has a shop track; an unknown or wrong-typed
+#                      saved skin reads as the default; a locked skin cannot be picked, buying
+#                      one wears it, and a reset un-buys it back to the default.
+#   sparkles           every sparkle's unlocking achievement exists; a locked one cannot be
+#                      picked, an earned one can, and a reset relocks it back to Ice.
 #
 # Usage:
 #   godot --headless --fixed-fps 60 --path . --script res://scripts/debug/regression_probe.gd
@@ -68,6 +78,10 @@ func run() -> void:
 	await death_stats()
 	await death_pickups()
 	await reload_banking()
+	save_history()
+	await stats_screen()
+	await skins()
+	await sparkles()
 
 	print("REGRESSION_PROBE_RESULT cases=%d failures=%d status=%s" % [cases, failures, "PASS" if failures == 0 else "FAIL"])
 	quit(0 if failures == 0 else 1)
@@ -163,11 +177,11 @@ func death_stats() -> void:
 	store.coin_wallet = 1000
 	store.upgrade_levels.clear()
 	player.die()
-	var at_death: String = stats_line(2) + " / " + stats_line(3)
+	var at_death: String = stats_line(3) + " / " + stats_line(4)
 	game_manager._on_buy_pressed(UpgradeStore.SLAM_UPGRADE_ID)
-	var after_buy: String = stats_line(2) + " / " + stats_line(3)
+	var after_buy: String = stats_line(3) + " / " + stats_line(4)
 	game_manager._on_reset_progress_confirmed()
-	var after_reset: String = stats_line(2) + " / " + stats_line(3)
+	var after_reset: String = stats_line(3) + " / " + stats_line(4)
 	var expected_after_buy: String = "Best: 50 / Wallet: %d" % (1000 - UpgradeStore.SLAM_UPGRADE_COST)
 	expect("death_stats", at_death == "Best: 50 / Wallet: 1000" and after_buy == expected_after_buy
 		and after_reset == "Best: 0 / Wallet: 0",
@@ -230,6 +244,106 @@ func reload_banking() -> void:
 		outcomes.append("%s: banked=%s unpaused=%s quick=%s reloaded=%s" % [
 			"restart" if quick_start else "home", banked, was_unpaused, flag, did_reload])
 	expect("reload_banking", passed, ", ".join(outcomes))
+
+
+func save_history() -> void:
+	var history: MemorySaveStore = MemorySaveStore.new()
+	history.record_run(40, 30.0, 1200.0)
+	history.record_run(10, 12.0, 300.0)
+	var added: bool = history.total_runs == 2 and history.total_coins_earned == 50 \
+		and is_equal_approx(history.total_distance_meters, 1500.0) and is_equal_approx(history.best_distance_meters, 1200.0)
+	var totals: String = "runs=%d coins=%d distance=%.0f best=%.0f" % [
+		history.total_runs, history.total_coins_earned, history.total_distance_meters, history.best_distance_meters]
+	var loaded: MemorySaveStore = MemorySaveStore.new()
+	loaded.load_from_data(JSON.parse_string("""{"version": 3, "total_runs": -3, "total_coins_earned": 1e309,
+		"total_distance_meters": -5.0, "best_distance_meters": "far"}"""))
+	var rejected: bool = loaded.total_runs == 0 and loaded.total_coins_earned == 0 \
+		and loaded.total_distance_meters == 0.0 and loaded.best_distance_meters == 0.0
+	history.reset_progress()
+	var cleared: bool = history.total_runs == 0 and history.total_distance_meters == 0.0
+	expect("save_history", added and rejected and cleared, "%s; bad fields rejected=%s; reset cleared=%s" % [totals, rejected, cleared])
+
+
+func stats_screen() -> void:
+	await new_scene()
+	game_manager.set_state(GameManager.State.START)
+	game_manager._on_stats_pressed()
+	var opened: bool = game_manager.state == GameManager.State.STATS and game_manager.stats_screen.visible \
+		and game_manager.start_screen.visible
+	var stat_rows: int = game_manager.stats_grid.get_child_count() / 2
+	var achievement_rows: int = game_manager.achievements_grid.get_child_count() / 2
+	game_manager._on_stats_close_pressed()
+	var closed: bool = game_manager.state == GameManager.State.START and not game_manager.stats_screen.visible
+	game_manager._on_stats_pressed()
+	game_manager._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	var backed: bool = game_manager.state == GameManager.State.START
+	expect("stats_screen", opened and closed and backed and stat_rows == 8
+		and achievement_rows == AchievementManager.ACHIEVEMENTS.size(),
+		"opened=%s stat rows=%d achievement rows=%d closed=%s back gesture=%s" % [opened, stat_rows, achievement_rows, closed, backed])
+
+
+func skins() -> void:
+	var original: Texture2D = (load(String(Skins.SKINS[0]["frames"])) as SpriteFrames).get_frame_texture(&"skate", 0)
+	var broken: Array[String] = []
+	for skin: Dictionary in Skins.SKINS:
+		var frames: SpriteFrames = load(String(skin["frames"])) as SpriteFrames
+		if frames == null or not frames.has_animation(&"skate") or frames.get_frame_count(&"skate") != 4:
+			broken.append(String(skin["id"]))
+			continue
+		for index: int in range(4):
+			if frames.get_frame_texture(&"skate", index).get_size() != original.get_size():
+				broken.append("%s frame %d" % [skin["id"], index])
+		var track: Dictionary = UpgradeStore.get_track(Skins.get_track_id(skin["id"]))
+		if skin["id"] != Skins.DEFAULT_ID and (track.get("skin", "") != skin["id"] or UpgradeStore.get_max_level(track.get("id", "")) != 1):
+			broken.append("%s has no one-level shop track" % skin["id"])
+	var loaded: MemorySaveStore = MemorySaveStore.new()
+	loaded.load_from_data(JSON.parse_string("""{"version": 3, "selected_skin": 7}"""))
+	var typed_default: bool = loaded.selected_skin == Skins.DEFAULT_ID
+	var unknown_default: bool = Skins.get_skin("retired_skin")["id"] == Skins.DEFAULT_ID
+	await new_scene()
+	store.upgrade_levels.clear()
+	store.coin_wallet = 1000
+	store.selected_skin = Skins.DEFAULT_ID
+	game_manager._on_skins_pressed()
+	var buttons: int = game_manager.skins_row.get_child_count()
+	var locked_shown: bool = game_manager.skin_buttons["dad"].disabled and not game_manager.skin_buttons[Skins.DEFAULT_ID].disabled
+	game_manager._on_skin_picked("dad")
+	var locked_refused: bool = store.selected_skin == Skins.DEFAULT_ID
+	game_manager._on_buy_pressed(Skins.get_track_id("dad"))
+	var bought_worn: bool = store.selected_skin == "dad" and game_manager.get_worn_skin_id() == "dad" \
+		and store.coin_wallet == 1000 - UpgradeStore.SKIN_PARENT_COST
+	game_manager._on_reset_progress_confirmed()
+	var reset_default: bool = game_manager.get_worn_skin_id() == Skins.DEFAULT_ID
+	store.selected_skin = Skins.DEFAULT_ID
+	expect("skins", broken.is_empty() and typed_default and unknown_default and buttons == Skins.SKINS.size()
+		and locked_shown and locked_refused and bought_worn and reset_default,
+		"broken=%s wrong-typed->default=%s unknown->default=%s buttons=%d locked shown=%s refused=%s bought+worn=%s reset->default=%s" % [
+			broken, typed_default, unknown_default, buttons, locked_shown, locked_refused, bought_worn, reset_default])
+
+
+func sparkles() -> void:
+	var unknown: Array[String] = []
+	for sparkle: Dictionary in Skins.SPARKLES:
+		var achievement: String = sparkle["achievement"]
+		if not achievement.is_empty() and not AchievementManager.ACHIEVEMENTS.has(achievement):
+			unknown.append("%s needs '%s'" % [sparkle["id"], achievement])
+	await new_scene()
+	store.achievements.clear()
+	store.selected_sparkle = Skins.DEFAULT_SPARKLE_ID
+	game_manager._on_skins_pressed()
+	var buttons: int = game_manager.sparkles_row.get_child_count()
+	game_manager._on_sparkle_picked("amber")
+	var locked_refused: bool = store.selected_sparkle == Skins.DEFAULT_SPARKLE_ID and game_manager.sparkle_buttons["amber"].disabled
+	store.achievements[Skins.get_sparkle("amber")["achievement"]] = true
+	game_manager.refresh_skin_buttons()
+	game_manager._on_sparkle_picked("amber")
+	var earned_picked: bool = store.selected_sparkle == "amber" and game_manager.get_worn_sparkle_id() == "amber"
+	game_manager._on_reset_progress_confirmed()
+	var reset_relocked: bool = game_manager.get_worn_sparkle_id() == Skins.DEFAULT_SPARKLE_ID
+	store.selected_sparkle = Skins.DEFAULT_SPARKLE_ID
+	expect("sparkles", unknown.is_empty() and buttons == Skins.SPARKLES.size() and locked_refused and earned_picked and reset_relocked,
+		"unknown achievements=%s buttons=%d locked refused=%s earned picked=%s reset relocked=%s" % [
+			unknown, buttons, locked_refused, earned_picked, reset_relocked])
 
 
 # A fresh scene, settled on the ground at START_X with nothing spawning. Frees the previous one.

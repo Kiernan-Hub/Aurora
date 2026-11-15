@@ -11,6 +11,7 @@ outputs kept for comparison. **Nothing in here is loaded by the game.**
 | `terrain/` | 29 MiB | **build input** for the ice tiles, plus the lake's two look targets | keep while any shipped tile traces to a panel |
 | `aurora_reference/` | 6 MiB | **design authority** for the aurora's look (CLAUDE.md row 12) | keep |
 | `hazards/` | 5 MiB | **build input** for `build_hazard_sprites.py` (spike, floe, shard, thin ice, black ice, geode, vent; ChatGPT, 2026-10-28) | keep |
+| `skins/` | 3 MiB | **build input** for `build_skin_frames.py` (teen, twenties, mom, dad: 4-frame rows generated from the girl's frames; ChatGPT, 2026-10-29) | keep |
 | `audits/` | 20 MiB | **historical captures** from closed aurora investigations, cited by `docs/research/aurora_borealis.md` and the 2026-09-09 reviews | add nothing new; delete only in an explicit cleanup, keeping whatever a doc cites |
 | top level | — | app-icon source, coin sources, the art-direction reference | keep |
 

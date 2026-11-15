@@ -18,7 +18,7 @@ extends SceneTree
 #                     (guardrail B). The handler alone still boosts a plain trick (control).
 #   glide_floating    a glide pickup's forced launch into a floe survives (Obstacle.is_floating);
 #                     the same launch without a glide dies; a spike still kills a glider.
-#   shop_rows         the shop builds one label + button per UpgradeStore.TRACKS row.
+#   shop_rows         the shop builds a labelled button per UpgradeStore.TRACKS row.
 #   held_controls     either desktop action held from take-off spins and supplies glide thrust.
 #   landing_edge      at 750 px/s on real hills, every tap in the frames before touchdown has the
 #                     same outcome with either move owned as with neither: owning a move never
@@ -413,6 +413,6 @@ func shop_rows() -> void:
 	for track: Dictionary in UpgradeStore.TRACKS:
 		var row: Dictionary = game_manager.shop_rows.get(String(track["id"]), {})
 		if not row.is_empty():
-			labels.append((row["label"] as Label).text)
+			labels.append((row["button"] as Button).text)
 	expect("shop_rows", labels.size() == UpgradeStore.TRACKS.size() and labels.all(func(text: String) -> bool: return not text.is_empty()),
 		"rows=%d/%d %s" % [labels.size(), UpgradeStore.TRACKS.size(), labels])
