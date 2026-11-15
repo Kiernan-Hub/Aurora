@@ -130,6 +130,9 @@ to it.
 | **Floe** | Stay down | 32×136 column, **64→200px** above the surface. The sprite is exactly the hitbox | `floe.tscn` + `obstacle.gd` |
 | **Shard** | Stay down, or clear it at jump level 3+ | its silhouette inside a 32×32 box at **64–96px** | `shard.tscn` + `obstacle.gd` |
 | **Thin ice** | Keep hopping | An x span, not a body: >**12 grounded frames** (0.2s) in a row cracks it; each landing resets | `scripts/obstacles/thin_ice.gd` (`ThinIce`) |
+| **Black ice** (2026-10-28) | Commit early | A `ThinIce` subclass span you **cannot take off from** (`Player.is_on_black_ice()` at the one ground take-off site; a tap stays buffered). Harmless alone; before a spike, jump before it or after it. Dark glass, never tinted | `black_ice.gd` (`BlackIce`) |
+| **Geode** (2026-10-28) | Slam it (reward) | A `SpriteSpan` (a `ThinIce` subclass drawn as one untinted sprite), never a hitbox: a **slam landing** within 24px of it pays **10 coins** (via `geode_broken`, combo/doubler apply). Scheduled only if the player owns the slam. Gold | `geode.gd` (`Geode`) |
+| **Vent** (2026-10-28) | Jump EARLY | A 48px `SpriteSpan` that **forces a take-off**: grounded on it, `Player`'s ordinary ground jump fires with no tap (`is_on_vent()`, same site as black ice). Not a new velocity: the launch IS a jump, so chasm reach and every proof hold. Before a floe at 0.5s, being launched carries you into it, so you jump over the vent early enough to be down before the floe. Deep teal: the pale-cyan generation was 0.09 from the ice | `vent.gd` (`Vent`) |
 
 - All three bodies run `obstacle.gd`, so hit → `absorb_hit()`, a shield absorbs one, and a boosting
   player breaks through. Thin ice: a boost skims over; a shield absorbs the crack and the patch
@@ -157,10 +160,10 @@ to it.
 | Tier | From | New | Room |
 |---|---|---|---|
 | 1 | 0:20 | `spike` (w2) | the original ramp: ~1 per 30s window rising toward one every 5s, 4s floor |
-| 2 | 1:00 | `floe`, `shard` (w1 each) | 6s |
-| 3 | 1:45 | `ice_short` 0.3s (w2), `ice_long` 1.2s (w1) | 5s |
-| 4 | 2:30 | pairs: `spike_floe`, `spike_shard`, `floe_spike`, `shard_spike` (0.5s apart), `spike_spike` (0.7s), `ice_spike` | 4s |
-| 5 | 3:30 | triples: `spike_floe_spike` (1.0s), `floe_spike_shard` (1.1s) | 3.5s |
+| 2 | 1:00 | `floe`, `shard` (w1 each); `geode` (w1, slam owners) | 6s |
+| 3 | 1:45 | `ice_short` 0.3s (w2), `ice_long` 1.2s (w1), `black` 0.6s (w1), `vent` (w1) | 5s |
+| 4 | 2:30 | pairs: `spike_floe`, `spike_shard`, `floe_spike`, `shard_spike` (0.5s apart), `spike_spike` (0.7s), `ice_spike`, `black_spike` (w2), `geode_spike` (slam owners), `vent_floe` (0.5s, w2) | 4s |
+| 5 | 3:30 | triples: `spike_floe_spike` (1.0s), `floe_spike_shard` (1.1s), `spike_black_spike` (0.95s; 1.25s starved) | 3.5s |
 | 6 | 5:00 | — | 3.5s shrinking 0.25s/min to the **2.5s floor** (~9:00) |
 
 - **Each attempt**: draw a pattern for the current tier. A kind not yet seen this run is swapped for
@@ -259,6 +262,11 @@ except after a double jump; the air moves split left (slam) / right (double jump
 | Moving/timed hazards as a *mechanic* | No decisions added (fixed arrival time), and they cost reading time. Decoration only |
 | Levels + infinite mode, checkpoints | They fight the seeded world; resuming mid-run rewinds ~10 systems. Tiers give the "chapter" feel |
 | Pick your difficulty | **Later, cheap now tiers exist**: "Hard" = start at tier 3. Needs separate best scores (a save change) |
+| Warmth meter (cold drains, embers refill) | The strongest "different" idea of the 2026-10-28 six, and the most bug-prone: every long harness would need a `debug_*` off-switch (the chasm trap), and lake/Aurora (spawners suppressed) would need the drain paused |
+| Launch kickers / updrafts | Change velocity mid-run, which the chasm reach math does not model (same as bounce floes and wind). **The vent is the lean version**: it forces an ordinary jump instead, so nothing new is modelled |
+| Thin ice under a floe (hop the ice, stay down under the floe) | Measured 2026-10-28: 5-frame window at every placement tried (0.6–1.0s of ice), under the 7-frame bar |
+| Whiteout blizzard | Shrinks the forward view below what `check_spawn_lookahead()` guarantees; it would need its own set piece like the Aurora |
+| Apex bells (targets at jump-apex height) | Already exists in effect: the 132px air coin lines |
 
 
 ---
@@ -268,7 +276,7 @@ except after a double jump; the air moves split left (slam) / right (double jump
 **`ObstacleSpawner`'s outside contract. Keep these, or change them together with their users:**
 - Node path `TerrainGenerator/ObstacleSpawner`, `class_name ObstacleSpawner` (Aurora + biome directors).
 - `debug_spawning_disabled` (a plain var, set by 6 probes, watched by `shipping_values_check`).
-- `spawn_obstacle(x, kind = spike)`, `spawn_thin_ice(start, end)`, `active_obstacles` (`aurora_calm_probe`,
+- `spawn_obstacle(x, kind = spike)`, `spawn_thin_ice(start, end)` (now a wrapper of `spawn_span(kind, start, end)`), `is_black_ice_at(x)` / `is_vent_at(x)` (Player, UNTYPED: naming the class from `player.gd` closes a load cycle), `active_obstacles` (`aurora_calm_probe`,
   `check_spawn_placement`). `OBSTACLE_SCENE` (preloaded; `aurora_calm_probe`).
 - Read by `terrain_invariant_check`: `OBSTACLE_HALF_HEIGHT`, `FIRST_PATTERN_TIME`, `PIECE_KINDS`, `PATTERNS`, `TIERS`,
   `RECURRING_PATTERN_MIN_INTERVAL_FLOOR`, `BREATHING_ROOM_FLOOR`, `MIN_SAFE_START_WORLD_X`,

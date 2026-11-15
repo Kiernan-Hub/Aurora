@@ -163,6 +163,10 @@ var DEBUG_FREEZE_HISTORY_FRAME_COUNT: int = 20
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var flight_trail: FlightTrail = $FlightTrail
 @onready var terrain_generator: TerrainGenerator = get_node_or_null("../TerrainGenerator") as TerrainGenerator
+# UNTYPED ON PURPOSE: ObstacleSpawner already names Player, and naming it back here closes a
+# script load cycle, which leaves a scene script-less with no error (CLAUDE.md). Only asked
+# is_black_ice_at() and is_vent_at(); null in harnesses without one.
+@onready var obstacle_spawner: Node = get_node_or_null("../TerrainGenerator/ObstacleSpawner")
 # For is_glide_input_held(): touch has no "ui_accept" action edge to poll (see Main's
 # _input comment), so held-state has to come from Main's own touch tracking.
 @onready var main_node: Main = get_node_or_null("..") as Main
@@ -457,9 +461,13 @@ func _physics_process(delta: float) -> void:
 	# redundant: a jump buffered in the frames just BEFORE the lake's seam would otherwise
 	# still fire once the player is on it, since JUMP_BUFFER_DURATION outlives the crossing
 	# of a segment boundary.
+	# Black ice (BlackIce) refuses the take-off but leaves the tap buffered, so a tap just before
+	# its end still fires on the first frame off it -- the frames the fairness model allows. A vent
+	# (Vent) is the reverse: grounded on one, the take-off fires with no tap at all.
 	if not is_jump_suppressed and not is_boosting and not is_aurora_flight_active \
 			and not is_aurora_flight_landing and not is_jump_ascending \
-			and coyote_timer > 0.0 and jump_buffer_timer > 0.0:
+			and ((coyote_timer > 0.0 and jump_buffer_timer > 0.0 and not is_on_black_ice()) \
+				or (is_on_floor() and is_on_vent())):
 		velocity.y = JUMP_VELOCITY * upgrade_jump_multiplier * jump_boost_multiplier
 		coyote_timer = 0.0
 		jump_buffer_timer = 0.0
@@ -571,6 +579,14 @@ func play_squash_stretch(scale_multiplier: Vector2) -> void:
 	squash_stretch_tween = create_tween()
 	squash_stretch_tween.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	squash_stretch_tween.tween_property(animated_sprite, "scale", sprite_base_scale, SQUASH_STRETCH_DURATION)
+
+
+func is_on_black_ice() -> bool:
+	return obstacle_spawner != null and obstacle_spawner.is_black_ice_at(global_position.x)
+
+
+func is_on_vent() -> bool:
+	return obstacle_spawner != null and obstacle_spawner.is_vent_at(global_position.x)
 
 
 # Purely cosmetic, called by ThinIce after a crack kills. The death has already paused the tree,

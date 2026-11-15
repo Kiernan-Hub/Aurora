@@ -221,6 +221,7 @@ func wire_scene() -> bool:
 	var obstacle_spawner: ObstacleSpawner = get_node_or_null(obstacle_spawner_path) as ObstacleSpawner
 	if obstacle_spawner != null:
 		obstacle_spawner.thin_ice_cracked.connect(sfx_player.play_crack)
+		obstacle_spawner.geode_broken.connect(_on_geode_broken)
 
 	start_screen = get_node_or_null(start_screen_path) as Control
 	start_button = get_node_or_null(start_button_path) as Button
@@ -671,6 +672,12 @@ func reload_scene(quick_start: bool) -> void:
 #
 # The two multipliers STACK: a doubler held at the top combo tier pays 6x. That is the
 # deliberate ceiling of the whole system, and it is rare because the doubler is a timed powerup.
+# A slam broke a geode: its coins ride the same path as any pickup (doubler and combo apply).
+func _on_geode_broken(value: int) -> void:
+	sfx_player.play_crack()
+	_on_coin_collected(value)
+
+
 func _on_coin_collected(value: int) -> void:
 	var multiplier: float = powerup_manager.coin_multiplier if powerup_manager != null else 1.0
 	coin_count += int(value * multiplier * get_combo_multiplier())

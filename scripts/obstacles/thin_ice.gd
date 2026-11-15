@@ -50,11 +50,17 @@ func setup(new_player: Player, terrain: TerrainGenerator, new_start_x: float, ne
 	start_x = new_start_x
 	end_x = new_end_x
 	position = Vector2(start_x, terrain.ground_y + terrain.get_terrain_height(start_x))
+	build_visual(terrain, color)
+
+
+# The span's look. BlackIce swaps the strip; Geode replaces it with a sprite. Everything that
+# finds spans by class (AuroraDirector, lake_suppression_probe, the biome repaint) sees all three.
+func build_visual(terrain: TerrainGenerator, color: Color) -> void:
 	overlay = Line2D.new()
 	overlay.name = "Overlay"
 	overlay.width = OVERLAY_WIDTH
 	# Greyscale, so default_color tints it like an obstacle sprite's modulate.
-	overlay.texture = CRACK_TEXTURE
+	overlay.texture = get_strip_texture()
 	overlay.texture_mode = Line2D.LINE_TEXTURE_TILE
 	overlay.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	overlay.default_color = color
@@ -66,6 +72,15 @@ func setup(new_player: Player, terrain: TerrainGenerator, new_start_x: float, ne
 			break
 		sample_x = minf(sample_x + OVERLAY_SAMPLE_STEP, end_x)
 	add_child(overlay)
+
+
+func get_strip_texture() -> Texture2D:
+	return CRACK_TEXTURE
+
+
+# The same test every span kind makes of the player's x.
+func covers_x(world_x: float) -> bool:
+	return world_x >= start_x and world_x < end_x
 
 
 func set_visual_color(color: Color) -> void:
@@ -84,8 +99,7 @@ func _physics_process(delta: float) -> void:
 		return
 	# A boosting player skims over for free: jump input is suppressed for the whole boost, and
 	# it matches "a boost breaks through".
-	var player_x: float = player.global_position.x
-	if player_x < start_x or player_x >= end_x or not player.is_on_floor() \
+	if not covers_x(player.global_position.x) or not player.is_on_floor() \
 			or player.is_boosting or player.is_dead:
 		grounded_time = 0.0
 		return
