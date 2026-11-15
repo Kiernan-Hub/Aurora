@@ -387,3 +387,16 @@ works identically on a plain var.
 `player.gd` also carries read-only fields added for the jitter investigation
 (`debug_position_after_slide/snap`, `debug_velocity_before/after_slide`) — zero behavior
 impact, safe to keep or strip.
+
+## Fast falls are moved in steps (2026-11-15)
+
+`Player.move_and_slide_in_fall_steps()` replaces the single `move_and_slide()`: when a frame
+would fall more than `MAX_FALL_STEP` (16px, 960 px/s) it is split into equal moves. Godot's sweep
+can miss the floor for a frame (measured: feet 1.9px above flat ice at 1,680 px/s passed through;
+2.2px above landed). At jump speeds that costs nothing, since the body ends a few px into the ice
+with its centre above it and is pushed out. Past the capsule's half height in one frame (24px)
+the centre is below the surface and the player fell through and died. A drop chasm lands at
+1,600 px/s, a slam dives at up to 1,600, the plunge lands at 2,117. Frames at or below the
+threshold run the old single call, so every level-ground jump (905 px/s at most) is unchanged.
+Gate: `chasm_plunge` in `check.sh --full` (seed 1811587497; 5,040 trials over five seeds passed
+with the fix, 1 in 2,016 failed without).

@@ -13,10 +13,14 @@ write-ups, the audit guide and the branch's commit table are at the top of `docs
 **2026-10-28: step 8 (art) played by the owner and MERGED to `main`** (fast-forward of
 `art/step-8`, not yet pushed). "Step 8" below.
 
-**2026-11-15: branch `play/next`, UNPLAYED, all 14 gates pass (`check.sh --full`).** It merges the
+**2026-11-15: branch `play/next`, UNPLAYED, all 15 gates pass (`check.sh --full`).** It merges the
 three unplayed branches below and adds four things. Nothing here has been seen or played by anyone:
 - **A real bug fixed:** a world rebase on the frame the player lands from a drop chasm dropped them
   through the floor (`terrain.md`, "The plunge"). It predates this branch.
+- **A second real bug fixed:** any fall faster than ~1,440 px/s (a drop chasm's landing, a slam)
+  could pass through the floor when the engine's sweep missed for a frame. Fast falls are now
+  moved in steps of 16px at most (`Player.move_and_slide_in_fall_steps`); slower frames are
+  unchanged. `check.sh --full` gained `chasm_plunge` (15 gates), the seed that reproduced it.
 - **Mountains:** ×3/×4 hills and valleys from segment 60, same slope (`terrain.md`, "Mountains").
 - **The plunge:** a 1,400px drop chasm every 4th chasm window. Cadence: drop, hazard, plunge, islands.
 - **Late tiers:** tier 7 (6:30) adds five mixed pairs, tier 8 (8:00) three triples, and the room

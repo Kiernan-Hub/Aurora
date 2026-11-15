@@ -7,7 +7,7 @@ over time, on infinite seeded procedural terrain. The look is **clean, minimal i
 upgrades and visual polish stay deprioritized until the core loop is stable.
 
 **Where the project is (2026-10-28):** core loop, both set pieces, obstacles and the air moves are built,
-played and **merged to `main`**; so is the hazard art pass (step 8, 2026-10-28). **Branch `play/next` (2026-11-15, UNPLAYED, all 14 gates pass)** holds everything since: island chasms, black ice/vents/geodes, the UI pass, mountains, the plunge, late tiers. `HANDOFF.md` (root) holds ONLY the current
+played and **merged to `main`**; so is the hazard art pass (step 8, 2026-10-28). **Branch `play/next` (2026-11-15, UNPLAYED, all 15 gates pass)** holds everything since: island chasms, black ice/vents/geodes, the UI pass, mountains, the plunge, late tiers. `HANDOFF.md` (root) holds ONLY the current
 state; at session end its section moves to the top of `docs/history.md`, which is never required reading.
 
 **Editing rules.** Find the root cause in the connected files before changing anything; prefer targeted
@@ -79,7 +79,7 @@ the 18 in `scripts/debug/archive/` measure a *paused* game and print confident, 
   only removed pins/comments and reordered keys, `git checkout -- project.godot`, then `./scripts/check.sh`,
   and tell the owner it happened. If the diff also *adds* a real setting, keep that line and flag it; never auto-restore a scene file.
 - **World rebasing must stay on.** `Main.world_rebase_enabled` isn't `@export`ed — exporting it
-  once serialised to `false` and reintroduced the freeze for weeks (`freeze_bug.md`). A rebase must also `force_update_transform()` every chunk: physics sees a moved 2D body only at frame end, and a drop-chasm landing on that frame fell through the floor.
+  once serialised to `false` and reintroduced the freeze for weeks (`freeze_bug.md`). A rebase must also `force_update_transform()` every chunk: physics sees a moved 2D body only at frame end, and a drop-chasm landing on that frame fell through the floor. Same class: a fall over 24px a frame can tunnel, so `Player.move_and_slide_in_fall_steps` splits fast falls — never raise `MAX_FALL_STEP` toward the capsule's half height.
 - **Spawners under `TerrainGenerator` must not read `session_seed` in `_ready()`** — children ready
   before parents, so it's still 0 there; initialise seed-derived state on the first
   `_physics_process`. Shipped as a real bug: identical powerup schedule every session.
