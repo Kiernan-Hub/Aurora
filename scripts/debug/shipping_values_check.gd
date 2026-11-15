@@ -113,6 +113,7 @@ func check_flag_defaults() -> void:
 	# so whatever it is left holding ships. Left set, the first powerup of every run in a
 	# RELEASE build is pinned to one kind.
 	expect_string("PowerupSpawner.debug_first_powerup_effect_override", String(powerups.debug_first_powerup_effect_override), "")
+	expect_float("PowerupSpawner.debug_interval_scale", powerups.debug_interval_scale, 1.0)
 	powerups.free()
 
 	# Same class of knob as ObstacleSpawner's and PowerupSpawner's above. No gate sets it and,
@@ -120,7 +121,13 @@ func check_flag_defaults() -> void:
 	# only 25-value pickup.
 	var rare_coins: RareCoinSpawner = RareCoinSpawner.new()
 	expect_bool("RareCoinSpawner.debug_spawning_disabled", rare_coins.debug_spawning_disabled, false)
+	expect_float("RareCoinSpawner.debug_interval_scale", rare_coins.debug_interval_scale, 1.0)
 	rare_coins.free()
+
+	# DevMode's knobs are set at runtime in debug builds only; the source defaults must ship.
+	var dev_player: Player = Player.new()
+	expect_bool("Player.debug_invincible", dev_player.debug_invincible, false)
+	dev_player.free()
 
 	var main: Main = Main.new()
 	expect_bool("Main.world_rebase_enabled", main.world_rebase_enabled, true)

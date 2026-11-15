@@ -164,7 +164,7 @@ spawned ahead must clear that forward view (`check_spawn_lookahead()`). **Author
 `expand`, and the four art-swap traps: `visuals.md`. Reference art and tool inputs live in `art_source/`, never
 the repo root — the root is imported into the export, that folder is `.gdignore`d.
 
-Debug instrumentation derives from `OS.is_debug_build()` — on in the editor and probes, off in a release export (`physics.md`).
+Debug instrumentation derives from `OS.is_debug_build()` — on in the editor and probes, off in a release export (`physics.md`). **Dev mode** (start-screen buttons, debug builds only, `dev_mode.gd`) sets the debug knobs at runtime from a `user://` flag: use it instead of editing a knob's default.
 
 ---
 

@@ -39,6 +39,14 @@ three unplayed branches below and adds four things. Nothing here has been seen o
   on the buttons, unaffordable cards dimmed, Reset Progress small and last. The shop, stats and
   skaters backdrops are opaque now: the death screen was showing through them.
 
+**Dev mode (2026-11-15):** two buttons at the bottom of the start screen, debug builds only
+(`scripts/systems/dev_mode.gd`, whose header lists every value). "Dev mode" tops the wallet up to
+99,999 **in the real save** (Reset Progress undoes it), cycles a biome every 20s, triples
+powerups, brings a chest about every 40s, a lake every 3 min of play and an aurora 100s into each
+run. "Dev can't die" adds: hazards pass through, and a fall into a void puts you past it. It sets
+the existing debug knobs at runtime from a `user://` flag, so no source is ever left flipped and
+`shipping_values_check` still holds every default. Checked in a window: 4 minutes hands-off, alive.
+
 **Owner to check by playing:** the plunge's landing and camera (1.3s of fall, the landing is off
 screen when you leave the lip); mountains at speed; whether 8:00+ is hard in a good way; the HUD
 text on a phone; the chest's look and its reveal timing; the card shop (built blind, never seen). **Flagged, not done:** the 2.0s floor means more obstacle searches per minute, and

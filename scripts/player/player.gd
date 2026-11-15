@@ -267,6 +267,8 @@ var debug_frame_history: Array[String] = []
 var capsule_half_height: float = 24.0
 var stalled_frame_count: int = 0
 var debug_stall_recovery_count: int = 0
+# Hazards and voids cannot kill. Only DevMode sets it; shipping_values_check holds it false.
+var debug_invincible: bool = false
 var stuck_motion_x_window: Array[float] = []
 var stuck_event_reported: bool = false
 var debug_stuck_event_count: int = 0
@@ -841,6 +843,12 @@ func update_fall_death() -> void:
 	var surface_world_y: float = terrain_generator.get_surface_world_y(global_position.x)
 	surface_world_y += terrain_generator.get_pending_exit_drop_at_world_x(global_position.x)
 	if global_position.y - surface_world_y > FALL_DEATH_DEPTH:
+		if debug_invincible:
+			# DevMode's CAN'T DIE: back onto the ground past the void, as if it had been jumped.
+			var landing_x: float = terrain_generator.get_next_ground_world_x(global_position.x)
+			global_position = Vector2(landing_x, terrain_generator.get_surface_world_y(landing_x) - capsule_half_height)
+			velocity.y = 0.0
+			return
 		die()
 
 
@@ -1190,6 +1198,9 @@ func gain_shield() -> void:
 # self-disables either way. Obstacle collisions only: fall death and both watchdogs
 # call die()/recovery directly and are never routed through here.
 func absorb_hit() -> bool:
+	# DevMode's CAN'T DIE: the hazard is spent as if a shield took it, and the shield is kept.
+	if debug_invincible:
+		return true
 	if has_shield:
 		has_shield = false
 		is_shield_from_glide_landing = false

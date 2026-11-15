@@ -119,6 +119,11 @@ var held_touch_indices: Dictionary[int, bool] = {}
 var is_glide_vertical_follow_active: bool = false
 
 
+# Before any child's _ready(), so every system starts the run holding its dev value (DevMode).
+func _enter_tree() -> void:
+	DevMode.apply(self)
+
+
 func _ready() -> void:
 	InputSetup.configure()
 	camera_authored_zoom = camera_2d.zoom

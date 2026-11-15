@@ -44,6 +44,9 @@ signal chest_collected
 # the player group, so it cannot affect a physics measurement. It exists so that a future
 # probe which does care has the same switch in the same place as its neighbours.
 var debug_spawning_disabled: bool = false
+# Multiplies every wait in this file's two schedules. Only DevMode sets it;
+# shipping_values_check holds it at 1.
+var debug_interval_scale: float = 1.0
 
 const RARE_COIN_SCENE: PackedScene = preload("res://scenes/pickups/rare_coin.tscn")
 
@@ -166,8 +169,8 @@ func _ready() -> void:
 # and get_coin_hash() reads session_seed -- still 0 there. PowerupSpawner shipped exactly
 # this bug (identical schedule every session, measured 2026-08-03).
 func initialize_schedule() -> void:
-	next_coin_time = FIRST_RARE_COIN_TIME + (get_coin_hash(0) * (RARE_COIN_INTERVAL_MAX - RARE_COIN_INTERVAL_MIN))
-	next_chest_time = FIRST_CHEST_TIME + (get_coin_hash(CHEST_HASH_INDEX_OFFSET) * (CHEST_INTERVAL_MAX - CHEST_INTERVAL_MIN))
+	next_coin_time = debug_interval_scale * (FIRST_RARE_COIN_TIME + (get_coin_hash(0) * (RARE_COIN_INTERVAL_MAX - RARE_COIN_INTERVAL_MIN)))
+	next_chest_time = debug_interval_scale * (FIRST_CHEST_TIME + (get_coin_hash(CHEST_HASH_INDEX_OFFSET) * (CHEST_INTERVAL_MAX - CHEST_INTERVAL_MIN)))
 
 
 func _physics_process(_delta: float) -> void:
@@ -190,14 +193,14 @@ func _physics_process(_delta: float) -> void:
 		var world_x: float = player.global_position.x + SPAWN_LOOKAHEAD_WORLD_X
 		if try_spawn_rare_coin(world_x):
 			next_coin_index += 1
-			next_coin_time += RARE_COIN_INTERVAL_MIN + (get_coin_hash(next_coin_index) * (RARE_COIN_INTERVAL_MAX - RARE_COIN_INTERVAL_MIN))
+			next_coin_time += debug_interval_scale * (RARE_COIN_INTERVAL_MIN + (get_coin_hash(next_coin_index) * (RARE_COIN_INTERVAL_MAX - RARE_COIN_INTERVAL_MIN)))
 		else:
 			next_coin_time += REJECTED_SLOT_RETRY_DELAY
 
 	if player.speed_manager.elapsed_time >= next_chest_time:
 		if try_spawn_chest(player.global_position.x + SPAWN_LOOKAHEAD_WORLD_X):
 			next_chest_index += 1
-			next_chest_time += CHEST_INTERVAL_MIN + (get_coin_hash(CHEST_HASH_INDEX_OFFSET + next_chest_index) * (CHEST_INTERVAL_MAX - CHEST_INTERVAL_MIN))
+			next_chest_time += debug_interval_scale * (CHEST_INTERVAL_MIN + (get_coin_hash(CHEST_HASH_INDEX_OFFSET + next_chest_index) * (CHEST_INTERVAL_MAX - CHEST_INTERVAL_MIN)))
 		else:
 			next_chest_time += REJECTED_SLOT_RETRY_DELAY
 

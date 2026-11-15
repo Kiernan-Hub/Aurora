@@ -416,6 +416,8 @@ func wire_scene() -> bool:
 		reset_confirm_dialog.confirmed.connect(_on_reset_progress_confirmed)
 
 	# Optional too, for the shop's reason: a missing Stats screen costs the Stats screen.
+	build_dev_buttons()
+
 	stats_screen = get_node_or_null(stats_screen_path) as Control
 	stats_grid = get_node_or_null(stats_grid_path) as GridContainer
 	achievements_grid = get_node_or_null(achievements_grid_path) as GridContainer
@@ -863,6 +865,29 @@ func apply_skin() -> void:
 		return
 	player.animated_sprite.sprite_frames = frames
 	player.animated_sprite.play(&"skate")
+
+
+# DevMode's two switches, at the bottom of the start screen's column. Debug builds only: in a
+# release export is_available() is false and neither button exists. A press rewrites the flag
+# and reloads, because every knob is applied as the scene enters the tree.
+func build_dev_buttons() -> void:
+	if not DevMode.is_available() or start_button == null:
+		return
+	var column: Node = start_button.get_parent()
+	var dev_button: Button = Button.new()
+	dev_button.text = "Dev mode: %s" % ("ON" if DevMode.is_on() else "OFF")
+	dev_button.pressed.connect(_on_dev_toggled.bind(not DevMode.is_on(), DevMode.is_cant_die()))
+	column.add_child(dev_button)
+	if DevMode.is_on():
+		var cant_die_button: Button = Button.new()
+		cant_die_button.text = "Dev can't die: %s" % ("ON" if DevMode.is_cant_die() else "OFF")
+		cant_die_button.pressed.connect(_on_dev_toggled.bind(true, not DevMode.is_cant_die()))
+		column.add_child(cant_die_button)
+
+
+func _on_dev_toggled(enabled: bool, cant_die: bool) -> void:
+	DevMode.set_flags(enabled, cant_die)
+	reload_scene(false)
 
 
 # See debug_start_wallet. Headless is skipped for apply_upgrades()'s reason: a probe must never

@@ -51,6 +51,9 @@ var debug_first_powerup_time_override: float = 5.0 if OS.is_debug_build() else -
 # look at one specific powerup, without losing variety for the rest of the session.
 var debug_first_powerup_effect_override: StringName = &""
 
+# Multiplies the wait between powerups. Only DevMode sets it; shipping_values_check holds it at 1.
+var debug_interval_scale: float = 1.0
+
 # The full powerup catalogue: one row per kind, and the ONLY place a kind is declared.
 #
 # Replaced a per-kind schedule (each with its own next-time var, hash channel and while
@@ -188,7 +191,7 @@ func _physics_process(_delta: float) -> void:
 		var table_row: Dictionary = POWERUP_TABLE[get_weighted_effect_index(next_powerup_index)]
 		spawn_powerup(table_row["scene"], lookahead_world_x, table_row["effect"])
 		next_powerup_index += 1
-		next_powerup_time += POWERUP_INTERVAL_MIN + (get_powerup_hash(next_powerup_index, HASH_CHANNEL_INTERVAL) * (POWERUP_INTERVAL_MAX - POWERUP_INTERVAL_MIN))
+		next_powerup_time += debug_interval_scale * (POWERUP_INTERVAL_MIN + (get_powerup_hash(next_powerup_index, HASH_CHANNEL_INTERVAL) * (POWERUP_INTERVAL_MAX - POWERUP_INTERVAL_MIN)))
 
 	var despawn_world_x: float = player.global_position.x - DESPAWN_BEHIND_WORLD_X
 	for index: int in range(active_powerups.size() - 1, -1, -1):
