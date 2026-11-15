@@ -268,6 +268,17 @@ func record_run(coin_count: int, elapsed_time: float, distance_meters: float) ->
 	return is_new_best
 
 
+# What this run's chests held (ChestRewards): coins into the wallet and the all-time total, and
+# any skater won, as the same one-level upgrade a shop purchase grants. NO WRITE: GameManager
+# calls this just before record_run(), whose single write carries it.
+func grant_chest_rewards(rewards: Array[Dictionary]) -> void:
+	for reward: Dictionary in rewards:
+		coin_wallet += maxi(int(reward["coins"]), 0)
+		total_coins_earned += maxi(int(reward["coins"]), 0)
+		if reward["skin"] != "":
+			upgrade_levels[Skins.get_track_id(reward["skin"])] = 1
+
+
 # Wipes every progress field back to a fresh save -- best score, wallet, upgrade
 # levels -- but deliberately leaves music_volume/sfx_volume untouched: those are a
 # device preference, not progress, and a player resetting their save has no reason to

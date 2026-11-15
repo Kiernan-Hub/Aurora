@@ -35,6 +35,8 @@ class_name RareCoinSpawner
 @export var player_path: NodePath = NodePath("../../Player")
 
 signal coin_collected(value: int)
+# A chest was picked up (see CHEST_SCENE). GameManager counts it and opens it on the death screen.
+signal chest_collected
 
 # Same plain-var (never @export) debug knob as ObstacleSpawner's -- see its note. Nothing in
 # the harness set flips this today: a rare coin is an Area2D on layer 2 that only reacts to
@@ -43,6 +45,22 @@ signal coin_collected(value: int)
 var debug_spawning_disabled: bool = false
 
 const RARE_COIN_SCENE: PackedScene = preload("res://scenes/pickups/rare_coin.tscn")
+
+# THE CHEST (2026-11-15): a glowing pickup every jump level reaches, carried to the death screen
+# and opened there (ChestRewards, ChestReveal). It lives in this spawner because it is the same
+# object in every way that costs code: timed, placed ahead on a flat take-off with ground under
+# the whole jump, deferred past the lake, despawned behind. Only the scene, the height and the
+# cadence differ. It is a Coin node, so the lake probe and the player-group filter cover it.
+#
+# 84px: the hitbox (radius 16) starts 68px up, above the standing capsule's 48, so it takes a
+# jump; the weakest jump's capsule top reaches 48 + 46 = 94. regression_probe asserts both.
+const CHEST_SCENE: PackedScene = preload("res://scenes/pickups/chest.tscn")
+const CHEST_CLEARANCE: float = 84.0
+const FIRST_CHEST_TIME: float = 30.0
+const CHEST_INTERVAL_MIN: float = 80.0
+const CHEST_INTERVAL_MAX: float = 120.0
+# Added to the index so the chest schedule is a different stretch of the same hash sequence.
+const CHEST_HASH_INDEX_OFFSET: int = 1000003
 
 # THE NUMBER THIS WHOLE FILE EXISTS FOR. Height above the terrain surface, in the same local-y
 # units get_terrain_height() returns, and it is derived, not tasted:
@@ -126,6 +144,8 @@ var terrain_generator: TerrainGenerator
 var player: Player
 var next_coin_time: float = FIRST_RARE_COIN_TIME
 var next_coin_index: int = 0
+var next_chest_time: float = FIRST_CHEST_TIME
+var next_chest_index: int = 0
 var active_coins: Array[Coin] = []
 var has_initialized_schedule: bool = false
 
@@ -143,6 +163,7 @@ func _ready() -> void:
 # this bug (identical schedule every session, measured 2026-08-03).
 func initialize_schedule() -> void:
 	next_coin_time = FIRST_RARE_COIN_TIME + (get_coin_hash(0) * (RARE_COIN_INTERVAL_MAX - RARE_COIN_INTERVAL_MIN))
+	next_chest_time = FIRST_CHEST_TIME + (get_coin_hash(CHEST_HASH_INDEX_OFFSET) * (CHEST_INTERVAL_MAX - CHEST_INTERVAL_MIN))
 
 
 func _physics_process(_delta: float) -> void:
@@ -169,12 +190,27 @@ func _physics_process(_delta: float) -> void:
 		else:
 			next_coin_time += REJECTED_SLOT_RETRY_DELAY
 
+	if player.speed_manager.elapsed_time >= next_chest_time:
+		if try_spawn_chest(player.global_position.x + SPAWN_LOOKAHEAD_WORLD_X):
+			next_chest_index += 1
+			next_chest_time += CHEST_INTERVAL_MIN + (get_coin_hash(CHEST_HASH_INDEX_OFFSET + next_chest_index) * (CHEST_INTERVAL_MAX - CHEST_INTERVAL_MIN))
+		else:
+			next_chest_time += REJECTED_SLOT_RETRY_DELAY
+
 	despawn_trailing_coins()
 
 
 # Returns false when the slot was rejected, so the caller can retry instead of burning this
 # minute's coin on a stretch of terrain that could not carry it.
 func try_spawn_rare_coin(world_x: float) -> bool:
+	return try_spawn(world_x, RARE_COIN_SCENE, RARE_COIN_CLEARANCE, _on_coin_collected)
+
+
+func try_spawn_chest(world_x: float) -> bool:
+	return try_spawn(world_x, CHEST_SCENE, CHEST_CLEARANCE, _on_chest_collected)
+
+
+func try_spawn(world_x: float, scene: PackedScene, clearance: float, on_collected: Callable) -> bool:
 	if absf(terrain_generator.get_slope_angle_at_x(world_x)) > MAX_SLOPE_ANGLE:
 		return false
 	if not is_flat_over_span(world_x - FLAT_TAKEOFF_SPAN, world_x):
@@ -191,10 +227,10 @@ func try_spawn_rare_coin(world_x: float) -> bool:
 	if terrain_generator.is_lake_world_x(world_x):
 		return false
 
-	var local_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - RARE_COIN_CLEARANCE
-	var coin: Coin = RARE_COIN_SCENE.instantiate() as Coin
+	var local_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - clearance
+	var coin: Coin = scene.instantiate() as Coin
 	coin.position = Vector2(world_x, local_y)
-	coin.collected.connect(_on_coin_collected)
+	coin.collected.connect(on_collected)
 	add_child(coin)
 	active_coins.append(coin)
 	return true
@@ -246,3 +282,7 @@ func get_coin_hash(coin_index: int) -> float:
 
 func _on_coin_collected(value: int) -> void:
 	coin_collected.emit(value)
+
+
+func _on_chest_collected(_value: int) -> void:
+	chest_collected.emit()

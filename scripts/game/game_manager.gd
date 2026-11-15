@@ -94,6 +94,10 @@ var glide_coin_spawner: GlideCoinSpawner
 var rare_coin_spawner: RareCoinSpawner
 var coin_label: Label
 var coin_count: int = 0
+# Chests picked up this run, and what they held once the run ended (ChestRewards).
+var chest_count: int = 0
+var chest_rewards: Array[Dictionary] = []
+var chest_reveal: ChestReveal
 # Per completed 360 landed. Routed through _on_coin_collected so a trick reward gets
 # the same coin_multiplier (doubler powerup) and coin SFX as a real coin -- one score
 # path, not two.
@@ -289,6 +293,9 @@ func wire_scene() -> bool:
 	if death_screen == null or death_stats_label == null or restart_button == null or death_home_button == null:
 		push_error("GameManager requires a death screen at %s with restart and home buttons." % death_screen_path)
 		return false
+	# The chest reveal sits under the stats, above the buttons.
+	chest_reveal = ChestReveal.new()
+	death_stats_label.add_sibling(chest_reveal)
 
 	# "Restart" jumps straight back into a new run (see _on_quick_restart_pressed);
 	# "Home" is the one that lands on the START/main screen, same as the pause
@@ -367,6 +374,7 @@ func wire_scene() -> bool:
 	rare_coin_spawner = get_node_or_null(rare_coin_spawner_path) as RareCoinSpawner
 	if rare_coin_spawner != null:
 		rare_coin_spawner.coin_collected.connect(_on_coin_collected)
+		rare_coin_spawner.chest_collected.connect(_on_chest_collected)
 
 	update_coin_label()
 
@@ -655,6 +663,8 @@ func _on_player_died() -> void:
 	# wallet total can be stale. Banking needs no separate call.
 	last_run_is_new_best = false
 	bank_biome_phase()
+	# Rolled here and banked below with the run, so the reveal on the death screen is only a show.
+	chest_rewards = ChestRewards.roll_all(chest_count, get_unowned_skin_ids(), RandomNumberGenerator.new())
 	# Script harnesses can have a real Services autoload. bank_playtime() already
 	# skips headless, but record_run() itself writes coins/bests even when banking
 	# returned false. A regression probe's deliberate death must never save a run.
@@ -662,9 +672,12 @@ func _on_player_died() -> void:
 		# BEFORE record_run, so this run's seconds ride record_run's single disk write
 		# rather than costing a second one from set_state(DEAD) a few lines below.
 		bank_playtime()
+		services.save_store.grant_chest_rewards(chest_rewards)
 		last_run_is_new_best = services.save_store.record_run(coin_count, main.elapsed_time, get_run_distance_meters())
 	refresh_death_stats()
 	set_state(State.DEAD)
+	if chest_reveal != null:
+		chest_reveal.play(chest_rewards, func(is_big: bool) -> void: sfx_player.play_purchase() if is_big else sfx_player.play_coin())
 	# After set_state, so an achievement toast this grants starts on a paused tree and knows to
 	# run over the death screen (AchievementToast.show_next_name).
 	if services != null and DisplayServer.get_name() != "headless":
@@ -781,6 +794,20 @@ func _on_geode_broken(value: int) -> void:
 	_on_coin_collected(value)
 
 
+func _on_chest_collected() -> void:
+	chest_count += 1
+	update_coin_label()
+	sfx_player.play_powerup()
+
+
+func get_unowned_skin_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for skin: Dictionary in Skins.SKINS:
+		if not is_skin_owned(skin["id"]):
+			ids.append(skin["id"])
+	return ids
+
+
 func _on_coin_collected(value: int) -> void:
 	var multiplier: float = powerup_manager.coin_multiplier if powerup_manager != null else 1.0
 	coin_count += int(value * multiplier * get_combo_multiplier())
@@ -799,10 +826,12 @@ func get_combo_multiplier() -> float:
 
 func update_coin_label() -> void:
 	var combo_multiplier: float = get_combo_multiplier()
-	if combo_multiplier <= 1.0:
-		coin_label.text = "Coins: %d" % coin_count
-		return
-	coin_label.text = "Coins: %d   x%.1f" % [coin_count, combo_multiplier]
+	var text: String = "Coins: %d" % coin_count
+	if combo_multiplier > 1.0:
+		text += "   x%.1f" % combo_multiplier
+	if chest_count > 0:
+		text = "Chests: %d   %s" % [chest_count, text]
+	coin_label.text = text
 
 
 # The SINGLE choke point where a purchased stat reaches gameplay. Nothing else may write
