@@ -434,6 +434,14 @@ func apply_world_rebase() -> void:
 		return
 
 	terrain_generator.position.y += shift
+	# Godot hands a moved 2D body to the physics server only when the frame's transform
+	# notifications flush, AFTER every _physics_process -- so without this the Player's
+	# move_and_slide later this frame still meets every chunk a full shift away. Grounded, that
+	# is one floorless frame the snap hides; landing from a drop chasm at 1,600 px/s it is 27px of
+	# travel through a floor that is not there yet, and the player fell through it and died
+	# (chasm_probe, seed 683407368, 2026-11-15: a rebase on the landing frame, 1 phase in 4).
+	for chunk: Node2D in terrain_generator.active_chunks.values():
+		chunk.force_update_transform()
 	player.global_position.y += shift
 	camera_2d.global_position.y += shift
 	# Camera follow state is stored in absolute world Y, so it must move too or the
