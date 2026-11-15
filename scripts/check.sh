@@ -71,6 +71,7 @@ FULL_GATES=(
 	"air_moves|air_move_probe.gd|"
 	"aurora_calm|aurora_calm_probe.gd|"
 	"chasm|chasm_probe.gd|--seed=683407368 --chasms=7 --phases=4"
+	"chasm_plunge|chasm_probe.gd|--seed=1811587497 --chasms=12 --phases=4"
 	"freeze_search|freeze_search.gd|$FREEZE_SEARCH_ARGS"
 	"freeze_slam|freeze_search.gd|$FREEZE_SEARCH_ARGS --slam=1"
 	"freeze_double|freeze_search.gd|$FREEZE_SEARCH_ARGS --double=1"

@@ -22,6 +22,8 @@ const JUMP_VELOCITY: float = -640.0
 const COYOTE_TIME_DURATION: float = 0.12
 const JUMP_BUFFER_DURATION: float = 0.12
 const FLOOR_SNAP_LENGTH: float = 18.0
+# The furthest one move may fall (move_and_slide_in_fall_steps): 960 px/s, above every level-ground jump.
+const MAX_FALL_STEP: float = 16.0
 const ROTATION_SMOOTHNESS: float = 12.0
 const DEBUG_SLOPE_LOGGING: bool = false
 # No-tint modulate: animated_sprite shows its real art. PLAYER_SHIELD_COLOR below is
@@ -534,7 +536,7 @@ func _physics_process(delta: float) -> void:
 
 	var position_before_move: Vector2 = global_position
 	debug_velocity_before_slide = velocity
-	move_and_slide()
+	move_and_slide_in_fall_steps(delta)
 	debug_position_after_slide = global_position
 	debug_velocity_after_slide = velocity
 	apply_grounded_floor_snap()
@@ -789,6 +791,30 @@ func is_stalled_this_frame() -> bool:
 		and absf(velocity.x) >= DEBUG_FREEZE_MIN_VELOCITY_X
 		and absf(last_physics_displacement.x) <= DEBUG_FREEZE_MAX_MOTION_X
 	)
+
+
+# move_and_slide(), split so no single move falls further than MAX_FALL_STEP. The engine's sweep
+# can miss the floor for one frame (measured: feet 1.9px above flat ice at 1,680 px/s went
+# straight through, feet 2.2px above landed). At a jump's speed the miss costs nothing, because
+# the body ends up a few px into the ice with its centre still above it and is pushed back out.
+# Past the capsule's half height in one frame (24px, 1,440 px/s) the centre is under the surface
+# too, and the player fell through and died: a drop chasm lands at 1,600 px/s, a slam dives at up
+# to 1,600, the plunge lands at 2,117. Below MAX_FALL_STEP a frame this is exactly move_and_slide(),
+# so every level-ground jump (905 px/s at most) is untouched. chasm_probe seed 1811587497.
+func move_and_slide_in_fall_steps(delta: float) -> void:
+	var step_count: int = ceili(velocity.y * delta / MAX_FALL_STEP)
+	if step_count <= 1:
+		move_and_slide()
+		return
+	var full_velocity: Vector2 = velocity
+	for _step: int in range(step_count):
+		velocity = full_velocity / float(step_count)
+		move_and_slide()
+		# Whatever the slide did to the velocity carries into the next step and out of the last.
+		full_velocity = velocity * float(step_count)
+		if is_on_floor():
+			break
+	velocity = full_velocity
 
 
 # Death by falling into a chasm.
