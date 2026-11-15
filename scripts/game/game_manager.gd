@@ -672,6 +672,8 @@ func _on_player_died() -> void:
 
 
 func get_run_distance_meters() -> float:
+	if player == null:
+		return 0.0
 	return maxf(player.global_position.x - run_start_x, 0.0) / PIXELS_PER_METER
 
 

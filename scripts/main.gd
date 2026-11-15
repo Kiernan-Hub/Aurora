@@ -285,7 +285,11 @@ func _physics_process(delta: float) -> void:
 	camera_2d.global_position = Vector2(camera_x, camera_y)
 
 	elapsed_time += delta
-	timer_label.text = format_elapsed_time(elapsed_time)
+	# Distance beside the clock, the same figure the death screen and Stats report.
+	if game_manager != null:
+		timer_label.text = "%s   %s" % [GameManager.format_distance(game_manager.get_run_distance_meters()), format_elapsed_time(elapsed_time)]
+	else:
+		timer_label.text = format_elapsed_time(elapsed_time)
 
 
 # Stamps the real session clock at the moment the player stops making progress, and
