@@ -7,7 +7,7 @@ over time, on infinite seeded procedural terrain. The look is **clean, minimal i
 upgrades and visual polish stay deprioritized until the core loop is stable.
 
 **Where the project is (2026-10-28):** core loop, both set pieces, obstacles and the air moves are built,
-played and **merged to `main`**; so is the hazard art pass (step 8, 2026-10-28). **Branch `play/next` (2026-11-15, UNPLAYED, all 15 gates pass)** holds everything since: island chasms, black ice/vents/geodes, the UI pass, mountains, the plunge, late tiers, chests, the card shop. `HANDOFF.md` (root) holds ONLY the current
+played and **merged to `main`**; so is the hazard art pass (step 8, 2026-10-28). **Branch `play/next` (2026-11-15, UNPLAYED, all 15 gates pass)** holds everything since: island chasms, black ice/vents/geodes, the UI pass, mountains, the plunge, late tiers, chests, the card shop, dev mode. **Start at `HANDOFF.md`, "START HERE".** `HANDOFF.md` (root) holds ONLY the current
 state; at session end its section moves to the top of `docs/history.md`, which is never required reading.
 
 **Editing rules.** Find the root cause in the connected files before changing anything; prefer targeted
@@ -35,8 +35,8 @@ The conclusion goes here (what's true, what to avoid, one pointer); the full log
 
 No test suite, no build script. Godot is at `/Applications/Godot.app/Contents/MacOS/Godot` (play with `--path .`; opens a window and blocks, so only when asked). **In a sandboxed agent (Codex) add `--log-file /tmp/godot.log` to every Godot command**, or Godot crashes at startup because it can't write its log under `~/Library` (`debugging.md`).
 
-**`./scripts/check.sh` runs the fast six in ~75s** — shipping-values, biome-schedule, terrain-shape, lake-suppression, `regression_probe` (save/shop/death-screen/touch/reload, in-memory save), and an export check that fails if `scripts/debug` or `art_source` reaches a pack. Run it
-before every commit; **`--full`** adds every asserting physics gate below (~3 min). It deliberately does *not* import the project.
+**`./scripts/check.sh` runs the fast six in ~2 min** — shipping-values, biome-schedule, terrain-shape, lake-suppression, `regression_probe` (save/shop/death-screen/touch/reload, in-memory save), and an export check that fails if `scripts/debug` or `art_source` reaches a pack. Run it
+before every commit; **`--full`** adds every asserting physics gate below (~4 min, 15 gates). It deliberately does *not* import the project.
 
 **Fifteen maintained checks** (everything else is in `scripts/debug/archive/`, so the directory answers "is this a gate?"): `check.sh` runs five, `--full` six more, the visual three and camera-shake run by hand (`debugging.md`; `--fixed-fps 60` runs the headless ones in seconds):
 

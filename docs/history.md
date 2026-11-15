@@ -5,6 +5,175 @@ session ends, its `HANDOFF.md` section moves to the top of this file and `HANDOF
 the current state. **This is history, not a to-do list**: many entries are superseded, and some
 contradict the code. `CLAUDE.md` holds the current truth.
 
+## 2026-10-05 to 2026-11-15 — HANDOFF's "where the project is" section, moved here verbatim on 2026-11-15
+
+Superseded by HANDOFF.md's "START HERE". Kept for the audit-pass summary, the phone numbers for A3 and the owner's owed tests (A, C, D, E).
+
+### Where the project was — 2026-10-05
+
+**MERGED TO `main` 2026-10-05** (fast-forward of `claude/implementation-t58fc3`, pushed). The
+obstacle system and the air moves are built and played: the owner's Mac playtest passed
+(2026-10-03), phone test A passed 6 of 8 over adb (2026-10-04), and **the owner played the merged
+build on the phone for ~3 minutes on 2026-10-05: "everything is good"** (playtest C, tiers 1–4;
+5:00+ not yet reached). The white void below a high jump is fixed and owner-approved. Those
+write-ups, the audit guide and the branch's commit table are at the top of `docs/history.md`.
+**New work branches from `main`.**
+
+**2026-10-28: step 8 (art) played by the owner and MERGED to `main`** (fast-forward of
+`art/step-8`, not yet pushed). "Step 8" below.
+
+**2026-11-15: branch `play/next`, UNPLAYED, all 15 gates pass (`check.sh --full`).** It merges the
+three unplayed branches below and adds four things. Nothing here has been seen or played by anyone:
+- **A real bug fixed:** a world rebase on the frame the player lands from a drop chasm dropped them
+  through the floor (`terrain.md`, "The plunge"). It predates this branch.
+- **A second real bug fixed:** any fall faster than ~1,440 px/s (a drop chasm's landing, a slam)
+  could pass through the floor when the engine's sweep missed for a frame. Fast falls are now
+  moved in steps of 16px at most (`Player.move_and_slide_in_fall_steps`); slower frames are
+  unchanged. `check.sh --full` gained `chasm_plunge` (15 gates), the seed that reproduced it.
+- **Mountains:** ×3/×4 hills and valleys from segment 60, same slope (`terrain.md`, "Mountains").
+- **The plunge:** a 1,400px drop chasm every 4th chasm window. Cadence: drop, hazard, plunge, islands.
+- **Late tiers:** tier 7 (6:30) adds five mixed pairs, tier 8 (8:00) three triples, and the room
+  floor is 2.0s (was 2.5), reached about 11:00. Every row has 9+ frames in the proof.
+- **HUD:** run distance beside the clock (`TimerLabel`, widened to 192px).
+- **Chests:** a glowing pickup every 80–120s (first at 30–50s) at 84px, which every jump level
+  reaches; "Chests: N" on the HUD. At death `ChestRewards.TABLE` rolls each one (15–35 coins 55%,
+  50–90 30%, jackpot 200–300 10%, an unowned skater 5%), the rewards ride `record_run`'s write,
+  and `ChestReveal` opens them on the death screen: a rattle, a flash, the lid thrown back, rays,
+  a gold spray and a count-up, with three synthesised sounds (`build_ui_sfx.py`: rattle, open,
+  jackpot; never heard by anyone). The chest is drawn from polygons
+  in `chest.tscn`: placeholder art. `regression_probe` gained `chests` (it caught a crash in the
+  reveal before anyone saw it). Chest and rare coin now skip any spot within 500px or 1s of a
+  hazard (`ObstacleSpawner.is_clear_for_pickup`), which closes old checklist item 6.
+- **Shop as cards:** an upgrades row and a skaters row with pictures, level pips on Jump, prices
+  on the buttons, unaffordable cards dimmed, Reset Progress small and last. The shop, stats and
+  skaters backdrops are opaque now: the death screen was showing through them.
+
+**Dev mode (2026-11-15):** two buttons at the bottom of the start screen, debug builds only
+(`scripts/systems/dev_mode.gd`, whose header lists every value). "Dev mode" tops the wallet up to
+99,999 **in the real save** (Reset Progress undoes it), cycles a biome every 20s, triples
+powerups, brings a chest about every 40s, a lake every 3 min of play and an aurora 100s into each
+run. "Dev can't die" adds: hazards pass through, and a fall into a void puts you past it. It sets
+the existing debug knobs at runtime from a `user://` flag, so no source is ever left flipped and
+`shipping_values_check` still holds every default. Checked in a window: 4 minutes hands-off, alive.
+
+**Owner to check by playing:** the plunge's landing and camera (1.3s of fall, the landing is off
+screen when you leave the lip); mountains at speed; whether 8:00+ is hard in a good way; the HUD
+text on a phone; the chest's look and its reveal timing; the card shop (built blind, never seen). **Flagged, not done:** the 2.0s floor means more obstacle searches per minute, and
+A3 (search cost on the phone at combo tiers) is still unmeasured. If late frames show up past
+8:00, set `BREATHING_ROOM_FLOOR` back to 2.5 first.
+
+**2026-10-29: three branches built, none played** (now merged together on `play/next`).
+- **`terrain/island-chasm`**: an island chasm every 4th chasm window (from ~3:30): two floating floes over one long void, three gaps (`terrain.md`, "Island chasms"). Islands sit at lip height, so the player physics is untouched.
+- **`elements/black-ice-geode`**: black ice, slam geodes and ice vents (Hazards table below).
+- **`ui/stats-sounds-theme`**: synthesised menu sounds (`build_ui_sfx.py`: click, back, start,
+  purchase; Restart/Home play on `Services.play_across_reload()` because the reload freed the old
+  click after a frame); one flat ice theme on every screen (`assets/ui/aura_theme.tres`); a
+  **Stats** screen off START (all-time distance, longest run, runs, time, coins earned, best,
+  lakes, auroras, every achievement with its hint); distance on the death screen; four run
+  achievements (1 km and 5 km in a run, 500 coins in a run, 100 km in all). New save fields need
+  no version bump. `regression_probe` gained `save_history` and `stats_screen`. **Owner to judge
+  by ear and eye:** the four sounds and the theme. They were not heard or screenshotted.
+  **Skins (Skaters button):** teen boy, man in his twenties, mom and dad in their mid-40s, each the
+  girl's 4-frame cycle regenerated by ChatGPT from her frames and baked by `build_skin_frames.py`
+  to her exact height and footing (the capsule is every skin's hitbox). **Bought in the shop**
+  (owner, 2026-10-29) as one-level `UpgradeStore.TRACKS` rows: teen 250, twenties 500, mom and dad
+  750 each (2,250 on top of the upgrades' 2,330). Buying one wears it; locked ones show their price
+  on the Skaters screen; Reset Progress un-buys them back to the girl. Prices are first guesses.
+  **Sparkle colours (Skaters screen, second row):** tints the landing glints and the glide trail
+  (a `modulate` on `LandingBurst` and `FlightTrail`; Ice = white = the old look). The first
+  achievement rewards: Amber (1 km), Rose (500 coins), Violet (5 km), Aurora (the aurora); Stats
+  shows each reward. `Skins.SPARKLES`; a reset relocks them. Mom and the twenties man took a second pass to read their
+  age, and mom a third (a painted checkerboard, then solid black, which the bake now keys).
+
+**This session: the `audit.md` cleanup pass**, one commit per item. 17 of 19 items are closed:
+- **Player-visible fixes.** With the slam or double jump owned, a tap 1–2 frames before touchdown
+  could become an air move instead of the landing jump; now it is always the landing jump (A14,
+  `air_move_probe` `landing_edge` + `landing_model`). The death screen's wallet and best follow a
+  shop purchase or reset (A2, the phone-test bug). A coin or powerup touched on the death frame no
+  longer counts (A15).
+- **Save safety.** A purchase whose save fails rolls back and says so (A1). The loader rejects
+  INF, huge and negative numbers field by field (A17).
+- **Gates.** `check.sh` is now the **fast six** (`regression_probe`, against an in-memory save) and
+  **`--full`** runs every asserting physics gate (14/14, ~3 min). Every gate has a time limit, and
+  a gate script that fails to load now FAILS (Godot exits 0 then; it was hiding one). The freeze
+  and floor-flicker gates exit non-zero on failure. `art_source` is guarded out of exports. The
+  drawn coin (sprite × tint) has a contrast floor. The contact sheet covers all nine palettes.
+- **Cleanup.** Dead code removed (empty music player, muted jump SFX and its WAV, the pine
+  generator, unused wrappers), the two reload paths merged, streak gradients built once, the skate
+  trail's halo/core strengths made independent (same look), docs reconciled.
+- **Comment essays trimmed** (A9) in the four files the audit named: `world_rebaser.gd`,
+  `services.gd`, `save_store.gd`, `game_manager.gd`. Comments only, every invariant kept; other
+  files get the same treatment only when next touched.
+- **Still open:** A3, the obstacle search's cost (measurement added, needs the phone: next
+  actions 2), and archiving the older audits at the bottom of `audit.md` (code comments still cite
+  "audit.md, finding 1"). A13 needs no action.
+
+**On the phone:** the merged build as a debug export, save kept (all three upgrades owned, wallet
+~10,400). Exported with `debug_start_wallet` 9999; the source is at 0. The same APK is `aura.apk` on
+disk. If `adb devices` says `unauthorized`, tap Allow on the phone (it dropped once this session).
+
+**First phone numbers for A3 (2026-10-05 logcat):** the slowest obstacle search in the owner's runs
+was **4.10 ms at 72 s** (tier 2, solo pieces), 0.25–2.5 ms before that, against a 16.7 ms physics
+tick. That is roughly 6× the Mac's solo-piece cost, so the combo tiers (Mac 6–8 ms worst, from
+2:30) could reach ~40 ms on the phone: **unmeasured, since no logged run printed a combo-tier
+sample.** One long run with logcat settles it.
+
+#### Next actions, in order
+
+1. **Step-8 art: played by the owner and merged 2026-10-28** ("Step 8" below). Knobs if any of it
+   reads wrong later: glint brightness `SkateSpray.CHIP_ADD_STRENGTH`, the death-screen fade
+   `GameManager.DEATH_SCREEN_FADE_SECONDS` (0 = old snap), sink `Player.SINK_DEPTH`/`SINK_DURATION`.
+2. **One long phone run past 5:00 with logcat** (`adb logcat -s godot | grep OBSTACLE_SEARCH`,
+   `debugging.md`, "Android device testing"). It answers the rest of playtest C (does 5:00+ get
+   properly hard?) and A3 (does a combo search cost a frame?). Only if it does: optimise, which
+   changes accepted placements and must re-pass `check_placed_pattern_fairness()`.
+3. **Tune by feel** if anything reads wrong. The knobs are in "Where to tune". Any timing change
+   must still pass `./scripts/check.sh`, whose fairness proofs fail any pattern under 7 frames of
+   take-off window.
+4. Items A5/A8 below by thumb if you meet them. The death-screen wallet fix (A2) can't be
+   re-checked by buying (everything is owned, and Reset Progress wipes the lake progress and
+   achievement); `regression_probe`'s `death_stats` covers it.
+6. After opening the editor, always run `git status`. It re-saves `HANDOFF.md` with tabs (whitespace
+   only: `git checkout -- HANDOFF.md`) and may strip `project.godot`'s pins (standing rule in
+   `CLAUDE.md`).
+
+#### Owner: tests still owed (none block anything now)
+
+**A. Phone.** 6 of 8 passed 2026-10-04 (`docs/history.md`). Not reached by blind adb taps: **5**, tap
+left over a chasm does nothing, and once you've dropped below a lip a right tap does nothing (you
+die); **8**, thin ice with either thumb keeps its hop rhythm. Both are `air_move_probe`'s logic.
+For a fresh export with coins, set `GameManager.debug_start_wallet` (`game_manager.gd:58`) to 9999
+locally and back to 0 before any commit (`check.sh` fails while it's on).
+
+**C. Play the obstacle half.** Owner, phone, ~3 min, 2026-10-05: **"everything is good"**. Kept
+for the long run in next actions 2, whose 5:00+ tiers no one has played yet:
+1. **Density.** Is 1:00–2:30 now too busy, at ~2.5× the old count? Does 5:00+ get properly hard?
+   Since the 2026-09-28 fix, combos are rarer (`docs/history.md`): do tiers 4–5 still feel like new ideas?
+   Spikes now sit only on flats or at the foot of a descent, never just past a climb: repetitive?
+2. **Readability at 750 px/s:** floe and shard against scenery, thin ice as "keep hopping", and the
+combos (e.g. spike→floe 0.5s, which needs an early jump).
+3. **Thin ice grace:** is 0.2s right on touch?
+4. **Camera at 30%**, on the start screen and in play; Aurora streaks, wings and framing with the player off-centre.
+5. **The frozen lake's skate trail shows less of its tail** (fades over ~860px; only ~415–520px behind the
+player is on screen now). Cosmetic.
+6. **Possible overlap:** an air coin line (132px) or the rare coin (174px) can sit inside a floe's column
+(64–200px). Harmless, looks odd, not guarded.
+7. The first spike now appears no earlier than ~21.5s, not 20s (first-appearance pause and retries).
+
+**D. Visual, never checked by anyone:** the step-8 hazard art and thin-ice strip, the shop's three
+code-built rows on a phone screen (font 13, same as the old authored row), and the slam's bigger
+landing squash.
+
+**E. Code paths no test reaches** (reviewed only):
+- The slam refused while already falling faster than 1,200 px/s. It is only reachable in a drop
+chasm's descent.
+- Touch's half-screen split in `Main._input`. Same coordinate space as the pause-button hit test next
+to it.
+- An Android build of this code. `check.sh`'s export check packs it, but nothing has run it on a device.
+
+---
+
+
 ## 2026-10-03/04 — white void fixed; phone test A; the `audit.md` cleanup pass
 
 Sessions on the Mac. The owner reported the white void below a high jump (2026-10-03); it was fixed
