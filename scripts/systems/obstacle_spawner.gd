@@ -330,6 +330,25 @@ func _physics_process(_delta: float) -> void:
 			active_obstacles.remove_at(index)
 
 
+# Whether a jump for a pickup hung at world_x (the chest, the rare coin) stays clear of this
+# spawner's pieces: none already placed within PICKUP_CLEAR_DISTANCE, and none due within
+# PICKUP_CLEAR_SECONDS, since a pattern placed that much later lands at least that far past it.
+# Without it a chest could hang inside a floe's column, and jumping for it was a death.
+const PICKUP_CLEAR_DISTANCE: float = 500.0
+const PICKUP_CLEAR_SECONDS: float = 1.0
+
+
+func is_clear_for_pickup(world_x: float) -> bool:
+	if debug_spawning_disabled or player == null:
+		return true
+	if next_pattern_time - player.speed_manager.elapsed_time < PICKUP_CLEAR_SECONDS:
+		return false
+	for obstacle: Node2D in active_obstacles:
+		if is_instance_valid(obstacle) and absf(obstacle.position.x - world_x) < PICKUP_CLEAR_DISTANCE:
+			return false
+	return true
+
+
 # One scheduling decision, taken when a pattern is due. The pattern is drawn from
 # next_pattern_index, which only advances on success, so a retry asks for the SAME pattern
 # further along rather than re-rolling past it.

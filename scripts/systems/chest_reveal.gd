@@ -47,7 +47,8 @@ func play(rewards: Array[Dictionary], on_open: Callable) -> void:
 	reveal_tween.tween_interval(START_DELAY)
 	for row_index: int in range(mini(rewards.size(), MAX_ROWS)):
 		var is_overflow_row: bool = row_index == MAX_ROWS - 1 and rewards.size() > MAX_ROWS
-		var shown: Array[Dictionary] = rewards.slice(row_index) if is_overflow_row else [rewards[row_index]]
+		var shown: Array[Dictionary] = []
+		shown.assign(rewards.slice(row_index) if is_overflow_row else [rewards[row_index]])
 		var row: Label = Label.new()
 		row.text = "Chest" if shown.size() == 1 else "%d chests" % shown.size()
 		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

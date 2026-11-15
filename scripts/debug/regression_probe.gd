@@ -30,6 +30,10 @@ extends SceneTree
 #                      one wears it, and a reset un-buys it back to the default.
 #   sparkles           every sparkle's unlocking achievement exists; a locked one cannot be
 #                      picked, an earned one can, and a reset relocks it back to Ice.
+#   chests             every chest reward is inside ChestRewards.TABLE's ranges, a skater is only
+#                      ever one the player lacks and never twice in a run; the chest hangs above
+#                      a standing player and within the weakest jump; granting adds coins and the
+#                      skater without a write; a death rolls one reward per chest and the reveal opens each.
 #
 # Usage:
 #   godot --headless --fixed-fps 60 --path . --script res://scripts/debug/regression_probe.gd
@@ -76,6 +80,7 @@ func run() -> void:
 	save_containers()
 	await touch_hold()
 	await death_stats()
+	await chests()
 	await death_pickups()
 	await reload_banking()
 	save_history()
@@ -186,6 +191,59 @@ func death_stats() -> void:
 	expect("death_stats", at_death == "Best: 50 / Wallet: 1000" and after_buy == expected_after_buy
 		and after_reset == "Best: 0 / Wallet: 0",
 		"at death [%s], after buy [%s], after reset [%s]" % [at_death, after_buy, after_reset])
+
+
+func chests() -> void:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = SEED
+	var lowest: int = ChestRewards.TABLE[0]["coins_min"]
+	var highest: int = ChestRewards.TABLE[ChestRewards.JACKPOT_ROW]["coins_max"]
+	var rolls_ok: bool = true
+	var skins_seen: int = 0
+	for _roll: int in range(4000):
+		var reward: Dictionary = ChestRewards.roll(["teen"], rng)
+		if reward["skin"] != "":
+			skins_seen += 1
+			rolls_ok = rolls_ok and reward["skin"] == "teen" and reward["coins"] == 0
+		else:
+			rolls_ok = rolls_ok and reward["coins"] >= lowest and reward["coins"] <= highest
+		rolls_ok = rolls_ok and ChestRewards.roll([], rng)["skin"] == ""
+	var run_skins: Array[String] = []
+	for reward: Dictionary in ChestRewards.roll_all(400, ["teen", "mom"], rng):
+		if reward["skin"] != "":
+			run_skins.append(reward["skin"])
+	var no_repeat: bool = run_skins.size() == 2 and run_skins[0] != run_skins[1]
+
+	var chest: Node = RareCoinSpawner.CHEST_SCENE.instantiate()
+	var radius: float = ((chest.get_node("CollisionShape2D") as CollisionShape2D).shape as CircleShape2D).radius
+	var is_coin: bool = chest is Coin
+	chest.free()
+	var hitbox_bottom: float = RareCoinSpawner.CHEST_CLEARANCE - radius
+	var weakest_top: float = 48.0 + pow(Player.JUMP_VELOCITY * UpgradeStore.get_min_jump_multiplier(), 2.0) / (2.0 * Player.GRAVITY)
+	var reach_ok: bool = hitbox_bottom > 48.0 + 8.0 and weakest_top >= hitbox_bottom + 16.0
+
+	await new_scene()
+	store.coin_wallet = 100
+	store.upgrade_levels.clear()
+	var writes_before: int = store.writes
+	store.grant_chest_rewards([{"coins": 40, "skin": "", "jackpot": false}, {"coins": 0, "skin": "teen", "jackpot": false}])
+	var grant_ok: bool = store.coin_wallet == 140 and store.upgrade_levels.get("skin_teen", 0) == 1 and store.writes == writes_before
+
+	game_manager._on_chest_collected()
+	game_manager._on_chest_collected()
+	var hud: String = game_manager.coin_label.text
+	player.die()
+	var death_ok: bool = hud.begins_with("Chests: 2") and game_manager.chest_rewards.size() == 2 \
+		and game_manager.chest_reveal.get_child_count() == 2 and game_manager.chest_reveal.visible
+	# Let the reveal run on the paused tree: both rows must have opened into what they held.
+	if death_ok:
+		await game_manager.chest_reveal.reveal_tween.finished
+	for row: Node in game_manager.chest_reveal.get_children():
+		var text: String = (row as Label).text
+		death_ok = death_ok and (text.contains("coins") or text.contains("SKATER"))
+	expect("chests", rolls_ok and skins_seen > 0 and no_repeat and is_coin and reach_ok and grant_ok and death_ok,
+		"rolls=%s skins_seen=%d no_repeat=%s is_coin=%s reach=%s (bottom %.0f, weakest top %.0f) grant=%s death=%s hud=[%s]" % [
+			rolls_ok, skins_seen, no_repeat, is_coin, reach_ok, hitbox_bottom, weakest_top, grant_ok, death_ok, hud])
 
 
 func stats_line(line: int) -> String:

@@ -33,6 +33,7 @@ class_name RareCoinSpawner
 # level-0 player and delete the reason it is up there.
 @export var terrain_generator_path: NodePath = NodePath("..")
 @export var player_path: NodePath = NodePath("../../Player")
+@export var obstacle_spawner_path: NodePath = NodePath("../ObstacleSpawner")
 
 signal coin_collected(value: int)
 # A chest was picked up (see CHEST_SCENE). GameManager counts it and opens it on the death screen.
@@ -142,6 +143,8 @@ const HASH_MIX_MULTIPLIER: int = 2654435761
 
 var terrain_generator: TerrainGenerator
 var player: Player
+# Optional: without one, pickups are simply not kept clear of hazards.
+var obstacle_spawner: ObstacleSpawner
 var next_coin_time: float = FIRST_RARE_COIN_TIME
 var next_coin_index: int = 0
 var next_chest_time: float = FIRST_CHEST_TIME
@@ -153,6 +156,7 @@ var has_initialized_schedule: bool = false
 func _ready() -> void:
 	terrain_generator = get_node_or_null(terrain_generator_path) as TerrainGenerator
 	player = get_node_or_null(player_path) as Player
+	obstacle_spawner = get_node_or_null(obstacle_spawner_path) as ObstacleSpawner
 	if terrain_generator == null or player == null:
 		push_error("RareCoinSpawner requires a valid terrain_generator_path and player_path.")
 		set_physics_process(false)
@@ -225,6 +229,9 @@ func try_spawn(world_x: float, scene: PackedScene, clearance: float, on_collecte
 	# suppressions: the caller retries in REJECTED_SLOT_RETRY_DELAY, so the diamond is
 	# DEFERRED past the lake rather than lost.
 	if terrain_generator.is_lake_world_x(world_x):
+		return false
+	# Never where reaching for it means jumping into a hazard (ObstacleSpawner.is_clear_for_pickup).
+	if obstacle_spawner != null and not obstacle_spawner.is_clear_for_pickup(world_x):
 		return false
 
 	var local_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - clearance
