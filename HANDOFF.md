@@ -13,7 +13,23 @@ write-ups, the audit guide and the branch's commit table are at the top of `docs
 **2026-10-28: step 8 (art) played by the owner and MERGED to `main`** (fast-forward of
 `art/step-8`, not yet pushed). "Step 8" below.
 
-**2026-10-29, owner away: three branches built, none played** (now merged together on `play/next`).
+**2026-11-15: branch `play/next`, UNPLAYED, all 14 gates pass (`check.sh --full`).** It merges the
+three unplayed branches below and adds four things. Nothing here has been seen or played by anyone:
+- **A real bug fixed:** a world rebase on the frame the player lands from a drop chasm dropped them
+  through the floor (`terrain.md`, "The plunge"). It predates this branch.
+- **Mountains:** ×3/×4 hills and valleys from segment 60, same slope (`terrain.md`, "Mountains").
+- **The plunge:** a 1,400px drop chasm every 4th chasm window. Cadence: drop, hazard, plunge, islands.
+- **Late tiers:** tier 7 (6:30) adds five mixed pairs, tier 8 (8:00) three triples, and the room
+  floor is 2.0s (was 2.5), reached about 11:00. Every row has 9+ frames in the proof.
+- **HUD:** run distance beside the clock (`TimerLabel`, widened to 192px).
+
+**Owner to check by playing:** the plunge's landing and camera (1.3s of fall, the landing is off
+screen when you leave the lip); mountains at speed; whether 8:00+ is hard in a good way; the HUD
+text on a phone. **Flagged, not done:** the 2.0s floor means more obstacle searches per minute, and
+A3 (search cost on the phone at combo tiers) is still unmeasured. If late frames show up past
+8:00, set `BREATHING_ROOM_FLOOR` back to 2.5 first.
+
+**2026-10-29: three branches built, none played** (now merged together on `play/next`).
 - **`terrain/island-chasm`**: an island chasm every 4th chasm window (from ~3:30): two floating floes over one long void, three gaps (`terrain.md`, "Island chasms"). Islands sit at lip height, so the player physics is untouched.
 - **`elements/black-ice-geode`**: black ice, slam geodes and ice vents (Hazards table below).
 - **`ui/stats-sounds-theme`**: synthesised menu sounds (`build_ui_sfx.py`: click, back, start,
@@ -177,7 +193,9 @@ to it.
 | 3 | 1:45 | `ice_short` 0.3s (w2), `ice_long` 1.2s (w1), `black` 0.6s (w1), `vent` (w1) | 5s |
 | 4 | 2:30 | pairs: `spike_floe`, `spike_shard`, `floe_spike`, `shard_spike` (0.5s apart), `spike_spike` (0.7s), `ice_spike`, `black_spike` (w2), `geode_spike` (slam owners), `vent_floe` (0.5s, w2) | 4s |
 | 5 | 3:30 | triples: `spike_floe_spike` (1.0s), `floe_spike_shard` (1.1s), `spike_black_spike` (0.95s; 1.25s starved) | 3.5s |
-| 6 | 5:00 | — | 3.5s shrinking 0.25s/min to the **2.5s floor** (~9:00) |
+| 6 | 5:00 | — | 3.5s |
+| 7 | 6:30 | pairs: `ice_floe`, `shard_ice`, `vent_shard`, `vent_spike`, `vent_ice` | 3.0s |
+| 8 | 8:00 | triples: `black_floe_spike`, `vent_floe_spike`, `ice_spike_floe` (w2 each) | 2.75s shrinking 0.25s/min to the **2.0s floor** (~11:00) |
 
 - **Each attempt**: draw a pattern for the current tier. A kind not yet seen this run is swapped for
   its solo pattern, with **+1.5s room before and after** (the tutorial). Floating patterns wait out a
@@ -215,7 +233,7 @@ to it.
 
 | Want to change | Knob |
 |---|---|
-| How dense the run gets, and when | `TIERS` (`start`, `room`), `BREATHING_ROOM_FLOOR` (2.5), `BREATHING_ROOM_SHRINK_PER_SECOND`, `BREATHING_ROOM_JITTER` (0.3) |
+| How dense the run gets, and when | `TIERS` (`start`, `room`), `BREATHING_ROOM_FLOOR` (2.0), `BREATHING_ROOM_SHRINK_PER_SECOND`, `BREATHING_ROOM_JITTER` (0.3) |
 | Which patterns, how often, timings | `PATTERNS` (`weight`, `at`, `length`). Re-run `check.sh`: the proof has the final say |
 | The tutorial pause | `FIRST_APPEARANCE_EXTRA_ROOM` (1.5s) |
 | Thin ice forgiveness | `ThinIce.GRACE_SECONDS` (0.2) |

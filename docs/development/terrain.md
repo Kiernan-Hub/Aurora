@@ -94,6 +94,20 @@ suppressing it would need the neighbour lookback this generator has none of. The
 gains a `_big` suffix; normal hills keep their exact existing labels, which archived probes
 match as string literals.
 
+## Mountains (2026-11-15)
+
+The same both-axes scaling, further. From `MOUNTAIN_MIN_SEGMENT_INDEX` (60, at least 28,800
+world_x) the oversize chance is `LATE_BIG_HILL_CHANCE_PERCENT` (18%) and `MOUNTAIN_SHARE_PERCENT`
+(35%) of oversized hills draw from `MOUNTAIN_SCALES` (×3, ×4) instead: a ×4 medium hill is 2,560px
+long and 296px tall. Slope is unchanged by construction (the invariant check still reports
+20.13°), and the label suffix is `_mountain`. Measured on seed 683407368: 14 mountains in the
+first 420 segments, about two a minute. `freeze_search` across two of them (x 65,500–72,500,
+plain, slam, double): 0 stalls.
+
+**Anything pinned to a world_x past segment 60 moved when this landed**, and will again with any
+later change to segment lengths. `PLACED_FAIRNESS_CASES` therefore pins both of its positions
+before segment 60.
+
 ## Complexity dial for bisecting terrain bugs
 
 `TerrainGenerator.debug_weight_*` (`debug_weight_flat`, `debug_weight_small_hill`,
@@ -278,6 +292,22 @@ gaps of 91–134 segments / 68,480–100,000 world_x ⇒ ≈**1.5–2.8 minutes*
 Window 0 is a drop, so the **first void of every run is the survivable one** — the player
 learns what a void looks like before one can kill them. The cost is that the first *hazard*
 chasm now arrives one chasm later than it used to.
+
+## The plunge (2026-11-15)
+
+`chasm_plunge` is the drop chasm with `exit_drop` 1,400: 1.32s of fall, landing at 2,117 px/s,
+992px of crossing at `MAX_SPEED` (hence `segment_length` 2,800). It is one `CHASM_VARIANTS` row and
+`CHASM_PLUNGE_WINDOW_PERIOD`/`PHASE` (every 4th window at phase 2, from segment 112); every query
+it needs was already generic over `exit_drop`. The cadence is now drop, hazard, **plunge**,
+islands. `chasm_probe --chasms=7` reaches the first plunge and runs all ten trial modes over it.
+
+**Building it found a real bug in the ordinary drop.** A world rebase landing on the touchdown
+frame dropped the player through the floor: Godot delivers a moved 2D body's transform to the
+physics server only when the frame's notifications flush, after every `_physics_process`, so
+`move_and_slide` met chunks a whole shift away. Grounded, the floor snap hides that frame; at
+1,600 px/s it is 27px of travel, past the capsule's half height. `Main.apply_world_rebase()` now
+calls `force_update_transform()` on every active chunk. Reproduced by `chasm_probe` on seed
+683407368 (no_jump, 1 phase in 4) once the mountains had moved that drop to x = 212,840.
 
 ## Island chasms (2026-10-29)
 
