@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthesise the menu sounds: click, back, start and purchase .wav under assets/audio/sfx/.
+"""Synthesise the menu and chest sounds (.wav under assets/audio/sfx/).
 
     python3 scripts/tools/build_ui_sfx.py
 
@@ -13,6 +13,10 @@ millisecond of noise for the strike. The four differ only in pitch, direction an
   * back     -- one lower tink sliding slightly down. Close, Back, Home.
   * start    -- two tinks rising, over a short breath of air. A run begins.
   * purchase -- a three-tink rising arpeggio with a long ring. Something was bought.
+The chest's three (ChestReveal) are the same voice, appended so the four above stay byte-identical:
+  * chest_rattle  -- low knocks coming faster and faster: the chest shaking before it opens.
+  * chest_open    -- a low thump for the lid, a breath of air, and a quick bright rise.
+  * chest_jackpot -- the same, deeper and longer, climbing five notes into a long ring.
 """
 import math
 import random
@@ -35,6 +39,13 @@ SOUNDS = {
     "back": (0.18, 0.4, [(0.0, 1047.0, 960.0, 0.05)], 0.0),
     "start": (0.45, 0.55, [(0.0, 988.0, 988.0, 0.08), (0.07, 1319.0, 1319.0, 0.16)], 0.3),
     "purchase": (0.8, 0.6, [(0.0, 1319.0, 1319.0, 0.22), (0.06, 1661.0, 1661.0, 0.22), (0.12, 1976.0, 1976.0, 0.3)], 0.0),
+    # 0.55s, ChestReveal.RATTLE_SECONDS: the knocks close up and rise a little toward the burst.
+    "chest_rattle": (0.6, 0.32, [(0.0, 300.0, 280.0, 0.014), (0.15, 310.0, 290.0, 0.014), (0.27, 325.0, 300.0, 0.014),
+        (0.36, 340.0, 315.0, 0.014), (0.43, 360.0, 330.0, 0.014), (0.48, 380.0, 350.0, 0.014), (0.52, 400.0, 370.0, 0.014)], 0.0),
+    "chest_open": (0.75, 0.6, [(0.0, 220.0, 170.0, 0.06), (0.03, 1047.0, 1047.0, 0.18), (0.08, 1568.0, 1568.0, 0.2),
+        (0.13, 2093.0, 2093.0, 0.28)], 0.25),
+    "chest_jackpot": (1.3, 0.65, [(0.0, 196.0, 140.0, 0.09), (0.03, 1047.0, 1047.0, 0.25), (0.09, 1319.0, 1319.0, 0.25),
+        (0.15, 1568.0, 1568.0, 0.3), (0.21, 2093.0, 2093.0, 0.35), (0.3, 2637.0, 2637.0, 0.55)], 0.35),
 }
 
 

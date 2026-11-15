@@ -20,6 +20,12 @@ const CLICK_SOUND: AudioStream = preload("res://assets/audio/sfx/click.wav")
 const BACK_SOUND: AudioStream = preload("res://assets/audio/sfx/back.wav")
 const START_SOUND: AudioStream = preload("res://assets/audio/sfx/start.wav")
 const PURCHASE_SOUND: AudioStream = preload("res://assets/audio/sfx/purchase.wav")
+# The chest reveal's three (ChestReveal), keyed by the name it asks for.
+const CHEST_SOUNDS: Dictionary = {
+	&"rattle": preload("res://assets/audio/sfx/chest_rattle.wav"),
+	&"open": preload("res://assets/audio/sfx/chest_open.wav"),
+	&"jackpot": preload("res://assets/audio/sfx/chest_jackpot.wav"),
+}
 # Synthesised by scripts/tools/build_crack_sfx.py.
 const CRACK_SOUND: AudioStream = preload("res://assets/audio/sfx/crack.wav")
 
@@ -94,6 +100,10 @@ func play_start() -> void:
 
 func play_purchase() -> void:
 	play(PURCHASE_SOUND)
+
+
+func play_chest(sound: StringName) -> void:
+	play(CHEST_SOUNDS[sound])
 
 
 func play_crack() -> void:

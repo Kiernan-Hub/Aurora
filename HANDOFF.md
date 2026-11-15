@@ -29,7 +29,9 @@ three unplayed branches below and adds four things. Nothing here has been seen o
 - **Chests:** a glowing pickup every 80–120s (first at 30–50s) at 84px, which every jump level
   reaches; "Chests: N" on the HUD. At death `ChestRewards.TABLE` rolls each one (15–35 coins 55%,
   50–90 30%, jackpot 200–300 10%, an unowned skater 5%), the rewards ride `record_run`'s write,
-  and `ChestReveal` rattles and opens them on the death screen. The chest is drawn from polygons
+  and `ChestReveal` opens them on the death screen: a rattle, a flash, the lid thrown back, rays,
+  a gold spray and a count-up, with three synthesised sounds (`build_ui_sfx.py`: rattle, open,
+  jackpot; never heard by anyone). The chest is drawn from polygons
   in `chest.tscn`: placeholder art. `regression_probe` gained `chests` (it caught a crash in the
   reveal before anyone saw it). Chest and rare coin now skip any spot within 500px or 1s of a
   hazard (`ObstacleSpawner.is_clear_for_pickup`), which closes old checklist item 6.

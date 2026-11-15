@@ -40,9 +40,9 @@ func _init() -> void:
 	visible = false
 
 
-# on_open is called as each chest opens with whether it was a big one (jackpot or skater), for
-# the sound.
-func play(rewards: Array[Dictionary], on_open: Callable) -> void:
+# on_sound is called with &"rattle" as each chest starts to shake and &"open" or &"jackpot" (a
+# jackpot or a skater) as it bursts: SfxPlayer.play_chest.
+func play(rewards: Array[Dictionary], on_sound: Callable) -> void:
 	if reveal_tween != null:
 		reveal_tween.kill()
 	for child: Node in get_children():
@@ -71,9 +71,11 @@ func play(rewards: Array[Dictionary], on_open: Callable) -> void:
 		reveal_tween.tween_callback(stage.begin_chest)
 		reveal_tween.tween_property(stage, "appear", 1.0, APPEAR_SECONDS).from(0.0) \
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		if on_sound.is_valid():
+			reveal_tween.tween_callback(on_sound.bind(&"rattle"))
 		reveal_tween.tween_property(stage, "rattle", 1.0, RATTLE_SECONDS).from(0.0).set_ease(Tween.EASE_IN)
 		# The burst, all at once.
-		reveal_tween.tween_callback(open_row.bind(row, shown, is_big, on_open))
+		reveal_tween.tween_callback(open_row.bind(row, shown, is_big, on_sound))
 		reveal_tween.tween_property(stage, "lid_open", 1.0, LID_SECONDS).from(0.0) \
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		reveal_tween.parallel().tween_property(stage, "flash", 0.0, FLASH_SECONDS).from(1.0).set_ease(Tween.EASE_OUT)
@@ -86,13 +88,13 @@ func play(rewards: Array[Dictionary], on_open: Callable) -> void:
 		reveal_tween.tween_interval(BIG_HOLD_SECONDS if is_big else HOLD_SECONDS)
 
 
-func open_row(row: Label, shown: Array[Dictionary], is_big: bool, on_open: Callable) -> void:
+func open_row(row: Label, shown: Array[Dictionary], is_big: bool, on_sound: Callable) -> void:
 	stage.burst(is_big)
 	row.visible = true
 	row.text = describe(shown)
 	row.pivot_offset = row.size * 0.5
-	if on_open.is_valid():
-		on_open.call(is_big)
+	if on_sound.is_valid():
+		on_sound.call(&"jackpot" if is_big else &"open")
 
 
 func set_coin_text(coins: float, row: Label, is_jackpot: bool) -> void:
