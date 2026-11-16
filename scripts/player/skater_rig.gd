@@ -5,16 +5,19 @@ class_name SkaterRig
 # A continuous visual rig over the existing rest-pose artwork. Two short skinned
 # leg strips and rigid boots move on smooth paths; the PNG never switches poses.
 # The AnimatedSprite2D parent remains the carrier for tilt, tricks, tint and squash.
-const CYCLE_SECONDS: float = 4.2
-# Preview-only alternatives use the same rig; gameplay defaults to the long push.
+const CYCLE_SECONDS: float = 7.2
+# Preview-only alternatives use the same rig; gameplay defaults to the phrased stroke.
 # A cycle contains two alternating strokes, not one stroke per foot together.
-const DEFAULT_STROKE: int = 2
+const DEFAULT_STROKE: int = 4
 const STROKES: Array[Dictionary] = [
 	{"label": "Previous", "cycle": 2.8, "forward": 9.0, "back": -16.0, "drop": 4.0, "bob": 0.65, "lift": 10.0, "lean": 0.0, "shift": 0.0, "rock": 0.012},
 	{"label": "A - Strong", "cycle": 3.6, "forward": 16.0, "back": -26.0, "drop": 8.0, "bob": 1.4, "lift": 14.0, "lean": 0.025, "shift": 1.8, "rock": 0.022},
-	{"label": "B - Long push", "cycle": CYCLE_SECONDS, "forward": 18.0, "back": -29.0, "drop": 11.0, "bob": 1.8, "lift": 17.0, "lean": 0.04, "shift": 2.6, "rock": 0.03},
+	{"label": "B - Long push", "cycle": 4.2, "forward": 18.0, "back": -29.0, "drop": 11.0, "bob": 1.8, "lift": 17.0, "lean": 0.04, "shift": 2.6, "rock": 0.03},
 	{"label": "C - Deep push", "cycle": 4.8, "forward": 21.0, "back": -32.0, "drop": 15.0, "bob": 2.2, "lift": 20.0, "lean": 0.055, "shift": 3.3, "rock": 0.038},
+	{"label": "Sustained stroke", "cycle": CYCLE_SECONDS, "forward": 12.0, "back": -32.0, "drop": 15.0, "bob": 0.65, "lift": 15.0, "lean": 0.04, "shift": 2.6, "rock": 0.03, "phrased": true},
 ]
+const DRIVE_END: float = 0.62
+const RETURN_END: float = 0.94
 const SOURCE_CENTER: Vector2 = Vector2(75.0, 90.0)
 const GROUND_Y: float = 170.0
 const PROFILES: Dictionary = {
@@ -156,7 +159,20 @@ static func leg_pose(data: Dictionary, near: bool, seconds: float, amount: float
 	var phase: float = fposmod(seconds / stroke["cycle"] + (0.0 if near else 0.5), 1.0)
 	var recovery: float = 0.0
 	var sweep: float
-	if phase < 0.65:
+	if stroke.get("phrased", false):
+		# One leg completes its whole phrase before the other starts. The supporting
+		# blade stays planted, rather than both feet constantly cycling in opposition.
+		var phrase: float = phase * 2.0
+		if phrase < DRIVE_END:
+			sweep = lerpf(stroke["forward"], stroke["back"], smooth_phase(phrase / DRIVE_END))
+		elif phrase < RETURN_END:
+			var progress: float = smooth_phase((phrase - DRIVE_END) / (RETURN_END - DRIVE_END))
+			sweep = lerpf(stroke["back"], stroke["forward"], progress)
+			recovery = sin(progress * PI)
+		else:
+			# Brief settle, then support the other foot's long drive and return.
+			sweep = stroke["forward"]
+	elif phase < 0.65:
 		sweep = lerpf(stroke["forward"], stroke["back"], smooth_phase(phase / 0.65))
 	else:
 		var progress: float = smooth_phase((phase - 0.65) / 0.35)

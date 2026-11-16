@@ -33,8 +33,8 @@ class_name AchievementManager
 # id -> definition. The value is a Dictionary rather than a bare display-name String so that a
 # later field -- a description, an icon, an unlock payload for the biome/cosmetic unlocks the
 # owner has in mind -- can be added without touching the shape of this table or any reader of
-# it. There is deliberately no reward field yet: nothing in the game can consume one, and an
-# unused hook is a thing to maintain, not a head start.
+# it. The one-off high-glide chest is banked by the existing glide handler below;
+# ordinary definitions still need no general reward framework.
 #
 # THE KEYS ARE SAVE DATA. An id here is written verbatim into save.dat and read back forever, so
 # renaming one silently un-earns it for every existing player. SaveStore.achievements is an OPEN
@@ -71,6 +71,14 @@ const ACHIEVEMENTS: Dictionary = {
 		"name": "Really?",
 		"hint": "The coins are down here",
 	},
+	"still": {
+		"name": "still??",
+		"hint": "Make 10 full high glides",
+	},
+	"fine_here_you_go": {
+		"name": "fine, here you go",
+		"hint": "Make 50 full high glides · Special chest",
+	},
 }
 
 const STILL_WATER: String = "still_water"
@@ -80,6 +88,10 @@ const LONG_WAY_DOWN: String = "long_way_down"
 const GOLDEN_RUN: String = "golden_run"
 const GLACIER_MILES: String = "glacier_miles"
 const REALLY: String = "really"
+const STILL: String = "still"
+const FINE_HERE_YOU_GO: String = "fine_here_you_go"
+const STILL_COUNT: int = 10
+const FINE_COUNT: int = 50
 const REALLY_HELD_SECONDS: float = 6.0
 const REALLY_CLIMB_PIXELS: float = 3000.0
 # The thresholds, in the units GameManager.run_recorded carries (metres, coins).
@@ -90,6 +102,8 @@ const GLACIER_MILES_METERS: float = 100000.0
 
 # Carries the display name as well as the id so the toast never has to know about this table.
 signal achievement_granted(id: String, display_name: String)
+# Presentation only: contents have already been banked atomically with the milestone.
+signal chest_reward_granted(reward: Dictionary)
 
 @export var lake_director_path: NodePath = NodePath("../FrozenLakeDirector")
 @export var aurora_director_path: NodePath = NodePath("../AuroraDirector")
@@ -157,7 +171,34 @@ func _on_glide_finished(held_seconds: float, climbed_pixels: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	if held_seconds >= REALLY_HELD_SECONDS and climbed_pixels >= REALLY_CLIMB_PIXELS:
-		grant(REALLY)
+		record_high_glide()
+
+
+func record_high_glide() -> void:
+	if services == null or services.save_store == null:
+		return
+	var save: SaveStore = services.save_store
+	var old_count: int = save.high_glide_count
+	var old_achievements: Dictionary[String, bool] = save.achievements.duplicate()
+	save.high_glide_count = mini(save.high_glide_count + 1, int(SaveStore.MAX_SAVED_COUNT))
+	var earned: Array[String] = []
+	for milestone: Array in [[REALLY, 1], [STILL, STILL_COUNT], [FINE_HERE_YOU_GO, FINE_COUNT]]:
+		if save.high_glide_count >= milestone[1] and not save.achievements.get(milestone[0], false):
+			save.achievements[milestone[0]] = true
+			earned.append(milestone[0])
+	var rewards: Array[Dictionary] = []
+	if earned.has(FINE_HERE_YOU_GO):
+		rewards.append(ChestRewards.roll_glide_chest([], RandomNumberGenerator.new(), Cosmetics.get_unowned(save.cosmetics)))
+	# bank_bonus writes count + achievement flags + wallet/finds together. Its rollback
+	# restores loot; restore our count and flags too if that same write fails.
+	if not save.bank_bonus(0, rewards):
+		save.high_glide_count = old_count
+		save.achievements = old_achievements
+		return
+	for id: String in earned:
+		achievement_granted.emit(id, ACHIEVEMENTS[id]["name"])
+	for reward: Dictionary in rewards:
+		chest_reward_granted.emit(reward)
 
 
 func _on_aurora_finished(_total_auroras: int) -> void:

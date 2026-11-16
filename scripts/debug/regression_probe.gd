@@ -104,6 +104,7 @@ func run() -> void:
 		await chest_tiers()
 		await mission_lifecycle()
 		await glide_achievement()
+		await glide_milestones()
 		await melt_lifecycle()
 		await collection()
 		await rig_lifecycle()
@@ -116,6 +117,7 @@ func run() -> void:
 		return
 
 	rig_motion()
+	glide_milestone_model()
 	purchase_rollback()
 	save_numbers()
 	save_containers()
@@ -617,7 +619,7 @@ func stats_screen() -> void:
 	game_manager._on_stats_pressed()
 	game_manager._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	var backed: bool = game_manager.state == GameManager.State.START
-	expect("stats_screen", opened and closed and backed and stat_rows == 10
+	expect("stats_screen", opened and closed and backed and stat_rows == 11
 		and achievement_rows == AchievementManager.ACHIEVEMENTS.size(),
 		"opened=%s stat rows=%d achievement rows=%d closed=%s back gesture=%s" % [opened, stat_rows, achievement_rows, closed, backed])
 
@@ -1047,6 +1049,110 @@ func glide_achievement() -> void:
 			short_refused and release_refused, failed_save, awarded, once, durable, headless])
 
 
+func glide_milestone_model() -> void:
+	var saved: MemorySaveStore = MemorySaveStore.new()
+	var previous_save: SaveStore = services.save_store
+	services.save_store = saved
+	var manager: AchievementManager = AchievementManager.new()
+	manager.services = services
+	var earned: Array[String] = []
+	var receipts: Array[Dictionary] = []
+	manager.achievement_granted.connect(func(id: String, _name: String) -> void: earned.append(id))
+	manager.chest_reward_granted.connect(func(reward: Dictionary) -> void: receipts.append(reward))
+	saved.succeed = false
+	manager.record_high_glide()
+	var rollback: bool = saved.high_glide_count == 0 and saved.achievements.is_empty() and earned.is_empty()
+	saved.succeed = true
+	for ascent: int in range(9):
+		manager.record_high_glide()
+	var before_ten: bool = saved.high_glide_count == 9 and saved.achievements.get(AchievementManager.REALLY, false) 		and not saved.achievements.get(AchievementManager.STILL, false)
+	manager.record_high_glide()
+	var tenth: bool = saved.high_glide_count == 10 and earned.count(AchievementManager.STILL) == 1 		and receipts.is_empty() and saved.coin_wallet == 0
+	for ascent: int in range(39):
+		manager.record_high_glide()
+	var before_fifty: bool = saved.high_glide_count == 49 and not saved.achievements.get(AchievementManager.FINE_HERE_YOU_GO, false)
+	saved.succeed = false
+	manager.record_high_glide()
+	rollback = rollback and saved.high_glide_count == 49 and saved.coin_wallet == 0 and saved.cosmetics.is_empty() 		and not saved.achievements.get(AchievementManager.FINE_HERE_YOU_GO, false) and receipts.is_empty()
+	saved.succeed = true
+	var writes: int = saved.writes
+	manager.record_high_glide()
+	var fiftieth: bool = saved.high_glide_count == 50 and saved.coin_wallet == 1000 and saved.total_coins_earned == 1000 		and saved.cosmetics.size() == 3 and receipts.size() == 1 and saved.writes == writes + 1 		and earned.count(AchievementManager.FINE_HERE_YOU_GO) == 1
+	if receipts.size() == 1:
+		fiftieth = fiftieth and ChestRewards.get_loot(receipts).size() == 4 			and ChestRewards.get_total_coins(receipts) == 1000 and ChestReveal.describe(receipts).contains("3 new finds")
+	var loaded: MemorySaveStore = MemorySaveStore.new()
+	loaded.load_from_data(JSON.parse_string(JSON.stringify(saved.to_data())))
+	services.save_store = loaded
+	manager.record_high_glide()
+	var once: bool = loaded.high_glide_count == 51 and loaded.coin_wallet == 1000 		and loaded.cosmetics.size() == 3 and receipts.size() == 1 and earned.count(AchievementManager.STILL) == 1
+	loaded.reset_progress()
+	var reset: bool = loaded.high_glide_count == 0 and loaded.achievements.is_empty()
+	var legacy: MemorySaveStore = MemorySaveStore.new()
+	legacy.load_from_data({"version": 5, "achievements": {"really": true}})
+	var migration: bool = legacy.high_glide_count == 1
+	for bad: Variant in [-1, INF, "bad", null, 1e30]:
+		var malformed: MemorySaveStore = MemorySaveStore.new()
+		malformed.load_from_data({"version": 5, "high_glide_count": bad})
+		migration = migration and malformed.high_glide_count == 0
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = 42
+	var exhausted: Array[Dictionary] = [ChestRewards.roll_glide_chest([], rng, [])]
+	var fallback: bool = ChestRewards.get_total_coins(exhausted) >= 1600 and ChestRewards.get_total_coins(exhausted) <= 1900
+	services.save_store = previous_save
+	manager.free()
+	expect("glide_milestone_model", before_ten and tenth and before_fifty and rollback and fiftieth and once and reset and migration and fallback,
+		"10/50 thresholds=%s atomic count/flags/loot retry=%s three unique finds +1000=%s one write=%s JSON/no repeat=%s reset=%s legacy/malformed=%s exhausted fallback=%s" % [
+			before_ten and tenth and before_fifty, rollback, fiftieth, saved.writes == writes + 1, once, reset, migration, fallback])
+
+
+func glide_milestones() -> void:
+	await new_scene()
+	game_manager.set_state(GameManager.State.PAUSED)
+	store.high_glide_count = 49
+	store.achievements[AchievementManager.REALLY] = true
+	store.achievements[AchievementManager.STILL] = true
+	store.achievements.erase(AchievementManager.FINE_HERE_YOU_GO)
+	store.cosmetics.clear()
+	store.coin_wallet = 40
+	store.mission_id = "coins"
+	store.mission_progress = 0.0
+	game_manager.prepare_mission()
+	var before: int = store.writes
+	player.start_glide()
+	main.held_touch_indices[7] = true
+	for frame: int in range(410):
+		player.track_glide_ascent(1.0 / 60.0, -10.0)
+	player.end_glide()
+	main.held_touch_indices.clear()
+	var paid: bool = store.high_glide_count == 50 and store.coin_wallet == 1040 and store.cosmetics.size() == 3 		and store.writes == before + 1 and game_manager.earned_chest_rewards.size() == 1
+	player.end_glide()
+	paid = paid and store.writes == before + 1
+	game_manager._on_player_died()
+	var no_double_pay: bool = store.coin_wallet == 1040 and game_manager.chest_rewards.size() == 1 		and game_manager.earned_chest_rewards.is_empty() and game_manager.coin_count == 0
+	var reveal: ChestReveal = game_manager.chest_reveal
+	var label_ok: bool = reveal.open_label.text.contains(ChestRewards.GLIDE_CHEST_NAME)
+	var original_size: Vector2i = root.size
+	for width: int in [1152, 1404]:
+		root.size = Vector2i(width, 648)
+		for frame: int in range(3):
+			await process_frame
+		await RenderingServer.frame_post_draw
+		label_ok = label_ok and ui_rect_fits(reveal.open_button) and ui_rect_fits(game_manager.restart_button) \
+			and reveal.open_label.get_minimum_size().x <= reveal.open_button.size.x \
+			and reveal.open_label.get_minimum_size().y <= reveal.open_label.size.y
+		root.get_texture().get_image().save_png("/tmp/aura-glide-chest-%d.png" % width)
+	var banked_writes: int = store.writes
+	reveal.open_next()
+	await reveal.reveal_tween.finished
+	var description: String = (reveal.get_child(-1) as Label).text
+	var opens: bool = reveal.next_reward == 1 and description.contains("3 new finds") and description.contains("1000") 		and store.writes == banked_writes and store.coin_wallet == 1040
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("/tmp/aura-glide-milestone-chest.png")
+	root.size = original_size
+	expect("glide_milestones", paid and no_double_pay and label_ok and opens,
+		"real completed glide pays once=%s death only reveals=%s named bundle=%s tap opens all loot/no save=%s" % [paid, no_double_pay, label_ok, opens])
+
+
 func melt_lifecycle() -> void:
 	await new_scene()
 	game_manager.set_state(GameManager.State.PLAYING)
@@ -1155,7 +1261,9 @@ func rig_motion() -> void:
 					min_sweep = minf(min_sweep, pose["ankle"].x - pose["hip"].x)
 					max_sweep = maxf(max_sweep, pose["ankle"].x - pose["hip"].x)
 					var phase: float = fposmod(seconds / data["stroke"]["cycle"] + (0.0 if near else 0.5), 1.0)
-					if phase < 0.65 and style > 0:
+					var planted: bool = (phase < SkaterRig.DRIVE_END * 0.5 or phase >= SkaterRig.RETURN_END * 0.5) \
+						if data["stroke"].get("phrased", false) else phase < 0.65
+					if planted and style > 0:
 						max_ground_error = maxf(max_ground_error, absf(pose["ankle"].y - (SkaterRig.GROUND_Y - (13.0 if near else 9.4))))
 					var still: Dictionary = SkaterRig.leg_pose(data, near, seconds, 0.0)
 					passed = passed and still["ankle"].is_equal_approx(coast["ankle"])
@@ -1165,13 +1273,31 @@ func rig_motion() -> void:
 					previous = pose
 				if style > 0:
 					passed = passed and max_sweep - min_sweep > 40.0
-				for boundary: float in [0.0, 0.15, 0.5, 0.65, 1.0]:
+				for boundary: float in [0.0, 0.15, 0.31, 0.47, 0.5, 0.65, 0.81, 0.97, 1.0]:
 					var before: Dictionary = SkaterRig.leg_pose(data, near, boundary * data["stroke"]["cycle"] - 0.00001, 1.0)
 					var after: Dictionary = SkaterRig.leg_pose(data, near, boundary * data["stroke"]["cycle"] + 0.00001, 1.0)
 					passed = passed and before["ankle"].distance_to(after["ankle"]) < 0.01 \
 						and before["knee"].distance_to(after["knee"]) < 0.01
 	expect("rig_motion", passed and max_step < 1.5 and max_ground_error < 0.75,
-		"five skins/four styles; fixed bones, coast, full-cycle continuity, >40px strong sweep; max step %.3fpx, planted error %.3fpx" % [max_step, max_ground_error])
+		"five skins/all styles; fixed bones, coast, full-cycle continuity, >40px strong sweep; max step %.3fpx, planted error %.3fpx" % [max_step, max_ground_error])
+	# A phrase must finish its drive, return and settle before the other leg starts.
+	# This catches a regression back to two opposing sweeps even if positions stay smooth.
+	var phrased: Dictionary = SkaterRig.create_draw_data(load(Skins.SKINS[0]["frames"]))
+	var rhythm: bool = true
+	for near: bool in [true, false]:
+		var start: float = 0.0 if near else SkaterRig.CYCLE_SECONDS * 0.5
+		var previous_x: float = INF
+		for step: int in range(1, 8):
+			var seconds: float = start + SkaterRig.CYCLE_SECONDS * 0.5 * SkaterRig.DRIVE_END * step / 8.0
+			var pushing: Dictionary = SkaterRig.leg_pose(phrased, near, seconds, 1.0)
+			var support: Dictionary = SkaterRig.leg_pose(phrased, not near, seconds, 1.0)
+			var sweep: float = pushing["ankle"].x - pushing["hip"].x
+			rhythm = rhythm and sweep < previous_x \
+				and is_equal_approx(support["ankle"].x - support["hip"].x, phrased["stroke"]["forward"])
+			previous_x = sweep
+		var returned: Dictionary = SkaterRig.leg_pose(phrased, near, start + SkaterRig.CYCLE_SECONDS * 0.49, 1.0)
+		rhythm = rhythm and is_equal_approx(returned["ankle"].x - returned["hip"].x, phrased["stroke"]["forward"])
+	expect("rig_rhythm", rhythm, "one planted supporting leg; long monotonic drive, complete return/settle, then alternate")
 
 
 func rig_lifecycle() -> void:

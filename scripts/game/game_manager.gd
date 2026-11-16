@@ -107,6 +107,8 @@ var mission_label: Label
 var mission_bar: ProgressBar
 var mission_menu_labels: Array[Label] = []
 var chest_rewards: Array[Dictionary] = []
+# Paid at the glide milestone; this queue is only a receipt to reveal at run end.
+var earned_chest_rewards: Array[Dictionary] = []
 var chest_reveal: ChestReveal
 # Per completed 360 landed. Routed through _on_coin_collected so a trick reward gets
 # the same coin_multiplier (doubler powerup) and coin SFX as a real coin -- one score
@@ -426,6 +428,8 @@ func wire_scene() -> bool:
 	stats_close_button = get_node_or_null(stats_close_button_path) as Button
 	start_stats_button = get_node_or_null(start_stats_button_path) as Button
 	achievement_manager = get_node_or_null(achievement_manager_path)
+	if achievement_manager != null and achievement_manager.has_signal(&"chest_reward_granted"):
+		achievement_manager.connect(&"chest_reward_granted", _on_earned_chest)
 	if stats_screen == null or stats_grid == null or achievements_grid == null or stats_close_button == null or start_stats_button == null:
 		push_error("GameManager could not wire the Stats screen at %s; the game runs without it." % stats_screen_path)
 		if start_stats_button != null:
@@ -792,6 +796,9 @@ func _on_player_died() -> void:
 		bank_playtime()
 		services.save_store.grant_chest_rewards(chest_rewards)
 		last_run_is_new_best = services.save_store.record_run(coin_count, main.elapsed_time, get_run_distance_meters())
+	# These were paid at flight completion. Append only AFTER banking the run's chests.
+	chest_rewards.append_array(earned_chest_rewards)
+	earned_chest_rewards.clear()
 	refresh_death_stats()
 	set_state(State.DEAD)
 	if chest_reveal != null:
@@ -800,6 +807,10 @@ func _on_player_died() -> void:
 	# run over the death screen (AchievementToast.show_next_name).
 	if services != null and DisplayServer.get_name() != "headless":
 		run_recorded.emit(get_run_distance_meters(), coin_count, services.save_store.total_distance_meters)
+
+
+func _on_earned_chest(reward: Dictionary) -> void:
+	earned_chest_rewards.append(reward)
 
 
 func get_run_distance_meters() -> float:
@@ -1073,6 +1084,7 @@ func refresh_stats() -> void:
 			["Auroras", str(save.aurora_count)],
 			["Missions completed", str(save.missions_completed)],
 			["Best Melt", "%.1fs" % save.best_melt_seconds],
+			["Full high glides", str(save.high_glide_count)],
 		]
 		for row: Array in rows:
 			add_stats_row(stats_grid, row[0], row[1], true)
@@ -1546,6 +1558,7 @@ func _on_reset_progress_pressed() -> void:
 
 func _on_reset_progress_confirmed() -> void:
 	sfx_player.play_click()
+	earned_chest_rewards.clear()
 	if services != null:
 		services.save_store.reset_progress()
 		# Same reasoning as _on_buy_pressed: sync the now-reset levels onto the live

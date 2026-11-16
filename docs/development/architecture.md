@@ -394,6 +394,23 @@ per-tick displacement. AchievementManager alone interprets this as Really? (>=6s
 with a local headless guard. No altitude cap is added. Its common grant path now rolls back a
 failed write and emits no toast until ownership is persisted.
 
+**High-glide milestones (2026-11-16):** the same qualification now increments the optional
+v5 `high_glide_count`. At10, `still` displays "still??"; at50, `fine_here_you_go` displays
+"fine, here you go" and rolls one Ultra Mega Super Duper Chest. Its contents are1,000 coins
+plus three ordinary Aurora rewards, rolled together to avoid duplicate finds. It is a bundle
+using existing art/reveal, not another spawn tier. `ChestRewards.get_loot` unwraps it for
+banking and description, while the reveal still takes one tap. Missing legacy counters start
+at0, or1 if Really? proves one known ascent (earned milestone flags also establish a minimum).
+
+AchievementManager alone updates count/flags and calls the existing `bank_bonus` transaction
+once per qualifying flight. Loot, count and achievement ownership reach disk together. Failed
+writes roll everything back and emit neither toast nor receipt. Repeated grants are gated by
+achievement ownership, so a later launch/flight cannot pay the50th prize again. GameManager
+listens to `chest_reward_granted` only to queue the already-paid receipt for the death screen;
+it appends that receipt after banking the physical/mission chests to avoid paying twice.
+Home/restart/quit can discard the visual receipt but cannot lose the banked reward. Reveal
+taps never write. Stats shows the count; reset clears both count and any queued receipt.
+
 ## Still Water exit correction (2026-11-15)
 
 The reflection keeps its Mobile-compatible full-screen backbuffer quad, but the shader now

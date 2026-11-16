@@ -1,5 +1,23 @@
 # Session history
 
+## 2026-11-16 — skating rhythm and repeated high-glide milestones
+
+- Backed up the earlier phone-review work and A/B/C skating previews on `play/next`
+  (`8cdcfc5`, `835f78b`). Owner then clarified the desired rhythm: `1 2 2 2 2 3`, a long
+  deep stroke, gradual foot return and short settle, completed before the other leg starts.
+- Built that phrase into the existing rig:3.6s per leg,62% drive/32% return/6% settle, with
+  the other blade supporting. No physics or art changes. Preview:
+  `art_source/ui_review/2026-11-16-sustained-stroke.mp4`.
+- Added persistent full-high-glide count using Really?'s6s/3,000px qualification. At10:
+  "still??"; at50: "fine, here you go" and an Ultra Mega Super Duper Chest containing
+  1,000 coins plus three Aurora rewards. Reuses existing art/reveal; no new spawn tier.
+  Count, flags and loot save together with rollback. Rewards bank at flight completion;
+  the run-end reveal is a receipt and never pays twice. Stats/reset/migration are covered.
+- Owner unplugged the phone and explicitly deferred installation. The phone still has the
+  first continuous skating build. New animation and milestone tuning await owner review.
+  All15 full gates pass (222s),21 headless regression cases,12 rendered cases and all three
+  visual checks. Current state and next actions: HANDOFF.md.
+
 ## 2026-11-15 — phone review, chest collection and provisional visual pass
 
 - Owner began reviewing `play/next`, then approved the collection/customizations and preceding visual pass. New tiers/missions and unreviewed terrain/feel await play. A separate

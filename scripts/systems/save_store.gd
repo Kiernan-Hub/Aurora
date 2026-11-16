@@ -84,6 +84,9 @@ var mission_progress: float = 0.0
 var missions_completed: int = 0
 # A statistic, like best_distance_meters: old saves honestly start at zero.
 var best_melt_seconds: float = 0.0
+# Qualifying Really? ascents across launches. Optional v5 field; old achievement
+# ownership proves one ascent, but cannot reconstruct any others before this counter.
+var high_glide_count: int = 0
 
 
 func bank_bonus(coins: int, rewards: Array[Dictionary], survived_seconds: float = 0.0) -> bool:
@@ -207,6 +210,12 @@ func load_from_data(data: Dictionary) -> void:
 		mission_progress = maxf(_read_number(data, "mission_progress", 0.0), 0.0)
 		missions_completed = _read_count(data, "missions_completed")
 		best_melt_seconds = maxf(_read_number(data, "best_melt_seconds", 0.0), 0.0)
+	# Stable achievement IDs are save data. Their ownership supplies a known minimum
+	# if loading a save written before the counter, or a partly damaged counter.
+	high_glide_count = _read_count(data, "high_glide_count")
+	for milestone: Array in [["really", 1], ["still", 10], ["fine_here_you_go", 50]]:
+		if achievements.get(milestone[0], false):
+			high_glide_count = maxi(high_glide_count, milestone[1])
 
 
 # FIELD-BY-FIELD VALIDATION, NEVER A CAST. A cast of the wrong type (`[] as Dictionary`,
@@ -303,6 +312,7 @@ func to_data() -> Dictionary:
 		"mission_progress": mission_progress,
 		"missions_completed": missions_completed,
 		"best_melt_seconds": best_melt_seconds,
+		"high_glide_count": high_glide_count,
 		"achievements": achievements,
 		"settings": {
 			"music_volume": music_volume,
@@ -337,7 +347,7 @@ func record_run(coin_count: int, elapsed_time: float, distance_meters: float) ->
 # any skater won, as the same one-level upgrade a shop purchase grants. NO WRITE: GameManager
 # calls this just before record_run(), whose single write carries it.
 func grant_chest_rewards(rewards: Array[Dictionary]) -> void:
-	for reward: Dictionary in rewards:
+	for reward: Dictionary in ChestRewards.get_loot(rewards):
 		coin_wallet += maxi(int(reward["coins"]), 0)
 		total_coins_earned += maxi(int(reward["coins"]), 0)
 		if reward["skin"] != "":
@@ -377,4 +387,5 @@ func reset_progress() -> void:
 	mission_progress = 0.0
 	missions_completed = 0
 	best_melt_seconds = 0.0
+	high_glide_count = 0
 	save_to_disk()

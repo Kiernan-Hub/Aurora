@@ -13,6 +13,8 @@ const TABLE: Array[Dictionary] = [
 	{"weight": 30, "cosmetic": true},
 ]
 const JACKPOT_ROW: int = 2
+const GLIDE_CHEST_NAME: String = "Ultra Mega Super Duper Chest"
+const GLIDE_CHEST_COINS: int = 1000
 const RARE_TABLE: Array[Dictionary] = [
 	{"weight": 5, "coins_min": 50, "coins_max": 90},
 	{"weight": 20, "coins_min": 100, "coins_max": 180},
@@ -72,6 +74,29 @@ static func roll(unowned_skin_ids: Array[String], rng: RandomNumberGenerator, un
 
 static func get_total_coins(rewards: Array[Dictionary]) -> int:
 	var total: int = 0
-	for reward: Dictionary in rewards:
+	for reward: Dictionary in get_loot(rewards):
 		total += int(reward["coins"])
 	return total
+
+
+# A one-off achievement bundle, not a randomly spawned tier. Roll its three finds
+# together so they cannot repeat; exhausted finds use Aurora's existing jackpot.
+static func roll_glide_chest(unowned_skin_ids: Array[String], rng: RandomNumberGenerator,
+		unowned_cosmetic_ids: Array[String]) -> Dictionary:
+	var contents: Array[Dictionary] = roll_all(3, unowned_skin_ids, rng, unowned_cosmetic_ids,
+		[ChestTypes.Tier.AURORA, ChestTypes.Tier.AURORA, ChestTypes.Tier.AURORA])
+	contents.append({"coins": GLIDE_CHEST_COINS, "skin": "", "cosmetic": "", "jackpot": true})
+	return {"name": GLIDE_CHEST_NAME, "coins": 0, "skin": "", "cosmetic": "", "jackpot": true,
+		"tier": ChestTypes.Tier.AURORA, "contents": contents}
+
+
+# Bundles have one reveal but several ordinary loot entries. Only internally rolled
+# rewards reach this helper; bundles are one level deep and never stored as save data.
+static func get_loot(rewards: Array[Dictionary]) -> Array[Dictionary]:
+	var loot: Array[Dictionary] = []
+	for reward: Dictionary in rewards:
+		if reward.has("contents"):
+			loot.append_array(reward["contents"])
+		else:
+			loot.append(reward)
+	return loot

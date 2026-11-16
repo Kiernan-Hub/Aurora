@@ -83,8 +83,14 @@ func prepare_next() -> void:
 	stage.set_tier(int(pending_rewards[next_reward].get("tier", ChestTypes.Tier.NORMAL)))
 	stage.appear = 1.0
 	open_button.disabled = false
+	open_label.remove_theme_font_size_override(&"font_size")
+	open_label.offset_top = -32.0
 	var tier_name: String = ChestTypes.get_type(stage.tier)["name"]
 	open_label.text = "%s · Tap %d/%d" % [("Mission " + tier_name) if pending_rewards[next_reward].get("mission", false) else tier_name + " chest", next_reward + 1, pending_rewards.size()]
+	if pending_rewards[next_reward].has("contents"):
+		open_label.text = "%s\nTap %d/%d" % [pending_rewards[next_reward]["name"], next_reward + 1, pending_rewards.size()]
+		open_label.add_theme_font_size_override(&"font_size", 12)
+		open_label.offset_top = -40.0
 
 
 # One tap opens one chest. Repeated taps during the animation cannot skip rewards.
@@ -117,7 +123,7 @@ func open_next() -> void:
 	reveal_tween.parallel().tween_property(stage, "flash", 0.0, FLASH_SECONDS).from(1.0).set_ease(Tween.EASE_OUT)
 	reveal_tween.parallel().tween_property(row, "scale", Vector2.ONE, POP_SECONDS) \
 		.from(Vector2.ONE * POP_SCALE).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	if shown.size() == 1 and shown[0]["skin"] == "" and shown[0].get("cosmetic", "") == "":
+	if shown.size() == 1 and not shown[0].has("contents") and shown[0]["skin"] == "" and shown[0].get("cosmetic", "") == "":
 		reveal_tween.parallel().tween_method(set_coin_text.bind(row, bool(shown[0]["jackpot"])),
 			0.0, float(shown[0]["coins"]), COUNT_SECONDS)
 	reveal_tween.tween_interval(BIG_HOLD_SECONDS if is_big else HOLD_SECONDS)
@@ -127,7 +133,7 @@ func open_next() -> void:
 func open_row(row: Label, shown: Array[Dictionary], is_big: bool, on_sound: Callable) -> void:
 	stage.burst(is_big)
 	# Show a cosmetic's actual collection icon above the opened chest.
-	for reward: Dictionary in shown:
+	for reward: Dictionary in ChestRewards.get_loot(shown):
 		var item: Dictionary = Cosmetics.get_item(reward.get("cosmetic", ""))
 		if not item.is_empty():
 			stage.reward_icon = load(item.get("icon", Cosmetics.ICONS[item["kind"]])) as Texture2D
@@ -163,6 +169,7 @@ static func get_reward_color(shown: Array[Dictionary]) -> Color:
 
 
 static func describe(shown: Array[Dictionary]) -> String:
+	shown = ChestRewards.get_loot(shown)
 	var parts: PackedStringArray = []
 	var coins: int = ChestRewards.get_total_coins(shown)
 	var has_jackpot: bool = false

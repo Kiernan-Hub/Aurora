@@ -638,25 +638,32 @@ compares pixels beyond the far shore against an otherwise identical frame withou
 
 **Continuous skating (owner review pending):** the owner rejected the slow four-pose cycle.
 `SkaterRig` animates the existing rest artwork continuously, with long alternating pushes over
-4.2 seconds (two alternating 2.1s strokes), fixed-length IK legs and rigid boots. Smooth recovery
+7.2 seconds (two alternating3.6s phrases), fixed-length IK legs and rigid boots. Smooth recovery
 curves join without a pose switch; airborne/Still Water/boost states ease into coasting.
 All five characters use tuned joint landmarks. The existing sprite parent still owns tint,
 outfit material, slope/trick rotation and squash. MeltView uses the same inline rig, preserving
 its foreground order; its base-outfit rendering remains as before. No new raster art/effects.
 Really? is approved; The Melt still needs visual/gameplay polish.
 
-**2026-11-16 revision:** owner found the first continuous rig too subtle and short. Default
+**Earlier2026-11-16 comparison:** owner found the first continuous rig too subtle and short.
 B Long push extends the sweep from25 to47 source pixels, adds a deeper loading crouch,
 forward weight shift and17px lifted recovery. A Strong (3.6s full cycle,42px sweep) and
-C Deep push (4.8s,53px) are comparison alternatives in `SkaterRig.STROKES`; the default remains
-one shared choice for the player and MeltView. The existing phone install is the previous
-2.8s continuous build until the owner selects an option. No effects, new artwork or physics.
+C Deep push (4.8s,53px) remain reference alternatives in `SkaterRig.STROKES`. The existing phone install is the previous
+2.8s continuous build. **After reviewing the comparison, the owner requested a rhythm
+revision rather than choosing A/B/C:** `1 2 2 2 2 3`, where1 is push,2 is sustained pushing
+and3 is rest. One long deep backward push/stroke, then steadily return that foot, briefly
+settle and alternate. Change the relative drive/recovery/rest phases; don't just slow the
+same loop again or introduce frozen pose holds. **Implemented:** one leg now drives for62%
+of its3.6s phrase, returns over32%, settles for6%, then supports the other leg's whole phrase.
+The forward/back sweep is44 source pixels; the supporting blade stays planted as weight
+shifts. Player and MeltView share this default. No effects, new artwork or physics.
 
-`scripts/debug/skating_preview.gd` draws the previous motion alongside A/B/C, enlarged and
-at normal game size for all five skins. Run with `--audio-driver Dummy`; no save writes.
-With `-- --out=/tmp/aura-stroke-frames` it captures288 frames at24fps and exits; otherwise
+`scripts/debug/skating_preview.gd` draws prior B beside the new sustained rhythm, enlarged
+and at normal game size for all five skins, with drive/return/settle captions. Run with `--audio-driver Dummy`; no save writes.
+With `-- --out=/tmp/aura-stroke-frames` it captures two full cycles (432 frames at30fps) and exits; otherwise
 it animates in a standalone window. Source is excluded from exports with the other debug
-scripts. Comparison: `art_source/ui_review/2026-11-16-skating-options.mp4` and `.gif`.
+scripts. New comparison: `art_source/ui_review/2026-11-16-sustained-stroke.mp4`. Earlier
+A/B/C comparison: `art_source/ui_review/2026-11-16-skating-options.mp4` and `.gif`.
 
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --log-file /tmp/aura-skating-preview.log --audio-driver Dummy --path . --script res://scripts/debug/skating_preview.gd

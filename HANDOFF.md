@@ -12,11 +12,44 @@ terrain/pacing and other gameplay feel remain unapproved.
 
 ### Latest owner review / current priority
 
-- **Stronger skating options (2026-11-16, selection pending):** owner found the first
+**Latest build — sustained strokes and high-glide milestones (2026-11-16). Desktop review
+pending; phone unplugged. Owner explicitly deferred USB installation until later.**
+
+- **Skating rhythm revised:** the old opposing sweeps read as `1 2 1 2`. Owner's target is
+  `1 2 2 2 2 3`: one long deep push/stroke, steadily bring that foot back, briefly rest, then
+  alternate — "just like irl". The new default completes one leg's entire phrase while the
+  other supports it. Each3.6s phrase is62% backward drive (~2.23s),32% gradual lifted return
+  (~1.15s),6% settle (~0.22s); a full two-leg cycle is7.2s. The supporting blade stays planted.
+  The same continuous rig/art,72 vertices and three draw submissions remain; physics is unchanged.
+  Preview: `art_source/ui_review/2026-11-16-sustained-stroke.mp4` compares the prior B attempt
+  with the new rhythm, enlarged plus all five characters at normal game size. A/B/C remain
+  reference attempts, not approved choices. Source defaults to the new sustained stroke.
+- **Glide milestones built:** a full high glide uses the existing Really? qualification,
+  >=6s uninterrupted held ascent and >=3,000px actual climb. There is no literal height ceiling.
+  The **10th** grants **"still??"**; the **50th** grants **"fine, here you go"** and one
+  **Ultra Mega Super Duper Chest**:1,000 coins plus three Aurora rewards, unique unowned finds
+  while any remain (each exhausted reward falls back to200–300 coins). These are provisional
+  tuning choices offered to the owner, not a new spawn tier. Existing Aurora art/reveal reused.
+- **Durability:** optional Save v5 `high_glide_count` persists each qualifying flight once,
+  together with any new achievement flags and loot in one atomic write. Failure rolls count,
+  flags, wallet and finds back together; no toast or receipt is emitted until success.
+  Previously owned Really? establishes one known ascent; earlier uncounted flights cannot be
+  reconstructed. Reset clears the count; Stats shows it. No run-score or mission-coin credit.
+  The50th chest's contents bank immediately; GameManager queues only its run-end reveal.
+  Quitting before that reveal cannot lose the loot; reveal taps never pay again. The visual
+  receipt is session-only, like other chest reveals. No new global, shader or effect system.
+- **Owner's description to retain:** 1=push,2=in process of pushing,3=rest; preferred phrase
+  `1 2 2 2 2 3 | 1 2 2 2 2 3`. Merely slowing the same loop misses the request.
+- **Validation so far:**21 headless regression cases,12 rendered cases and all three visual
+  checks pass. New cases check complete phrase order/support,10/50 thresholds, failed-save
+  retry, unique bundle loot, JSON/reset/migration and no double payment at death/opening.
+  All15 full gates pass (222s). No engine setting pins changed.
+
+- **Stronger skating options (2026-11-16, rhythm revision now requested):** owner found the first
   continuous rig too subtle and requested more forceful backward pushes and longer strokes.
   Comparison offers A Strong (1.8s per alternating push), B Long push (2.1s), C Deep push
   (2.4s), alongside the previous 1.4s. Foot sweep grows from25 to42/47/53 source pixels,
-  with deeper loading, a forward lean and a clearer lifted recovery. B is the source default;
+  with deeper loading, a forward lean and a clearer lifted recovery. B was the source default;
   the phone still has the previous continuous build. No gameplay/physics changes or new art.
   Preview: `art_source/ui_review/2026-11-16-skating-options.mp4` (and GIF).
   `scripts/debug/skating_preview.gd` is a reusable, export-excluded comparison tool; it draws
@@ -185,7 +218,10 @@ Built 2026-11-15, in commit order:
 
 ### Next actions, in order
 
-1. **The owner plays `play/next`** (dev mode makes this quick). What to look at:
+1. **Owner reviews the new sustained-stroke preview and10th/50th glide milestones above.**
+   Tune from that feedback. Install over USB when the owner reconnects the phone; the
+   installed app still has the first continuous build. A/B/C remain unapproved references.
+2. **The owner plays `play/next`** (dev mode makes this quick). What to look at:
    - the card shop: layout, whether seven cards feel comfortable on a phone, the skater pictures.
 	 Rendered at both aspect ratios; owner review is still pending.
    - all three chest tiers in a run, reveal timing and mission completion/reward across runs
@@ -193,20 +229,20 @@ Built 2026-11-15, in commit order:
    - mountains at speed; whether 8:00+ is hard in a good way ("Dev can't die" gets there)
    - HUD text on a phone: "Chests: N   Coins: N" and the distance beside the clock
    - from the merged branches: islands, black ice, vents, geodes, theme, menu sounds, skaters
-2. **If it holds up, merge `play/next` into `main`** (fast-forward). The owner decides; do not
+3. **If it holds up, merge `play/next` into `main`** (fast-forward). The owner decides; do not
    merge or push unprompted.
-3. **Retention follow-up, after the owner plays the new missions/tiers:**
+4. **Retention follow-up, after the owner plays the new missions/tiers:**
    - Consider a five-mission milestone that lets the player choose a cosmetic, collection-set
      rewards, then personal-best encouragement. These are planned, not built.
    - Tune mission targets and chest sounds/pacing from play. Existing art, icons, collection
      and display font are built; do not list them as missing work.
-4. **Flagged, undone:**
+5. **Flagged, undone:**
    - The 2.0s room floor means more obstacle searches per minute, and A3 (search cost on the phone
 	 at combo tiers) is still unmeasured. If late frames show past 8:00, set
 	 `ObstacleSpawner.BREATHING_ROOM_FLOOR` back to 2.5 first.
    - A coin trail down the plunge was considered and not built: the fall arc depends on speed and
 	 on whether the player jumped, so a fixed trail would often miss.
-5. Still open from before: one long phone run past 5:00 with logcat (`OBSTACLE_SEARCH_SLOWEST`,
+6. Still open from before: one long phone run past 5:00 with logcat (`OBSTACLE_SEARCH_SLOWEST`,
    `debugging.md`), and the owner tests under "Owner: tests still owed" in `docs/history.md`.
 
 ### Traps met this session (each cost time)
