@@ -2,6 +2,15 @@
 
 ## 2026-11-16 — skating rhythm and repeated high-glide milestones
 
+- **Latest correction:** owner explicitly wants no pause: the next push starts while the
+  returning foot is almost home. Removed extension/settle holds from default B and made its
+  return overlap the next push by0.276s (about88% home at handoff). Long push and return
+  now join with cosine easing. Preview: `art_source/ui_review/2026-11-16-continuous-handoff.mp4`.
+  Motion tests check simultaneous opposing foot velocities and bound near-still intervals.
+  Found only the known editor pin/comment rewrite in `project.godot` at session start and
+  restored its committed viewport/physics pins under the standing project rule.
+  All six standard gates passed (125s),21 headless cases,12 rendered cases and all three
+  visual checks. One rendered lake-exit run timed out; the repeat passed unchanged.
 - **Later owner review:** prefers B Long push over the7.2s phrase. Reviewed public skating
   footage frame by frame and read primary coaching guidance; YouTube playback unavailable.
   Refined B is the in-game default:2.3s per stroke, clear drive/extended glide/low return,

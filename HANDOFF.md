@@ -12,7 +12,28 @@ terrain/pacing and other gameplay feel remain unapproved.
 
 ### Latest owner review / current priority
 
-**Latest direction — B with reference-based refinement (2026-11-16, review pending).**
+**Latest correction — continuous overlapping B (2026-11-16, review pending).**
+Owner clarified that there must be **no pause**: "one long fluid motion"; as one foot is
+almost back, the other should already push backward. This supersedes earlier requests or
+interpretations mentioning rest, a settle phase, a held extension or completing one foot's
+return before the other leg starts.
+
+- The default **B - Continuous** preserves the4.6s full cycle /2.3s alternating cadence.
+  Each foot drives backward over1.33s, then flows directly into a1.24s low return. The next
+  leg starts when the returning foot is about88% home, overlapping for0.276s. There is no
+  extension hold or stop-and-wait handoff. Cosine easing replaces the endpoint-heavy quintic
+  sweep on this default. Quiet upper body and low recovery remain; gameplay physics unchanged.
+- Preview: `art_source/ui_review/2026-11-16-continuous-handoff.mp4` (original B vs new default).
+  Normal skating and MeltView share it. Phone remains disconnected; install later over USB.
+- Motion regression explicitly checks opposing foot velocities during the overlap and bounds
+  any near-still interval to4/120s rather than accepting smooth-but-paused trajectories.
+  All six standard gates pass (125s), including21 headless cases; all12 rendered cases
+  and all three visual checks pass. One rendered lake-exit run timed out; its repeat passed
+  with no production changes.
+- On entry, `project.godot` had only the known editor rewrite (removed pins/comments and
+  key reordering). Restored the committed viewport/physics pins under CLAUDE's standing rule.
+
+**Previous direction — B with reference-based refinement (2026-11-16, review pending).**
 Owner prefers B Long push to the later7.2s version and requested real skating references,
 a modest B refinement and an in-game trial. Default is now **B - Refined glide**.
 
@@ -237,7 +258,7 @@ Built 2026-11-15, in commit order:
 
 ### Next actions, in order
 
-1. **Owner tries refined B in the game and reviews the10th/50th glide milestones above.**
+1. **Owner tries continuous overlapping B in the game and reviews the10th/50th glide milestones above.**
    Tune from that feedback. Install over USB when the owner reconnects the phone; the
    installed app still has the first continuous build. A/B/C remain unapproved references.
 2. **The owner plays `play/next`** (dev mode makes this quick). What to look at:

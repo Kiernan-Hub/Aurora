@@ -15,13 +15,13 @@ const STROKES: Array[Dictionary] = [
 	{"label": "B - Long push", "cycle": 4.2, "forward": 18.0, "back": -29.0, "drop": 11.0, "bob": 1.8, "lift": 17.0, "lean": 0.04, "shift": 2.6, "rock": 0.03},
 	{"label": "C - Deep push", "cycle": 4.8, "forward": 21.0, "back": -32.0, "drop": 15.0, "bob": 2.2, "lift": 20.0, "lean": 0.055, "shift": 3.3, "rock": 0.038},
 	{"label": "Sustained stroke", "cycle": 7.2, "forward": 12.0, "back": -32.0, "drop": 15.0, "bob": 0.65, "lift": 15.0, "lean": 0.04, "shift": 2.6, "rock": 0.03, "phrased": true},
-	{"label": "B - Refined glide", "cycle": CYCLE_SECONDS, "forward": 18.0, "back": -29.0, "drop": 12.0, "bob": 0.8, "lift": 8.0, "lean": 0.025, "shift": 2.0, "rock": 0.015, "gliding": true},
+	{"label": "B - Continuous", "cycle": CYCLE_SECONDS, "forward": 18.0, "back": -29.0, "drop": 12.0, "bob": 0.8, "lift": 8.0, "lean": 0.025, "shift": 2.0, "rock": 0.015, "gliding": true},
 ]
 const DRIVE_END: float = 0.62
 const RETURN_END: float = 0.94
-const GLIDE_DRIVE_END: float = 0.28
-const GLIDE_END: float = 0.66
-const GLIDE_RETURN_END: float = 0.95
+const GLIDE_DRIVE_END: float = 0.58
+# The other leg starts at1.0, while this foot is about88% of the way home.
+const GLIDE_RETURN_END: float = 1.12
 const SOURCE_CENTER: Vector2 = Vector2(75.0, 90.0)
 const GROUND_Y: float = 170.0
 const PROFILES: Dictionary = {
@@ -166,17 +166,13 @@ static func leg_pose(data: Dictionary, near: bool, seconds: float, amount: float
 	if stroke.get("gliding", false):
 		var phrase: float = phase * 2.0
 		if phrase < GLIDE_DRIVE_END:
-			sweep = lerpf(stroke["forward"], stroke["back"], smooth_phase(phrase / GLIDE_DRIVE_END))
-		elif phrase < GLIDE_END:
-			var progress: float = smooth_phase((phrase - GLIDE_DRIVE_END) / (GLIDE_END - GLIDE_DRIVE_END))
-			# Finish the extension while gliding on the other blade. Small continued
-			# reach and a low free foot replace the old constantly reversing sweep.
-			sweep = stroke["back"] - 5.0 * progress
-			recovery = 0.55 * progress
+			sweep = lerpf(stroke["forward"], stroke["back"], 0.5 - 0.5 * cos(PI * phrase / GLIDE_DRIVE_END))
 		elif phrase < GLIDE_RETURN_END:
-			var progress: float = smooth_phase((phrase - GLIDE_END) / (GLIDE_RETURN_END - GLIDE_END))
-			sweep = lerpf(stroke["back"] - 5.0, stroke["forward"], progress)
-			recovery = 0.55 * (1.0 - progress) + 0.35 * pow(sin(progress * PI), 2.0)
+			# Reverse smoothly into recovery without an extension hold. The next leg
+			# starts pushing before this return completes, so the handoff never stops.
+			var progress: float = 0.5 - 0.5 * cos(PI * (phrase - GLIDE_DRIVE_END) / (GLIDE_RETURN_END - GLIDE_DRIVE_END))
+			sweep = lerpf(stroke["back"], stroke["forward"], progress)
+			recovery = sin(progress * PI)
 		else:
 			sweep = stroke["forward"]
 	elif stroke.get("phrased", false):
@@ -220,7 +216,7 @@ static func body_offset(stroke: Dictionary, seconds: float, amount: float) -> Ve
 	if stroke.get("gliding", false):
 		var phase: float = fposmod(seconds / (stroke["cycle"] * 0.5), 1.0)
 		var load: float = smooth_phase(phase / GLIDE_DRIVE_END) if phase < GLIDE_DRIVE_END \
-			else 1.0 - smooth_phase((phase - GLIDE_DRIVE_END) / (GLIDE_END - GLIDE_DRIVE_END))
+			else 1.0 - smooth_phase((phase - GLIDE_DRIVE_END) / (1.0 - GLIDE_DRIVE_END))
 		return Vector2(stroke["shift"] * sin(wave) * amount,
 			4.0 + (stroke["drop"] - 4.0 + 1.5 * load) * amount)
 	return Vector2(stroke["shift"] * sin(wave) * amount,

@@ -8,7 +8,7 @@ upgrades and visual polish stay deprioritized until the core loop is stable.
 
 **Where the project is (2026-10-28):** core loop, both set pieces, obstacles and the air moves are built,
 played and **merged to `main`**; so is the hazard art pass (step 8, 2026-10-28). **Branch `play/next` (2026-11-15, PHONE REVIEW IN PROGRESS, all 15 gates pass)** holds everything since: island chasms, black ice/vents/geodes, the UI pass, mountains, the plunge, late tiers, chests, the card shop, dev mode. **Start at `HANDOFF.md`, "START HERE". Owner likes collection/customization and tier/mission visuals; Really? approved; portal provisional. Still Water exit fixes pending review (HANDOFF).** `HANDOFF.md` (root) holds ONLY the current
-state; at session end its section moves to the top of `docs/history.md`, which is never required reading. Owner prefers B; a footage-informed B refinement and10th/50th high-glide milestones are built, awaiting review (HANDOFF). The unplugged phone still has the first continuous build; install later over USB.
+state; at session end its section moves to the top of `docs/history.md`, which is never required reading. Owner wants B with no pause: the next push overlaps the almost-finished return. Continuous B and10th/50th glide milestones await review (HANDOFF). The unplugged phone still has the first continuous build; install later over USB.
 
 **Editing rules.** Find the root cause in the connected files before changing anything; prefer targeted
 changes, and propose before altering existing architecture. `project.godot` pins `4.7` + `Mobile`, physics

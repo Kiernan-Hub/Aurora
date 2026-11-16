@@ -25,7 +25,7 @@ available tools. No private browser cookies, sign-in or access-control workaroun
 The downloaded public clips/contact sheets stay in `/tmp`; no third-party footage, images
 or likenesses are included in the game's assets or committed preview.
 
-## Animation interpretation
+## Earlier animation interpretation (superseded by owner correction)
 
 The useful change for Aura is a visible push followed by a controlled one-blade glide and
 low recovery, with less torso rocking. This is a side-view artistic approximation of a
@@ -47,3 +47,14 @@ The original B and prior attempts are retained as reference presets, not new gam
 Preview: `art_source/ui_review/2026-11-16-refined-b.mp4`. The motion regression checks full
 cycles, planted-blade contact, fixed bones, boundary continuity, low extended glide and
 support/return ordering. Owner approval and phone trial remain pending.
+
+## Latest owner correction: overlap, no pause
+
+The owner rejected the hold/settle interpretation: "one long fluid motion" with the next
+push starting before the returning foot is all the way home. This correction takes priority
+over the earlier timing interpretation. Default B - Continuous retains the4.6s full cycle,
+flows directly from a1.33s push into a1.24s low return, and overlaps the next stroke by0.276s.
+At the next push's start the returning foot is88% home. Cosine easing avoids the long
+endpoint slowdowns of the previous quintic sweep. No explicit extension hold or settling
+interval remains. Motion tests measure both foot velocities at the overlap and bound
+near-still intervals. New preview: `art_source/ui_review/2026-11-16-continuous-handoff.mp4`.

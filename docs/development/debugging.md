@@ -1042,9 +1042,9 @@ the fixed case makes the visual A/B repeatable without changing palettes or its2
 ## Sustained skating and high-glide milestones (2026-11-16)
 
 The headless regression now has21 cases. `rig_motion` samples full cycles of every style and
-skin, fixed bone lengths, constant coasting and planted blade heights. `rig_rhythm` specifically
-requires the other leg to support the whole drive/glide/return/settle phrase, catching a return to
-two constantly opposing sweeps. `glide_milestone_model` checks10/50 thresholds, legacy count
+skin, fixed bone lengths, constant coasting and planted blade heights. `rig_rhythm` checks that the returning foot is nearly home and still moving forward
+while the next foot is already pushing backward. It bounds near-still intervals to4/120s,
+catching smooth-but-paused handoffs. Earlier no-overlap/settle expectations were rejected. `glide_milestone_model` checks10/50 thresholds, legacy count
 migration, malformed values, JSON, reset, atomic failed-save rollback, unique bundle finds and
 no repeated reward after reload. It injects a MemorySaveStore; it never touches real progress.
 

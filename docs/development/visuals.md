@@ -658,7 +658,7 @@ of its3.6s phrase, returns over32%, settles for6%, then supports the other leg's
 The forward/back sweep is44 source pixels; the supporting blade stays planted as weight
 shifts. Player and MeltView shared that default before the owner preferred B again. No effects, new artwork or physics.
 
-**Latest refinement:** owner prefers B. Reference-refined B keeps a similar cadence (2.3s
+**Earlier refinement (superseded below):** owner prefers B. Reference-refined B keeps a similar cadence (2.3s
 per stroke instead of2.1s), with28% drive,38% extended free-leg glide,29% low return and5%
 transfer. B's17px recovery lift becomes8px; body rocking is halved, with knee load/rise tied
 to the drive/glide. The foot finishes extending5px farther after leaving the ice, with a
@@ -666,11 +666,20 @@ restrained pointed foot rather than a high marching recovery. Existing72 vertice
 submissions and all gameplay physics remain unchanged. References and limits:
 `docs/research/skating_motion_reference.md`.
 
-`scripts/debug/skating_preview.gd` draws original B beside refined B, enlarged and at normal
-game size for all five skins, with drive/glide/return/transfer captions. Run with `--audio-driver Dummy`; no save writes.
+**Latest clarification:** no pause, no settle, no held extension. The next leg must push
+while the returning foot is almost home. Default B - Continuous keeps the4.6s full cycle,
+using a1.33s drive flowing directly into a1.24s return. The other foot starts its push
+when the returning foot is88% home, giving0.276s overlap. Cosine sweeps have no held
+intervals at their endpoints; the low8px recovery envelope and quiet upper body remain.
+The blade may support the other leg, but the combined stride must not stop at a handoff.
+This supersedes earlier settle/extended-hold interpretations. No physics/effect changes.
+
+`scripts/debug/skating_preview.gd` draws original B beside continuous overlapping B, enlarged
+and at normal game size for all five skins, with push/return/overlap captions. Run with `--audio-driver Dummy`; no save writes.
 With `-- --out=/tmp/aura-stroke-frames` it captures two full cycles (276 frames at30fps) and exits; otherwise
 it animates in a standalone window. Source is excluded from exports with the other debug
-scripts. New comparison: `art_source/ui_review/2026-11-16-refined-b.mp4`. Previous sustained version:
+scripts. New comparison: `art_source/ui_review/2026-11-16-continuous-handoff.mp4`. Prior refinement:
+`art_source/ui_review/2026-11-16-refined-b.mp4`. Previous sustained version:
 `art_source/ui_review/2026-11-16-sustained-stroke.mp4`. Earlier
 A/B/C comparison: `art_source/ui_review/2026-11-16-skating-options.mp4` and `.gif`.
 

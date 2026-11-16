@@ -432,7 +432,7 @@ was previously accepted. These changes preserve terrain generation and lake comp
 Its children retain parent transforms, modulate and the outfit material (`use_parent_material`).
 The rig uses frame zero with original full-frame UVs, two bounded two-bone IK solves, cached
 leg/body meshes and three triangle submissions (72 vertices/80 triangles total). Joint paths
-join with quintic easing; boots stay rigid. No movement state, physics or collision is written.
+join continuously (cosine push/return on the current default); boots stay rigid. No movement state, physics or collision is written.
 Normal inherited processing freezes on Pause; the headless guard leaves the sprite untouched.
 Invalid draw data restores the carrier's original alpha as a visible fallback. Skin resource
 changes rebuild cached data. MeltView calls the shared drawer between platforms and melt,
