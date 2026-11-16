@@ -2,6 +2,13 @@
 
 ## 2026-11-16 — skating rhythm and repeated high-glide milestones
 
+- **Later owner review:** prefers B Long push over the7.2s phrase. Reviewed public skating
+  footage frame by frame and read primary coaching guidance; YouTube playback unavailable.
+  Refined B is the in-game default:2.3s per stroke, clear drive/extended glide/low return,
+  less torso rocking. Same rig and physics. Sources/limits:
+  `docs/research/skating_motion_reference.md`; preview:
+  `art_source/ui_review/2026-11-16-refined-b.mp4`. All six standard gates pass (122s),
+  plus12 rendered cases and the three visual checks. Phone installation remains deferred.
 - Backed up the earlier phone-review work and A/B/C skating previews on `play/next`
   (`8cdcfc5`, `835f78b`). Owner then clarified the desired rhythm: `1 2 2 2 2 3`, a long
   deep stroke, gradual foot return and short settle, completed before the other leg starts.

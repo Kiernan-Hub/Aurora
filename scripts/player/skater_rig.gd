@@ -5,19 +5,23 @@ class_name SkaterRig
 # A continuous visual rig over the existing rest-pose artwork. Two short skinned
 # leg strips and rigid boots move on smooth paths; the PNG never switches poses.
 # The AnimatedSprite2D parent remains the carrier for tilt, tricks, tint and squash.
-const CYCLE_SECONDS: float = 7.2
-# Preview-only alternatives use the same rig; gameplay defaults to the phrased stroke.
+const CYCLE_SECONDS: float = 4.6
+# Preview-only alternatives use the same rig; gameplay defaults to reference-refined B.
 # A cycle contains two alternating strokes, not one stroke per foot together.
-const DEFAULT_STROKE: int = 4
+const DEFAULT_STROKE: int = 5
 const STROKES: Array[Dictionary] = [
 	{"label": "Previous", "cycle": 2.8, "forward": 9.0, "back": -16.0, "drop": 4.0, "bob": 0.65, "lift": 10.0, "lean": 0.0, "shift": 0.0, "rock": 0.012},
 	{"label": "A - Strong", "cycle": 3.6, "forward": 16.0, "back": -26.0, "drop": 8.0, "bob": 1.4, "lift": 14.0, "lean": 0.025, "shift": 1.8, "rock": 0.022},
 	{"label": "B - Long push", "cycle": 4.2, "forward": 18.0, "back": -29.0, "drop": 11.0, "bob": 1.8, "lift": 17.0, "lean": 0.04, "shift": 2.6, "rock": 0.03},
 	{"label": "C - Deep push", "cycle": 4.8, "forward": 21.0, "back": -32.0, "drop": 15.0, "bob": 2.2, "lift": 20.0, "lean": 0.055, "shift": 3.3, "rock": 0.038},
-	{"label": "Sustained stroke", "cycle": CYCLE_SECONDS, "forward": 12.0, "back": -32.0, "drop": 15.0, "bob": 0.65, "lift": 15.0, "lean": 0.04, "shift": 2.6, "rock": 0.03, "phrased": true},
+	{"label": "Sustained stroke", "cycle": 7.2, "forward": 12.0, "back": -32.0, "drop": 15.0, "bob": 0.65, "lift": 15.0, "lean": 0.04, "shift": 2.6, "rock": 0.03, "phrased": true},
+	{"label": "B - Refined glide", "cycle": CYCLE_SECONDS, "forward": 18.0, "back": -29.0, "drop": 12.0, "bob": 0.8, "lift": 8.0, "lean": 0.025, "shift": 2.0, "rock": 0.015, "gliding": true},
 ]
 const DRIVE_END: float = 0.62
 const RETURN_END: float = 0.94
+const GLIDE_DRIVE_END: float = 0.28
+const GLIDE_END: float = 0.66
+const GLIDE_RETURN_END: float = 0.95
 const SOURCE_CENTER: Vector2 = Vector2(75.0, 90.0)
 const GROUND_Y: float = 170.0
 const PROFILES: Dictionary = {
@@ -159,7 +163,23 @@ static func leg_pose(data: Dictionary, near: bool, seconds: float, amount: float
 	var phase: float = fposmod(seconds / stroke["cycle"] + (0.0 if near else 0.5), 1.0)
 	var recovery: float = 0.0
 	var sweep: float
-	if stroke.get("phrased", false):
+	if stroke.get("gliding", false):
+		var phrase: float = phase * 2.0
+		if phrase < GLIDE_DRIVE_END:
+			sweep = lerpf(stroke["forward"], stroke["back"], smooth_phase(phrase / GLIDE_DRIVE_END))
+		elif phrase < GLIDE_END:
+			var progress: float = smooth_phase((phrase - GLIDE_DRIVE_END) / (GLIDE_END - GLIDE_DRIVE_END))
+			# Finish the extension while gliding on the other blade. Small continued
+			# reach and a low free foot replace the old constantly reversing sweep.
+			sweep = stroke["back"] - 5.0 * progress
+			recovery = 0.55 * progress
+		elif phrase < GLIDE_RETURN_END:
+			var progress: float = smooth_phase((phrase - GLIDE_END) / (GLIDE_RETURN_END - GLIDE_END))
+			sweep = lerpf(stroke["back"] - 5.0, stroke["forward"], progress)
+			recovery = 0.55 * (1.0 - progress) + 0.35 * pow(sin(progress * PI), 2.0)
+		else:
+			sweep = stroke["forward"]
+	elif stroke.get("phrased", false):
 		# One leg completes its whole phrase before the other starts. The supporting
 		# blade stays planted, rather than both feet constantly cycling in opposition.
 		var phrase: float = phase * 2.0
@@ -191,11 +211,18 @@ static func leg_pose(data: Dictionary, near: bool, seconds: float, amount: float
 	var height: float = sqrt(maxf(leg["upper"] * leg["upper"] - along * along, 0.0))
 	# Knees bend forward in the skating direction; the sign never flips at extension.
 	var knee: Vector2 = hip + unit * along + Vector2(unit.y, -unit.x) * height
-	return {"hip": hip, "knee": knee, "ankle": ankle, "pitch": (0.0 if near else -0.31) - 0.14 * recovery * amount}
+	var foot_pitch: float = 0.10 if stroke.get("gliding", false) else -0.14
+	return {"hip": hip, "knee": knee, "ankle": ankle, "pitch": (0.0 if near else -0.31) + foot_pitch * recovery * amount}
 
 
 static func body_offset(stroke: Dictionary, seconds: float, amount: float) -> Vector2:
 	var wave: float = seconds / stroke["cycle"] * TAU
+	if stroke.get("gliding", false):
+		var phase: float = fposmod(seconds / (stroke["cycle"] * 0.5), 1.0)
+		var load: float = smooth_phase(phase / GLIDE_DRIVE_END) if phase < GLIDE_DRIVE_END \
+			else 1.0 - smooth_phase((phase - GLIDE_DRIVE_END) / (GLIDE_END - GLIDE_DRIVE_END))
+		return Vector2(stroke["shift"] * sin(wave) * amount,
+			4.0 + (stroke["drop"] - 4.0 + 1.5 * load) * amount)
 	return Vector2(stroke["shift"] * sin(wave) * amount,
 		4.0 + (stroke["drop"] - 4.0 + stroke["bob"] * sin(wave * 2.0)) * amount)
 

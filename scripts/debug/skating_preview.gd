@@ -18,9 +18,9 @@ class Board extends Control:
 			draw_string(ThemeDB.fallback_font, Vector2(left + 16, 30), stroke["label"], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
 			draw_string(ThemeDB.fallback_font, Vector2(left + 16, 55), "%.1fs per push" % (stroke["cycle"] * 0.5), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("b7cbdd"))
 			if style == SkaterRig.DEFAULT_STROKE:
-				draw_string(ThemeDB.fallback_font, Vector2(left + 16, 80), "New rhythm - 1 2 2 2 2 3", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("89dfda"))
+				draw_string(ThemeDB.fallback_font, Vector2(left + 16, 80), "B flow / longer extension / low return", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("89dfda"))
 				var phase: float = fposmod(seconds / (stroke["cycle"] * 0.5), 1.0)
-				var stage: String = "Long deep push" if phase < SkaterRig.DRIVE_END else ("Steady foot return" if phase < SkaterRig.RETURN_END else "Settle / change foot")
+				var stage: String = "Push through the blade" if phase < SkaterRig.GLIDE_DRIVE_END else ("Extended glide" if phase < SkaterRig.GLIDE_END else ("Low steady return" if phase < SkaterRig.GLIDE_RETURN_END else "Transfer / next foot"))
 				draw_string(ThemeDB.fallback_font, Vector2(left + 16, 105), stage, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color.WHITE)
 			draw_line(Vector2(left + 5, 340), Vector2(left + 445, 340), Color("a3cce5"))
 			SkaterRig.draw_into(self, poses[column][0], seconds, 1.0, Vector2(left + 225, 220), 1.5)

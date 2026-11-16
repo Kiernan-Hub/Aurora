@@ -12,7 +12,26 @@ terrain/pacing and other gameplay feel remain unapproved.
 
 ### Latest owner review / current priority
 
-**Latest build — sustained strokes and high-glide milestones (2026-11-16). Desktop review
+**Latest direction — B with reference-based refinement (2026-11-16, review pending).**
+Owner prefers B Long push to the later7.2s version and requested real skating references,
+a modest B refinement and an in-game trial. Default is now **B - Refined glide**.
+
+- B's cadence stays close:2.3s per alternating stroke (was2.1s),4.6s full cycle. Each stroke
+  has a0.64s drive,0.87s extended glide,0.67s low foot return and0.12s transfer. The free
+  leg finishes extending while the other blade supports it; recovery lift envelope drops17→8 source
+  pixels, upper-body rocking is halved and the knee loads then rises gently into the glide.
+  The previous B and sustained versions remain preview references. No physics/effect changes.
+- Reviewed two public Pexels clips frame by frame and read primary coaching guidance.
+  YouTube/browser playback could not be accessed; do not claim those tutorials were watched.
+  Sources and the distinction between observation and animation interpretation are recorded
+  in `docs/research/skating_motion_reference.md`. No third-party video/art was added to the repo.
+- New comparison: `art_source/ui_review/2026-11-16-refined-b.mp4` (original B vs refined B).
+  The shared rig updates normal play and MeltView. Phone remains unplugged/unchanged;
+  USB installation is deferred as requested. High-glide milestones are unchanged.
+- Motion/phase regression passes across all six styles and five skins: maximum joint step
+  1.242 source px at120Hz, zero planted-blade height error. All six standard gates pass (122s), as do all12 rendered cases and all three visual checks.
+
+**Previous build — sustained strokes and high-glide milestones (2026-11-16). Desktop review
 pending; phone unplugged. Owner explicitly deferred USB installation until later.**
 
 - **Skating rhythm revised:** the old opposing sweeps read as `1 2 1 2`. Owner's target is
@@ -23,7 +42,7 @@ pending; phone unplugged. Owner explicitly deferred USB installation until later
   The same continuous rig/art,72 vertices and three draw submissions remain; physics is unchanged.
   Preview: `art_source/ui_review/2026-11-16-sustained-stroke.mp4` compares the prior B attempt
   with the new rhythm, enlarged plus all five characters at normal game size. A/B/C remain
-  reference attempts, not approved choices. Source defaults to the new sustained stroke.
+  reference attempts, not approved choices. That build defaulted to the sustained stroke; refined B now supersedes it.
 - **Glide milestones built:** a full high glide uses the existing Really? qualification,
   >=6s uninterrupted held ascent and >=3,000px actual climb. There is no literal height ceiling.
   The **10th** grants **"still??"**; the **50th** grants **"fine, here you go"** and one
@@ -218,7 +237,7 @@ Built 2026-11-15, in commit order:
 
 ### Next actions, in order
 
-1. **Owner reviews the new sustained-stroke preview and10th/50th glide milestones above.**
+1. **Owner tries refined B in the game and reviews the10th/50th glide milestones above.**
    Tune from that feedback. Install over USB when the owner reconnects the phone; the
    installed app still has the first continuous build. A/B/C remain unapproved references.
 2. **The owner plays `play/next`** (dev mode makes this quick). What to look at:

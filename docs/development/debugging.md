@@ -1043,7 +1043,7 @@ the fixed case makes the visual A/B repeatable without changing palettes or its2
 
 The headless regression now has21 cases. `rig_motion` samples full cycles of every style and
 skin, fixed bone lengths, constant coasting and planted blade heights. `rig_rhythm` specifically
-requires the other leg to support the whole drive/return/settle phrase, catching a return to
+requires the other leg to support the whole drive/glide/return/settle phrase, catching a return to
 two constantly opposing sweeps. `glide_milestone_model` checks10/50 thresholds, legacy count
 migration, malformed values, JSON, reset, atomic failed-save rollback, unique bundle finds and
 no repeated reward after reload. It injects a MemorySaveStore; it never touches real progress.
@@ -1056,6 +1056,6 @@ Neither death nor tapping can pay that receipt again. It checks the named two-li
 `/tmp/aura-glide-milestone-chest.png`. Run with `--audio-driver Dummy` or Master -24dB in memory.
 
 The standalone `scripts/debug/skating_preview.gd` uses only the rig drawer and no gameplay save
-writes. `-- --out=/tmp/aura-stroke-frames` captures432 PNGs at30fps (two7.2s cycles); without
-an output argument it animates until the window closes. It compares old B with the sustained
-rhythm, enlarged and at normal game size across all five skins. It remains export-excluded.
+writes. `-- --out=/tmp/aura-stroke-frames` captures276 PNGs at30fps (two4.6s cycles); without
+an output argument it animates until the window closes. It compares original B with refined B
+(push/extended glide/low return), enlarged and at normal game size across all five skins. It remains export-excluded.

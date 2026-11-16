@@ -1263,6 +1263,8 @@ func rig_motion() -> void:
 					var phase: float = fposmod(seconds / data["stroke"]["cycle"] + (0.0 if near else 0.5), 1.0)
 					var planted: bool = (phase < SkaterRig.DRIVE_END * 0.5 or phase >= SkaterRig.RETURN_END * 0.5) \
 						if data["stroke"].get("phrased", false) else phase < 0.65
+					if data["stroke"].get("gliding", false):
+						planted = phase < SkaterRig.GLIDE_DRIVE_END * 0.5 or phase >= SkaterRig.GLIDE_RETURN_END * 0.5
 					if planted and style > 0:
 						max_ground_error = maxf(max_ground_error, absf(pose["ankle"].y - (SkaterRig.GROUND_Y - (13.0 if near else 9.4))))
 					var still: Dictionary = SkaterRig.leg_pose(data, near, seconds, 0.0)
@@ -1273,7 +1275,7 @@ func rig_motion() -> void:
 					previous = pose
 				if style > 0:
 					passed = passed and max_sweep - min_sweep > 40.0
-				for boundary: float in [0.0, 0.15, 0.31, 0.47, 0.5, 0.65, 0.81, 0.97, 1.0]:
+				for boundary: float in [0.0, 0.14, 0.15, 0.31, 0.33, 0.47, 0.475, 0.5, 0.64, 0.65, 0.81, 0.83, 0.97, 0.975, 1.0]:
 					var before: Dictionary = SkaterRig.leg_pose(data, near, boundary * data["stroke"]["cycle"] - 0.00001, 1.0)
 					var after: Dictionary = SkaterRig.leg_pose(data, near, boundary * data["stroke"]["cycle"] + 0.00001, 1.0)
 					passed = passed and before["ankle"].distance_to(after["ankle"]) < 0.01 \
@@ -1288,16 +1290,21 @@ func rig_motion() -> void:
 		var start: float = 0.0 if near else SkaterRig.CYCLE_SECONDS * 0.5
 		var previous_x: float = INF
 		for step: int in range(1, 8):
-			var seconds: float = start + SkaterRig.CYCLE_SECONDS * 0.5 * SkaterRig.DRIVE_END * step / 8.0
+			var seconds: float = start + SkaterRig.CYCLE_SECONDS * 0.5 * SkaterRig.GLIDE_DRIVE_END * step / 8.0
 			var pushing: Dictionary = SkaterRig.leg_pose(phrased, near, seconds, 1.0)
 			var support: Dictionary = SkaterRig.leg_pose(phrased, not near, seconds, 1.0)
 			var sweep: float = pushing["ankle"].x - pushing["hip"].x
 			rhythm = rhythm and sweep < previous_x \
 				and is_equal_approx(support["ankle"].x - support["hip"].x, phrased["stroke"]["forward"])
 			previous_x = sweep
+		for fraction: float in [0.4, 0.5, 0.6]:
+			var extension: Dictionary = SkaterRig.leg_pose(phrased, near, start + SkaterRig.CYCLE_SECONDS * 0.5 * fraction, 1.0)
+			var sole: float = SkaterRig.GROUND_Y - (13.0 if near else 9.4)
+			rhythm = rhythm and extension["ankle"].x - extension["hip"].x < -29.0 \
+				and extension["ankle"].y < sole and extension["ankle"].y > sole - 8.0
 		var returned: Dictionary = SkaterRig.leg_pose(phrased, near, start + SkaterRig.CYCLE_SECONDS * 0.49, 1.0)
 		rhythm = rhythm and is_equal_approx(returned["ankle"].x - returned["hip"].x, phrased["stroke"]["forward"])
-	expect("rig_rhythm", rhythm, "one planted supporting leg; long monotonic drive, complete return/settle, then alternate")
+	expect("rig_rhythm", rhythm, "planted support, deep drive, extended free-leg glide, low return/settle, then alternate")
 
 
 func rig_lifecycle() -> void:

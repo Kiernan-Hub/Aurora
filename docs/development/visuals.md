@@ -638,7 +638,7 @@ compares pixels beyond the far shore against an otherwise identical frame withou
 
 **Continuous skating (owner review pending):** the owner rejected the slow four-pose cycle.
 `SkaterRig` animates the existing rest artwork continuously, with long alternating pushes over
-7.2 seconds (two alternating3.6s phrases), fixed-length IK legs and rigid boots. Smooth recovery
+4.6 seconds (two alternating2.3s strokes), fixed-length IK legs and rigid boots. Smooth recovery
 curves join without a pose switch; airborne/Still Water/boost states ease into coasting.
 All five characters use tuned joint landmarks. The existing sprite parent still owns tint,
 outfit material, slope/trick rotation and squash. MeltView uses the same inline rig, preserving
@@ -656,13 +656,22 @@ settle and alternate. Change the relative drive/recovery/rest phases; don't just
 same loop again or introduce frozen pose holds. **Implemented:** one leg now drives for62%
 of its3.6s phrase, returns over32%, settles for6%, then supports the other leg's whole phrase.
 The forward/back sweep is44 source pixels; the supporting blade stays planted as weight
-shifts. Player and MeltView share this default. No effects, new artwork or physics.
+shifts. Player and MeltView shared that default before the owner preferred B again. No effects, new artwork or physics.
 
-`scripts/debug/skating_preview.gd` draws prior B beside the new sustained rhythm, enlarged
-and at normal game size for all five skins, with drive/return/settle captions. Run with `--audio-driver Dummy`; no save writes.
-With `-- --out=/tmp/aura-stroke-frames` it captures two full cycles (432 frames at30fps) and exits; otherwise
+**Latest refinement:** owner prefers B. Reference-refined B keeps a similar cadence (2.3s
+per stroke instead of2.1s), with28% drive,38% extended free-leg glide,29% low return and5%
+transfer. B's17px recovery lift becomes8px; body rocking is halved, with knee load/rise tied
+to the drive/glide. The foot finishes extending5px farther after leaving the ice, with a
+restrained pointed foot rather than a high marching recovery. Existing72 vertices/three
+submissions and all gameplay physics remain unchanged. References and limits:
+`docs/research/skating_motion_reference.md`.
+
+`scripts/debug/skating_preview.gd` draws original B beside refined B, enlarged and at normal
+game size for all five skins, with drive/glide/return/transfer captions. Run with `--audio-driver Dummy`; no save writes.
+With `-- --out=/tmp/aura-stroke-frames` it captures two full cycles (276 frames at30fps) and exits; otherwise
 it animates in a standalone window. Source is excluded from exports with the other debug
-scripts. New comparison: `art_source/ui_review/2026-11-16-sustained-stroke.mp4`. Earlier
+scripts. New comparison: `art_source/ui_review/2026-11-16-refined-b.mp4`. Previous sustained version:
+`art_source/ui_review/2026-11-16-sustained-stroke.mp4`. Earlier
 A/B/C comparison: `art_source/ui_review/2026-11-16-skating-options.mp4` and `.gif`.
 
 ```bash
