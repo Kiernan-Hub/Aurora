@@ -1275,56 +1275,63 @@ func rig_motion() -> void:
 					previous = pose
 				if style > 0:
 					passed = passed and max_sweep - min_sweep > 40.0
-				for boundary: float in [0.0, 0.06, 0.14, 0.15, 0.29, 0.31, 0.33, 0.47, 0.475, 0.5, 0.56, 0.64, 0.65, 0.79, 0.81, 0.83, 0.97, 0.975, 1.0]:
+				for boundary: float in [0.0, 0.06, 0.14, 0.15, 0.18, 0.29, 0.31, 0.33, 0.47, 0.475, 0.5, 0.56, 0.64, 0.65, 0.68, 0.79, 0.81, 0.83, 0.97, 0.975, 1.0]:
 					var before: Dictionary = SkaterRig.leg_pose(data, near, boundary * data["stroke"]["cycle"] - 0.00001, 1.0)
 					var after: Dictionary = SkaterRig.leg_pose(data, near, boundary * data["stroke"]["cycle"] + 0.00001, 1.0)
 					passed = passed and before["ankle"].distance_to(after["ankle"]) < 0.01 \
 						and before["knee"].distance_to(after["knee"]) < 0.01
 	expect("rig_motion", passed and max_step < 1.5 and max_ground_error < 0.75,
 		"five skins/all styles; fixed bones, coast, full-cycle continuity, >40px strong sweep; max step %.3fpx, planted error %.3fpx" % [max_step, max_ground_error])
-	# Recovery must still be moving forward when the opposite leg starts its push.
-	# Smooth positions alone cannot detect the rejected stop-and-wait rhythm.
+	# A quicker accelerating push, visible knee lift, and planting exactly into the
+	# next push distinguish skating from equal-speed sliding or an airborne handoff.
 	var data: Dictionary = SkaterRig.create_draw_data(load(Skins.SKINS[0]["frames"]))
 	var rhythm: bool = true
 	var half_cycle: float = SkaterRig.CYCLE_SECONDS * 0.5
 	for near: bool in [true, false]:
 		var start: float = 0.0 if near else half_cycle
-		var previous_x: float = INF
-		for step: int in range(1, 8):
-			var pushing: Dictionary = SkaterRig.leg_pose(data, near, start + half_cycle * SkaterRig.GLIDE_DRIVE_END * step / 8.0, 1.0)
-			var sweep: float = pushing["ankle"].x - pushing["hip"].x
-			rhythm = rhythm and sweep < previous_x
-			previous_x = sweep
-		previous_x = -INF
-		for fraction: float in [0.68, 0.82, 0.96]:
-			var returning: Dictionary = SkaterRig.leg_pose(data, near, start + half_cycle * fraction, 1.0)
-			var sweep: float = returning["ankle"].x - returning["hip"].x
-			var sole: float = SkaterRig.GROUND_Y - (13.0 if near else 9.4)
-			rhythm = rhythm and sweep > previous_x and returning["ankle"].y < sole \
-				and returning["ankle"].y >= sole - 8.001
-			previous_x = sweep
-		var seconds: float = start + half_cycle * 1.06
-		var outgoing: Dictionary = SkaterRig.leg_pose(data, near, seconds, 1.0)
-		var outgoing_next: Dictionary = SkaterRig.leg_pose(data, near, seconds + 1.0 / 120.0, 1.0)
+		var early_a: Dictionary = SkaterRig.leg_pose(data, near, start + half_cycle * SkaterRig.GLIDE_DRIVE_END * 0.1, 1.0)
+		var early_b: Dictionary = SkaterRig.leg_pose(data, near, start + half_cycle * SkaterRig.GLIDE_DRIVE_END * 0.2, 1.0)
+		var fast_a: Dictionary = SkaterRig.leg_pose(data, near, start + half_cycle * SkaterRig.GLIDE_DRIVE_END * 0.55, 1.0)
+		var fast_b: Dictionary = SkaterRig.leg_pose(data, near, start + half_cycle * SkaterRig.GLIDE_DRIVE_END * 0.65, 1.0)
+		var early_distance: float = absf((early_b["ankle"].x - early_b["hip"].x) - (early_a["ankle"].x - early_a["hip"].x))
+		var fast_distance: float = absf((fast_b["ankle"].x - fast_b["hip"].x) - (fast_a["ankle"].x - fast_a["hip"].x))
+		rhythm = rhythm and fast_distance > early_distance * 3.0
+		var planted: Dictionary = SkaterRig.leg_pose(data, near, start + half_cycle, 1.0)
+		var sole: float = SkaterRig.GROUND_Y - (13.0 if near else 9.4)
+		var highest_knee: float = INF
+		var max_lift: float = 0.0
+		for frame: int in range(1, 101):
+			var phase: float = lerpf(SkaterRig.GLIDE_DRIVE_END, 1.0, frame / 100.0)
+			var recovery: Dictionary = SkaterRig.leg_pose(data, near, start + half_cycle * phase, 1.0)
+			highest_knee = minf(highest_knee, recovery["knee"].y - recovery["hip"].y)
+			max_lift = maxf(max_lift, sole - recovery["ankle"].y)
+		rhythm = rhythm and highest_knee < planted["knee"].y - planted["hip"].y - 6.0 and max_lift > 16.0
+		var seconds: float = start + half_cycle
 		var incoming: Dictionary = SkaterRig.leg_pose(data, not near, seconds, 1.0)
-		var incoming_next: Dictionary = SkaterRig.leg_pose(data, not near, seconds + 1.0 / 120.0, 1.0)
-		var outgoing_x: float = outgoing["ankle"].x - outgoing["hip"].x
-		var home_fraction: float = (outgoing_x - data["stroke"]["back"]) / (data["stroke"]["forward"] - data["stroke"]["back"])
-		rhythm = rhythm and home_fraction > 0.85 and home_fraction < 1.0 \
-			and outgoing_next["ankle"].x - outgoing_next["hip"].x > outgoing_x \
+		var incoming_next: Dictionary = SkaterRig.leg_pose(data, not near, seconds + 1.0 / 60.0, 1.0)
+		rhythm = rhythm and absf(planted["ankle"].y - sole) < 0.001 \
+			and is_equal_approx(planted["ankle"].x - planted["hip"].x, data["stroke"]["forward"]) \
 			and incoming_next["ankle"].x - incoming_next["hip"].x < incoming["ankle"].x - incoming["hip"].x
 	var quiet_frames: int = 0
 	var longest_quiet: int = 0
+	var push_speed: float = 0.0
+	var return_speed: float = 0.0
 	for frame: int in range(ceili(SkaterRig.CYCLE_SECONDS * 120.0)):
 		var combined_speed: float = 0.0
 		for near: bool in [true, false]:
 			var before: Dictionary = SkaterRig.leg_pose(data, near, frame / 120.0, 1.0)
 			var after: Dictionary = SkaterRig.leg_pose(data, near, (frame + 1) / 120.0, 1.0)
-			combined_speed += absf((after["ankle"].x - after["hip"].x) - (before["ankle"].x - before["hip"].x)) * 120.0
+			var speed: float = absf((after["ankle"].x - after["hip"].x) - (before["ankle"].x - before["hip"].x)) * 120.0
+			combined_speed += speed
+			var phrase: float = fposmod(frame / 120.0 / SkaterRig.CYCLE_SECONDS + (0.0 if near else 0.5), 1.0) * 2.0
+			if phrase < SkaterRig.GLIDE_DRIVE_END:
+				push_speed = maxf(push_speed, speed)
+			elif phrase < 1.0:
+				return_speed = maxf(return_speed, speed)
 		quiet_frames = quiet_frames + 1 if combined_speed < 2.0 else 0
 		longest_quiet = maxi(longest_quiet, quiet_frames)
-	expect("rig_rhythm", rhythm and longest_quiet <= 4,
-		"long drive/low return; both legs moving at handoff; near-home recovery overlaps next push; longest quiet span %d/120s" % longest_quiet)
+	expect("rig_rhythm", rhythm and push_speed > return_speed * 1.4 and longest_quiet <= 4,
+		"accelerating push %.1fpx/s vs recovery %.1f; visible knee lift; planted next-push handoff; longest quiet span %d/120s" % [push_speed, return_speed, longest_quiet])
 
 
 func rig_lifecycle() -> void:

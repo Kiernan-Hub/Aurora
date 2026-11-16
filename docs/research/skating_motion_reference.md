@@ -48,7 +48,7 @@ Preview: `art_source/ui_review/2026-11-16-refined-b.mp4`. The motion regression 
 cycles, planted-blade contact, fixed bones, boundary continuity, low extended glide and
 support/return ordering. Owner approval and phone trial remain pending.
 
-## Latest owner correction: overlap, no pause
+## Earlier owner correction: overlap, no pause (superseded below)
 
 The owner rejected the hold/settle interpretation: "one long fluid motion" with the next
 push starting before the returning foot is all the way home. This correction takes priority
@@ -58,3 +58,17 @@ At the next push's start the returning foot is88% home. Cosine easing avoids the
 endpoint slowdowns of the previous quintic sweep. No explicit extension hold or settling
 interval remains. Motion tests measure both foot velocities at the overlap and bound
 near-still intervals. New preview: `art_source/ui_review/2026-11-16-continuous-handoff.mp4`.
+
+## Latest owner correction: quicker push, knee up, plant and switch
+
+The owner clarified that the backward motion needs a faster single accelerating sweep,
+then a visible knee lift during the return, with the next leg starting right as the foot
+plants. This supersedes the previous low-recovery /88%-home overlap interpretation.
+Current default B - Push and recover keeps a2.3s alternating cadence, with a0.83s push and
+1.47s recovery. A skewed cosine drive delays the peak speed into the stronger part of the
+push. Recovery uses an18px envelope and a lifted-knee path, not the prior8px low shuffle.
+Both legs meet at contact; no held extension or settling interval is added. These remain
+animation choices guided by the owner's review, not measured motion-capture timings.
+The regression measures96.2px/s peak drive against50.2px/s recovery, knee lift, planting at
+the next push and a maximum4/120s near-still interval. Preview:
+`art_source/ui_review/2026-11-16-push-and-recover.mp4`.

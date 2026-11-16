@@ -2,6 +2,14 @@
 
 ## 2026-11-16 — skating rhythm and repeated high-glide milestones
 
+- **Newest clarification:** the push should be faster and accelerate backward, then the
+  knee lifts for a slower recovery; the other leg pushes right as the foot plants.
+  Built B - Push and recover:0.83s push,1.47s knee-lift return,2.3s alternating cadence,
+  with no dwell. Supersedes the prior low return / airborne-overlap interpretation.
+  Preview: `art_source/ui_review/2026-11-16-push-and-recover.mp4`. Motion tests measure
+  accelerating drive, peak push faster than recovery, knee lift and exact planted handoff.
+  All six standard gates pass (155s),21 headless cases,12 rendered cases and three visual
+  checks. The slow lake capture completed without a test or gameplay change.
 - **Latest correction:** owner explicitly wants no pause: the next push starts while the
   returning foot is almost home. Removed extension/settle holds from default B and made its
   return overlap the next push by0.276s (about88% home at handoff). Long push and return

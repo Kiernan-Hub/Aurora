@@ -12,26 +12,25 @@ terrain/pacing and other gameplay feel remain unapproved.
 
 ### Latest owner review / current priority
 
-**Latest correction — continuous overlapping B (2026-11-16, review pending).**
-Owner clarified that there must be **no pause**: "one long fluid motion"; as one foot is
-almost back, the other should already push backward. This supersedes earlier requests or
-interpretations mentioning rest, a settle phase, a held extension or completing one foot's
-return before the other leg starts.
+**Latest correction — faster push, lifted-knee recovery, plant into next push
+(2026-11-16, review pending).** Owner says the backward motion should be faster and fluid,
+not read as a constant-speed slide; then pick up the knee, recover, and start the other
+push **right as the returning foot plants**. This supersedes the previous low-return /
+88%-home airborne-overlap interpretation, as well as all earlier holds/settle phases.
 
-- The default **B - Continuous** preserves the4.6s full cycle /2.3s alternating cadence.
-  Each foot drives backward over1.33s, then flows directly into a1.24s low return. The next
-  leg starts when the returning foot is about88% home, overlapping for0.276s. There is no
-  extension hold or stop-and-wait handoff. Cosine easing replaces the endpoint-heavy quintic
-  sweep on this default. Quiet upper body and low recovery remain; gameplay physics unchanged.
-- Preview: `art_source/ui_review/2026-11-16-continuous-handoff.mp4` (original B vs new default).
-  Normal skating and MeltView share it. Phone remains disconnected; install later over USB.
-- Motion regression explicitly checks opposing foot velocities during the overlap and bounds
-  any near-still interval to4/120s rather than accepting smooth-but-paused trajectories.
-  All six standard gates pass (125s), including21 headless cases; all12 rendered cases
-  and all three visual checks pass. One rendered lake-exit run timed out; its repeat passed
-  with no production changes.
-- On entry, `project.godot` had only the known editor rewrite (removed pins/comments and
-  key reordering). Restored the committed viewport/physics pins under CLAUDE's standing rule.
+- Default **B - Push and recover** keeps the4.6s full cycle /2.3s alternating cadence.
+  A single0.83s backward sweep loads and accelerates through the push (skewed cosine timing),
+  then a slower1.47s return visibly folds/lifts the knee. Recovery lift is18 source pixels,
+  up from the rejected8px low return. The next push starts at planting, without a dwell or
+  a push before contact. Upper-body restraint, art, physics and effect counts are unchanged.
+- Preview: `art_source/ui_review/2026-11-16-push-and-recover.mp4` (original B vs new default).
+  Player and MeltView share it. Phone remains disconnected; install later over USB.
+- All21 headless cases pass. Motion regression measures a96.2px/s peak push vs50.2px/s
+  recovery, explicit acceleration, visible knee lift, exact planting/next-push timing and
+  no held intervals (longest near-still interval4/120s). All six standard gates pass
+  (155s), all12 rendered cases pass, and all three visual checks pass.
+- Earlier in this session, restored only the known editor removal of viewport/physics pins
+  and comments under CLAUDE's standing rule; `project.godot` is clean.
 
 **Previous direction — B with reference-based refinement (2026-11-16, review pending).**
 Owner prefers B Long push to the later7.2s version and requested real skating references,
@@ -258,7 +257,7 @@ Built 2026-11-15, in commit order:
 
 ### Next actions, in order
 
-1. **Owner tries continuous overlapping B in the game and reviews the10th/50th glide milestones above.**
+1. **Owner tries faster push / knee recovery B in the game and reviews the10th/50th glide milestones above.**
    Tune from that feedback. Install over USB when the owner reconnects the phone; the
    installed app still has the first continuous build. A/B/C remain unapproved references.
 2. **The owner plays `play/next`** (dev mode makes this quick). What to look at:
