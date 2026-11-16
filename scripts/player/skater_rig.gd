@@ -5,7 +5,16 @@ class_name SkaterRig
 # A continuous visual rig over the existing rest-pose artwork. Two short skinned
 # leg strips and rigid boots move on smooth paths; the PNG never switches poses.
 # The AnimatedSprite2D parent remains the carrier for tilt, tricks, tint and squash.
-const CYCLE_SECONDS: float = 2.8
+const CYCLE_SECONDS: float = 4.2
+# Preview-only alternatives use the same rig; gameplay defaults to the long push.
+# A cycle contains two alternating strokes, not one stroke per foot together.
+const DEFAULT_STROKE: int = 2
+const STROKES: Array[Dictionary] = [
+	{"label": "Previous", "cycle": 2.8, "forward": 9.0, "back": -16.0, "drop": 4.0, "bob": 0.65, "lift": 10.0, "lean": 0.0, "shift": 0.0, "rock": 0.012},
+	{"label": "A - Strong", "cycle": 3.6, "forward": 16.0, "back": -26.0, "drop": 8.0, "bob": 1.4, "lift": 14.0, "lean": 0.025, "shift": 1.8, "rock": 0.022},
+	{"label": "B - Long push", "cycle": CYCLE_SECONDS, "forward": 18.0, "back": -29.0, "drop": 11.0, "bob": 1.8, "lift": 17.0, "lean": 0.04, "shift": 2.6, "rock": 0.03},
+	{"label": "C - Deep push", "cycle": 4.8, "forward": 21.0, "back": -32.0, "drop": 15.0, "bob": 2.2, "lift": 20.0, "lean": 0.055, "shift": 3.3, "rock": 0.038},
+]
 const SOURCE_CENTER: Vector2 = Vector2(75.0, 90.0)
 const GROUND_Y: float = 170.0
 const PROFILES: Dictionary = {
@@ -67,7 +76,7 @@ func _draw() -> void:
 	draw_into(self, data, elapsed, stride_amount)
 
 
-static func create_draw_data(frames: SpriteFrames) -> Dictionary:
+static func create_draw_data(frames: SpriteFrames, stroke: int = DEFAULT_STROKE) -> Dictionary:
 	if frames == null or not frames.has_animation(&"skate") or frames.get_frame_count(&"skate") == 0:
 		return {}
 	var skin: String = frames.resource_path.get_base_dir().get_file()
@@ -93,7 +102,7 @@ static func create_draw_data(frames: SpriteFrames) -> Dictionary:
 		for col: int in range(7):
 			var a: int = row * 8 + col
 			body_indices.append_array(PackedInt32Array([a,a+1,a+8,a+1,a+9,a+8]))
-	return {"skin": skin, "texture": texture, "size": texture.get_size(), "seam": seam, "body_points": body_points, "body_uv": body_uv,
+	return {"skin": skin, "stroke": STROKES[clampi(stroke, 0, STROKES.size() - 1)], "texture": texture, "size": texture.get_size(), "seam": seam, "body_points": body_points, "body_uv": body_uv,
 		"body_source": body_source, "body_indices": body_indices,
 		"hip": (near[0] + rear[0]) * 0.5,
 		"near": build_leg(near, true, split, texture.get_size()),
@@ -143,22 +152,21 @@ static func smooth_phase(value: float) -> float:
 
 static func leg_pose(data: Dictionary, near: bool, seconds: float, amount: float) -> Dictionary:
 	var leg: Dictionary = data["near" if near else "rear"]
-	var phase: float = fposmod(seconds / CYCLE_SECONDS + (0.0 if near else 0.5), 1.0)
+	var stroke: Dictionary = data["stroke"]
+	var phase: float = fposmod(seconds / stroke["cycle"] + (0.0 if near else 0.5), 1.0)
 	var recovery: float = 0.0
 	var sweep: float
 	if phase < 0.65:
-		sweep = lerpf(9.0, -16.0, smooth_phase(phase / 0.65))
+		sweep = lerpf(stroke["forward"], stroke["back"], smooth_phase(phase / 0.65))
 	else:
 		var progress: float = smooth_phase((phase - 0.65) / 0.35)
-		sweep = lerpf(-16.0, 9.0, progress)
+		sweep = lerpf(stroke["back"], stroke["forward"], progress)
 		recovery = sin(progress * PI)
-	var wave: float = seconds / CYCLE_SECONDS * TAU
-	var bob: float = 0.65 * sin(wave * 2.0) * amount
-	var hip: Vector2 = leg["hip"] + Vector2(0.0, 4.0 + bob)
+	var hip: Vector2 = leg["hip"] + body_offset(stroke, seconds, amount)
 	# The rear blade is tilted in the source rest pose. Level it during its long
 	# contact glide; ankle height compensates for its rotated sole.
 	var sole_height: float = 13.0 if near else 9.4
-	var ankle: Vector2 = Vector2(hip.x + lerpf(-8.0, sweep, amount), GROUND_Y - sole_height - 10.0 * recovery * amount)
+	var ankle: Vector2 = Vector2(hip.x + lerpf(-8.0, sweep, amount), GROUND_Y - sole_height - stroke["lift"] * recovery * amount)
 	var direction: Vector2 = ankle - hip
 	var distance: float = clampf(direction.length(), absf(leg["upper"] - leg["lower"]) + 0.01, leg["upper"] + leg["lower"] - 0.1)
 	var unit: Vector2 = direction.normalized()
@@ -168,6 +176,12 @@ static func leg_pose(data: Dictionary, near: bool, seconds: float, amount: float
 	# Knees bend forward in the skating direction; the sign never flips at extension.
 	var knee: Vector2 = hip + unit * along + Vector2(unit.y, -unit.x) * height
 	return {"hip": hip, "knee": knee, "ankle": ankle, "pitch": (0.0 if near else -0.31) - 0.14 * recovery * amount}
+
+
+static func body_offset(stroke: Dictionary, seconds: float, amount: float) -> Vector2:
+	var wave: float = seconds / stroke["cycle"] * TAU
+	return Vector2(stroke["shift"] * sin(wave) * amount,
+		4.0 + (stroke["drop"] - 4.0 + stroke["bob"] * sin(wave * 2.0)) * amount)
 
 
 static func skin_leg(data: Dictionary, near: bool, pose: Dictionary) -> void:
@@ -216,10 +230,11 @@ static func draw_into(canvas: CanvasItem, data: Dictionary, seconds: float, amou
 			PackedColorArray([Color.WHITE]), leg["draw_uv"], PackedInt32Array(), PackedFloat32Array(), texture.get_rid())
 	# The unchanged upper-body art covers the hip joins. Small continuous lean/bob
 	# follows the weight shift, inherited beneath the carrier's existing slope tilt.
-	var wave: float = seconds / CYCLE_SECONDS * TAU
-	var offset: Vector2 = Vector2(0.0, 4.0 + 0.65 * sin(wave * 2.0) * amount)
+	var stroke: Dictionary = data["stroke"]
+	var wave: float = seconds / stroke["cycle"] * TAU
+	var offset: Vector2 = body_offset(stroke, seconds, amount)
 	var pivot: Vector2 = data["hip"] - SOURCE_CENTER
-	var angle: float = 0.012 * sin(wave) * amount
+	var angle: float = (stroke["lean"] + stroke["rock"] * sin(wave)) * amount
 	var rigid_xf: Transform2D = Transform2D(angle, pivot + offset - pivot.rotated(angle))
 	var body_points: PackedVector2Array = data["body_points"]
 	var source: PackedVector2Array = data["body_source"]

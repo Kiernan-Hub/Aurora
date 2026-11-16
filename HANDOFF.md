@@ -1,6 +1,6 @@
 # Handoff
 
-## START HERE — where the work stands, 2026-11-15
+## START HERE — where the work stands, 2026-11-16
 
 **To continue: you are on branch `play/next`. Owner requested a commit and push of all current
 phone-review changes on 2026-11-16 for backup; `main` is untouched.** Current validation is listed below. Read this section
@@ -12,6 +12,19 @@ terrain/pacing and other gameplay feel remain unapproved.
 
 ### Latest owner review / current priority
 
+- **Stronger skating options (2026-11-16, selection pending):** owner found the first
+  continuous rig too subtle and requested more forceful backward pushes and longer strokes.
+  Comparison offers A Strong (1.8s per alternating push), B Long push (2.1s), C Deep push
+  (2.4s), alongside the previous 1.4s. Foot sweep grows from25 to42/47/53 source pixels,
+  with deeper loading, a forward lean and a clearer lifted recovery. B is the source default;
+  the phone still has the previous continuous build. No gameplay/physics changes or new art.
+  Preview: `art_source/ui_review/2026-11-16-skating-options.mp4` (and GIF).
+  `scripts/debug/skating_preview.gd` is a reusable, export-excluded comparison tool; it draws
+  enlarged motion plus all five characters at normal game size without touching saves.
+  Motion regression now samples complete cycles of every style/skin, checking continuous
+  joints, fixed bone lengths, coasting, >40px stronger sweeps and planted blade contact.
+  Validation:19 headless and11 rendered cases pass, as do all three visual checks. Stronger
+  strokes maintain planted blade height exactly; maximum joint step is0.967 source px at120Hz.
 - **Really? is approved.** The portal is a welcome addition but remains provisional and needs
   substantial polish. Owner wants Aura to stay clean, magical and elegant; flag feature growth
   that adds performance cost. Fixing existing behavior takes priority over adding modes/items.
@@ -29,7 +42,7 @@ terrain/pacing and other gameplay feel remain unapproved.
 - **Spray revised again:** upward kick 36–120px/s, narrow near-vertical fan, drag 55–95 and
   lake-only lift −22. Same70 glints, .90s lifetime and sprite size. Ordinary landing bursts keep
   their previous motion. The earlier20–90px/s adjustment was still too low for the owner.
-- **Continuous skating built (owner review pending):** owner rejected the weighted four-pose
+- **First continuous skating pass (superseded in source; still on phone):** owner rejected the weighted four-pose
   attempt as jerky and asked for “oneeee twooooo” strokes. `SkaterRig` now deforms the existing
   rest artwork every render frame: two IK legs, rigid blades, gentle weight shift and smooth
   coasting transitions. A 2.8s cycle alternates long pushes. All five characters and MeltView

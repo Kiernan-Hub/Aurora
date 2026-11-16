@@ -638,12 +638,29 @@ compares pixels beyond the far shore against an otherwise identical frame withou
 
 **Continuous skating (owner review pending):** the owner rejected the slow four-pose cycle.
 `SkaterRig` animates the existing rest artwork continuously, with long alternating pushes over
-2.8 seconds, fixed-length IK legs, rigid boots and a slight weight shift. Smooth recovery
+4.2 seconds (two alternating 2.1s strokes), fixed-length IK legs and rigid boots. Smooth recovery
 curves join without a pose switch; airborne/Still Water/boost states ease into coasting.
 All five characters use tuned joint landmarks. The existing sprite parent still owns tint,
 outfit material, slope/trick rotation and squash. MeltView uses the same inline rig, preserving
 its foreground order; its base-outfit rendering remains as before. No new raster art/effects.
 Really? is approved; The Melt still needs visual/gameplay polish.
+
+**2026-11-16 revision:** owner found the first continuous rig too subtle and short. Default
+B Long push extends the sweep from25 to47 source pixels, adds a deeper loading crouch,
+forward weight shift and17px lifted recovery. A Strong (3.6s full cycle,42px sweep) and
+C Deep push (4.8s,53px) are comparison alternatives in `SkaterRig.STROKES`; the default remains
+one shared choice for the player and MeltView. The existing phone install is the previous
+2.8s continuous build until the owner selects an option. No effects, new artwork or physics.
+
+`scripts/debug/skating_preview.gd` draws the previous motion alongside A/B/C, enlarged and
+at normal game size for all five skins. Run with `--audio-driver Dummy`; no save writes.
+With `-- --out=/tmp/aura-stroke-frames` it captures288 frames at24fps and exits; otherwise
+it animates in a standalone window. Source is excluded from exports with the other debug
+scripts. Comparison: `art_source/ui_review/2026-11-16-skating-options.mp4` and `.gif`.
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --log-file /tmp/aura-skating-preview.log --audio-driver Dummy --path . --script res://scripts/debug/skating_preview.gd
+```
 
 Exit/spray review: `art_source/ui_review/2026-11-15-still-water-fix.jpg`.
 Rejected timing-only attempt: `art_source/ui_review/2026-11-15-elegant-skating.gif`.

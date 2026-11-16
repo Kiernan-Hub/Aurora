@@ -1133,32 +1133,45 @@ func melt_lifecycle() -> void:
 func rig_motion() -> void:
 	var passed: bool = true
 	var max_step: float = 0.0
+	var max_ground_error: float = 0.0
 	for skin: Dictionary in Skins.SKINS:
-		var data: Dictionary = SkaterRig.create_draw_data(load(skin["frames"]))
-		passed = passed and data["skin"] == skin["id"]
-		for near: bool in [false, true]:
-			var leg: Dictionary = data["near" if near else "rear"]
-			var previous: Dictionary = SkaterRig.leg_pose(data, near, 0.0, 1.0)
-			var coast: Dictionary = SkaterRig.leg_pose(data, near, 0.0, 0.0)
-			for frame: int in range(1, 338):
-				var seconds: float = frame / 120.0
-				var pose: Dictionary = SkaterRig.leg_pose(data, near, seconds, 1.0)
-				for joint: String in ["hip", "knee", "ankle"]:
-					passed = passed and (pose[joint] as Vector2).is_finite()
-					max_step = maxf(max_step, pose[joint].distance_to(previous[joint]))
-				passed = passed and absf(pose["hip"].distance_to(pose["knee"]) - leg["upper"]) < 0.001 					and absf(pose["knee"].distance_to(pose["ankle"]) - leg["lower"]) < 0.001
-				var still: Dictionary = SkaterRig.leg_pose(data, near, seconds, 0.0)
-				passed = passed and still["ankle"].is_equal_approx(coast["ankle"])
-				SkaterRig.skin_leg(data, near, pose)
-				for vertex: Vector2 in leg["draw_vertices"]:
-					passed = passed and vertex.is_finite() and vertex.length() < 200.0
-				previous = pose
-			for boundary: float in [0.0, 0.15, 0.5, 0.65, 1.0]:
-				var before: Dictionary = SkaterRig.leg_pose(data, near, boundary * SkaterRig.CYCLE_SECONDS - 0.00001, 1.0)
-				var after: Dictionary = SkaterRig.leg_pose(data, near, boundary * SkaterRig.CYCLE_SECONDS + 0.00001, 1.0)
-				passed = passed and before["ankle"].distance_to(after["ankle"]) < 0.01 					and before["knee"].distance_to(after["knee"]) < 0.01
-	expect("rig_motion", passed and max_step < 1.5,
-		"five skins; finite IK, fixed bone lengths, coast, continuous boundaries; max joint step %.3fpx at 120Hz" % max_step)
+		for style: int in range(SkaterRig.STROKES.size()):
+			var data: Dictionary = SkaterRig.create_draw_data(load(skin["frames"]), style)
+			passed = passed and data["skin"] == skin["id"]
+			for near: bool in [false, true]:
+				var leg: Dictionary = data["near" if near else "rear"]
+				var previous: Dictionary = SkaterRig.leg_pose(data, near, 0.0, 1.0)
+				var min_sweep: float = INF
+				var max_sweep: float = -INF
+				var coast: Dictionary = SkaterRig.leg_pose(data, near, 0.0, 0.0)
+				for frame: int in range(1, ceili(data["stroke"]["cycle"] * 120.0) + 2):
+					var seconds: float = frame / 120.0
+					var pose: Dictionary = SkaterRig.leg_pose(data, near, seconds, 1.0)
+					for joint: String in ["hip", "knee", "ankle"]:
+						passed = passed and (pose[joint] as Vector2).is_finite()
+						max_step = maxf(max_step, pose[joint].distance_to(previous[joint]))
+					passed = passed and absf(pose["hip"].distance_to(pose["knee"]) - leg["upper"]) < 0.001 \
+						and absf(pose["knee"].distance_to(pose["ankle"]) - leg["lower"]) < 0.001
+					min_sweep = minf(min_sweep, pose["ankle"].x - pose["hip"].x)
+					max_sweep = maxf(max_sweep, pose["ankle"].x - pose["hip"].x)
+					var phase: float = fposmod(seconds / data["stroke"]["cycle"] + (0.0 if near else 0.5), 1.0)
+					if phase < 0.65 and style > 0:
+						max_ground_error = maxf(max_ground_error, absf(pose["ankle"].y - (SkaterRig.GROUND_Y - (13.0 if near else 9.4))))
+					var still: Dictionary = SkaterRig.leg_pose(data, near, seconds, 0.0)
+					passed = passed and still["ankle"].is_equal_approx(coast["ankle"])
+					SkaterRig.skin_leg(data, near, pose)
+					for vertex: Vector2 in leg["draw_vertices"]:
+						passed = passed and vertex.is_finite() and vertex.length() < 200.0
+					previous = pose
+				if style > 0:
+					passed = passed and max_sweep - min_sweep > 40.0
+				for boundary: float in [0.0, 0.15, 0.5, 0.65, 1.0]:
+					var before: Dictionary = SkaterRig.leg_pose(data, near, boundary * data["stroke"]["cycle"] - 0.00001, 1.0)
+					var after: Dictionary = SkaterRig.leg_pose(data, near, boundary * data["stroke"]["cycle"] + 0.00001, 1.0)
+					passed = passed and before["ankle"].distance_to(after["ankle"]) < 0.01 \
+						and before["knee"].distance_to(after["knee"]) < 0.01
+	expect("rig_motion", passed and max_step < 1.5 and max_ground_error < 0.75,
+		"five skins/four styles; fixed bones, coast, full-cycle continuity, >40px strong sweep; max step %.3fpx, planted error %.3fpx" % [max_step, max_ground_error])
 
 
 func rig_lifecycle() -> void:
