@@ -6,9 +6,9 @@ over time, on infinite seeded procedural terrain. The look is **clean, minimal i
 **Priority order:** terrain stability > physics/collision correctness > game feel. Missions,
 upgrades and visual polish stay deprioritized until the core loop is stable.
 
-**Where the project is (2026-10-28):** core loop, both set pieces, obstacles and the air moves are built,
-played and **merged to `main`**; so is the hazard art pass (step 8, 2026-10-28). **Branch `play/next` (2026-11-15, PHONE REVIEW IN PROGRESS, all 15 gates pass)** holds everything since: island chasms, black ice/vents/geodes, the UI pass, mountains, the plunge, late tiers, chests, the card shop, dev mode. **Start at `HANDOFF.md`, "START HERE". Owner likes collection/customization and tier/mission visuals; Really? approved; portal provisional. Still Water exit fixes pending review (HANDOFF).** `HANDOFF.md` (root) holds ONLY the current
-state; at session end its section moves to the top of `docs/history.md`, which is never required reading. Owner wants B at1s per stroke with the return smoothed into one arc, slightly farther backstroke, and planting directly into the next push; timing stays unchanged. Current B and10th/50th glide milestones await review (HANDOFF). The unplugged phone still has the first continuous build; install later over USB.
+**Where the project is (2026-11-16):** core loop and set pieces are merged to `main`; current phone-review work is backed up on `play/next`. **Start at HANDOFF.md, "START HERE"** for current state, validation and next actions.
+Latest animation is B - Smoother return:1s per stroke,0.3s push/0.7s return, same timing with a smoother lift arc; latest gameplay commit `8fa0bdb`. Owner review is pending. The phone is unplugged; rebuild/install Aura Playtest over USB later, preserving both app saves.
+Really? is approved;10th/50th high-glide milestones await review; The Melt is provisional. Keep fixes/stability ahead of feature growth. Session detail and superseded directions are archived in docs/history.md, which is not required reading.
 
 **Editing rules.** Find the root cause in the connected files before changing anything; prefer targeted
 changes, and propose before altering existing architecture. `project.godot` pins `4.7` + `Mobile`, physics
