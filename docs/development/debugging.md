@@ -1042,7 +1042,9 @@ the fixed case makes the visual A/B repeatable without changing palettes or its2
 ## Sustained skating and high-glide milestones (2026-11-16)
 
 The headless regression now has21 cases. `rig_motion` samples full cycles of every style and
-skin, fixed bone lengths, constant coasting and planted blade heights. `rig_rhythm` checks an accelerating push with peak speed greater than recovery,
+skin, fixed bone lengths, constant coasting and planted blade heights. Its path-step limit
+uses a4s reference cadence, so doubling speed alone does not falsely flag a changed curve;
+actual boundary discontinuities are still checked directly. `rig_rhythm` checks an accelerating push with peak speed greater than recovery,
 visible knee/foot lift and planting exactly into the next push. It bounds near-still
 intervals to4/120s. This supersedes the previous airborne-overlap and low-return expectations.
 `glide_milestone_model` checks10/50 thresholds, legacy count
@@ -1057,6 +1059,6 @@ Neither death nor tapping can pay that receipt again. It checks the named two-li
 `/tmp/aura-glide-milestone-chest.png`. Run with `--audio-driver Dummy` or Master -24dB in memory.
 
 The standalone `scripts/debug/skating_preview.gd` uses only the rig drawer and no gameplay save
-writes. `-- --out=/tmp/aura-stroke-frames` captures276 PNGs at30fps (two4.6s cycles); without
+writes. `-- --out=/tmp/aura-stroke-frames` captures at least8s/two full cycles (currently240 PNGs at30fps, four2s cycles); without
 an output argument it animates until the window closes. It compares original B with refined B
 (push/extended glide/low return), enlarged and at normal game size across all five skins. It remains export-excluded.

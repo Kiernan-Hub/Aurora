@@ -12,24 +12,25 @@ terrain/pacing and other gameplay feel remain unapproved.
 
 ### Latest owner review / current priority
 
-**Latest correction — backward push is primary; quicker cadence, modest knee lift
-(2026-11-16, review pending).** Owner wants the backward motion to remain the important part: quicker than the slow return,
-a little faster overall and a lower knee than the last attempt. Recover and start the other
-push **right as the returning foot plants**. This supersedes the previous low-return /
-88%-home airborne-overlap interpretation, as well as all earlier holds/settle phases.
+**Latest correction — halve the time between strokes
+(2026-11-16, review pending).** Owner explicitly asked to halve the overall time between
+strokes. Cadence is now1.0s per alternating stroke instead of2.0s. The strong quick backward
+push, slower return, modest knee lift and next-push-on-plant rhythm remain the same.
 
-- Default **B - Quick push** uses a4.0s full cycle /2.0s alternating cadence (was4.6/2.3s).
-  A single0.60s backward sweep loads and accelerates through the push (skewed cosine timing),
-  then a slower1.40s return modestly folds/lifts the knee. Recovery lift is12 source pixels,
-  down from the previous18px high lift. The next push starts at planting, without a dwell or
+- Default **B - Quick push** uses a2.0s full cycle /1.0s alternating cadence (exactly half the prior4.0/2.0s).
+  A single0.30s backward sweep loads and accelerates through the push (skewed cosine timing),
+  then a slower0.70s return modestly folds/lifts the knee. Recovery lift is12 source pixels,
+  unchanged from the previous modest lift. The next push starts at planting, without a dwell or
   a push before contact. Upper-body restraint, art, physics and effect counts are unchanged.
-- Preview: `art_source/ui_review/2026-11-16-quick-push.mp4` (original B vs new default).
+- Preview: `art_source/ui_review/2026-11-16-double-cadence.mp4` (original B vs new default).
   Player and MeltView share it. Phone remains disconnected; install later over USB.
-- All21 headless cases pass. Motion regression measures a132.7px/s peak push vs52.7px/s
+- All21 headless cases pass. Motion regression measures a265.1px/s peak push vs105.4px/s
   recovery, explicit acceleration, bounded modest knee lift, exact planting/next-push timing and
-  no held intervals (longest near-still interval3/120s). All six standard gates pass (213s),
-  as do all three visual checks. The rendered preview covers all five skins. Only timing/lift
-  constants changed in gameplay code; the prior full12-case UI run remains the previous validation.
+  no held intervals (longest near-still interval1/120s). Full-cycle path smoothness is checked
+  at a4s reference cadence so the requested speedup is not mistaken for a changed path;
+  actual boundary continuity, bone lengths and blade contact remain checked directly.
+  All six standard gates pass (146s), including21 headless cases; all three visual checks
+  pass, and the rendered preview covers all five skins.
 - Earlier in this session, restored only the known editor removal of viewport/physics pins
   and comments under CLAUDE's standing rule; `project.godot` is clean.
 

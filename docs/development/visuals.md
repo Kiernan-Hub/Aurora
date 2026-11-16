@@ -668,8 +668,8 @@ submissions and all gameplay physics remain unchanged. References and limits:
 
 **Latest clarification:** the backward push must be faster and visibly accelerate, followed
 by a modest knee lift and slower recovery, with the next leg pushing right as the foot plants.
-Default B - Quick push uses a4.0s full cycle /2.0s cadence, with a
-0.60s push (30%) and1.40s recovery (70%). A skewed cosine drive builds speed through the
+Default B - Quick push uses a2.0s full cycle /1.0s cadence, with a
+0.30s push (30%) and0.70s recovery (70%). The owner explicitly halved the prior cadence. A skewed cosine drive builds speed through the
 push; the 12px recovery envelope modestly folds/lifts the knee (reduced from18px after review). Planting coincides with
 the next leg's start. No settling interval or held extension. This supersedes the8px low
 return and88%-home airborne overlap interpretation. Upper body stays restrained; no new
@@ -677,9 +677,10 @@ art, geometry, effects or physics. The shared Player/MeltView default is unchang
 
 `scripts/debug/skating_preview.gd` draws original B beside push-and-recovery B, enlarged
 and at normal game size for all five skins, with accelerating-push / knee-recovery captions. Run with `--audio-driver Dummy`; no save writes.
-With `-- --out=/tmp/aura-stroke-frames` it captures two full cycles (240 frames at30fps) and exits; otherwise
+With `-- --out=/tmp/aura-stroke-frames` it captures at least8s and two full cycles (currently240 frames/four cycles at30fps) and exits; otherwise
 it animates in a standalone window. Source is excluded from exports with the other debug
-scripts. New comparison: `art_source/ui_review/2026-11-16-quick-push.mp4`. Prior high-knee version:
+scripts. New comparison: `art_source/ui_review/2026-11-16-double-cadence.mp4`. Previous cadence:
+`art_source/ui_review/2026-11-16-quick-push.mp4`. Prior high-knee version:
 `art_source/ui_review/2026-11-16-push-and-recover.mp4`. Prior overlapping version:
 `art_source/ui_review/2026-11-16-continuous-handoff.mp4`. Prior refinement:
 `art_source/ui_review/2026-11-16-refined-b.mp4`. Previous sustained version:

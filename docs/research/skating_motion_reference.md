@@ -82,3 +82,10 @@ Planting still coincides with the next push, without a settling pause. Measured 
 are132.7px/s backward and52.7px/s on recovery. No new rig path or gameplay system was added;
 only the existing timing/lift constants changed. Preview:
 `art_source/ui_review/2026-11-16-quick-push.mp4`.
+
+## Latest cadence request: halve the time between strokes
+
+The owner explicitly requested half the time between strokes. One alternating stroke is
+now1.0s instead of2.0s:0.30s backward push,0.70s return, with the same12px lift envelope
+and no pause at planting. The full two-leg cycle is2.0s. Only the cycle duration changed
+in gameplay code. New preview: `art_source/ui_review/2026-11-16-double-cadence.mp4`.

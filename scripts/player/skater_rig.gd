@@ -5,7 +5,7 @@ class_name SkaterRig
 # A continuous visual rig over the existing rest-pose artwork. Two short skinned
 # leg strips and rigid boots move on smooth paths; the PNG never switches poses.
 # The AnimatedSprite2D parent remains the carrier for tilt, tricks, tint and squash.
-const CYCLE_SECONDS: float = 4.0
+const CYCLE_SECONDS: float = 2.0
 # Preview-only alternatives use the same rig; gameplay defaults to reference-refined B.
 # A cycle contains two alternating strokes, not one stroke per foot together.
 const DEFAULT_STROKE: int = 5

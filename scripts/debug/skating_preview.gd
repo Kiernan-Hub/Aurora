@@ -1,7 +1,7 @@
 extends SceneTree
 
 # Read-only comparison of the actual rig at close-up and normal game scale.
-# -- --out=/tmp/aura-strokes captures two full cycles at 30 fps, then exits.
+# -- --out=/tmp/aura-strokes captures at least8s/two full cycles at30fps, then exits.
 # Without --out it animates until the window is closed. Excluded from exports.
 const STYLES: Array[int] = [2, SkaterRig.DEFAULT_STROKE]
 const FPS: int = 30
@@ -59,7 +59,7 @@ func run() -> void:
 		push_error("Could not create preview directory: " + output)
 		quit(1)
 		return
-	var count: int = roundi(SkaterRig.CYCLE_SECONDS * 2.0 * FPS)
+	var count: int = roundi(maxf(SkaterRig.CYCLE_SECONDS * 2.0, 8.0) * FPS)
 	for frame: int in range(count):
 		board.seconds = float(frame) / FPS
 		board.queue_redraw()

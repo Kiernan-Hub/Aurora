@@ -2,6 +2,11 @@
 
 ## 2026-11-16 — skating rhythm and repeated high-glide milestones
 
+- **Latest cadence request:** owner asked to halve the time between strokes. Changed the
+  full cycle4→2s, alternating strokes2→1s. Push/return becomes0.30/0.70s with the same
+  modest knee lift and planted handoff. Only the cycle duration changed in gameplay code.
+  Preview: `art_source/ui_review/2026-11-16-double-cadence.mp4`. All six standard gates
+  passed (146s),21 headless cases, all three visual checks and the five-skin preview.
 - **Latest tuning:** owner wants the backward sweep emphasized, slightly faster overall
   movement and less knee lift. Existing constants now give0.60s push/1.40s return,2.0s per
   alternating stroke, and12px recovery lift instead of18px. No new rig path or physics.

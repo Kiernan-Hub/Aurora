@@ -1239,6 +1239,7 @@ func melt_lifecycle() -> void:
 func rig_motion() -> void:
 	var passed: bool = true
 	var max_step: float = 0.0
+	var max_reference_step: float = 0.0
 	var max_ground_error: float = 0.0
 	for skin: Dictionary in Skins.SKINS:
 		for style: int in range(SkaterRig.STROKES.size()):
@@ -1256,6 +1257,9 @@ func rig_motion() -> void:
 					for joint: String in ["hip", "knee", "ankle"]:
 						passed = passed and (pose[joint] as Vector2).is_finite()
 						max_step = maxf(max_step, pose[joint].distance_to(previous[joint]))
+						# The owner may speed up the same curve. Bound its shape at the
+						# original4s cadence; the separate boundary checks still catch snaps.
+						max_reference_step = maxf(max_reference_step, pose[joint].distance_to(previous[joint]) * data["stroke"]["cycle"] / 4.0)
 					passed = passed and absf(pose["hip"].distance_to(pose["knee"]) - leg["upper"]) < 0.001 \
 						and absf(pose["knee"].distance_to(pose["ankle"]) - leg["lower"]) < 0.001
 					min_sweep = minf(min_sweep, pose["ankle"].x - pose["hip"].x)
@@ -1280,8 +1284,8 @@ func rig_motion() -> void:
 					var after: Dictionary = SkaterRig.leg_pose(data, near, boundary * data["stroke"]["cycle"] + 0.00001, 1.0)
 					passed = passed and before["ankle"].distance_to(after["ankle"]) < 0.01 \
 						and before["knee"].distance_to(after["knee"]) < 0.01
-	expect("rig_motion", passed and max_step < 1.5 and max_ground_error < 0.75,
-		"five skins/all styles; fixed bones, coast, full-cycle continuity, >40px strong sweep; max step %.3fpx, planted error %.3fpx" % [max_step, max_ground_error])
+	expect("rig_motion", passed and max_reference_step < 1.5 and max_ground_error < 0.75,
+		"five skins/all styles; fixed bones, coast, boundaries, >40px sweep; max step %.3fpx (%.3f at4s cadence), planted error %.3fpx" % [max_step, max_reference_step, max_ground_error])
 	# A quicker accelerating push, visible knee lift, and planting exactly into the
 	# next push distinguish skating from equal-speed sliding or an airborne handoff.
 	var data: Dictionary = SkaterRig.create_draw_data(load(Skins.SKINS[0]["frames"]))
