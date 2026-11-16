@@ -675,6 +675,14 @@ the next leg's start. No settling interval or held extension. This supersedes th
 return and88%-home airborne overlap interpretation. Upper body stays restrained; no new
 art, geometry, effects or physics. The shared Player/MeltView default is unchanged in scope.
 
+**Latest smoothing pass:** owner accepted the backstroke speed and requested a smoother
+upward recovery without changing timing. Same2s cycle,0.3s push/0.7s return and12px lift;
+backward endpoint extends29→31px. The delayed powered-sine lift was replaced with one
+shared parabolic lift/forward-return arc. A cubic push timing map matches horizontal
+acceleration at toe-off to recovery, avoiding the prior abrupt curvature change. No pause,
+extra phase, art/physics/effect change or new motion system. New before/after video:
+`art_source/ui_review/2026-11-16-smooth-recovery.mp4` (immediately prior default vs current).
+
 `scripts/debug/skating_preview.gd` draws original B beside push-and-recovery B, enlarged
 and at normal game size for all five skins, with accelerating-push / knee-recovery captions. Run with `--audio-driver Dummy`; no save writes.
 With `-- --out=/tmp/aura-stroke-frames` it captures at least8s and two full cycles (currently240 frames/four cycles at30fps) and exits; otherwise

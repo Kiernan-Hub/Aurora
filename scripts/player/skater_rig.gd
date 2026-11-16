@@ -15,7 +15,7 @@ const STROKES: Array[Dictionary] = [
 	{"label": "B - Long push", "cycle": 4.2, "forward": 18.0, "back": -29.0, "drop": 11.0, "bob": 1.8, "lift": 17.0, "lean": 0.04, "shift": 2.6, "rock": 0.03},
 	{"label": "C - Deep push", "cycle": 4.8, "forward": 21.0, "back": -32.0, "drop": 15.0, "bob": 2.2, "lift": 20.0, "lean": 0.055, "shift": 3.3, "rock": 0.038},
 	{"label": "Sustained stroke", "cycle": 7.2, "forward": 12.0, "back": -32.0, "drop": 15.0, "bob": 0.65, "lift": 15.0, "lean": 0.04, "shift": 2.6, "rock": 0.03, "phrased": true},
-	{"label": "B - Quick push", "cycle": CYCLE_SECONDS, "forward": 18.0, "back": -29.0, "drop": 12.0, "bob": 0.8, "lift": 12.0, "lean": 0.025, "shift": 2.0, "rock": 0.015, "gliding": true},
+	{"label": "B - Smoother return", "cycle": CYCLE_SECONDS, "forward": 18.0, "back": -31.0, "drop": 12.0, "bob": 0.8, "lift": 12.0, "lean": 0.025, "shift": 2.0, "rock": 0.015, "gliding": true},
 ]
 const DRIVE_END: float = 0.62
 const RETURN_END: float = 0.94
@@ -168,14 +168,21 @@ static func leg_pose(data: Dictionary, near: bool, seconds: float, amount: float
 		if phrase < GLIDE_DRIVE_END:
 			# Load first, then accelerate through a single quick backward sweep.
 			var progress: float = phrase / GLIDE_DRIVE_END
-			var timed: float = progress * (0.65 + 0.35 * progress)
+			# Match the horizontal acceleration at toe-off to the return. The old
+			# timing had a sharp acceleration change exactly as the knee began lifting.
+			var entry_rate: float = 0.6
+			var exit_rate: float = GLIDE_DRIVE_END / (GLIDE_RETURN_END - GLIDE_DRIVE_END)
+			var timed: float = progress * (entry_rate + progress * (3.0 - 2.0 * entry_rate - exit_rate \
+				+ progress * (entry_rate + exit_rate - 2.0)))
 			sweep = lerpf(stroke["forward"], stroke["back"], 0.5 - 0.5 * cos(PI * timed))
 		elif phrase < GLIDE_RETURN_END:
 			# Lift/fold the knee during the slower recovery, then plant straight
 			# into the other leg's push. No held extension or settling interval.
 			var progress: float = 0.5 - 0.5 * cos(PI * (phrase - GLIDE_DRIVE_END) / (GLIDE_RETURN_END - GLIDE_DRIVE_END))
 			sweep = lerpf(stroke["back"], stroke["forward"], progress)
-			recovery = sin(pow(progress, 1.4) * PI)
+			# One shared arc: lift and forward recovery start together, rather than
+			# delaying the lift until the foot is already coming forward.
+			recovery = 4.0 * progress * (1.0 - progress)
 		else:
 			sweep = stroke["forward"]
 	elif stroke.get("phrased", false):

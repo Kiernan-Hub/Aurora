@@ -1044,7 +1044,9 @@ the fixed case makes the visual A/B repeatable without changing palettes or its2
 The headless regression now has21 cases. `rig_motion` samples full cycles of every style and
 skin, fixed bone lengths, constant coasting and planted blade heights. Its path-step limit
 uses a4s reference cadence, so doubling speed alone does not falsely flag a changed curve;
-actual boundary discontinuities are still checked directly. `rig_rhythm` checks an accelerating push with peak speed greater than recovery,
+actual boundary discontinuities are still checked directly. The current return also checks
+matched horizontal acceleration at toe-off and early simultaneous lift/forward movement.
+Second differences use1ms samples to avoid Vector2 single-precision rounding amplification. `rig_rhythm` checks an accelerating push with peak speed greater than recovery,
 visible knee/foot lift and planting exactly into the next push. It bounds near-still
 intervals to4/120s. This supersedes the previous airborne-overlap and low-return expectations.
 `glide_milestone_model` checks10/50 thresholds, legacy count

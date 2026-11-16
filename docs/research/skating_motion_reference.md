@@ -89,3 +89,21 @@ The owner explicitly requested half the time between strokes. One alternating st
 now1.0s instead of2.0s:0.30s backward push,0.70s return, with the same12px lift envelope
 and no pause at planting. The full two-leg cycle is2.0s. Only the cycle duration changed
 in gameplay code. New preview: `art_source/ui_review/2026-11-16-double-cadence.mp4`.
+
+## Latest smoothing request: keep time, combine lift and return
+
+The owner likes the backstroke but wants a little extra reach and a smoother upward return
+that does not look like two movements. Keep the current1s stroke /2s two-leg cycle and
+0.3s push /0.7s return. The backward endpoint becomes-31px instead of-29px; lift stays12px.
+
+The old lift was a powered sine of the already-eased forward progress: its rise lagged
+behind forward travel, then caught up. The replacement is one shared parabolic lift/return
+arc. The horizontal timing on the drive also meets recovery acceleration at toe-off, where
+the prior curves had a large acceleration mismatch. No dwell or recovery duration change.
+These are curve edits to the existing rig, with no new animation system or art.
+
+The regression measures toe-off acceleration on the actual IK foot, and checks that lift
+has begun within the first tenth of recovery.1ms finite-difference samples avoid the large
+rounding errors observed with sub-millisecond samples of single-precision Vector2 positions.
+Before/after preview (same clock, prior/current default):
+`art_source/ui_review/2026-11-16-smooth-recovery.mp4`.

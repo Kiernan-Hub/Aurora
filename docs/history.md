@@ -2,6 +2,12 @@
 
 ## 2026-11-16 — skating rhythm and repeated high-glide milestones
 
+- **Latest smoothing:** same1s stroke,0.3/0.7s push/return timing. Owner likes the backward
+  motion but wants slightly more reach and a smoother rise. Extended backward endpoint
+  29→31px, combined lift/return into one arc and matched toe-off horizontal acceleration.
+  Lift remains12px. No new rig system or physics changes. Synchronized before/after:
+  `art_source/ui_review/2026-11-16-smooth-recovery.mp4`. All six standard gates pass (121s),
+  including21 headless cases; three visual checks and the five-skin preview pass.
 - **Latest cadence request:** owner asked to halve the time between strokes. Changed the
   full cycle4→2s, alternating strokes2→1s. Push/return becomes0.30/0.70s with the same
   modest knee lift and planted handoff. Only the cycle duration changed in gameplay code.

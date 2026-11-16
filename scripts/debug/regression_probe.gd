@@ -1302,6 +1302,22 @@ func rig_motion() -> void:
 		rhythm = rhythm and fast_distance > early_distance * 3.0
 		var planted: Dictionary = SkaterRig.leg_pose(data, near, start + half_cycle, 1.0)
 		var sole: float = SkaterRig.GROUND_Y - (13.0 if near else 9.4)
+		# The rejected return moved forward before lifting, with a large horizontal
+		# acceleration discontinuity at toe-off. Measure both symptoms on the real IK.
+		var toe_off: float = start + half_cycle * SkaterRig.GLIDE_DRIVE_END
+		# Vector2 coordinates are single precision; sub-millisecond second
+		# differences amplify rounding. A1ms window still catches the old large kink.
+		var epsilon: float = 0.001
+		var positions: Array[float] = []
+		for step: int in range(-2, 3):
+			var sample: Dictionary = SkaterRig.leg_pose(data, near, toe_off + step * epsilon, 1.0)
+			positions.append(sample["ankle"].x - sample["hip"].x)
+		var before_accel: float = (positions[2] - 2.0 * positions[1] + positions[0]) / (epsilon * epsilon)
+		var after_accel: float = (positions[4] - 2.0 * positions[3] + positions[2]) / (epsilon * epsilon)
+		var early_return: Dictionary = SkaterRig.leg_pose(data, near,
+			toe_off + half_cycle * (1.0 - SkaterRig.GLIDE_DRIVE_END) * 0.1, 1.0)
+		rhythm = rhythm and absf(before_accel - after_accel) < maxf(absf(before_accel), absf(after_accel)) * 0.12 \
+			and sole - early_return["ankle"].y > 0.8
 		var highest_knee: float = INF
 		var max_lift: float = 0.0
 		for frame: int in range(1, 101):
@@ -1336,7 +1352,7 @@ func rig_motion() -> void:
 		quiet_frames = quiet_frames + 1 if combined_speed < 2.0 else 0
 		longest_quiet = maxi(longest_quiet, quiet_frames)
 	expect("rig_rhythm", rhythm and push_speed > return_speed * 2.0 and longest_quiet <= 4,
-		"accelerating push %.1fpx/s vs recovery %.1f; modest knee lift; planted next-push handoff; longest quiet span %d/120s" % [push_speed, return_speed, longest_quiet])
+		"push %.1fpx/s vs return %.1f; joined toe-off acceleration, lift starts with return, modest knee, plant handoff; quiet span %d/120s" % [push_speed, return_speed, longest_quiet])
 
 
 func rig_lifecycle() -> void:

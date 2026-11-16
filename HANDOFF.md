@@ -12,25 +12,22 @@ terrain/pacing and other gameplay feel remain unapproved.
 
 ### Latest owner review / current priority
 
-**Latest correction — halve the time between strokes
-(2026-11-16, review pending).** Owner explicitly asked to halve the overall time between
-strokes. Cadence is now1.0s per alternating stroke instead of2.0s. The strong quick backward
-push, slower return, modest knee lift and next-push-on-plant rhythm remain the same.
+**Latest correction — smoother recovery at the same timing (2026-11-16, review pending).**
+Owner says the backstroke is good, perhaps a little farther, but coming up looks jerky / like
+"two movements". Keep the exact timing; smooth the lift into the forward return.
 
-- Default **B - Quick push** uses a2.0s full cycle /1.0s alternating cadence (exactly half the prior4.0/2.0s).
-  A single0.30s backward sweep loads and accelerates through the push (skewed cosine timing),
-  then a slower0.70s return modestly folds/lifts the knee. Recovery lift is12 source pixels,
-  unchanged from the previous modest lift. The next push starts at planting, without a dwell or
-  a push before contact. Upper-body restraint, art, physics and effect counts are unchanged.
-- Preview: `art_source/ui_review/2026-11-16-double-cadence.mp4` (original B vs new default).
-  Player and MeltView share it. Phone remains disconnected; install later over USB.
-- All21 headless cases pass. Motion regression measures a265.1px/s peak push vs105.4px/s
-  recovery, explicit acceleration, bounded modest knee lift, exact planting/next-push timing and
-  no held intervals (longest near-still interval1/120s). Full-cycle path smoothness is checked
-  at a4s reference cadence so the requested speedup is not mistaken for a changed path;
-  actual boundary continuity, bone lengths and blade contact remain checked directly.
-  All six standard gates pass (146s), including21 headless cases; all three visual checks
-  pass, and the rendered preview covers all five skins.
+- Default **B - Smoother return** keeps the2.0s full cycle /1.0s alternating cadence and
+  0.30s push /0.70s return. The backward endpoint extends29→31 source pixels. Lift remains12px.
+  The foot now follows one shared lift/forward arc, replacing the delayed powered-sine lift.
+  Push timing meets the return's horizontal acceleration at toe-off, removing the sharp
+  curvature change there. Planting still starts the next push with no hold or extra pause.
+- Before/after preview: `art_source/ui_review/2026-11-16-smooth-recovery.mp4` compares the
+  immediately previous Quick push on the left with the new return on the right, synchronized
+  at the same cadence. Both show all five skins at game size as well as close-up.
+- All six standard gates pass (121s), including21 headless cases, as do the three visual
+  checks and five-skin preview. A toe-off acceleration / early-lift regression covers the
+  fix;1ms samples avoid Vector2 single-precision noise in second differences. Player/MeltView share the same rig; no physics,
+  textures, shaders or effects changed. Phone installation remains deferred until USB returns.
 - Earlier in this session, restored only the known editor removal of viewport/physics pins
   and comments under CLAUDE's standing rule; `project.godot` is clean.
 
