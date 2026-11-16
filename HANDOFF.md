@@ -12,23 +12,24 @@ terrain/pacing and other gameplay feel remain unapproved.
 
 ### Latest owner review / current priority
 
-**Latest correction — faster push, lifted-knee recovery, plant into next push
-(2026-11-16, review pending).** Owner says the backward motion should be faster and fluid,
-not read as a constant-speed slide; then pick up the knee, recover, and start the other
+**Latest correction — backward push is primary; quicker cadence, modest knee lift
+(2026-11-16, review pending).** Owner wants the backward motion to remain the important part: quicker than the slow return,
+a little faster overall and a lower knee than the last attempt. Recover and start the other
 push **right as the returning foot plants**. This supersedes the previous low-return /
 88%-home airborne-overlap interpretation, as well as all earlier holds/settle phases.
 
-- Default **B - Push and recover** keeps the4.6s full cycle /2.3s alternating cadence.
-  A single0.83s backward sweep loads and accelerates through the push (skewed cosine timing),
-  then a slower1.47s return visibly folds/lifts the knee. Recovery lift is18 source pixels,
-  up from the rejected8px low return. The next push starts at planting, without a dwell or
+- Default **B - Quick push** uses a4.0s full cycle /2.0s alternating cadence (was4.6/2.3s).
+  A single0.60s backward sweep loads and accelerates through the push (skewed cosine timing),
+  then a slower1.40s return modestly folds/lifts the knee. Recovery lift is12 source pixels,
+  down from the previous18px high lift. The next push starts at planting, without a dwell or
   a push before contact. Upper-body restraint, art, physics and effect counts are unchanged.
-- Preview: `art_source/ui_review/2026-11-16-push-and-recover.mp4` (original B vs new default).
+- Preview: `art_source/ui_review/2026-11-16-quick-push.mp4` (original B vs new default).
   Player and MeltView share it. Phone remains disconnected; install later over USB.
-- All21 headless cases pass. Motion regression measures a96.2px/s peak push vs50.2px/s
-  recovery, explicit acceleration, visible knee lift, exact planting/next-push timing and
-  no held intervals (longest near-still interval4/120s). All six standard gates pass
-  (155s), all12 rendered cases pass, and all three visual checks pass.
+- All21 headless cases pass. Motion regression measures a132.7px/s peak push vs52.7px/s
+  recovery, explicit acceleration, bounded modest knee lift, exact planting/next-push timing and
+  no held intervals (longest near-still interval3/120s). All six standard gates pass (213s),
+  as do all three visual checks. The rendered preview covers all five skins. Only timing/lift
+  constants changed in gameplay code; the prior full12-case UI run remains the previous validation.
 - Earlier in this session, restored only the known editor removal of viewport/physics pins
   and comments under CLAUDE's standing rule; `project.godot` is clean.
 

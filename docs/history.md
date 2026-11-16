@@ -2,6 +2,11 @@
 
 ## 2026-11-16 — skating rhythm and repeated high-glide milestones
 
+- **Latest tuning:** owner wants the backward sweep emphasized, slightly faster overall
+  movement and less knee lift. Existing constants now give0.60s push/1.40s return,2.0s per
+  alternating stroke, and12px recovery lift instead of18px. No new rig path or physics.
+  Preview: `art_source/ui_review/2026-11-16-quick-push.mp4`. All six standard gates pass
+  (213s), including21 headless cases; all three visual checks and the five-skin preview pass.
 - **Newest clarification:** the push should be faster and accelerate backward, then the
   knee lifts for a slower recovery; the other leg pushes right as the foot plants.
   Built B - Push and recover:0.83s push,1.47s knee-lift return,2.3s alternating cadence,

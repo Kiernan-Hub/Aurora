@@ -72,3 +72,13 @@ animation choices guided by the owner's review, not measured motion-capture timi
 The regression measures96.2px/s peak drive against50.2px/s recovery, knee lift, planting at
 the next push and a maximum4/120s near-still interval. Preview:
 `art_source/ui_review/2026-11-16-push-and-recover.mp4`.
+
+## Latest tuning: emphasize the push, reduce the knee lift
+
+The owner wants a slightly faster overall stride, the backward sweep quicker than the slow
+return, and a modest knee lift. Default B - Quick push now takes2.0s per alternating stroke:
+0.60s accelerating push and1.40s return. The recovery envelope is12px instead of18px.
+Planting still coincides with the next push, without a settling pause. Measured peak speeds
+are132.7px/s backward and52.7px/s on recovery. No new rig path or gameplay system was added;
+only the existing timing/lift constants changed. Preview:
+`art_source/ui_review/2026-11-16-quick-push.mp4`.

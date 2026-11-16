@@ -18,7 +18,7 @@ class Board extends Control:
 			draw_string(ThemeDB.fallback_font, Vector2(left + 16, 30), stroke["label"], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
 			draw_string(ThemeDB.fallback_font, Vector2(left + 16, 55), "%.1fs per push" % (stroke["cycle"] * 0.5), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("b7cbdd"))
 			if style == SkaterRig.DEFAULT_STROKE:
-				draw_string(ThemeDB.fallback_font, Vector2(left + 16, 80), "Quick push / knee lift / plant + next push", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("89dfda"))
+				draw_string(ThemeDB.fallback_font, Vector2(left + 16, 80), "Quicker push / slower return / lower knee", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("89dfda"))
 				var phase: float = fposmod(seconds / (stroke["cycle"] * 0.5), 1.0)
 				var stage: String = "Accelerating backward push" if phase < SkaterRig.GLIDE_DRIVE_END else "Knee up / recover / plant"
 				draw_string(ThemeDB.fallback_font, Vector2(left + 16, 105), stage, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color.WHITE)

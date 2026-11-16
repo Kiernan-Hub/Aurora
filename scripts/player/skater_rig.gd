@@ -5,7 +5,7 @@ class_name SkaterRig
 # A continuous visual rig over the existing rest-pose artwork. Two short skinned
 # leg strips and rigid boots move on smooth paths; the PNG never switches poses.
 # The AnimatedSprite2D parent remains the carrier for tilt, tricks, tint and squash.
-const CYCLE_SECONDS: float = 4.6
+const CYCLE_SECONDS: float = 4.0
 # Preview-only alternatives use the same rig; gameplay defaults to reference-refined B.
 # A cycle contains two alternating strokes, not one stroke per foot together.
 const DEFAULT_STROKE: int = 5
@@ -15,11 +15,11 @@ const STROKES: Array[Dictionary] = [
 	{"label": "B - Long push", "cycle": 4.2, "forward": 18.0, "back": -29.0, "drop": 11.0, "bob": 1.8, "lift": 17.0, "lean": 0.04, "shift": 2.6, "rock": 0.03},
 	{"label": "C - Deep push", "cycle": 4.8, "forward": 21.0, "back": -32.0, "drop": 15.0, "bob": 2.2, "lift": 20.0, "lean": 0.055, "shift": 3.3, "rock": 0.038},
 	{"label": "Sustained stroke", "cycle": 7.2, "forward": 12.0, "back": -32.0, "drop": 15.0, "bob": 0.65, "lift": 15.0, "lean": 0.04, "shift": 2.6, "rock": 0.03, "phrased": true},
-	{"label": "B - Push and recover", "cycle": CYCLE_SECONDS, "forward": 18.0, "back": -29.0, "drop": 12.0, "bob": 0.8, "lift": 18.0, "lean": 0.025, "shift": 2.0, "rock": 0.015, "gliding": true},
+	{"label": "B - Quick push", "cycle": CYCLE_SECONDS, "forward": 18.0, "back": -29.0, "drop": 12.0, "bob": 0.8, "lift": 12.0, "lean": 0.025, "shift": 2.0, "rock": 0.015, "gliding": true},
 ]
 const DRIVE_END: float = 0.62
 const RETURN_END: float = 0.94
-const GLIDE_DRIVE_END: float = 0.36
+const GLIDE_DRIVE_END: float = 0.30
 # Plant at the next leg's push, with no gap or pushing before contact.
 const GLIDE_RETURN_END: float = 1.0
 const SOURCE_CENTER: Vector2 = Vector2(75.0, 90.0)

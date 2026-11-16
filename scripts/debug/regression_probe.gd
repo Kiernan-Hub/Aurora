@@ -1305,7 +1305,8 @@ func rig_motion() -> void:
 			var recovery: Dictionary = SkaterRig.leg_pose(data, near, start + half_cycle * phase, 1.0)
 			highest_knee = minf(highest_knee, recovery["knee"].y - recovery["hip"].y)
 			max_lift = maxf(max_lift, sole - recovery["ankle"].y)
-		rhythm = rhythm and highest_knee < planted["knee"].y - planted["hip"].y - 6.0 and max_lift > 16.0
+		rhythm = rhythm and highest_knee < planted["knee"].y - planted["hip"].y - 3.0 \
+			and max_lift > 10.0 and max_lift < 13.0
 		var seconds: float = start + half_cycle
 		var incoming: Dictionary = SkaterRig.leg_pose(data, not near, seconds, 1.0)
 		var incoming_next: Dictionary = SkaterRig.leg_pose(data, not near, seconds + 1.0 / 60.0, 1.0)
@@ -1330,8 +1331,8 @@ func rig_motion() -> void:
 				return_speed = maxf(return_speed, speed)
 		quiet_frames = quiet_frames + 1 if combined_speed < 2.0 else 0
 		longest_quiet = maxi(longest_quiet, quiet_frames)
-	expect("rig_rhythm", rhythm and push_speed > return_speed * 1.4 and longest_quiet <= 4,
-		"accelerating push %.1fpx/s vs recovery %.1f; visible knee lift; planted next-push handoff; longest quiet span %d/120s" % [push_speed, return_speed, longest_quiet])
+	expect("rig_rhythm", rhythm and push_speed > return_speed * 2.0 and longest_quiet <= 4,
+		"accelerating push %.1fpx/s vs recovery %.1f; modest knee lift; planted next-push handoff; longest quiet span %d/120s" % [push_speed, return_speed, longest_quiet])
 
 
 func rig_lifecycle() -> void:
