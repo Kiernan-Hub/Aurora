@@ -2,13 +2,133 @@
 
 ## START HERE — where the work stands, 2026-11-15
 
-**To continue: you are on branch `play/next`. Everything is committed, nothing is pushed, `main` is
-untouched.** `./scripts/check.sh --full` passes all 15 gates as of `0ce2e78`. Read this section and
-"Next actions"; the rest of the file is reference.
+**To continue: you are on branch `play/next`. Owner requested a commit and push of all current
+phone-review changes on 2026-11-16 for backup; `main` is untouched.** Current validation is listed below. Read this section
+and "Next actions"; the rest of the file is reference.
 
-**Nothing on this branch has been played by the owner.** It was built in one long session with the
-owner mostly away, verified by gates and by two short windowed renders. Treat every look and feel
-call below as unconfirmed.
+**Owner likes the collection/customizations and current visual additions, including the latest
+chest/mission pass.** Requested slightly more upward lake spray, now adjusted. Unreviewed
+terrain/pacing and other gameplay feel remain unapproved.
+
+### Latest owner review / current priority
+
+- **Really? is approved.** The portal is a welcome addition but remains provisional and needs
+  substantial polish. Owner wants Aura to stay clean, magical and elegant; flag feature growth
+  that adds performance cost. Fixing existing behavior takes priority over adding modes/items.
+- **Still Water exit bugs reproduced:** old reflection painted over hills beyond the shore
+  (4,941 / 7,921 changed pixel samples outside the lake at two aspect ratios). A single touch or
+  keyboard press at exit was dropped. The spike approach guard also accepted takeoff inside a
+  jump-locked lake while the spike itself stood beyond the boundary.
+- **Fix implemented:** reflection uses a fixed lake surface and is clipped to its world-X span
+  with a 128px inner edge fade. Full-screen geometry/backbuffer path is retained. Controls return
+  on the final 1,500px of flat ice, when the exit fade starts; spike placement requires its complete weak-
+  jump takeoff span to be dry. New18th headless regression and10th rendered case cover these
+  failures. Full 15 gates pass (230s); all 10 rendered cases pass, including zero painted
+  samples outside the lake and successful touch/key exit jumps. All three visual scripts pass, including Aurora reflection with lake clipping opt-in.
+  Verified APK exported and installed over USB. Existing gameplay saves remain in place.
+- **Spray revised again:** upward kick 36–120px/s, narrow near-vertical fan, drag 55–95 and
+  lake-only lift −22. Same70 glints, .90s lifetime and sprite size. Ordinary landing bursts keep
+  their previous motion. The earlier20–90px/s adjustment was still too low for the owner.
+- **Continuous skating built (owner review pending):** owner rejected the weighted four-pose
+  attempt as jerky and asked for “oneeee twooooo” strokes. `SkaterRig` now deforms the existing
+  rest artwork every render frame: two IK legs, rigid blades, gentle weight shift and smooth
+  coasting transitions. A 2.8s cycle alternates long pushes. All five characters and MeltView
+  share it. Parent AnimatedSprite2D carries outfits, shields, slope/trick tilt and squash;
+  headless keeps its original sprite. Gameplay physics/hitboxes and raster art are unchanged.
+  Bounded cost: 72 vertices, 80 triangles, three submissions per drawn skater, no new textures
+  or effect systems. Legacy SpriteFrames retain original timing for fallback/menus.
+  Motion/lifecycle tests pass: 19 headless cases, 11 rendered cases and all three visual checks.
+  Native pixel checks confirm all five outfit masks and inherited shield tint. All15 full gates
+  passed (225s). APK verified, installed over USB and launched; Aura-only focused screenshot
+  confirms the start screen and existing mission progress. APK increase: 8,361 bytes (~8 KiB).
+  The old timing GIF is rejected; new preview is
+  `art_source/ui_review/2026-11-15-continuous-skating.gif`.
+
+
+
+### Phone-review continuation
+
+- Installed a separate **Aura Playtest** (`com.kiernan.aura.playtest`), exported from a temporary
+  copy. Its save is isolated from the existing Aura app. APK: `aura-playtest.apk` (ignored).
+- **Desktop test audio:** owner reported painfully loud test SFX. Keep automated previews
+  at Master -24 dB (in memory), or use `--audio-driver Dummy`; never change the saved volumes.
+- **Phone access constraint from the owner:** USB only, Aura only. No other app or unrelated data;
+  no wireless debugging. Check Aura Playtest is foreground before screenshots.
+- Owner requested immediate max speed in dev mode, tap-to-open chests, and reported releasing
+  Pause sometimes activated Home. Dev runs now start at 750 with encounter clocks still at zero;
+  normal runs retain the speed ramp. Death-screen chests now wait for a tap per reveal.
+- Pause touch bug reproduced with rendered input: showing the menu during the button's down
+  signal lets the same touch activate Home on release. Main now consumes the press before opening
+  the menu. `regression_probe --ui-only` covers touch/mouse, quick/held Pause, fresh Resume,
+  dev speed and chest interaction; run with a renderer, not headless.
+- **Chest collection built:** nine permanent finds (three skate trails, three outfit colours,
+  three display-only ice charms). Skaters → Chest finds shows the shelf and outfit/trail pickers.
+  Normal chest weights: small coins 40%, larger coins 20%, jackpot 5%, skater 5%, cosmetic 30%.
+  Cosmetics cannot repeat while any remain unowned; exhausted item/skater rows pay a jackpot.
+  One existing FlightTrail draws equipped streaks near the blades, and a small outfit shader
+  replaces clothing hues while preserving hair/skin. No collision or movement changes.
+- **Save v5:** v4 cosmetics/selected_cosmetics plus mission ID, progress and completion count.
+  Older progress carries forward; new fields default to the first mission with zero progress. Chest finds ride record_run's existing single write. Equip writes
+  roll back on failure; reset clears finds and picks. `collection` regression covers migration,
+  malformed data, serialization, unique rolls, ownership, independent equip and reset.
+- **Visual pass built:** generated closed/open ice-and-gold chest art, six small UI glyphs,
+  distinct trail icons, larger collection cards with explicit Equip/Equipped/Collected states,
+  lock badges, a primary-action button style, and Sora display headings. The run HUD/debug
+  overlay is hidden on menus. Source art/prompt: `art_source/chests/`; reproducible small
+  sprites: `build_chest_sprites.py`. Preview: `art_source/ui_review/2026-11-15.png`.
+- **Chest tiers:** Normal 70% (small gold glow), Rare 25% (larger blue glow, 60% cosmetic
+  chance), Aurora 5% (distinct purple art and rotating teal/violet ring; guarantees an unowned
+  cosmetic, or jackpot after exhaustion). Normal cosmetic chance is 30%. Tier survives actual
+  spawn/collect/death/reveal; collision and spawn cadence unchanged. Dev mode cycles all three
+  tiers, with a seed-dependent starting tier. Source/prompt: `art_source/chests/AURORA_PROMPT.md`.
+- **Persistent missions:** one goal at a time: earn 100 coins, travel 2,000m, collect 3 chests,
+  smash 3 geodes (only with owned Slam). Targets rise gently to at most 3x. Start/Pause show
+  the goal and Rare reward; a compact HUD shows progress. Progress banks on pause/focus loss
+  and death using existing writes. Completion remains pending across sessions until the next
+  death awards one Rare chest alongside physical chests, then advances the goal. Reveal taps
+  never grant rewards. Stats includes completed missions; reset clears them.
+- **Validation:** full 15 gates passed (227s). All seven rendered regression cases and three
+  visual checks pass. Mutation checks detect pause double-credit and dropped pickup tiers.
+  The rendered test accounts for the existing settings write on Resume separately from banking.
+  APK packages v5/tier scripts and font license; source art is excluded. Tier/mission additions
+  add 78,981 bytes (~77 KiB) over the previous visual build.
+- **Phone:** continuous-skating update installed over USB; Aura Playtest process and focused
+  start screen verified. Existing mission progress remains visible. Screenshots must check the
+  focused window, not merely a resumed activity; no capture or tap without confirmed Aura focus.
+
+
+
+- **Lake spray adjustment:** owner asked for a little more vertical motion. Kick changed
+  16–78 → 20–90px/s, direction closer to upright, fan 46° → 36°. Existing drag, lift, chip
+  count and lifetime stay the same. LandingBurst explicitly overrides these throw parameters.
+  Before/after rendered lake captures confirm active emission and a modest taller trail.
+  All three visual checks pass; updated Android build installed over USB.
+- **The Melt built (owner review pending):** a rare optional jump-in portal at a seeded
+  4–7 minutes into a run (once per run); dev mode tries from 12s, still awaiting a legal slot.
+  Portal uses the chest spawner's flat/jump/void/hazard checks and rechecks the corridor at
+  collection. A separate one-button ice-platform course has crumbling ledges and accelerating
+  melt, Rare chest at 15s and Aurora at 30s. Three tested jump timings survive about 36.5s;
+  the rift closes at 60s at latest. Bonuses bank immediately, without changing run score or
+  coin missions. Results include a saved personal best (also in Stats).
+- **Run suspension:** GameManager.BONUS pauses the normal world intact. Only the isolated
+  model/view runs; Pause/Back/focus loss stop it, Resume returns to BONUS. Home/Restart abandon
+  the round and rebuild normally. A successful result returns through a two-second countdown
+  to the exact frozen pose/clock with input buffers cleared. No terrain teleport or new autoload.
+- **Reward durability:** SaveStore.bank_bonus writes coins, finds and personal best together,
+  restoring all changed fields on failure. The prepared chest roll survives retries; an
+  already-paid result cannot pay twice. `best_melt_seconds` is an optional v5 statistic, default0.
+- **“Really?” achievement:** at the end of one glide, >=6s of uninterrupted held ascent and
+  >=3,000px of actual climb earns the existing toast. There is no height ceiling and movement
+  is unchanged. Per-tick displacement is rebase-safe; headless triggers cannot save. A real
+  rendered flight earned it at ~7.02s / 4,065px. Short or interrupted flights do not qualify.
+  Failed achievement writes now roll back ownership and suppress the toast so a later glide
+  can retry. This also fixes the same existing failure case for the other achievements.
+- **Review/checks:** two read-only subagents reviewed gameplay and saving. Their findings led
+  to entry-time safety rechecks, real scheduled-portal overlap coverage and failed-save retry
+  coverage. All15 headless/physics gates pass (231s), including17 regression cases. Nine rendered cases
+  pass, as do all3 visual checks. APK grows by25,480 bytes (~25 KiB). USB installation
+  completed successfully; own app process verified.
+
 
 ### What `play/next` contains (26 commits on top of `main`)
 
@@ -34,10 +154,10 @@ Built 2026-11-15, in commit order:
    `chasm_plunge` in `check.sh --full`.
 7. **Chests:** `RareCoinSpawner` hangs a chest every 80–120s (first at 30–50s) at 84px, reachable
    at every jump level; "Chests: N" on the HUD. At death `ChestRewards.TABLE` rolls each (15–35
-   coins 55%, 50–90 30%, jackpot 200–300 10%, an unowned skater 5%), banked in `record_run`'s one
-   write. `ChestReveal` opens them on the death screen: rattle, flash, lid thrown back, rays, gold
-   spray, count-up, three synthesised sounds (`build_ui_sfx.py`). The chest is polygons in
-   `chest.tscn`: placeholder art. Chest and rare coin skip any spot within 500px or 1s of a hazard
+   coins 40%, 50–90 20%, jackpot 200–300 5%, an unowned skater 5%, new cosmetic 30%; Rare/Aurora above), banked in `record_run`'s one
+   write. `ChestReveal` waits for a tap on the death screen, then rattles, flashes and blends to
+   the open pose, with rays, gold spray, count-up and three synthesised sounds (`build_ui_sfx.py`).
+   The generated chest sprites come from `art_source/chests/`; see the visual pass above. Chest and rare coin skip any spot within 500px or 1s of a hazard
    (`ObstacleSpawner.is_clear_for_pickup`). `regression_probe` case `chests`.
 8. **Shop as cards:** an upgrades row and a skaters row with pictures, pips on Jump, prices on
    buttons, unaffordable cards dimmed, Reset Progress small and last
@@ -53,37 +173,26 @@ Built 2026-11-15, in commit order:
 ### Next actions, in order
 
 1. **The owner plays `play/next`** (dev mode makes this quick). What to look at:
-   - the card shop: layout, whether seven cards fit a phone, the skater pictures. **Never seen by
-     anyone, including the session that built it.**
-   - the chest in a run (placeholder art), the reveal's timing, the three chest sounds (never heard)
+   - the card shop: layout, whether seven cards feel comfortable on a phone, the skater pictures.
+	 Rendered at both aspect ratios; owner review is still pending.
+   - all three chest tiers in a run, reveal timing and mission completion/reward across runs
    - the plunge's landing and camera (1.3s of fall; the landing is off screen at the lip)
    - mountains at speed; whether 8:00+ is hard in a good way ("Dev can't die" gets there)
    - HUD text on a phone: "Chests: N   Coins: N" and the distance beside the clock
    - from the merged branches: islands, black ice, vents, geodes, theme, menu sounds, skaters
 2. **If it holds up, merge `play/next` into `main`** (fast-forward). The owner decides; do not
    merge or push unprompted.
-3. **Requested by the owner, not started:**
-   - **Run goals / missions** ("slam 3 geodes", "reach 2 km"), shown at the start and ticked off
-     in the HUD, with a chest as the reward. Agreed as the step after chests; the strongest
-     "one more run" driver and the game has none.
-   - **Real art from ChatGPT.** The owner has a style prompt (clean, minimal low-poly ice, light
-     greyscale on real alpha, never "cozy") and will save files under `art_source/`. Wanted first:
-     a chest sprite, UI icons (jump, slam, double jump, coin, lock), a display font from Google
-     Fonts. Wire them in when they exist. Decide with the owner where scenery may go: ground
-     decoration was removed twice for competing with hazards.
-   - **More "game feel" hooks**, in the order proposed: near-miss ("120 m from your best" on the
-     death screen, a marker where the best run ended), a progress bar toward the next unlock,
-     a collection grid of locked silhouettes, a daily chest/streak last.
-   - **Chest sounds/pacing tuning** once the owner has heard them: one row each in
-     `build_ui_sfx.py`; `ChestReveal.RATTLE_SECONDS` (0.55).
+3. **Retention follow-up, after the owner plays the new missions/tiers:**
+   - Consider a five-mission milestone that lets the player choose a cosmetic, collection-set
+     rewards, then personal-best encouragement. These are planned, not built.
+   - Tune mission targets and chest sounds/pacing from play. Existing art, icons, collection
+     and display font are built; do not list them as missing work.
 4. **Flagged, undone:**
    - The 2.0s room floor means more obstacle searches per minute, and A3 (search cost on the phone
-     at combo tiers) is still unmeasured. If late frames show past 8:00, set
-     `ObstacleSpawner.BREATHING_ROOM_FLOOR` back to 2.5 first.
+	 at combo tiers) is still unmeasured. If late frames show past 8:00, set
+	 `ObstacleSpawner.BREATHING_ROOM_FLOOR` back to 2.5 first.
    - A coin trail down the plunge was considered and not built: the fall arc depends on speed and
-     on whether the player jumped, so a fixed trail would often miss.
-   - `docs/history.md` has not been given this session's or the 2026-10-29 session's entry beyond
-     the section moved there today.
+	 on whether the player jumped, so a fixed trail would often miss.
 5. Still open from before: one long phone run past 5:00 with logcat (`OBSTACLE_SEARCH_SLOWEST`,
    `debugging.md`), and the owner tests under "Owner: tests still owed" in `docs/history.md`.
 
@@ -110,8 +219,9 @@ Built 2026-11-15, in commit order:
 
 ### On the phone
 
-Still the 2026-10-05 debug export (the old `main`), save kept. `play/next` has not been exported.
-A fresh debug export gets the dev-mode buttons; a release export does not.
+The existing **Aura** app remains the 2026-10-05 debug export (old `main`), with its save kept.
+The separate **Aura Playtest** app now holds `play/next` plus the phone-review fixes
+above, with its own save. Dev-mode buttons are debug-only; release exports omit them.
 
 ---
 

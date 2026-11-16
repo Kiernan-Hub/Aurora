@@ -96,6 +96,16 @@ var coin_label: Label
 var coin_count: int = 0
 # Chests picked up this run, and what they held once the run ended (ChestRewards).
 var chest_count: int = 0
+var collected_chest_tiers: Array[int] = []
+var geodes_broken: int = 0
+var mission: Dictionary = {}
+var mission_banked_amount: float = 0.0
+var mission_reward_claimed: bool = false
+var mission_display_amount: int = -1
+var mission_hud: VBoxContainer
+var mission_label: Label
+var mission_bar: ProgressBar
+var mission_menu_labels: Array[Label] = []
 var chest_rewards: Array[Dictionary] = []
 var chest_reveal: ChestReveal
 # Per completed 360 landed. Routed through _on_coin_collected so a trick reward gets
@@ -154,6 +164,10 @@ var start_skins_button: Button
 var skin_buttons: Dictionary[String, Button] = {}
 var sparkles_row: HBoxContainer
 var sparkle_buttons: Dictionary[String, Button] = {}
+var collection_buttons: Dictionary[String, Button] = {}
+var collection_labels: Dictionary[String, Label] = {}
+var collection_tabs: TabContainer
+const OUTFIT_SHADER: Shader = preload("res://shaders/outfit.gdshader")
 var landing_burst: Node2D
 
 # How far a run has gone, for the death screen and the Stats screen. The player's x never
@@ -181,7 +195,9 @@ signal run_recorded(distance_meters: float, coins: int, total_distance_meters: f
 # it. Purchases apply to the NEXT run, because leaving the shop leads to a restart, and
 # the rebuilt GameManager reads the save file in _ready(). There is deliberately no path
 # that mutates player stats mid-run. STATS and SKINS are the same kind of modal, from START.
-enum State { START, PLAYING, PAUSED, DEAD, SHOP, STATS, SKINS }
+enum State { START, PLAYING, PAUSED, DEAD, SHOP, STATS, SKINS, BONUS }
+var pause_return_state: State = State.PLAYING
+var melt_view: Control
 # How long the death screen takes to fade in from a death (set_state).
 const DEATH_SCREEN_FADE_SECONDS: float = 0.6
 
@@ -241,6 +257,8 @@ func _ready() -> void:
 	apply_sparkle()
 	apply_debug_start_wallet()
 	run_start_x = player.global_position.x
+	build_mission_ui()
+	prepare_mission()
 
 	# require_start_screen=false is the harness opt-out, and it has to skip straight to
 	# PLAYING rather than sitting on START -- see the comment on that var. A quick
@@ -315,25 +333,9 @@ func wire_scene() -> bool:
 		push_error("GameManager requires a pause screen at %s with a pause button, resume/restart/home buttons and two volume sliders." % pause_screen_path)
 		return false
 
-	# button_down, NOT pressed. BaseButton emits `pressed` on pointer-UP, which leaves
-	# the game live for the whole down..up interval -- and the pointer-DOWN that started
-	# it is also a jump, because InputSetup binds left-click to "ui_accept" and player.gd
-	# polls that action. The old defence was Input.action_release() in Main._input, on the
-	# assumption it cancels the just-pressed edge. Measured 2026-08-03, it does not: with a
-	# verified control (press alone -> 1 jump), press+release issued before the same physics
-	# frame STILL jumped, because is_action_just_pressed() compares the press FRAME STAMP
-	# and does not re-check the pressed flag. That is why the reported symptom was "pauses
-	# AND jumps" rather than one or the other.
-	#
-	# Pausing on the DOWN edge sidesteps the whole question: it runs during event flush,
-	# before this frame's physics, so get_tree().paused is already true when the Player
-	# would have polled and _physics_process never runs. Independent of any Input
-	# frame-stamp semantics. The hit-test guard in Main._input stays -- it is what stops
-	# the separate TOUCH path from calling buffer_jump() directly.
-	#
-	# The action_release() calls on the START and RESUME transitions are unaffected by the
-	# finding above: there the press happened while the tree was paused on a menu, i.e. on
-	# an EARLIER frame, so its stamp is already stale by the first gameplay frame.
+	# Main consumes pause pointer presses and pauses before GUI dispatch, so the touch
+	# cannot reach the newly visible menu. Keep this down-edge fallback for activation
+	# without a pointer; pausing on release would leave a gameplay jump edge live.
 	pause_button.button_down.connect(_on_pause_pressed)
 	resume_button.pressed.connect(_on_resume_pressed)
 	pause_restart_button.pressed.connect(_on_quick_restart_pressed)
@@ -453,7 +455,12 @@ func wire_scene() -> bool:
 # in the project may set either; if a new transition is needed, add it to the enum.
 func set_state(new_state: State) -> void:
 	var previous_state: State = state
+	if new_state == State.PAUSED and (previous_state == State.PLAYING or previous_state == State.BONUS):
+		pause_return_state = previous_state
 	state = new_state
+	if melt_view != null:
+		melt_view.visible = new_state == State.BONUS
+		melt_view.set("running", new_state == State.BONUS)
 
 	# START/DEAD stay visible underneath SHOP: the shop is a modal over whichever screen
 	# opened it (see modal_return_state), and closing it returns there without a flicker.
@@ -488,6 +495,14 @@ func set_state(new_state: State) -> void:
 	if pause_button != null:
 		pause_button.visible = new_state == State.PLAYING
 
+	# Menus own their own information; the live HUD and debug overlay stay in the run.
+	for hud_name: String in ["TimerLabel", "CoinLabel", "PowerupLabel", "PlayerStateDebugLabel"]:
+		var hud: CanvasItem = get_node_or_null("../CanvasLayer/" + hud_name) as CanvasItem
+		if hud != null:
+			hud.visible = new_state == State.PLAYING
+	if mission_hud != null:
+		mission_hud.visible = new_state == State.PLAYING
+	refresh_mission_ui()
 	get_tree().paused = new_state != State.PLAYING
 	# Leaving the pause screen is the end of any settings interaction, and the only
 	# flush point that also catches a slider moved by keyboard (which emits value_changed
@@ -501,9 +516,98 @@ func set_state(new_state: State) -> void:
 	# hook loses. On death bank_playtime() returns false: _on_player_died() already banked, and
 	# record_run's one write carries it.
 	if previous_state == State.PLAYING and new_state != State.PLAYING:
-		if bank_playtime() and services != null:
+		var changed: bool = bank_mission_progress()
+		changed = bank_playtime() or changed
+		if changed and services != null:
 			services.save_store.save_to_disk()
 	state_changed.emit(new_state)
+
+
+func owns_slam() -> bool:
+	return services != null and services.upgrades.get_level(UpgradeStore.SLAM_UPGRADE_ID) > 0
+
+
+func prepare_mission() -> void:
+	mission = Missions.prepare(services.save_store, owns_slam()) if services != null and DisplayServer.get_name() != "headless" \
+		else Missions.definition(Missions.FIRST_ID, 0, false)
+	mission_banked_amount = get_mission_run_amount()
+	mission_reward_claimed = false
+	mission_display_amount = -1
+	refresh_mission_ui()
+
+
+func get_mission_run_amount() -> float:
+	match mission.get("id", ""):
+		"coins": return float(coin_count)
+		"distance": return get_run_distance_meters()
+		"chests": return float(chest_count)
+		"geodes": return float(geodes_broken)
+	return 0.0
+
+
+func get_mission_progress() -> float:
+	if mission.is_empty():
+		return 0.0
+	if mission_reward_claimed:
+		return float(mission["target"])
+	var stored: float = services.save_store.mission_progress if services != null and DisplayServer.get_name() != "headless" else 0.0
+	return minf(stored + maxf(get_mission_run_amount() - mission_banked_amount, 0.0), float(mission["target"]))
+
+
+func bank_mission_progress() -> bool:
+	if services == null or mission.is_empty() or mission_reward_claimed or DisplayServer.get_name() == "headless":
+		return false
+	var amount: float = get_mission_run_amount()
+	var changed: bool = Missions.bank(services.save_store, mission, maxf(amount - mission_banked_amount, 0.0))
+	mission_banked_amount = amount
+	return changed
+
+
+# Called beside the existing clock update. Only rebuild strings when a whole unit changes.
+func refresh_mission_ui() -> void:
+	if mission_label == null or mission.is_empty():
+		return
+	var progress: int = int(get_mission_progress())
+	if progress == mission_display_amount:
+		return
+	mission_display_amount = progress
+	var complete: bool = progress >= int(mission["target"])
+	mission_label.text = "Mission complete · Rare chest earned" if complete else "%s  %d/%d" % [mission["title"], progress, int(mission["target"])]
+	mission_label.modulate = Color(0.6, 1.0, 0.8) if complete else Color(0.85, 0.94, 1.0)
+	mission_bar.max_value = float(mission["target"])
+	mission_bar.value = progress
+	for label: Label in mission_menu_labels:
+		label.text = "Mission complete · Chest opens after your run" if complete else "Mission · %s  %d/%d\nReward: Rare chest" % [mission["title"], progress, int(mission["target"])]
+
+
+func build_mission_ui() -> void:
+	mission_hud = VBoxContainer.new()
+	mission_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mission_hud.add_theme_constant_override("separation", 4)
+	get_node("../CanvasLayer").add_child(mission_hud)
+	mission_hud.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	mission_hud.offset_left = 16
+	mission_hud.offset_right = 436
+	mission_hud.offset_top = -58
+	mission_hud.offset_bottom = -14
+	mission_label = Label.new()
+	mission_label.add_theme_font_size_override("font_size", 13)
+	mission_hud.add_child(mission_label)
+	mission_bar = ProgressBar.new()
+	mission_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mission_bar.show_percentage = false
+	mission_bar.custom_minimum_size = Vector2(240, 5)
+	mission_bar.add_theme_stylebox_override("background", start_screen.theme.get_stylebox("slider", "HSlider"))
+	mission_bar.add_theme_stylebox_override("fill", start_screen.theme.get_stylebox("grabber_area", "HSlider"))
+	mission_hud.add_child(mission_bar)
+	for anchor: Control in [start_button.get_parent(), resume_button]:
+		var label: Label = Label.new()
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 13)
+		label.modulate = Color(0.7, 0.86, 0.95)
+		anchor.add_sibling(label)
+		anchor.get_parent().move_child(label, anchor.get_index())
+		mission_menu_labels.append(label)
 
 
 # Folds the unbanked part of this run into the cumulative playtime total, in memory only --
@@ -603,7 +707,7 @@ func _notification(what: int) -> void:
 		# refusing to exit at all would be its own annoyance, so back does quit.
 		NOTIFICATION_WM_GO_BACK_REQUEST:
 			match state:
-				State.PLAYING:
+				State.PLAYING, State.BONUS:
 					set_state(State.PAUSED)
 				State.PAUSED:
 					_on_resume_pressed()
@@ -620,7 +724,7 @@ func _notification(what: int) -> void:
 		# NOT auto-resume on focus-in: coming back to a running game you can't react to
 		# yet is how you lose a run to the OS.
 		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_WINDOW_FOCUS_OUT:
-			if state == State.PLAYING:
+			if state == State.PLAYING or state == State.BONUS:
 				set_state(State.PAUSED)
 
 
@@ -666,7 +770,19 @@ func _on_player_died() -> void:
 	last_run_is_new_best = false
 	bank_biome_phase()
 	# Rolled here and banked below with the run, so the reveal on the death screen is only a show.
-	chest_rewards = ChestRewards.roll_all(chest_count, get_unowned_skin_ids(), RandomNumberGenerator.new())
+	var reward_tiers: Array[int] = collected_chest_tiers.duplicate()
+	# Retain compatibility with harnesses that set chest_count directly.
+	while reward_tiers.size() < chest_count:
+		reward_tiers.append(ChestTypes.Tier.NORMAL)
+	if services != null and DisplayServer.get_name() != "headless":
+		bank_mission_progress()
+		if not mission_reward_claimed and not mission.is_empty() and Missions.claim(services.save_store, mission, owns_slam()):
+			mission_reward_claimed = true
+			reward_tiers.append(Missions.REWARD_TIER)
+	chest_rewards = ChestRewards.roll_all(reward_tiers.size(), get_unowned_skin_ids(), RandomNumberGenerator.new(),
+		Cosmetics.get_unowned(services.save_store.cosmetics if services != null else {}), reward_tiers)
+	if mission_reward_claimed and not chest_rewards.is_empty():
+		chest_rewards[-1]["mission"] = true
 	# Script harnesses can have a real Services autoload. bank_playtime() already
 	# skips headless, but record_run() itself writes coins/bests even when banking
 	# returned false. A regression probe's deliberate death must never save a run.
@@ -722,7 +838,7 @@ func bank_biome_phase() -> void:
 
 
 func _on_pause_pressed() -> void:
-	if state != State.PLAYING:
+	if state != State.PLAYING and state != State.BONUS:
 		return
 	sfx_player.play_click()
 	set_state(State.PAUSED)
@@ -730,7 +846,7 @@ func _on_pause_pressed() -> void:
 
 func _on_resume_pressed() -> void:
 	sfx_player.play_click()
-	set_state(State.PLAYING)
+	set_state(pause_return_state)
 	# Same reasoning as _on_start_pressed: this tap dismissed a Control, and without
 	# an explicit release the global Input singleton still reports "ui_accept" as
 	# just-pressed on the first physics frame back in play -- a free jump on resume.
@@ -792,11 +908,13 @@ func reload_scene(quick_start: bool) -> void:
 # deliberate ceiling of the whole system, and it is rare because the doubler is a timed powerup.
 # A slam broke a geode: its coins ride the same path as any pickup (doubler and combo apply).
 func _on_geode_broken(value: int) -> void:
+	geodes_broken += 1
 	sfx_player.play_crack()
 	_on_coin_collected(value)
 
 
-func _on_chest_collected() -> void:
+func _on_chest_collected(tier: int = ChestTypes.Tier.NORMAL) -> void:
+	collected_chest_tiers.append(ChestTypes.normalize(tier))
 	chest_count += 1
 	update_coin_label()
 	sfx_player.play_powerup()
@@ -861,10 +979,10 @@ func apply_skin() -> void:
 	if services == null or player == null or DisplayServer.get_name() == "headless":
 		return
 	var frames: SpriteFrames = load(String(Skins.get_skin(get_worn_skin_id())["frames"])) as SpriteFrames
-	if frames == null or player.animated_sprite.sprite_frames == frames:
-		return
-	player.animated_sprite.sprite_frames = frames
-	player.animated_sprite.play(&"skate")
+	if frames != null and player.animated_sprite.sprite_frames != frames:
+		player.animated_sprite.sprite_frames = frames
+		player.animated_sprite.play(&"skate")
+	apply_cosmetics()
 
 
 # DevMode's two switches, at the bottom of the start screen's column. Debug builds only: in a
@@ -953,6 +1071,8 @@ func refresh_stats() -> void:
 			["Best score", "%d  (%s)" % [save.best_score, main.format_elapsed_time(save.best_time)]],
 			["Frozen lakes", str(save.frozen_lake_count)],
 			["Auroras", str(save.aurora_count)],
+			["Missions completed", str(save.missions_completed)],
+			["Best Melt", "%.1fs" % save.best_melt_seconds],
 		]
 		for row: Array in rows:
 			add_stats_row(stats_grid, row[0], row[1], true)
@@ -1018,6 +1138,7 @@ func build_skin_buttons() -> void:
 		button.pressed.connect(_on_sparkle_picked.bind(String(sparkle["id"])))
 		sparkles_row.add_child(button)
 		sparkle_buttons[String(sparkle["id"])] = button
+	build_collection()
 
 
 # A skin not bought yet shows its price and cannot be picked: the shop sells it.
@@ -1035,6 +1156,156 @@ func refresh_skin_buttons() -> void:
 	for id: String in sparkle_buttons:
 		sparkle_buttons[id].disabled = not is_sparkle_unlocked(id)
 		sparkle_buttons[id].set_pressed_no_signal(id == worn_sparkle)
+	refresh_collection()
+
+
+# Two pages inside the existing Skaters modal; Back remains outside the tabs. Reparent only
+# after wire_scene has resolved the authored paths. The scene is rebuilt on every reload.
+func build_collection() -> void:
+	var column: VBoxContainer = skins_row.get_parent() as VBoxContainer
+	collection_tabs = TabContainer.new()
+	collection_tabs.custom_minimum_size = Vector2(780, 448)
+	collection_tabs.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	column.add_child(collection_tabs)
+	column.move_child(collection_tabs, 1)
+	var skaters: VBoxContainer = VBoxContainer.new()
+	skaters.name = "Skaters"
+	skaters.alignment = BoxContainer.ALIGNMENT_CENTER
+	collection_tabs.add_child(skaters)
+	skins_row.reparent(skaters)
+	column.get_node("SparkleLabel").reparent(skaters)
+	sparkles_row.reparent(skaters)
+	var finds: VBoxContainer = VBoxContainer.new()
+	finds.name = "Chest finds"
+	finds.alignment = BoxContainer.ALIGNMENT_CENTER
+	finds.add_theme_constant_override("separation", 8)
+	collection_tabs.add_child(finds)
+	for kind: String in Cosmetics.KINDS:
+		var label: Label = Label.new()
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		finds.add_child(label)
+		collection_labels[kind] = label
+		var row: HBoxContainer = HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		finds.add_child(row)
+		var group: ButtonGroup = ButtonGroup.new()
+		if kind != "charm":
+			var original: Button = make_collection_button("Original", kind, "", group)
+			original.icon = load(Cosmetics.ICONS[kind]) as Texture2D
+			original.expand_icon = true
+			original.add_theme_constant_override("icon_max_width", 36)
+			original.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			original.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+			row.add_child(original)
+			collection_buttons[kind] = original
+		for item: Dictionary in Cosmetics.ITEMS:
+			if item["kind"] != kind:
+				continue
+			var button: Button = make_collection_button(item["name"], kind, item["id"], group)
+			button.icon = load(item.get("icon", Cosmetics.ICONS[kind])) as Texture2D
+			button.expand_icon = true
+			button.add_theme_constant_override("icon_max_width", 36)
+			button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			button.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+			button.add_theme_color_override("icon_normal_color", item["color"])
+			row.add_child(button)
+			collection_buttons[item["id"]] = button
+
+
+func make_collection_button(title: String, kind: String, id: String, group: ButtonGroup) -> Button:
+	var button: Button = Button.new()
+	button.text = title
+	button.custom_minimum_size = Vector2(168, 96)
+	button.toggle_mode = kind != "charm"
+	if not id.is_empty():
+		var lock_badge: TextureRect = TextureRect.new()
+		lock_badge.name = "LockBadge"
+		lock_badge.texture = preload("res://assets/ui/icons/lock.svg")
+		lock_badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		lock_badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		lock_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lock_badge.modulate = Color(0.7, 0.8, 0.9, 0.8)
+		button.add_child(lock_badge)
+		lock_badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+		lock_badge.offset_left = -24
+		lock_badge.offset_right = -8
+		lock_badge.offset_top = 8
+		lock_badge.offset_bottom = 24
+	if kind == "charm":
+		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.focus_mode = Control.FOCUS_NONE
+	if button.toggle_mode:
+		button.button_group = group
+		button.pressed.connect(_on_cosmetic_picked.bind(kind, id))
+	return button
+
+
+func get_worn_cosmetic(kind: String) -> String:
+	if services == null:
+		return ""
+	var id: String = services.save_store.selected_cosmetics.get(kind, "")
+	var item: Dictionary = Cosmetics.get_item(id)
+	return id if item.get("kind", "") == kind and services.save_store.cosmetics.get(id, false) else ""
+
+
+func refresh_collection() -> void:
+	if collection_buttons.is_empty():
+		return
+	var owned: Dictionary = services.save_store.cosmetics if services != null else {}
+	for kind: String in Cosmetics.KINDS:
+		var count: int = 0
+		var total: int = 0
+		var selected: String = get_worn_cosmetic(kind)
+		if collection_buttons.has(kind):
+			collection_buttons[kind].set_pressed_no_signal(selected.is_empty())
+		for item: Dictionary in Cosmetics.ITEMS:
+			if item["kind"] != kind:
+				continue
+			total += 1
+			var unlocked: bool = owned.get(item["id"], false)
+			count += int(unlocked)
+			var button: Button = collection_buttons[item["id"]]
+			button.text = "%s\n%s" % [item["name"], ("Collected" if kind == "charm" else ("Equipped" if selected == item["id"] else "Equip")) if unlocked else "In chests"]
+			button.get_node("LockBadge").visible = not unlocked
+			button.disabled = not unlocked
+			button.set_pressed_no_signal(selected == item["id"])
+		collection_labels[kind].text = "%s  %d/%d" % [Cosmetics.TITLES[kind], count, total]
+
+
+func _on_cosmetic_picked(kind: String, id: String) -> void:
+	if services == null or kind == "charm" or not Cosmetics.KINDS.has(kind):
+		return
+	var item: Dictionary = Cosmetics.get_item(id)
+	if not id.is_empty() and (item.get("kind", "") != kind or not services.save_store.cosmetics.get(id, false)):
+		refresh_collection()
+		return
+	var previous: Dictionary[String, String] = services.save_store.selected_cosmetics.duplicate()
+	services.save_store.selected_cosmetics[kind] = id
+	if not services.save_store.save_to_disk():
+		services.save_store.selected_cosmetics = previous
+	else:
+		sfx_player.play_click()
+		apply_cosmetics()
+	refresh_collection()
+
+
+func apply_cosmetics() -> void:
+	if player == null or DisplayServer.get_name() == "headless":
+		return
+	var trail: Dictionary = Cosmetics.get_item(get_worn_cosmetic("trail"))
+	player.flight_trail.configure(trail)
+	player.flight_trail.modulate = trail.get("color", Skins.get_sparkle(get_worn_sparkle_id())["color"])
+	var outfit: Dictionary = Cosmetics.get_item(get_worn_cosmetic("outfit"))
+	if outfit.is_empty():
+		player.animated_sprite.material = null
+	else:
+		var material: ShaderMaterial = ShaderMaterial.new()
+		material.shader = OUTFIT_SHADER
+		material.set_shader_parameter("outfit_color", outfit["color"])
+		material.set_shader_parameter("clothing_hue", Cosmetics.CLOTHING_HUES[get_worn_skin_id()])
+		material.set_shader_parameter("hue_radius", Cosmetics.CLOTHING_HUE_RADIUS[get_worn_skin_id()])
+		material.set_shader_parameter("saturation_floor", 0.025 if get_worn_skin_id() == "twenties" else 0.08)
+		player.animated_sprite.material = material
 
 
 func is_skin_owned(id: String) -> bool:
@@ -1068,6 +1339,7 @@ func apply_sparkle() -> void:
 	if landing_burst != null:
 		landing_burst.modulate = color
 	player.flight_trail.modulate = color
+	apply_cosmetics()
 
 
 func _on_sparkle_picked(id: String) -> void:
@@ -1123,6 +1395,10 @@ func _on_buy_pressed(upgrade_id: String) -> void:
 # buttons). Upgrades in one row, skaters with their picture in a second, each card a name, one
 # line of what it does, level pips for a track with more than one level, and its price button.
 # shop_rows keeps "label" and "button" per track id, which air_move_probe reads.
+const UPGRADE_ICONS: Dictionary = {
+	"jump": "res://assets/ui/icons/jump.svg", "slam": "res://assets/ui/icons/slam.svg",
+	"double_jump": "res://assets/ui/icons/double_jump.svg",
+}
 const SHOP_CARD_WIDTH: float = 176.0
 const SHOP_CARD_COLOR: Color = Color(0.09, 0.13, 0.2)
 const SHOP_CARD_BORDER: Color = Color(0.36, 0.52, 0.72)
@@ -1169,6 +1445,14 @@ func build_shop_rows() -> void:
 			picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			picture.custom_minimum_size = SHOP_SKATER_PICTURE_SIZE
 			column.add_child(picture)
+		else:
+			var picture: TextureRect = TextureRect.new()
+			picture.texture = load(UPGRADE_ICONS[upgrade_id]) as Texture2D
+			picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			picture.custom_minimum_size = Vector2(48, 48)
+			picture.modulate = Color(0.7, 0.88, 1.0)
+			column.add_child(picture)
 		column.add_child(make_shop_label(String(track["name"]).trim_suffix(" skater"), 17))
 		var label: Label = make_shop_label("", 12)
 		label.modulate.a = 0.65
@@ -1187,6 +1471,8 @@ func build_shop_rows() -> void:
 			column.add_child(pip_row)
 
 		var button: Button = Button.new()
+		button.icon = preload("res://assets/ui/icons/coin.svg")
+		button.add_theme_constant_override("icon_max_width", 16)
 		button.pressed.connect(_on_buy_pressed.bind(upgrade_id))
 		column.add_child(button)
 		(skaters_row if track.has("skin") else upgrades_row).add_child(card)
@@ -1267,5 +1553,6 @@ func _on_reset_progress_confirmed() -> void:
 		apply_upgrades()
 		apply_skin()
 		apply_sparkle()
+		prepare_mission()
 	refresh_shop()
 	refresh_death_stats()

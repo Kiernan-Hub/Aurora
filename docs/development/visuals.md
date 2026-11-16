@@ -412,6 +412,11 @@ The plain runs to 2.0.
 Two nodes, both visible only while a lake is being crossed, both riding
 `FrozenLakeDirector.get_lake_blend()` like everything else cosmetic on the lake.
 
+Owner adjustment (2026-11-15): the lake spray now has a slightly stronger upward kick
+(20–90px/s, direction -0.25/-1 and 36° spread). Drag and faint lift still make chips hover;
+particle count, lifetime and landing bursts are unchanged. Rendered lake before/after checked:
+`art_source/ui_review/2026-11-15-lake-spray.jpg`.
+
 **`SkateSpray`** (`GPUParticles2D`) — the glints thrown off the blades. **`SkateTrack`**
 (`Line2D`) — the etch left in the ice. **Tree order between them is load-bearing:** the mirror
 quad at full blend *is* the lake surface, so the track sits above it (the etch is in the ice)
@@ -572,3 +577,74 @@ obstacle is `Color(1, 0.1, 0.1)` and the coin `Color(0.98, 0.82, 0.15)`, both tu
 against a bright backdrop. Going near-black would have put every gameplay-object contrast
 ratio up for re-judgement. Under the pale sky they keep exactly the separation they
 already had, and the near-white terrain gains contrast rather than losing it.
+
+
+## Menu and chest art pass (2026-11-15, owner approved preceding visual pass)
+
+`assets/ui/aura_theme.tres` provides a PrimaryButton variation for Start, Resume and the
+post-death Restart. Its `PrimaryButton/base_type` MUST be `Button`; a generic
+`type_variations` dictionary is silently ignored by Godot and the primary styling never applies.
+Screen titles use Sora at weight 600 (`assets/ui/fonts/display.tres`), with the unmodified font
+and OFL included in the export. Body text keeps the existing font. GameManager.set_state hides
+the run HUD/debug overlay on menus and restores it for PLAYING; it does not change their data.
+
+Upgrade icons and the coin/lock/play glyphs are small native SVGs under `assets/ui/icons/`.
+The collection uses larger icon cards, explicit Equip/Equipped/Collected states, and lock badges.
+Button.expand_icon is required to honour the chosen icon size without inflating card minimums.
+The rendered regression's `menu_layout` case checks shop/collection bounds at 1152x648 and
+1404x648 and verifies the primary button style actually reaches the Start button.
+
+Chest source art and its exact generation prompt are in `art_source/chests/`, excluded from
+exports by `.gdignore`. `python3 scripts/tools/build_chest_sprites.py` bakes two aligned 192px
+RGBA tiles with a common scale and baseline (about 58 KB combined). Only the pickup's Sprite2D
+is scaled; its Area2D, radius and placement stay unchanged. ChestReveal uses the same closed
+texture and a 0.2-second blend to its open pose inside the existing rattle/flash sequence.
+The art is static: no new particle systems, shaders or gameplay timers were added by this pass.
+
+### Chest tiers and mission HUD (2026-11-15, owner review pending)
+
+Normal keeps a small gold glow; Rare uses the same art tinted blue with a larger glow.
+Aurora has distinct purple crystal art generated with the built-in image tool; source and exact
+prompt: `art_source/chests/aurora_source_v1.png` and `AURORA_PROMPT.md`. The bake tool builds
+both pairs of 192px sprites; Aurora adds about 64 KB of PNGs. One reused SVG ring rotates under
+Aurora pickups and in the existing reveal. The white glow gradient allows accurate tier tints.
+No new shader or particle system was added. Pickup root scale/collision remain unchanged.
+
+Mission text and a thin progress bar sit bottom-left during play; Start/Pause show a two-line
+goal/reward. The existing clock refresh updates text only when whole progress changes.
+Review captures: `art_source/ui_review/2026-11-15-missions-tiers.jpg` (both screen proportions).
+
+## The Melt (2026-11-15, owner review pending)
+
+A separate native-drawn twilight ice course uses blue facets, soft ridges, restrained ribbons
+and a muted rose/violet rising melt. The portal is a thin cyan/violet oval with “Jump to enter”;
+all art is code-native, with no new raster assets, shaders or particle systems. The selected
+skater's frames are reused. A course-following camera keeps the melt on screen while the body
+jumps independently. Preview: `art_source/ui_review/2026-11-15-melt.jpg`.
+
+The existing achievement toast displays exactly “Really?”; its Stats hint is “The coins are
+down here”. Stats now fits10 history rows and7 achievements at both reviewed screen ratios.
+
+## Still Water review follow-up (2026-11-15)
+
+Owner rejected the low wake again and requested a more magical upward float. Lake-only motion
+now uses 36–120px/s, direction (-.12,-1), 28° spread, 55–95 drag and −22 upward acceleration.
+Particle count 70, lifetime .90s, texture and scales stay unchanged. The base material's mild−6
+lift remains for LandingBurst, which overrides launch/drag separately. No new effect system.
+
+The reflected sheet is spatially clipped at both lake shores, preserving the full-screen
+Mobile backbuffer quad. See architecture.md for the exit/input fix. The rendered regression
+compares pixels beyond the far shore against an otherwise identical frame without reflection.
+
+**Continuous skating (owner review pending):** the owner rejected the slow four-pose cycle.
+`SkaterRig` animates the existing rest artwork continuously, with long alternating pushes over
+2.8 seconds, fixed-length IK legs, rigid boots and a slight weight shift. Smooth recovery
+curves join without a pose switch; airborne/Still Water/boost states ease into coasting.
+All five characters use tuned joint landmarks. The existing sprite parent still owns tint,
+outfit material, slope/trick rotation and squash. MeltView uses the same inline rig, preserving
+its foreground order; its base-outfit rendering remains as before. No new raster art/effects.
+Really? is approved; The Melt still needs visual/gameplay polish.
+
+Exit/spray review: `art_source/ui_review/2026-11-15-still-water-fix.jpg`.
+Rejected timing-only attempt: `art_source/ui_review/2026-11-15-elegant-skating.gif`.
+Continuous-motion preview: `art_source/ui_review/2026-11-15-continuous-skating.gif`.

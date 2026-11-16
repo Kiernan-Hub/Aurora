@@ -91,8 +91,8 @@ the 2026-08-02 Android bug shipped.
 ## Jump suppression — the frozen lake
 
 `Player.is_jump_suppressed` is the only thing in the game that switches jump off while the game
-is still `PLAYING`. `FrozenLakeDirector` sets it at the near seam and clears it at the far one
-(and on death, so a stall watchdog cannot leave it stuck on).
+is still `PLAYING`. `FrozenLakeDirector` sets it at the near seam and clears it when the exit
+fade begins, on the final 1,500px of flat (and on death).
 
 **It is checked at THREE sites, and none of them is redundant** — this is the thing to get right
 if you touch it:
@@ -148,12 +148,12 @@ its press leaves the edge intact. Measured 2026-08-03 against a verified control
 alone → 1 jump): press+release before the same physics frame **still jumped**. The
 user-visible symptom was the click both jumping *and* pausing.
 
-**The desktop fix is that the pause button reports on `button_down`, not `pressed`**
-(`game_manager.gd`). The pause then lands during event flush, before that frame's
-physics, so the tree is already paused and `player.gd` never polls the action —
-independent of any `Input` frame-stamp semantics. It also removes the entire
-down-to-up window in which the game was still live under the pointer. Full log:
-`docs/research/pause_jump.md`.
+**Pause is handled before GUI dispatch in `Main._input`.** A press inside the pause button is
+consumed with `set_input_as_handled()` before calling GameManager's pause handler. Pausing
+immediately prevents a desktop jump edge; consuming the press prevents its delivery to the
+newly visible menu. Opening the menu inside `PauseButton.button_down` alone let an Android
+touch activate Home on release (reproduced 2026-11-15). The button_down connection remains
+as a fallback for non-pointer activation.
 
 `action_release()` is still correct on the **START** and **RESUME** transitions, where
 the press happened while the tree was paused on a menu — an earlier frame, so the stamp
@@ -163,10 +163,29 @@ is stale by the first gameplay frame. Only the same-flush case is affected.
 both pointer kinds — Android's emulated-mouse events go down the mouse branch. The
 button is also `focus_mode = 0` so Space can't activate it and jump at once.
 
-**Headless cannot test any of this.** Pointer events pushed with
-`Input.parse_input_event()` update the action state but are never dispatched to
-`_input` or to Controls (measured: the root viewport is 64×64 and `Main._input` never
-ran), so a probe "verifying" the guard will pass while the real path is broken. The
-transition *timing* is testable; the delivery is not.
+**Headless cannot verify GUI delivery.** Use the rendered `regression_probe --ui-only` path.
+It sends events through `root.push_input(event, true)`, which dispatches both `_input` and GUI.
+`Input.parse_input_event()` alone bypassed Main's `_input` in a `--script` run even with a
+renderer, while still reaching GUI; that initially made the correct pause fix appear broken.
+The rendered test covers quick and held touch/mouse Pause presses, release without Home,
+and a separate Resume gesture. The old pause path was restored in an isolated copy and
+made this test fail. Input changes still require a real on-device check.
 
 **Any future `Control` that is live during play needs all three considerations.**
+
+## The Melt (2026-11-15)
+
+The optional bonus uses GameManager.BONUS and a paused normal world. Its process-ALWAYS view
+handles touch presses and ui_accept itself, buffers only its own fixed jump and never forwards
+it to Player. Pause is consumed on press before menus appear; releasing it cannot hit Home.
+Back and focus loss pause; Resume returns to BONUS. The return countdown clears Main's held
+indices, both action states and Player's jump buffer before unpausing the exact frozen run.
+Holding glide in the ordinary run also feeds an observational ascent counter; the controls and
+movement are unchanged. The Really? trigger is at the end of a sustained upward glide.
+
+## Still Water exit control (2026-11-15)
+
+Jump suppression ends on the last 1,500px of lake flat, while the exit look is already fading.
+Waiting for x=end allowed Player's earlier physics tick to discard the first exit press.
+A rendered regression sends a single touch and keyboard action at shore−epsilon and requires
+an actual upward jump. Mid-lake suppression and existing glide carry-through are retained.

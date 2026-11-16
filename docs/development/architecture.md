@@ -31,7 +31,8 @@ Main (Node2D, scripts/main.gd)
 │                     slam); SkateSpray's look via its static builders. Off under --headless
 ├── BiomeDirector     the ONLY reader of a BiomePalette; returns early under --headless
 ├── Camera2D          position (0,136), zoom 0.833
-├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP, STATS, SKINS }
+├── GameManager       State { START, PLAYING, PAUSED, DEAD, SHOP, STATS, SKINS, BONUS }
+├── MeltDirector      seeded portal timing + isolated bonus view/model; normal world paused
 ├── PowerupManager    effect timers; drives Player.start_boost etc.
 ├── FrozenLakeDirector  owns WHEN a lake happens; returns early under --headless
 ├── AuroraDirector    owns Aurora lifecycle and the single presentation clock
@@ -198,6 +199,36 @@ lands, and a kill in that window (Android reclaiming a backgrounded app, not a c
 truncated file that the silent-read policy above then reads as a fresh save. Wallet, best score
 and every upgrade level, gone, with no error anywhere.
 
+**v4 (2026-11-15)** adds `cosmetics` (open id → bool ownership) and `selected_cosmetics`
+(kind → id preferences). Older v3 progress loads unchanged with empty collections. The catalogue
+is `Cosmetics.ITEMS`, with trails, outfit colours and display-only charms. Chest rolls use its
+unowned IDs and remove finds from the pool within a run; exhaustion falls back to the jackpot.
+`grant_chest_rewards` grants ownership before `record_run`'s one write, independent of reveal taps.
+`to_data()` is the exact disk payload, tested through JSON without writing the developer's save.
+
+**v5 (2026-11-15)** adds `mission_id`, `mission_progress` and `missions_completed`.
+`Missions` is a pure stable-ID model, not an autoload. It cycles coins/distance/chests/geodes,
+skipping geodes unless Slam is owned. Targets scale to at most 3x. `GameManager` banks only
+run-counter deltas on existing pause/focus-loss/death saves; repeated pauses cannot re-credit
+progress. A full saved bar is a pending Rare chest. Death claims once, rolls it together with
+physical chests to avoid duplicate cosmetics/skaters, and persists it in `record_run`'s one
+write. Reveal taps are cosmetic. Headless neither advances nor claims missions. Reset clears
+mission fields. Start/Pause labels and one bottom-left progress bar share these same counters.
+
+`ChestTypes` owns the seeded 70/25/5 Normal/Rare/Aurora distribution. `ChestPickup extends Coin`
+preserves the radius-16 Area2D lifecycle while carrying tier through the spawner signal to death.
+Normal rewards are 40/20/5/5/30 small/large/jackpot/skater/cosmetic. Rare rewards are
+5/20/10/5/60 (50–90/100–180/200–300/skater/cosmetic); Aurora guarantees an unowned cosmetic,
+then a jackpot when exhausted. Dev mode cycles tiers; its flag ships false.
+
+The Skaters modal now has Skaters and Chest finds tabs. Authored node paths are resolved first,
+then existing rows are reparented into the Skaters tab. Collection controls are built from the
+catalogue. Trail/outfit equip checks ownership and kind and rolls back a failed save. Reset
+clears finds/picks, so their default effects are restored immediately. The existing FlightTrail
+emits equipped streaks near the blades during skating as well as its original airborne effects.
+`outfit.gdshader` selectively replaces each skater's clothing hue within the jacket band;
+ordinary vertex modulation still supplies the shield tint. Headless skips applying both looks.
+
 **All-time history (2026-10-29, no version bump, like `aurora_count`):** `total_runs`,
 `total_coins_earned`, `total_distance_meters`, `best_distance_meters`, all banked by
 `record_run(coins, time, distance)` in its one write and cleared by `reset_progress()`.
@@ -330,3 +361,64 @@ before (`docs/research/freeze_bug.md`). Check before assuming a new `_ready()`-t
   the Inspector. Anything that is a *fix* rather than a knob must not be `@export` at
   all — see the `world_rebase_enabled` regression in `CLAUDE.md`.
 - Systems stay one-file-per-concern under `scripts/systems/`.
+
+## The Melt bonus round (2026-11-15)
+
+`MeltDirector` is a sibling under Main. It seeds a 240–420s deadline from the session seed,
+allows at most one portal per run and uses RareCoinSpawner.try_spawn's existing legal placement
+pipeline at clearance84. No portal during an active/reserved lake or Aurora or boost/glide.
+`MeltPortal extends Coin` rechecks the upcoming ground/hazard corridor before collection; its
+18px radius still requires a jump at every upgrade level. Entry is deferred past the physics
+flush and stays pending if Pause wins that same frame. A later new scene starts fresh.
+
+GameManager.BONUS pauses the tree; a process-ALWAYS `MeltView` in a layer2 canvas drives only
+its own RefCounted `MeltRound`. Normal terrain, movement, clocks, spawners and effect timers
+remain untouched. The fixed-step model owns swept platform landings, jump buffer/coyote time,
+crumbling and an accelerating melt. No upgrade changes its jump: the course is reachable at
+three tested launch leads. Lava catches them around36.5s and a hard60s close guarantees an end.
+The view draws simple ice facets, mountains/ribbons and a restrained rose/violet melt with the
+selected skater frames. GameManager owns view visibility and pause state; the view owns only
+its internal intro/result controls. Back/focus pause; Resume remembers whether it returns to
+PLAYING or BONUS. Home/Restart abandon the bonus through normal reload. A successful result
+uses a two-second return countdown and clears run input without moving the frozen player.
+
+Results grant10+2 coins per completed second (cap130), plus Rare at15s or Aurora at30s.
+`bank_bonus` uses the existing atomic save and rolls back wallet, lifetime coins, skaters,
+cosmetics and personal best together on failure. The same prepared chest is retried; payment
+is idempotent within the round. It does not call record_run or increment run-score coin goals.
+`best_melt_seconds` is an optional v5 statistic with default0 and reset support, like previous
+history additions. No other new save concept/autoload is introduced.
+
+`Player.glide_finished` carries uninterrupted held-ascent time and climb measured from actual
+per-tick displacement. AchievementManager alone interprets this as Really? (>=6s, >=3000px),
+with a local headless guard. No altitude cap is added. Its common grant path now rolls back a
+failed write and emits no toast until ownership is persisted.
+
+## Still Water exit correction (2026-11-15)
+
+The reflection keeps its Mobile-compatible full-screen backbuffer quad, but the shader now
+clips its paint to the lake's world-X boundaries (with 128px feathering inside the shores).
+This is an opt-in material uniform: Aurora shares the shader and keeps its existing reflection.
+Temporal fade alone painted a second flat plane over approaching hills. Waterline Y comes
+from the lake midpoint, so it cannot start following post-shore hills on the last active tick.
+
+FrozenLakeDirector returns jump control on the last 1,500px of the existing flat. Player runs
+before the director; waiting for the far seam discarded a touch/action edge on the exit tick.
+ObstacleSpawner's spike approach guard now excludes lake samples across the entire weakest-
+jump takeoff reach, not only the obstacle footprint. A dry spike with takeoff in locked ice
+was previously accepted. These changes preserve terrain generation and lake completion credit.
+
+
+### Continuous skater presentation (2026-11-15)
+
+`Player/AnimatedSprite2D/SkaterRig` hides only the carrier's own drawing with self_modulate.
+Its children retain parent transforms, modulate and the outfit material (`use_parent_material`).
+The rig uses frame zero with original full-frame UVs, two bounded two-bone IK solves, cached
+leg/body meshes and three triangle submissions (72 vertices/80 triangles total). Joint paths
+join with quintic easing; boots stay rigid. No movement state, physics or collision is written.
+Normal inherited processing freezes on Pause; the headless guard leaves the sprite untouched.
+Invalid draw data restores the carrier's original alpha as a visible fallback. Skin resource
+changes rebuild cached data. MeltView calls the shared drawer between platforms and melt,
+which resets its canvas transform afterwards; its clock freezes in intro/Pause/results.
+`rig_motion` samples all skins across wrap/recovery boundaries and verifies bone lengths;
+rendered `rig_lifecycle` exercises actual skin swaps, pause and physics isolation.

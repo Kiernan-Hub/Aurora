@@ -158,45 +158,17 @@ func _ready() -> void:
 #     emulate_mouse_from_touch was confirmed true. Going through the action at all
 #     is therefore unreliable here, so touch bypasses it.
 #
-# Not consumed with set_input_as_handled(): nothing downstream needs suppressing
-# during play, and leaving the event alone keeps every GUI path exactly as it was.
-# No explicit "is the game running" check is needed either -- Main uses the default
-# process_mode, so while GameManager holds get_tree().paused on the start, pause and
-# death screens this callback does not fire at all, and a menu tap cannot leak in as a
-# jump. Keyboard and desktop mouse still go the old way, via player.gd's poll of
-# the action, which InputSetup binds; only touch takes this path.
-#
-# The ONE live Control during play is the pause button, and paused-ness cannot cover
-# it: it is only visible while the game is running, which is exactly when this
-# callback fires. Both input paths leak a jump through it, for DIFFERENT reasons, so
-# both are handled by is_pause_button_press() below:
-#
-#   * Touch takes the path below and would buffer a jump directly -- a hit test IS
-#     enough to suppress that, and this is the half that guard still owns.
-#   * Desktop mouse does NOT take the path below at all. It goes through "ui_accept"
-#     (InputSetup binds left-click to it) which player.gd polls in _physics_process,
-#     so a hit test here suppresses nothing on its own. Worse, BaseButton emits
-#     `pressed` on mouse-UP by default, so the jump already fired on mouse-DOWN a
-#     frame before the pause screen appeared. Measured on desktop 2026-08-03: a
-#     touch-only hit test did not fix this, which is what exposed the two paths.
-#
-# The desktop half is NOT fixed by the Input.action_release() below, and this comment
-# claimed for one day that it was. It cannot be: is_action_just_pressed() compares the
-# press FRAME STAMP and does not re-check the pressed flag, so releasing an action in
-# the same event flush as its press leaves the just-pressed edge fully intact.
-# Measured 2026-08-03 against a verified control (press alone -> 1 jump): press and
-# release issued before the same physics frame STILL produced a jump. That is exactly
-# the reported symptom -- the click both jumped AND paused.
-#
-# The desktop fix lives in game_manager.gd instead: the pause button reports on
-# button_down, so get_tree().paused is already true before that frame's physics runs
-# and player.gd never gets to poll. The release call is kept as belt-and-braces, and
-# it remains the correct mechanism on the START and RESUME transitions, where the
-# press happened on an earlier frame and its stamp is already stale. Not consumed with
-# set_input_as_handled(): the Button still needs the event to fire its signal.
+# Main stops processing input on menus, so their taps cannot buffer gameplay jumps.
+# Ordinary gameplay touches remain unconsumed. Pause presses are the exception: consume
+# them before opening the menu, or that same touch can reach a newly visible button and
+# activate Home on release. Pause immediately so desktop's ui_accept edge cannot jump
+# before the next physics tick (action_release alone cannot cancel a same-frame edge).
 func _input(event: InputEvent) -> void:
 	if is_pause_button_press(event):
+		get_viewport().set_input_as_handled()
 		Input.action_release(&"ui_accept")
+		if game_manager != null:
+			game_manager._on_pause_pressed()
 		return
 
 	var touch_event: InputEventScreenTouch = event as InputEventScreenTouch
@@ -293,6 +265,7 @@ func _physics_process(delta: float) -> void:
 	# Distance beside the clock, the same figure the death screen and Stats report.
 	if game_manager != null:
 		timer_label.text = "%s   %s" % [GameManager.format_distance(game_manager.get_run_distance_meters()), format_elapsed_time(elapsed_time)]
+		game_manager.refresh_mission_ui()
 	else:
 		timer_label.text = format_elapsed_time(elapsed_time)
 

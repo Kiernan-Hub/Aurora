@@ -67,6 +67,10 @@ const ACHIEVEMENTS: Dictionary = {
 		"name": "Glacier Miles",
 		"hint": "Ride 100 km in all",
 	},
+	"really": {
+		"name": "Really?",
+		"hint": "The coins are down here",
+	},
 }
 
 const STILL_WATER: String = "still_water"
@@ -75,6 +79,9 @@ const FIRST_KILOMETRE: String = "first_kilometre"
 const LONG_WAY_DOWN: String = "long_way_down"
 const GOLDEN_RUN: String = "golden_run"
 const GLACIER_MILES: String = "glacier_miles"
+const REALLY: String = "really"
+const REALLY_HELD_SECONDS: float = 6.0
+const REALLY_CLIMB_PIXELS: float = 3000.0
 # The thresholds, in the units GameManager.run_recorded carries (metres, coins).
 const FIRST_KILOMETRE_METERS: float = 1000.0
 const LONG_WAY_DOWN_METERS: float = 5000.0
@@ -109,6 +116,9 @@ func _ready() -> void:
 
 # EVERY ACHIEVEMENT TRIGGER IN THE GAME, in one function on purpose. See the header.
 func connect_triggers() -> void:
+	var player: Node = get_node_or_null("../Player")
+	if player != null and player.has_signal(&"glide_finished"):
+		player.connect(&"glide_finished", _on_glide_finished)
 	lake_director = get_node_or_null(lake_director_path) as FrozenLakeDirector
 	if lake_director == null:
 		push_warning("AchievementManager: no FrozenLakeDirector at %s; 'Still Water' cannot be earned." % lake_director_path)
@@ -140,6 +150,14 @@ func _on_lake_finished(_total_lakes: int) -> void:
 	# once. Counting would also re-fire it for anyone whose count is reset while their
 	# achievements are not, and mis-fire if a lake is ever completed without incrementing.
 	grant(STILL_WATER)
+
+
+func _on_glide_finished(held_seconds: float, climbed_pixels: float) -> void:
+	# Player also runs in physics probes. Those must never write the real save.
+	if DisplayServer.get_name() == "headless":
+		return
+	if held_seconds >= REALLY_HELD_SECONDS and climbed_pixels >= REALLY_CLIMB_PIXELS:
+		grant(REALLY)
 
 
 func _on_aurora_finished(_total_auroras: int) -> void:
@@ -186,8 +204,15 @@ func grant(id: String) -> void:
 	if services.save_store.achievements.get(id, false):
 		return
 
+	var had_entry: bool = services.save_store.achievements.has(id)
 	services.save_store.achievements[id] = true
-	services.save_store.save_to_disk()
+	if not services.save_store.save_to_disk():
+		# Do not toast or suppress a future retry for an achievement absent on disk.
+		if had_entry:
+			services.save_store.achievements[id] = false
+		else:
+			services.save_store.achievements.erase(id)
+		return
 
 	var display_name: String = String(ACHIEVEMENTS[id].get("name", id))
 	achievement_granted.emit(id, display_name)
@@ -195,8 +220,8 @@ func grant(id: String) -> void:
 
 # ================= A TRAP FOR WHOEVER ADDS THE NEXT TRIGGER =================
 #
-# THIS FILE HAS NO HEADLESS GUARD, AND THAT IS ONLY SAFE BECAUSE EVERY TRIGGER IS HEADLESS-PROOF AT
-# ITS SOURCE: the two set pieces come from directors that hard-skip headless, and run_recorded is
+# The glide callback has its own local headless guard. Other triggers are HEADLESS-PROOF AT
+# THEIR SOURCE: the two set pieces come from directors that hard-skip headless, and run_recorded is
 # emitted only inside GameManager's non-headless banking branch. The directors' maintained probes
 # inject an in-memory SaveStore before driving either completion signal explicitly. There is also
 # no per-frame work here to switch off.

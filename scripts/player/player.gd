@@ -183,6 +183,9 @@ var has_shield: bool = false
 # Timed effect, driven entirely by PowerupManager.start_glide()/end_glide(); see the
 # airborne branch of _physics_process for what it actually does.
 var is_glide_active: bool = false
+signal glide_finished(held_ascent_seconds: float, climbed_pixels: float)
+var glide_held_ascent_seconds: float = 0.0
+var glide_held_climb: float = 0.0
 var is_aurora_flight_active: bool = false
 # Holds input/rotation neutral during the short gravity handoff after the event target reaches
 # the floor. It clears on contact, preventing a held tap from becoming a buffered jump or trick.
@@ -314,6 +317,9 @@ func _ready() -> void:
 	if not is_in_group("player"):
 		add_to_group("player")
 	speed_manager = SPEED_MANAGER_SCRIPT.new() as RefCounted
+	# Dev preview skips only the speed ramp; encounter clocks still start at zero.
+	if DevMode.is_available() and DevMode.is_on():
+		speed_manager.current_speed = SpeedManager.MAX_SPEED
 	capsule_half_height = get_capsule_half_height()
 	floor_snap_length = FLOOR_SNAP_LENGTH
 	floor_stop_on_slope = false
@@ -553,6 +559,7 @@ func _physics_process(delta: float) -> void:
 	# Measured after the snap deliberately: the snap is part of this frame's motion,
 	# and the stall/stuck watchdogs downstream must see where the body actually ended.
 	last_physics_displacement = global_position - position_before_move
+	track_glide_ascent(delta, last_physics_displacement.y)
 	# Before the watchdogs, so a player who has just died in a chasm never enters one.
 	update_fall_death()
 	update_glide_landing_shield(delta)
@@ -1113,6 +1120,8 @@ func play_flight_effect(duration: float) -> void:
 # velocity would read as a stutter, not a liftoff.
 func start_glide() -> void:
 	is_glide_active = true
+	glide_held_ascent_seconds = 0.0
+	glide_held_climb = 0.0
 	if is_on_floor() and not is_jump_ascending:
 		velocity.y = GLIDE_LAUNCH_VELOCITY
 		is_jump_ascending = true
@@ -1121,7 +1130,23 @@ func start_glide() -> void:
 
 
 func end_glide() -> void:
+	if not is_glide_active:
+		return
 	is_glide_active = false
+	glide_finished.emit(glide_held_ascent_seconds, glide_held_climb)
+
+
+# Observe actual movement within one uninterrupted upward hold. Per-tick displacement
+# excludes world rebases; absolute world Y would mistake a rebase for a huge climb.
+func track_glide_ascent(delta: float, displacement_y: float) -> void:
+	if not is_glide_active:
+		return
+	if not is_glide_input_held() or displacement_y >= 0.0:
+		glide_held_ascent_seconds = 0.0
+		glide_held_climb = 0.0
+		return
+	glide_held_ascent_seconds += delta
+	glide_held_climb -= displacement_y
 
 
 # Reads false while input is suppressed, so no airborne trick spin can be started on the lake

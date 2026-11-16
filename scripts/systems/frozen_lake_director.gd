@@ -4,7 +4,7 @@ class_name FrozenLakeDirector
 
 # Schedules and runs the frozen lake set piece: roughly every 20 minutes of CUMULATIVE
 # playtime, the player reaches a 7500px sheet of dead-flat ice, crosses it in ~10 seconds
-# with every input ignored, and nothing spawns on it. The first one earns an achievement.
+# with jumps suppressed until the exit fade, and no pickups/hazards on it. First crossing earns an achievement.
 #
 # Division of labour. This file owns WHEN and the state machine; TerrainGenerator owns the
 # geometry (arm_lake / is_lake_world_x), the six spawners own their own suppression, Player
@@ -58,6 +58,9 @@ const LAKE_MIN_RUN_TIME: float = 130.0
 # is a little over one screen: by the time the look is fully on, there is nothing but lake on
 # screen to apply it to. It also reads as the surface settling, which is free.
 const LAKE_LOOK_FADE_DISTANCE: float = 1500.0
+# Hand controls back on the final flat stretch, before normal terrain/hazards arrive.
+# Player runs before this director: waiting for end_x drops a tap on the exit tick.
+const EXIT_CONTROL_DISTANCE: float = LAKE_LOOK_FADE_DISTANCE
 
 # Playtest override for LAKE_INTERVAL_SECONDS. Any value > 0 replaces it, so a lake can be
 # reached in seconds instead of twenty minutes.
@@ -141,6 +144,7 @@ func _physics_process(_delta: float) -> void:
 			if player.global_position.x >= lake_start_x:
 				begin_lake()
 		Phase.ACTIVE:
+			update_jump_lock()
 			# Pushed every frame rather than at entry and exit: it is a ramp, not a state, and
 			# set_lake_ice_blend() early-outs on an unchanged value, so the middle of a crossing
 			# costs one float compare.
@@ -231,7 +235,7 @@ func try_arm() -> void:
 	phase = Phase.ARMED
 
 
-# Locks input and nothing else. Deliberately does NOT force-end a speed boost or a glide:
+# Locks input through the middle, returning control on the final flat. Does not force-end a boost or glide:
 # the lake is flat, void-free and obstacle-free, so a boost across it is safe by
 # construction -- it is the same grounded skim that already carries a boost over a chasm,
 # on real ground. And because there is no void, PowerupManager.can_end_effect() lets both
@@ -240,8 +244,12 @@ func try_arm() -> void:
 # to save at most 3s of a 10s set piece.
 func begin_lake() -> void:
 	phase = Phase.ACTIVE
-	player.is_jump_suppressed = true
+	update_jump_lock()
 	lake_started.emit()
+
+
+func update_jump_lock() -> void:
+	player.is_jump_suppressed = player.global_position.x < lake_end_x - EXIT_CONTROL_DISTANCE
 
 
 func finish_lake() -> void:

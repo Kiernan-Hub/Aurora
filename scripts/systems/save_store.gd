@@ -14,7 +14,7 @@ const SAVE_PATH: String = "user://save.dat"
 # startup it is the debris of a write that failed after the payload landed but before the
 # rename, and SAVE_PATH is still the last good save.
 const TEMP_SAVE_PATH: String = "user://save.dat.tmp"
-const CURRENT_VERSION: int = 3
+const CURRENT_VERSION: int = 5
 const MAX_SAVED_COUNT: float = 9007199254740992.0
 
 const DEFAULT_MUSIC_VOLUME: float = 0.8
@@ -70,6 +70,42 @@ var selected_skin: String = "kid"
 # The landing-glint colour, a Skins.SPARKLES id. A preference too; whether it is unlocked is read
 # from achievements, so a reset relocks it without touching this.
 var selected_sparkle: String = "ice"
+
+
+# v4: permanent chest finds and independent outfit/trail preferences. Unknown future IDs are
+# preserved; catalogue/ownership validation happens when equipping, not when reading a save.
+var cosmetics: Dictionary[String, bool] = {}
+var selected_cosmetics: Dictionary[String, String] = {}
+
+# v5: the active stable-ID mission. Full progress implicitly holds its pending chest until
+# the next death banks it. This avoids a separate inventory or per-frame disk writes.
+var mission_id: String = "coins"
+var mission_progress: float = 0.0
+var missions_completed: int = 0
+# A statistic, like best_distance_meters: old saves honestly start at zero.
+var best_melt_seconds: float = 0.0
+
+
+func bank_bonus(coins: int, rewards: Array[Dictionary], survived_seconds: float = 0.0) -> bool:
+	# Bonus results are independent of the suspended run's score. A single atomic
+	# write carries wallet and item ownership; rollback permits a safe retry.
+	var old_wallet: int = coin_wallet
+	var old_total: int = total_coins_earned
+	var old_best: float = best_melt_seconds
+	var old_levels: Dictionary[String, int] = upgrade_levels.duplicate()
+	var old_cosmetics: Dictionary[String, bool] = cosmetics.duplicate()
+	coin_wallet += maxi(coins, 0)
+	total_coins_earned += maxi(coins, 0)
+	best_melt_seconds = maxf(best_melt_seconds, survived_seconds)
+	grant_chest_rewards(rewards)
+	if save_to_disk():
+		return true
+	coin_wallet = old_wallet
+	total_coins_earned = old_total
+	best_melt_seconds = old_best
+	upgrade_levels = old_levels
+	cosmetics = old_cosmetics
+	return false
 
 
 # Not named load(): that would shadow GDScript's global load() inside this class.
@@ -153,6 +189,25 @@ func load_from_data(data: Dictionary) -> void:
 			if typeof(stored_achievements[achievement_id]) == TYPE_BOOL:
 				achievements[String(achievement_id)] = stored_achievements[achievement_id]
 
+	if version >= 4:
+		cosmetics.clear()
+		selected_cosmetics.clear()
+		var stored_cosmetics: Dictionary = _read_dictionary(data, "cosmetics")
+		for id: Variant in stored_cosmetics:
+			if typeof(stored_cosmetics[id]) == TYPE_BOOL:
+				cosmetics[String(id)] = stored_cosmetics[id]
+		var stored_picks: Dictionary = _read_dictionary(data, "selected_cosmetics")
+		for kind: Variant in stored_picks:
+			if typeof(stored_picks[kind]) == TYPE_STRING:
+				selected_cosmetics[String(kind)] = stored_picks[kind]
+
+	if version >= 5:
+		var stored_mission: Variant = data.get("mission_id", "coins")
+		mission_id = stored_mission if typeof(stored_mission) == TYPE_STRING else "coins"
+		mission_progress = maxf(_read_number(data, "mission_progress", 0.0), 0.0)
+		missions_completed = _read_count(data, "missions_completed")
+		best_melt_seconds = maxf(_read_number(data, "best_melt_seconds", 0.0), 0.0)
+
 
 # FIELD-BY-FIELD VALIDATION, NEVER A CAST. A cast of the wrong type (`[] as Dictionary`,
 # `int([])`) aborts load_from_disk halfway, so one bad field used to skip every field after
@@ -201,28 +256,7 @@ func save_to_disk() -> bool:
 		push_error("SaveStore failed to open %s for writing." % TEMP_SAVE_PATH)
 		return false
 
-	var payload: Dictionary = {
-		"version": CURRENT_VERSION,
-		"best_score": best_score,
-		"best_time": best_time,
-		"coin_wallet": coin_wallet,
-		"upgrades": upgrade_levels,
-		"total_playtime_seconds": total_playtime_seconds,
-		"frozen_lake_count": frozen_lake_count,
-		"aurora_count": aurora_count,
-		"next_aurora_due_seconds": next_aurora_due_seconds,
-		"total_runs": total_runs,
-		"total_coins_earned": total_coins_earned,
-		"total_distance_meters": total_distance_meters,
-		"best_distance_meters": best_distance_meters,
-		"selected_skin": selected_skin,
-		"selected_sparkle": selected_sparkle,
-		"achievements": achievements,
-		"settings": {
-			"music_volume": music_volume,
-			"sfx_volume": sfx_volume,
-		},
-	}
+	var payload: Dictionary = to_data()
 	# The rename only protects the SWAP, not the payload: a short write (full disk, a killed
 	# write) renamed over the live save is the exact truncation the temp file exists to stop.
 	# So a failed store or flush abandons the save and leaves the live file alone.
@@ -244,6 +278,37 @@ func save_to_disk() -> bool:
 		return false
 	return true
 
+
+# The actual disk payload, also used to verify JSON round-trips without touching user://.
+func to_data() -> Dictionary:
+	return {
+		"version": CURRENT_VERSION,
+		"best_score": best_score,
+		"best_time": best_time,
+		"coin_wallet": coin_wallet,
+		"upgrades": upgrade_levels,
+		"total_playtime_seconds": total_playtime_seconds,
+		"frozen_lake_count": frozen_lake_count,
+		"aurora_count": aurora_count,
+		"next_aurora_due_seconds": next_aurora_due_seconds,
+		"total_runs": total_runs,
+		"total_coins_earned": total_coins_earned,
+		"total_distance_meters": total_distance_meters,
+		"best_distance_meters": best_distance_meters,
+		"selected_skin": selected_skin,
+		"selected_sparkle": selected_sparkle,
+		"cosmetics": cosmetics,
+		"selected_cosmetics": selected_cosmetics,
+		"mission_id": mission_id,
+		"mission_progress": mission_progress,
+		"missions_completed": missions_completed,
+		"best_melt_seconds": best_melt_seconds,
+		"achievements": achievements,
+		"settings": {
+			"music_volume": music_volume,
+			"sfx_volume": sfx_volume,
+		},
+	}
 
 # Returns true when this run beat the stored best, so the caller can show "New Best!".
 # Time is recorded alongside but does not by itself qualify as a new best -- coins are
@@ -277,6 +342,9 @@ func grant_chest_rewards(rewards: Array[Dictionary]) -> void:
 		total_coins_earned += maxi(int(reward["coins"]), 0)
 		if reward["skin"] != "":
 			upgrade_levels[Skins.get_track_id(reward["skin"])] = 1
+		var item_id: String = reward.get("cosmetic", "")
+		if not Cosmetics.get_item(item_id).is_empty():
+			cosmetics[item_id] = true
 
 
 # Wipes every progress field back to a fresh save -- best score, wallet, upgrade
@@ -303,4 +371,10 @@ func reset_progress() -> void:
 	total_distance_meters = 0.0
 	best_distance_meters = 0.0
 	achievements.clear()
+	cosmetics.clear()
+	selected_cosmetics.clear()
+	mission_id = "coins"
+	mission_progress = 0.0
+	missions_completed = 0
+	best_melt_seconds = 0.0
 	save_to_disk()

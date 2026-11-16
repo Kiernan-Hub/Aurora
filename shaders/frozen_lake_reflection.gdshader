@@ -112,6 +112,13 @@ uniform float band_fade_depth : hint_range(0.02, 1.0) = 0.34;
 // nothing here may key on SCREEN_UV.x alone.
 uniform float world_left_x = 0.0;
 uniform float world_width = 1382.0;
+// The full-screen quad is required by Mobile's backbuffer path, but its painted
+// surface belongs only to this lake. Fading alone drew a second flat ground over hills.
+// Aurora shares this shader and has its own protected surface: clipping is opt-in.
+uniform bool clip_to_lake = false;
+uniform float lake_start_x = 0.0;
+uniform float lake_end_x = 0.0;
+uniform float shore_edge_softness = 128.0;
 
 // --- Glare and ripple ------------------------------------------------------------------------
 // Broad soft bands of brightening, the "glossy" part. Static in depth and drifting sideways with
@@ -167,7 +174,8 @@ vec3 sample_mirror(vec2 uv, float spread) {
 void fragment() {
 	// Distance BELOW the waterline, in screen fractions. Negative above it.
 	float depth = SCREEN_UV.y - waterline;
-	if (depth <= 0.0) {
+	float world_x = world_left_x + SCREEN_UV.x * world_width;
+	if (depth <= 0.0 || (clip_to_lake && (world_x <= lake_start_x || world_x >= lake_end_x))) {
 		// Above the shore this item contributes nothing at all. Alpha 0 rather than discard: the
 		// backbuffer copy has already happened either way, and a uniform blend keeps the whole
 		// rect on one path.
@@ -179,7 +187,6 @@ void fragment() {
 
 		// The world x this pixel sits over. Every x-varying feature below keys on this and never
 		// on SCREEN_UV.x -- see the header.
-		float world_x = world_left_x + SCREEN_UV.x * world_width;
 
 		// THE sqrt IS THE PERSPECTIVE. Phase advancing as sqrt(depth) rather than depth means the
 		// wavelength GROWS toward the bottom of the frame while the amplitude grows with it -- so
@@ -233,6 +240,11 @@ void fragment() {
 
 		// Opaque across the middle of a crossing: at lake_amount 1 this IS the lake, and nothing
 		// the terrain drew below the waterline shows through it.
-		COLOR = vec4(clamp(surface, vec3(0.0), vec3(1.0)), lake_amount);
+		float shore_mask = 1.0;
+		if (clip_to_lake) {
+			shore_mask = smoothstep(lake_start_x, lake_start_x + shore_edge_softness, world_x)
+					* (1.0 - smoothstep(lake_end_x - shore_edge_softness, lake_end_x, world_x));
+		}
+		COLOR = vec4(clamp(surface, vec3(0.0), vec3(1.0)), lake_amount * shore_mask);
 	}
 }

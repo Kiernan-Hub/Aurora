@@ -37,7 +37,7 @@ class_name RareCoinSpawner
 
 signal coin_collected(value: int)
 # A chest was picked up (see CHEST_SCENE). GameManager counts it and opens it on the death screen.
-signal chest_collected
+signal chest_collected(tier: int)
 
 # Same plain-var (never @export) debug knob as ObstacleSpawner's -- see its note. Nothing in
 # the harness set flips this today: a rare coin is an Area2D on layer 2 that only reacts to
@@ -47,6 +47,8 @@ var debug_spawning_disabled: bool = false
 # Multiplies every wait in this file's two schedules. Only DevMode sets it;
 # shipping_values_check holds it at 1.
 var debug_interval_scale: float = 1.0
+# DevMode previews all three designs without waiting for a 5% roll.
+var debug_cycle_chest_tiers: bool = false
 
 const RARE_COIN_SCENE: PackedScene = preload("res://scenes/pickups/rare_coin.tscn")
 
@@ -65,6 +67,7 @@ const CHEST_INTERVAL_MIN: float = 80.0
 const CHEST_INTERVAL_MAX: float = 120.0
 # Added to the index so the chest schedule is a different stretch of the same hash sequence.
 const CHEST_HASH_INDEX_OFFSET: int = 1000003
+const CHEST_TIER_HASH_INDEX_OFFSET: int = 2000009
 
 # THE NUMBER THIS WHOLE FILE EXISTS FOR. Height above the terrain surface, in the same local-y
 # units get_terrain_height() returns, and it is derived, not tasted:
@@ -214,10 +217,13 @@ func try_spawn_rare_coin(world_x: float) -> bool:
 
 
 func try_spawn_chest(world_x: float) -> bool:
-	return try_spawn(world_x, CHEST_SCENE, CHEST_CLEARANCE, _on_chest_collected)
+	var tier: int = ChestTypes.from_roll(get_coin_hash(CHEST_TIER_HASH_INDEX_OFFSET + next_chest_index))
+	if debug_cycle_chest_tiers:
+		tier = posmod(terrain_generator.session_seed + next_chest_index, ChestTypes.TYPES.size())
+	return try_spawn(world_x, CHEST_SCENE, CHEST_CLEARANCE, _on_chest_collected.bind(tier), tier)
 
 
-func try_spawn(world_x: float, scene: PackedScene, clearance: float, on_collected: Callable) -> bool:
+func try_spawn(world_x: float, scene: PackedScene, clearance: float, on_collected: Callable, chest_tier: int = -1) -> bool:
 	if absf(terrain_generator.get_slope_angle_at_x(world_x)) > MAX_SLOPE_ANGLE:
 		return false
 	if not is_flat_over_span(world_x - FLAT_TAKEOFF_SPAN, world_x):
@@ -239,6 +245,8 @@ func try_spawn(world_x: float, scene: PackedScene, clearance: float, on_collecte
 
 	var local_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - clearance
 	var coin: Coin = scene.instantiate() as Coin
+	if chest_tier >= 0:
+		(coin as ChestPickup).set_tier(chest_tier)
 	coin.position = Vector2(world_x, local_y)
 	coin.collected.connect(on_collected)
 	add_child(coin)
@@ -294,5 +302,5 @@ func _on_coin_collected(value: int) -> void:
 	coin_collected.emit(value)
 
 
-func _on_chest_collected(_value: int) -> void:
-	chest_collected.emit()
+func _on_chest_collected(_value: int, tier: int = ChestTypes.Tier.NORMAL) -> void:
+	chest_collected.emit(tier)

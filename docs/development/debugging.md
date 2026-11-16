@@ -65,6 +65,17 @@ developer's save for a verdict and never writes it — copy that pattern for any
 buys, resets or leaves PLAYING. Mutation-tested: dropping the death-screen refresh or the reload's
 phase banking fails exactly the matching case.
 
+The rendered UI checks run separately with an in-memory save:
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --log-file /tmp/aura-ui.log --path . --script res://scripts/debug/regression_probe.gd -- --ui-only
+```
+
+They cover native touch and mouse Pause/Resume, dev-mode initial speed, tapping chests, and
+cosmetic equip/rendering, and menu bounds at 16:9/phone aspect ratios. Test audio uses Master
+-24 dB in memory; saved volumes are untouched.
+`root.push_input` delivers both Main's input and GUI; `Input.parse_input_event` alone did not.
+
 ### `export_content` — what actually reaches a device
 
 The last entry is not a Godot gate. It exports a pack headless
@@ -985,3 +996,45 @@ Owner's phone: Galaxy S26 Ultra (`SM-S948U`, serial `R3GL20AE8BK`), 1440×3120 @
   13-start miss). Compare it with the frame timing above before optimising: no result-identical
   speedup exists (running the cheap clauses first measured ~no change), so any real one changes
   which placements are accepted and must re-pass `check_placed_pattern_fairness()`.
+
+## Tier and mission regression (2026-11-15)
+
+`regression_probe.gd` covers v4→v5 migration, malformed mission data, pending-reward JSON,
+claim-once behavior, Slam eligibility and reset. `chest_tiers` checks exact 70/25/5 distribution,
+loot guarantees/exhaustion, unique finds and actual spawn→Coin collection→death tier routing.
+With a renderer, `--ui-only` runs seven cases including pause/resume delta banking, pending
+mission reward across scene reload, exactly one death write/reward and all four goal counters.
+Resume itself flushes settings; the no-extra-banking assertion starts after that existing write.
+Mutation tests in an isolated copy remove the banked delta or bind every pickup tier to Normal;
+each must fail its relevant assertion. Use an injected MemorySaveStore, never real progress.
+
+All desktop rendering tests use Master -24 dB in memory or `--audio-driver Dummy`. Restricted
+macOS launches can abort in `_RegisterApplication` before Godot loads a scene; render using the
+permitted desktop launch path. Every invocation still needs `--log-file /tmp/...`.
+
+## Bonus round and Really? (2026-11-15)
+
+Headless regression has17 cases: MeltRound tests no-input loss, three generous jump windows
+through Aurora rewards, inevitable loss, bounded platform count and no air jump. Bonus banking
+checks failed-write rollback, retry, best-time JSON/validation/reset. The glide case rejects short
+and interrupted holds, exercises Android's held-touch path and proves headless emits no save.
+Rendered --ui-only now has9 cases, including failed achievement save/retry and a scheduled12s
+portal placed through the real spawner and collected by Area2D overlap. It checks one portal,
+normal-world pose/clock freeze, pause/focus/Resume, once-only reward and exact return pose.
+Use injected MemorySaveStore throughout. Dev mode attempts a portal at12s but legal placement
+may defer it. ShippingValues protects the default0 override (49 knobs total).
+
+## Still Water exit regression (2026-11-15)
+
+`lake_exit_approach` is the 18th headless regression case: a flat mock shore isolates lake
+exclusion from slope checks. It rejects a dry spike with lake takeoff and accepts a fully dry
+approach at 750/1000px/s. `lake_exit` is the 10th rendered UI case. It forces real lake geometry,
+compares reflection-on/off pixels beyond the far shore at 1152x648 and 1404x648, sends real touch
+and keyboard exit presses, and verifies one completion/unlock. The old code failed both visual
+and input checks; the old placement rule failed the isolated approach check. `--lake-capture`
+saves the paired QA frames to /tmp. All saves use the probe's MemorySaveStore. The headless
+lake-suppression gate alone cannot exercise the live director, reflection or input lifecycle.
+
+`sky_layer_check` now pins the same terrain seed as the scene regressions. Previously a random
+ice patch could move the marginal mauve-haze hue measurement between23 and24/255 between runs;
+the fixed case makes the visual A/B repeatable without changing palettes or its24/255 floor.

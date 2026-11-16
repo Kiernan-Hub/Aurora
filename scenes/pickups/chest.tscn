@@ -1,13 +1,14 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
-[ext_resource type="Script" path="res://scripts/pickups/coin.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/pickups/chest.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/chest/closed.png" id="2_chest"]
 
 [sub_resource type="CircleShape2D" id="1"]
 radius = 16.0
 
 [sub_resource type="Gradient" id="2"]
 offsets = PackedFloat32Array(0, 0.45, 1)
-colors = PackedColorArray(1, 0.92, 0.6, 0.85, 1, 0.8, 0.35, 0.3, 1, 0.75, 0.3, 0)
+colors = PackedColorArray(1, 1, 1, 0.85, 1, 1, 1, 0.3, 1, 1, 1, 0)
 
 [sub_resource type="GradientTexture2D" id="3"]
 gradient = SubResource("2")
@@ -36,22 +37,7 @@ shape = SubResource("1")
 material = SubResource("4")
 texture = SubResource("3")
 
-[node name="Body" type="Polygon2D" parent="Visual"]
-color = Color(0.78, 0.9, 1, 1)
-polygon = PackedVector2Array(-15, -6, 15, -6, 15, 12, -15, 12)
-
-[node name="Shade" type="Polygon2D" parent="Visual"]
-color = Color(0.6, 0.76, 0.94, 1)
-polygon = PackedVector2Array(3, -6, 15, -6, 15, 12, 9, 12)
-
-[node name="Lid" type="Polygon2D" parent="Visual"]
-color = Color(0.95, 0.98, 1, 1)
-polygon = PackedVector2Array(-15, -6, -9, -14, 9, -14, 15, -6)
-
-[node name="Band" type="Polygon2D" parent="Visual"]
-color = Color(1, 0.8, 0.32, 1)
-polygon = PackedVector2Array(-15, -7, 15, -7, 15, -3, -15, -3)
-
-[node name="Latch" type="Polygon2D" parent="Visual"]
-color = Color(1, 0.9, 0.55, 1)
-polygon = PackedVector2Array(-3, -9, 3, -9, 3, 1, 0, 4, -3, 1)
+[node name="Art" type="Sprite2D" parent="Visual"]
+scale = Vector2(0.1875, 0.1875)
+texture = ExtResource("2_chest")
+offset = Vector2(0, -26)

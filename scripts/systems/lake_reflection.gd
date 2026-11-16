@@ -87,6 +87,8 @@ func _ready() -> void:
 
 	material_ref = ShaderMaterial.new()
 	material_ref.shader = REFLECTION_SHADER
+	# Aurora reuses the shader; only this finite lake opts into shore clipping.
+	material_ref.set_shader_parameter("clip_to_lake", true)
 	material = material_ref
 
 
@@ -112,7 +114,10 @@ func _physics_process(delta: float) -> void:
 	# The waterline is a WORLD y read through get_surface_world_y(), which adds the generator's
 	# own position -- so world rebasing is already accounted for and this needs no knowledge of
 	# it. On the lake the surface is dead flat, so the player's x is as good as any other.
-	var surface_world_y: float = terrain_generator.get_surface_world_y(player.global_position.x)
+	# Fixed on the lake, even on the last tick when Player has crossed onto a hill
+	# but the director has not run yet. The horizontal mask clips at both shores.
+	var lake_middle_x: float = (lake_director.lake_start_x + lake_director.lake_end_x) * 0.5
+	var surface_world_y: float = terrain_generator.get_surface_world_y(lake_middle_x)
 	var view_top_y: float = camera.global_position.y - half_height
 	var waterline: float = (surface_world_y - view_top_y) / maxf(half_height * 2.0, 1.0)
 
@@ -133,6 +138,8 @@ func _physics_process(delta: float) -> void:
 	# world slid past underneath, which reads as dirt on the lens.
 	material_ref.set_shader_parameter("world_left_x", camera.global_position.x - view_world_size.x * 0.5)
 	material_ref.set_shader_parameter("world_width", view_world_size.x)
+	material_ref.set_shader_parameter("lake_start_x", lake_director.lake_start_x)
+	material_ref.set_shader_parameter("lake_end_x", lake_director.lake_end_x)
 
 	material_ref.set_shader_parameter("waterline", waterline)
 	# The director's ramp, the same one the ice's colour rides, so the surface arrives and leaves

@@ -16,6 +16,7 @@
 [ext_resource type="Script" path="res://scripts/systems/glide_coin_spawner.gd" id="16_glide_coins"]
 [ext_resource type="Script" path="res://scripts/systems/biome_director.gd" id="17_biome"]
 [ext_resource type="Script" path="res://scripts/systems/rare_coin_spawner.gd" id="18_rare_coins"]
+[ext_resource type="Script" path="res://scripts/systems/melt_director.gd" id="40_melt"]
 [ext_resource type="Script" path="res://scripts/systems/frozen_lake_director.gd" id="19_frozen_lake"]
 [ext_resource type="Script" path="res://scripts/systems/lake_reflection.gd" id="20_lake_reflection"]
 [ext_resource type="Script" path="res://scripts/systems/skate_spray.gd" id="21_skate_spray"]
@@ -33,6 +34,9 @@
 [ext_resource type="Script" path="res://scripts/systems/aurora_streaks.gd" id="34_aurora_streaks"]
 [ext_resource type="Script" path="res://scripts/systems/landing_burst.gd" id="35_landing_burst"]
 [ext_resource type="Theme" path="res://assets/ui/aura_theme.tres" id="36_ui_theme"]
+
+[ext_resource type="Font" path="res://assets/ui/fonts/display.tres" id="37_display_font"]
+[ext_resource type="Texture2D" path="res://assets/ui/icons/play.svg" id="38_play_icon"]
 
 [node name="Main" type="Node2D" unique_id=564781199]
 script = ExtResource("3")
@@ -194,6 +198,9 @@ script = ExtResource("23_achievements")
 [node name="SfxPlayer" type="Node" parent="." unique_id=1754029316]
 script = ExtResource("11_sfx_player")
 
+[node name="MeltDirector" type="Node" parent="."]
+script = ExtResource("40_melt")
+
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=210075013]
 
 [node name="StartScreen" type="Control" parent="CanvasLayer" unique_id=1062444047]
@@ -223,7 +230,8 @@ alignment = 1
 
 [node name="TitleLabel" type="Label" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer" unique_id=87483162]
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
+theme_override_fonts/font = ExtResource("37_display_font")
+theme_override_font_sizes/font_size = 56
 text = "AURA"
 horizontal_alignment = 1
 
@@ -247,6 +255,9 @@ alignment = 1
 [node name="StartButton" type="Button" parent="CanvasLayer/StartScreen/CenterContainer/VBoxContainer/MenuButtons" unique_id=1810347507]
 custom_minimum_size = Vector2(100, 44)
 layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+icon = ExtResource("38_play_icon")
+theme_override_constants/icon_max_width = 16
 theme_override_font_sizes/font_size = 16
 text = "Start"
 
@@ -296,6 +307,7 @@ alignment = 1
 
 [node name="TitleLabel" type="Label" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer" unique_id=841770344]
 layout_mode = 2
+theme_override_fonts/font = ExtResource("37_display_font")
 theme_override_font_sizes/font_size = 32
 text = "You Died"
 horizontal_alignment = 1
@@ -313,6 +325,9 @@ text = "Upgrades"
 
 [node name="RestartButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer" unique_id=146141358]
 layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+icon = ExtResource("38_play_icon")
+theme_override_constants/icon_max_width = 16
 text = "Restart"
 
 [node name="DeathHomeButton" type="Button" parent="CanvasLayer/DeathScreen/CenterContainer/VBoxContainer" unique_id=620492131]
@@ -415,12 +430,16 @@ alignment = 1
 
 [node name="TitleLabel" type="Label" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer" unique_id=838057633]
 layout_mode = 2
+theme_override_fonts/font = ExtResource("37_display_font")
 theme_override_font_sizes/font_size = 32
 text = "Paused"
 horizontal_alignment = 1
 
 [node name="ResumeButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer" unique_id=1712208502]
 layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+icon = ExtResource("38_play_icon")
+theme_override_constants/icon_max_width = 16
 text = "Resume"
 
 [node name="PauseRestartButton" type="Button" parent="CanvasLayer/PauseScreen/CenterContainer/VBoxContainer" unique_id=1294793863]
@@ -484,6 +503,7 @@ alignment = 1
 
 [node name="TitleLabel" type="Label" parent="CanvasLayer/ShopScreen/CenterContainer/VBoxContainer" unique_id=1602399790]
 layout_mode = 2
+theme_override_fonts/font = ExtResource("37_display_font")
 theme_override_font_sizes/font_size = 32
 text = "Shop"
 horizontal_alignment = 1
@@ -536,6 +556,7 @@ alignment = 1
 
 [node name="TitleLabel" type="Label" parent="CanvasLayer/StatsScreen/CenterContainer/VBoxContainer"]
 layout_mode = 2
+theme_override_fonts/font = ExtResource("37_display_font")
 theme_override_font_sizes/font_size = 32
 text = "Stats"
 horizontal_alignment = 1
@@ -592,8 +613,9 @@ alignment = 1
 
 [node name="TitleLabel" type="Label" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]
 layout_mode = 2
+theme_override_fonts/font = ExtResource("37_display_font")
 theme_override_font_sizes/font_size = 32
-text = "Skaters"
+text = "Skaters & collection"
 horizontal_alignment = 1
 
 [node name="SkinsRow" type="HBoxContainer" parent="CanvasLayer/SkinsScreen/CenterContainer/VBoxContainer"]

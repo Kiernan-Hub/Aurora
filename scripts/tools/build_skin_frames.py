@@ -30,6 +30,8 @@ SOFT_ALPHA_FLOOR = 16
 # The bottom share of a source ignored when finding the gaps between frames: a generated ice line
 # often runs unbroken under all four.
 FLOOR_BAND = 0.08
+# Legacy rows remain for previews/compatibility. SkaterRig continuously animates
+# their rest-pose artwork at runtime instead of playing these four poses.
 FPS = 10.0
 # A generation that came back on SOLID BLACK instead of real alpha (it happens; so does a painted
 # checkerboard, which cannot be keyed -- regenerate that one) is keyed: the black connected to the

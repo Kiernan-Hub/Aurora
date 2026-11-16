@@ -13,13 +13,16 @@ class_name DevMode
 # starts its run already holding the dev value.
 #
 # WHAT IT CHANGES (the values below are the whole feature; tune them here):
+#   speed             starts at SpeedManager.MAX_SPEED, with the run clock still at zero
 #   wallet            topped up to WALLET, IN THE REAL SAVE. Reset Progress in the shop undoes it.
 #   biomes            a whole biome every BIOME_SECONDS instead of every ~100s of travel
 #   powerups          INTERVAL_SCALE of the usual wait
+#   chest tiers       cycle Normal / Rare / Aurora for a quick preview
 #   chests, rare coin PICKUP_INTERVAL_SCALE of the usual wait. Measured: a chest about every 40s,
 #                     because each still waits for a legal spot (flat take-off, clear of hazards)
 #   frozen lake       every LAKE_INTERVAL seconds of play, from LAKE_MIN_RUN_TIME into a run
 #   aurora            AURORA_TIME seconds into each run, day or night
+#   The Melt          portal from MELT_TIME seconds, still only in a legal pickup slot
 # and, with the second switch (CAN'T DIE): hazards pass through the player and a fall into a void
 # puts them back on the far side, so the late tiers and every chasm can be reached in one run.
 const FLAG_PATH: String = "user://dev_mode"
@@ -30,6 +33,7 @@ const PICKUP_INTERVAL_SCALE: float = 0.15
 const LAKE_INTERVAL: float = 180.0
 const LAKE_MIN_RUN_TIME: float = 45.0
 const AURORA_TIME: float = 100.0
+const MELT_TIME: float = 12.0
 
 static var is_loaded: bool = false
 static var is_enabled: bool = false
@@ -91,6 +95,7 @@ static func apply(main: Node) -> void:
 	var rare_coin_spawner: RareCoinSpawner = main.get_node_or_null("TerrainGenerator/RareCoinSpawner") as RareCoinSpawner
 	if rare_coin_spawner != null:
 		rare_coin_spawner.debug_interval_scale = PICKUP_INTERVAL_SCALE
+		rare_coin_spawner.debug_cycle_chest_tiers = true
 	var lake_director: FrozenLakeDirector = main.get_node_or_null("FrozenLakeDirector") as FrozenLakeDirector
 	if lake_director != null:
 		lake_director.debug_lake_interval_override = LAKE_INTERVAL
@@ -100,5 +105,8 @@ static func apply(main: Node) -> void:
 		aurora_director.debug_aurora_interval_override = AURORA_TIME
 		aurora_director.debug_aurora_ignore_night = true
 	var player: Player = main.get_node_or_null("Player") as Player
+	var melt: Node = main.get_node_or_null("MeltDirector")
+	if melt != null:
+		melt.set("debug_first_seconds", MELT_TIME)
 	if player != null:
 		player.debug_invincible = is_cant_die()

@@ -122,7 +122,11 @@ func check_flag_defaults() -> void:
 	var rare_coins: RareCoinSpawner = RareCoinSpawner.new()
 	expect_bool("RareCoinSpawner.debug_spawning_disabled", rare_coins.debug_spawning_disabled, false)
 	expect_float("RareCoinSpawner.debug_interval_scale", rare_coins.debug_interval_scale, 1.0)
+	expect_bool("RareCoinSpawner.debug_cycle_chest_tiers", rare_coins.debug_cycle_chest_tiers, false)
 	rare_coins.free()
+	var melt: MeltDirector = MeltDirector.new()
+	expect_float("MeltDirector.debug_first_seconds", melt.debug_first_seconds, 0.0)
+	melt.free()
 
 	# DevMode's knobs are set at runtime in debug builds only; the source defaults must ship.
 	var dev_player: Player = Player.new()

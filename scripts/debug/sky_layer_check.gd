@@ -134,6 +134,9 @@ func _init() -> void:
 		return
 
 	main = MAIN_SCENE.instantiate() as Node2D
+	# A paused A/B is stable within a run, but random geometry sampled a different
+	# ice-hue patch each invocation and could move a boundary result by one level.
+	(main.get_node("TerrainGenerator") as TerrainGenerator).debug_replay_session_seed = 683407368
 	(main.get_node("GameManager") as GameManager).require_start_screen = false
 	root.add_child(main)
 	paused = false

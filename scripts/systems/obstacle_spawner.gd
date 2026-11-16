@@ -596,6 +596,10 @@ static func is_spike_approach_clear(terrain: TerrainGenerator, pattern: Dictiona
 		var lowest_allowed_y: float = terrain.get_surface_world_y(spike_x) + SPIKE_APPROACH_DROP_TOLERANCE
 		var sample_x: float = spike_x - reach
 		while sample_x < spike_x:
+			# A dry spike can still demand takeoff inside the input-locked lake.
+			# Keep the entire approach dry, including the final exit runway.
+			if terrain.is_lake_world_x(sample_x):
+				return false
 			if terrain.get_surface_world_y(sample_x) > lowest_allowed_y:
 				return false
 			sample_x += SPIKE_APPROACH_SAMPLE_STEP

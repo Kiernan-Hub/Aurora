@@ -1,5 +1,76 @@
 # Session history
 
+## 2026-11-15 — phone review, chest collection and provisional visual pass
+
+- Owner began reviewing `play/next`, then approved the collection/customizations and preceding visual pass. New tiers/missions and unreviewed terrain/feel await play. A separate
+  `com.kiernan.aura.playtest` APK isolates progress from the existing Aura app. Phone access
+  is strictly USB/Aura only, and automated desktop previews are quiet (-24 dB Master).
+- Dev mode starts at max speed with clocks at zero. Chests now wait for taps. A reproduced
+  Pause-touch release activating Home was fixed by consuming the press before GUI dispatch;
+  a rendered regression catches the old path and checks fresh Resume gestures.
+- Added nine permanent chest finds (three trails, three outfit colours, three collection-only
+  charms), an owned/locked collection tab, and v4 save fields. Ownership, duplicate avoidance,
+  compatibility, JSON persistence, failed-equip rollback and reset are covered in regressions.
+- Generated aligned closed/open chest art with the built-in image tool. Its source and exact
+  prompt are in `art_source/chests/`; baked 192px sprites total about 58 KB. Added native SVG
+  upgrade/coin/lock/play icons, clearer collection cards, primary actions and Sora headings.
+  The full visual pass adds about 131 KB to the APK. Review image:
+  [visual pass](../art_source/ui_review/2026-11-15.png).
+- Validation: 15 gates after collection, six standard checks after visual polish, five rendered
+  UI cases, all three visual scripts, reproducible asset baking and packaged-font-license check.
+  Owner's extended phone run/performance review remains open. The phone was initially disconnected; the visual build was subsequently installed after
+  the owner reconnected USB. Foreground verification did not confirm Aura, so no screenshot
+  was taken.
+- Work remains uncommitted on `play/next`; nothing merged or pushed. Current state: HANDOFF.md.
+
+- Added 70/25/5 Normal/Rare/Aurora chests, with progressively stronger glow, distinct generated
+  Aurora art and tier-specific loot. Dev mode cycles tiers. Added persistent cross-run missions
+  with one Rare reward per completion and save v5, using existing pause/death write paths.
+  Choice milestones and collection-set bonuses remain future work after owner review. Full 15 gates, seven rendered cases, three visual checks and both mutation checks passed.
+  Installed tier/mission build over USB and verified its process; focused-window guard skipped
+  the screenshot because Aura focus was not confirmed.
+
+- Owner liked the new additions and requested slightly more upward frozen-lake skate spray.
+  Adjusted only its launch speed/direction/spread; count, lifetime and drag remain unchanged.
+  Owner approved an ice-styled portal survival round; implementation described below.
+
+- Built The Melt: one optional rare portal per run, isolated one-button ice-platform survival,
+  rising melt, chest milestones, saved personal best and exact run suspension/return. Added
+  Really? for a sustained high glide via the existing achievement toast. New gameplay/visuals
+  await owner review. User requested two subagents; read-only gameplay/save reviewers found
+  a scheduling-test gap and existing failed-achievement-save issue, now covered/fixed.
+  Validation passed all15 full gates (231s),17 headless regression cases,9 rendered cases and
+  all3 visual scripts. The APK grew by25,480 bytes (~25 KiB), with no new raster assets.
+  Installed and launched the new Aura Playtest over USB; its process and focused start screen
+  were verified with an Aura-only screenshot. Existing mission progress remained intact.
+
+- Owner approved Really?, liked the portal as a provisional addition and reported Still Water
+  drawing a flat overlay across post-lake hills plus a lost exit jump into a spike. Both were
+  reproduced by new rendered tests; dry spikes with lake takeoff were also accepted by the old
+  approach rule. Fixed spatial lake clipping, fixed-surface waterline, early exit control and
+  dry takeoff checks. Increased lake spray's upward float within the same particle budget.
+  Slower, longer skating strokes are noted next; no animation-speed change in this pass.
+  Passed all15 full gates (230s),18 headless regression cases,10 rendered cases and all3 visual
+  scripts. Aurora shares the reflection shader, so lake clipping is opt-in; its existing visual
+  checks caught and verified that isolation. Updated Aura Playtest installed over USB.
+
+- Owner chose elegant skating next. Changed all five skaters from a 0.4s loop to a weighted 1.2s
+  stroke with a .50s glide hold and slower extensions. Updated the skin generator and replaced
+  MeltView's separate 8fps sampler with resource-driven timing. Gameplay speed/collision unchanged. All18 regression cases,10 rendered cases and three visual
+  checks passed; resource timing matches the generator. The visual harness now pins a terrain
+  seed to make its marginal hue check repeatable without modifying game colors. Installed
+  and launched the updated Aura Playtest over USB.
+
+- Owner rejected the weighted pose holds and requested fluid “oneeee twooooo” skating.
+  Replaced live pose switching with a continuous textured rig over the same artwork: five
+  landmark profiles, long alternating IK pushes, rigid boots and gentle weight shift. Main
+  gameplay retains its existing sprite carrier/cosmetics/transforms; Melt uses the shared
+  inline drawer. No new bitmap art or physics changes. All15 full gates passed (225s), plus
+  19 headless cases,11 rendered cases and all3 visual checks. Native pixel checks verified all
+  five outfit masks/shield tints. The verified APK adds8,361 bytes, installed/launched over USB;
+  an Aura-only focused screenshot confirms the existing mission progress. Continuous-motion
+  preview: `art_source/ui_review/2026-11-15-continuous-skating.gif`. Owner feel review remains open.
+
 Everything that used to pile up in `HANDOFF.md`, moved here verbatim, **newest first**. When a
 session ends, its `HANDOFF.md` section moves to the top of this file and `HANDOFF.md` keeps only
 the current state. **This is history, not a to-do list**: many entries are superseded, and some

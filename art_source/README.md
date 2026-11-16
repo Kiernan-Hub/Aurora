@@ -11,6 +11,7 @@ outputs kept for comparison. **Nothing in here is loaded by the game.**
 | `terrain/` | 29 MiB | **build input** for the ice tiles, plus the lake's two look targets | keep while any shipped tile traces to a panel |
 | `aurora_reference/` | 6 MiB | **design authority** for the aurora's look (CLAUDE.md row 12) | keep |
 | `hazards/` | 5 MiB | **build input** for `build_hazard_sprites.py` (spike, floe, shard, thin ice, black ice, geode, vent; ChatGPT, 2026-10-28) | keep |
+| `chests/` | ~1 MiB | **build input** for `build_chest_sprites.py` (closed/open sheet generated with the built-in image tool; exact prompts in `chests/PROMPT.md` and `chests/AURORA_PROMPT.md`) | keep |
 | `skins/` | 3 MiB | **build input** for `build_skin_frames.py` (teen, twenties, mom, dad: 4-frame rows generated from the girl's frames; ChatGPT, 2026-10-29) | keep |
 | `audits/` | 20 MiB | **historical captures** from closed aurora investigations, cited by `docs/research/aurora_borealis.md` and the 2026-09-09 reviews | add nothing new; delete only in an explicit cleanup, keeping whatever a doc cites |
 | top level | — | app-icon source, coin sources, the art-direction reference | keep |
@@ -100,3 +101,8 @@ can see, and `export_presets.cfg` is `export_filter="all_resources"` — so 31MB
 art that no scene, script or resource has ever loaded was being imported to VRAM and shipped
 inside the APK. The `.gdignore` in this directory is what stops that, and it only works for
 things that live here. **Put new reference art in this folder, not at the root.**
+
+
+`ui_review/2026-11-15-continuous-skating.gif` is the native-rendered continuous rig loop
+for all five skaters; `2026-11-15-rig-outfits.png` checks inherited outfit/shield rendering.
+The earlier `2026-11-15-elegant-skating.gif` is the rejected four-pose timing attempt.

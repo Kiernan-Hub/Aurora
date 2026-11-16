@@ -20,9 +20,8 @@ class_name SkateSpray
 # wants screen space; this is chips lying on the world, and the entire effect is that they get
 # LEFT BEHIND as the player runs on. It has to be in the world to do that.
 
-# Every number below is measured off `glossy biome trail.png` (1435x1096, skate line at y=760)
-# and converted through the visible world rectangle at the pinned viewport -- 1382 x 778 world
-# px. Nothing here was chosen by eye.
+# Original reference: `glossy biome trail.png` (1435x1096, skate line at y=760), converted
+# through the pinned viewport's 1382 x 778 world px. Owner-directed tuning is noted below.
 
 # Reference: the spray band runs y=670..775 against a skate line at 760, so it throws ~90px of
 # a 1096px frame above the line -- 8.2%, or ~64 world px. But the MEDIAN bright pixel sits at
@@ -58,27 +57,24 @@ const CHIP_COUNT: int = 70
 # gravity near enough to zero that nothing ever comes back down inside a chip's lifetime. The
 # chips end up parked in world space at roughly the height they reached, and the trail behind
 # the player is produced entirely by the player leaving them there at 750 px/s.
-const CHIP_VELOCITY_MIN: float = 16.0
-const CHIP_VELOCITY_MAX: float = 78.0
-# Up, and back. Wide and low: ice skitters off the surface it broke from, it does not fountain.
-const CHIP_DIRECTION: Vector3 = Vector3(-0.5, -1.0, 0.0)
-const CHIP_SPREAD_DEGREES: float = 46.0
+const CHIP_VELOCITY_MIN: float = 36.0
+const CHIP_VELOCITY_MAX: float = 120.0
+# Owner wants an unmistakably magical upward float, not a horizontal blade wake.
+# Keep the same 70 glints and lifetime; the motion changes, not the effect budget.
+const CHIP_DIRECTION: Vector3 = Vector3(-0.12, -1.0, 0.0)
+const CHIP_SPREAD_DEGREES: float = 28.0
 # Not zero, and the sign is deliberate: a FAINT LIFT, so the field creeps upward by ~2px over a
 # lifetime instead of hanging with the unnatural stillness of exactly zero. True zero g reads as
 # a freeze-frame. Far too weak to produce an arc.
 const CHIP_GRAVITY: Vector3 = Vector3(0.0, -6.0, 0.0)
+const LAKE_LIFT: Vector3 = Vector3(0.0, -22.0, 0.0)
 # Air drag, and it is now the dominant force rather than a garnish -- this is what converts the
-# kick into a hover. At the fast end, 78 px/s against 105 damping stops a chip in 0.74s having
-# risen 78^2 / (2 * 105) = ~29 world px; at the slow end it barely leaves the blade. So most
-# chips sit within a few px of the skate line and a few reach ~29px, which is the "float up a
-# little bit and stay at her level" the owner asked for.
-#
-# THE REFERENCE MEASURES A 64px THROW AND THIS IS DELIBERATELY WELL UNDER IT. That measurement
-# is a still frame of a skater braking hard; this is one crossing a lake at 750 px/s, and the
-# owner has now rejected the measured arc twice. Recorded as an aesthetic override rather than
-# quietly relabelled as a measurement.
-const CHIP_DAMPING_MIN: float = 62.0
-const CHIP_DAMPING_MAX: float = 130.0
+# kick into a hover. The revised upward speed/drag gives a taller ~15–95px field,
+# with gentle negative gravity rather than a falling arc. This supersedes the
+# earlier low reference-derived wake at the owner's request. Landing bursts override
+# velocity/damping and retain CHIP_GRAVITY; the stronger LAKE_LIFT is lake-only.
+const CHIP_DAMPING_MIN: float = 55.0
+const CHIP_DAMPING_MAX: float = 95.0
 # Each glint is a four-point star, so it has an orientation, and identical orientation across
 # 120 particles reads as printed wallpaper. Random birth angle plus a slow tumble means the
 # flares sweep past each other.
@@ -222,6 +218,7 @@ func _ready() -> void:
 	# what _physics_process drives, and under ADD it scales how much light lands.
 	modulate = Color(1.0, 1.0, 1.0, 0.0)
 	process_material = build_process_material()
+	(process_material as ParticleProcessMaterial).gravity = LAKE_LIFT
 	visibility_rect = Rect2(
 		-VISIBILITY_TRAIL,
 		-VISIBILITY_MARGIN,

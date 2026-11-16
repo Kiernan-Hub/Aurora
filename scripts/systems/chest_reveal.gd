@@ -3,18 +3,17 @@ extends VBoxContainer
 class_name ChestReveal
 
 # The chests a run collected, opened one after another on the death screen. Each one appears
-# closed, rattles harder and harder, then bursts: a white flash, the lid thrown back, light rays,
+# closed, waits for a tap, then rattles and bursts: a white flash, the lid thrown back, light rays,
 # a spray of gold, and its reward counting up on a row beneath. COSMETIC ONLY -- the rewards are
 # already in the save before this plays (GameManager._on_player_died), so quitting mid-reveal
 # loses nothing, and the death screen's buttons work throughout.
 #
 # Built in code and added to the death screen's column by GameManager, like the shop's cards. It
 # runs on a paused tree (the death screen's), hence PROCESS_MODE_ALWAYS. Everything is drawn by
-# ChestStage below from a handful of tweened numbers: no textures, no scene.
+# ChestStage below uses the same small sprites as the pickups.
 
 # More chests than this share the last opening, so the column cannot push the buttons off screen.
 const MAX_ROWS: int = 4
-const START_DELAY: float = 0.7
 const APPEAR_SECONDS: float = 0.18
 const RATTLE_SECONDS: float = 0.55
 const LID_SECONDS: float = 0.2
@@ -32,6 +31,11 @@ const SKIN_COLOR: Color = Color(0.6, 1.0, 0.8)
 
 var reveal_tween: Tween
 var stage: ChestStage
+var open_button: Button
+var open_label: Label
+var pending_rewards: Array[Dictionary] = []
+var next_reward: int = 0
+var sound_callback: Callable
 
 
 func _init() -> void:
@@ -51,45 +55,84 @@ func play(rewards: Array[Dictionary], on_sound: Callable) -> void:
 	if rewards.is_empty():
 		return
 
+	pending_rewards = rewards.duplicate()
+	next_reward = 0
+	sound_callback = on_sound
+	open_button = Button.new()
+	open_button.custom_minimum_size = Vector2(220, 154)
+	open_button.pressed.connect(open_next)
+	add_child(open_button)
 	stage = ChestStage.new()
-	add_child(stage)
-	reveal_tween = create_tween()
-	reveal_tween.tween_interval(START_DELAY)
-	for row_index: int in range(mini(rewards.size(), MAX_ROWS)):
-		var is_overflow_row: bool = row_index == MAX_ROWS - 1 and rewards.size() > MAX_ROWS
-		var shown: Array[Dictionary] = []
-		shown.assign(rewards.slice(row_index) if is_overflow_row else [rewards[row_index]])
-		var is_big: bool = is_big_reward(shown)
-		var row: Label = Label.new()
-		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		row.add_theme_font_size_override("font_size", FONT_SIZE)
-		row.modulate = get_reward_color(shown)
-		row.visible = false
-		add_child(row)
+	open_button.add_child(stage)
+	stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stage.offset_bottom = -36.0
+	open_label = Label.new()
+	open_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	open_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	open_button.add_child(open_label)
+	open_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	open_label.offset_top = -32.0
+	prepare_next()
 
-		# Closed, then the rattle building to the burst.
-		reveal_tween.tween_callback(stage.begin_chest)
-		reveal_tween.tween_property(stage, "appear", 1.0, APPEAR_SECONDS).from(0.0) \
-			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		if on_sound.is_valid():
-			reveal_tween.tween_callback(on_sound.bind(&"rattle"))
-		reveal_tween.tween_property(stage, "rattle", 1.0, RATTLE_SECONDS).from(0.0).set_ease(Tween.EASE_IN)
-		# The burst, all at once.
-		reveal_tween.tween_callback(open_row.bind(row, shown, is_big, on_sound))
-		reveal_tween.tween_property(stage, "lid_open", 1.0, LID_SECONDS).from(0.0) \
-			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		reveal_tween.parallel().tween_property(stage, "flash", 0.0, FLASH_SECONDS).from(1.0).set_ease(Tween.EASE_OUT)
-		reveal_tween.parallel().tween_property(row, "scale", Vector2.ONE, POP_SECONDS) \
-			.from(Vector2.ONE * POP_SCALE).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		# A lone coin reward counts up; anything else (a skater, several chests) is shown whole.
-		if shown.size() == 1 and shown[0]["skin"] == "":
-			reveal_tween.parallel().tween_method(set_coin_text.bind(row, bool(shown[0]["jackpot"])),
-				0.0, float(shown[0]["coins"]), COUNT_SECONDS)
-		reveal_tween.tween_interval(BIG_HOLD_SECONDS if is_big else HOLD_SECONDS)
+
+func prepare_next() -> void:
+	if next_reward >= pending_rewards.size():
+		open_label.text = "Opened"
+		return
+	stage.begin_chest()
+	stage.set_tier(int(pending_rewards[next_reward].get("tier", ChestTypes.Tier.NORMAL)))
+	stage.appear = 1.0
+	open_button.disabled = false
+	var tier_name: String = ChestTypes.get_type(stage.tier)["name"]
+	open_label.text = "%s · Tap %d/%d" % [("Mission " + tier_name) if pending_rewards[next_reward].get("mission", false) else tier_name + " chest", next_reward + 1, pending_rewards.size()]
+
+
+# One tap opens one chest. Repeated taps during the animation cannot skip rewards.
+func open_next() -> void:
+	if open_button.disabled or next_reward >= pending_rewards.size():
+		return
+	open_button.disabled = true
+	open_label.text = "Opening..."
+	var is_overflow_row: bool = next_reward == MAX_ROWS - 1 and pending_rewards.size() > MAX_ROWS
+	var shown: Array[Dictionary] = []
+	shown.assign(pending_rewards.slice(next_reward) if is_overflow_row else [pending_rewards[next_reward]])
+	next_reward = pending_rewards.size() if is_overflow_row else next_reward + 1
+	var is_big: bool = is_big_reward(shown)
+	var row: Label = Label.new()
+	row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	row.add_theme_font_size_override("font_size", FONT_SIZE)
+	row.modulate = get_reward_color(shown)
+	row.visible = false
+	add_child(row)
+
+	reveal_tween = create_tween()
+	reveal_tween.tween_property(stage, "appear", 1.0, APPEAR_SECONDS).from(0.85) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	if sound_callback.is_valid():
+		reveal_tween.tween_callback(sound_callback.bind(&"rattle"))
+	reveal_tween.tween_property(stage, "rattle", 1.0, RATTLE_SECONDS).from(0.0).set_ease(Tween.EASE_IN)
+	reveal_tween.tween_callback(open_row.bind(row, shown, is_big, sound_callback))
+	reveal_tween.tween_property(stage, "lid_open", 1.0, LID_SECONDS).from(0.0) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	reveal_tween.parallel().tween_property(stage, "flash", 0.0, FLASH_SECONDS).from(1.0).set_ease(Tween.EASE_OUT)
+	reveal_tween.parallel().tween_property(row, "scale", Vector2.ONE, POP_SECONDS) \
+		.from(Vector2.ONE * POP_SCALE).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	if shown.size() == 1 and shown[0]["skin"] == "" and shown[0].get("cosmetic", "") == "":
+		reveal_tween.parallel().tween_method(set_coin_text.bind(row, bool(shown[0]["jackpot"])),
+			0.0, float(shown[0]["coins"]), COUNT_SECONDS)
+	reveal_tween.tween_interval(BIG_HOLD_SECONDS if is_big else HOLD_SECONDS)
+	reveal_tween.tween_callback(prepare_next)
 
 
 func open_row(row: Label, shown: Array[Dictionary], is_big: bool, on_sound: Callable) -> void:
 	stage.burst(is_big)
+	# Show a cosmetic's actual collection icon above the opened chest.
+	for reward: Dictionary in shown:
+		var item: Dictionary = Cosmetics.get_item(reward.get("cosmetic", ""))
+		if not item.is_empty():
+			stage.reward_icon = load(item.get("icon", Cosmetics.ICONS[item["kind"]])) as Texture2D
+			stage.reward_color = item["color"]
+			break
 	row.visible = true
 	row.text = describe(shown)
 	row.pivot_offset = row.size * 0.5
@@ -104,7 +147,7 @@ func set_coin_text(coins: float, row: Label, is_jackpot: bool) -> void:
 
 static func is_big_reward(shown: Array[Dictionary]) -> bool:
 	for reward: Dictionary in shown:
-		if reward["skin"] != "" or reward["jackpot"]:
+		if reward["skin"] != "" or reward.get("cosmetic", "") != "" or reward["jackpot"]:
 			return true
 	return false
 
@@ -112,7 +155,7 @@ static func is_big_reward(shown: Array[Dictionary]) -> bool:
 static func get_reward_color(shown: Array[Dictionary]) -> Color:
 	var color: Color = COIN_COLOR
 	for reward: Dictionary in shown:
-		if reward["skin"] != "":
+		if reward["skin"] != "" or reward.get("cosmetic", "") != "":
 			return SKIN_COLOR
 		if reward["jackpot"]:
 			color = JACKPOT_COLOR
@@ -123,18 +166,33 @@ static func describe(shown: Array[Dictionary]) -> String:
 	var parts: PackedStringArray = []
 	var coins: int = ChestRewards.get_total_coins(shown)
 	var has_jackpot: bool = false
+	var new_skaters: int = 0
+	var new_cosmetics: int = 0
 	for reward: Dictionary in shown:
 		has_jackpot = has_jackpot or bool(reward["jackpot"])
 		if reward["skin"] != "":
-			parts.append("NEW SKATER: %s!" % Skins.get_skin(reward["skin"])["name"])
+			new_skaters += 1
+			if shown.size() == 1:
+				parts.append("NEW SKATER: %s!" % Skins.get_skin(reward["skin"])["name"])
+		var item: Dictionary = Cosmetics.get_item(reward.get("cosmetic", ""))
+		if not item.is_empty():
+			new_cosmetics += 1
+			if shown.size() == 1:
+				parts.append("NEW %s: %s!" % [String(item["kind"]).to_upper(), item["name"]])
+	# The final row groups overflow chests: a summary stays on screen even on a long run.
+	if shown.size() > 1:
+		if new_skaters > 0:
+			parts.append("%d new skaters" % new_skaters)
+		if new_cosmetics > 0:
+			parts.append("%d new finds" % new_cosmetics)
 	if coins > 0:
 		parts.append(("JACKPOT  +%d coins" if has_jackpot else "+%d coins") % coins)
 	return "   ".join(parts)
 
 
 # The chest itself, drawn each frame from four numbers ChestReveal tweens (appear, rattle,
-# lid_open, flash) plus the sparks burst() throws. The shapes are chest.tscn's, three times the
-# size, so the thing that opens is the thing that was picked up.
+# lid_open, flash) plus the sparks burst() throws. The aligned small sprite pair is the
+# same chest the player picked up; a brief blend opens it without a new animation system.
 class ChestStage extends Control:
 	const STAGE_SIZE: Vector2 = Vector2(220, 118)
 	const DRAW_SCALE: float = 3.0
@@ -150,12 +208,16 @@ class ChestStage extends Control:
 	const FLASH_RADIUS: float = 150.0
 	const BIG_FLASH_RADIUS: float = 260.0
 	const FLASH_RINGS: int = 10
-	const ICE: Color = Color(0.78, 0.9, 1.0)
-	const ICE_SHADE: Color = Color(0.6, 0.76, 0.94)
-	const ICE_LID: Color = Color(0.95, 0.98, 1.0)
+	const CLOSED: Texture2D = preload("res://assets/sprites/chest/closed.png")
+	const OPEN: Texture2D = preload("res://assets/sprites/chest/open.png")
 	const GOLD: Color = Color(1.0, 0.8, 0.32)
 	const GOLD_LIGHT: Color = Color(1.0, 0.92, 0.6)
 
+	var tier: int = ChestTypes.Tier.NORMAL
+	var closed_texture: Texture2D = CLOSED
+	var open_texture: Texture2D = OPEN
+	var tier_glow: Color = Color(1.0, 0.92, 0.6)
+	var tier_glow_scale: float = 0.6
 	var appear: float = 0.0
 	var rattle: float = 0.0
 	var lid_open: float = 0.0
@@ -163,6 +225,8 @@ class ChestStage extends Control:
 	var is_open: bool = false
 	var is_big: bool = false
 	var clock: float = 0.0
+	var reward_icon: Texture2D
+	var reward_color: Color = Color.WHITE
 	# Each spark: {"position", "velocity", "age"} in stage pixels from the chest's middle.
 	var sparks: Array[Dictionary] = []
 
@@ -170,12 +234,21 @@ class ChestStage extends Control:
 		custom_minimum_size = STAGE_SIZE
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+	func set_tier(value: int) -> void:
+		tier = ChestTypes.normalize(value)
+		var style: Dictionary = ChestTypes.get_type(tier)
+		closed_texture = load(style["closed"]) as Texture2D
+		open_texture = load(style["open"]) as Texture2D
+		tier_glow = style["glow"]
+		tier_glow_scale = style["glow_scale"]
+
 	func begin_chest() -> void:
 		rattle = 0.0
 		lid_open = 0.0
 		flash = 0.0
 		is_open = false
 		sparks.clear()
+		reward_icon = null
 
 	func burst(big: bool) -> void:
 		is_open = true
@@ -207,24 +280,26 @@ class ChestStage extends Control:
 		# The glow swells with the rattle and stays lit once open.
 		var glow: float = appear * (1.0 if is_open else 0.35 + 0.65 * rattle)
 		for ring: int in range(10):
-			draw_circle(center, (20.0 + ring * 7.0) * (0.8 + 0.4 * glow), Color(GOLD_LIGHT, 0.04 * glow))
+			draw_circle(center, (20.0 + ring * 7.0) * (0.8 + 0.4 * glow) * tier_glow_scale, Color(tier_glow, 0.04 * glow))
+		if tier == ChestTypes.Tier.AURORA:
+			draw_set_transform(center, clock * 0.35, Vector2.ONE)
+			draw_texture_rect(ChestTypes.AURA, Rect2(-65, -65, 130, 130), false, Color(1, 1, 1, 0.8 * appear))
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if is_open:
 			draw_rays(center + Vector2(0, -16))
 
 		var angle: float = sin(clock * RATTLE_RATE) * RATTLE_ANGLE * rattle * rattle
 		draw_set_transform(center, angle, Vector2.ONE * DRAW_SCALE * appear)
-		# The light inside, seen once the lid lifts.
-		if lid_open > 0.05:
-			draw_colored_polygon(PackedVector2Array([Vector2(-13, -6), Vector2(-9, -6 - 9 * lid_open), Vector2(9, -6 - 9 * lid_open), Vector2(13, -6)]), GOLD_LIGHT)
-		draw_colored_polygon(PackedVector2Array([Vector2(-15, -6), Vector2(15, -6), Vector2(15, 12), Vector2(-15, 12)]), ICE)
-		draw_colored_polygon(PackedVector2Array([Vector2(3, -6), Vector2(15, -6), Vector2(15, 12), Vector2(9, 12)]), ICE_SHADE)
-		draw_colored_polygon(PackedVector2Array([Vector2(-15, -7), Vector2(15, -7), Vector2(15, -3), Vector2(-15, -3)]), GOLD)
-		# The lid, hinged at its back corner and thrown open.
-		draw_set_transform(center + Vector2(15, -6).rotated(angle) * DRAW_SCALE * appear, angle + lid_open * 1.15, Vector2.ONE * DRAW_SCALE * appear)
-		draw_colored_polygon(PackedVector2Array([Vector2(-30, 0), Vector2(-24, -8), Vector2(-6, -8), Vector2(0, 0)]), ICE_LID)
-		draw_colored_polygon(PackedVector2Array([Vector2(-18, -2), Vector2(-12, -2), Vector2(-12, 7), Vector2(-15, 10), Vector2(-18, 7)]), GOLD_LIGHT)
+		var chest_rect: Rect2 = Rect2(-18, -20, 36, 36)
+		var tint: Color = Color(0.8, 0.94, 1.0) if tier == ChestTypes.Tier.RARE else Color.WHITE
+		if lid_open < 1.0:
+			draw_texture_rect(closed_texture, chest_rect, false, Color(tint, 1.0 - lid_open))
+		if lid_open > 0.0:
+			draw_texture_rect(open_texture, chest_rect, false, Color(tint, lid_open))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
+		if reward_icon != null:
+			draw_texture_rect(reward_icon, Rect2(center + Vector2(-22, -64), Vector2(44, 44)), false, reward_color)
 		for spark: Dictionary in sparks:
 			var fade: float = 1.0 - float(spark["age"]) / SPARK_LIFE
 			var at: Vector2 = center + spark["position"]
