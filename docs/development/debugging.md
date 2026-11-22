@@ -82,14 +82,15 @@ cosmetic equip/rendering, and menu bounds at 16:9/phone aspect ratios. Test audi
 
 ### `export_content` — what actually reaches a device
 
-The last entry is not a Godot gate. It exports a pack headless
-(`--export-pack Android`, ~2s) into a temp dir and fails if any of five paths survived
-`export_presets.cfg`'s `exclude_filter`: `scripts/debug`, `scripts/experiments`,
-`scenes/experiments`, `assets/textures/experiments`, and `art_source`. That last one is kept out
-by `art_source/.gdignore`, not the preset, so the check also fails if that file is missing:
-without it ~96 MiB of source art imports and ships (a 7 MB pack measured at 67 MB, audit A11). Without the filter that is 636 KB of
-probes and 3.8 MB of experiment textures on a player's phone. It reports the pack's
-resource count on PASS (136 today) and deletes the pack either way.
+The last entry exports a headless Android pack into a temp directory and checks it for debug
+scripts, experiments, `art_source` and root review screenshots named `Screenshot *.png`.
+The Android preset excludes the screenshots, and the check looks for both the root and
+imported texture paths. The check also requires `art_source/.gdignore`. Without it, the source
+art imports and ships (a 7 MB pack measured at 67 MB, audit A11). It reports the resource
+count on PASS and deletes the pack either way.
+
+A synthetic review screenshot tripped both path checks when the filter was removed. With
+the filter in place, the pack passed and the image was absent from a signed scratch APK.
 
 Three things about it worth knowing before editing it:
 

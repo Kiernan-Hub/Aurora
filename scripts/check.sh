@@ -98,6 +98,9 @@ FORBIDDEN=(
 	"res://scripts/experiments"
 	"res://scenes/experiments"
 	"res://assets/textures/experiments"
+	# An imported review screenshot can appear under both its root and remapped paths.
+	"res://Screenshot "
+	".godot/imported/Screenshot "
 )
 
 # Exports a pack and fails if any FORBIDDEN path survived export_presets.cfg's

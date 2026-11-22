@@ -12,6 +12,8 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
   The Melt. Android Back dismisses Reset Progress before leaving its shop.
 - Failed run saves can retry from results without duplicating rewards. A failed reset preserves
   progress. A scratch Android APK export and a desktop run from its exported data passed.
+- The Android preset excludes root review screenshots named `Screenshot *.png`. The export
+  check catches both the original resource and its imported texture path.
 - Slow obstacle searches were about 30% faster in the desktop benchmark with identical terrain
   and placements. Evidence and coverage: `docs/review/2026-11-21-mobile-readiness-audit.md`.
 - A follow-up made terrain sampling cheaper and skipped 27% of ice repaints in the palette
