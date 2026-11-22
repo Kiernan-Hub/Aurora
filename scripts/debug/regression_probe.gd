@@ -546,8 +546,14 @@ func failed_run_save() -> void:
 		and game_manager.death_stats_label.text.contains("Save pending") and game_manager.restart_button.text == "Retry save"
 	var staged: Dictionary = store.to_data().duplicate(true)
 	var chests: Array[Dictionary] = game_manager.chest_rewards.duplicate(true)
+	var writes: int = store.writes
 	game_manager._on_quick_restart_pressed()
-	pending = pending and game_manager.run_save_pending and game_manager.state == GameManager.State.DEAD
+	game_manager._on_shop_pressed()
+	game_manager._on_home_pressed()
+	game_manager.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await process_frame
+	pending = pending and paused and game_manager.run_save_pending and game_manager.state == GameManager.State.DEAD \
+		and store.writes == writes + 4 and store.to_data() == staged and signals[0] == 0
 	store.succeed = true
 	game_manager._on_quick_restart_pressed()
 	game_manager.retry_run_save()
@@ -555,7 +561,7 @@ func failed_run_save() -> void:
 		and game_manager.chest_rewards == chests and chests.size() == 1 and not game_manager.run_save_pending \
 		and game_manager.restart_button.text == "Restart" and game_manager.state == GameManager.State.DEAD
 	expect("failed_run_save", pending and saved_once,
-		"failure visible and retry stays on results=%s successful retry saves the same run/mission rewards once=%s" % [pending, saved_once])
+		"failed Retry, Shop, Home and Back stay on results=%s successful retry saves run/mission rewards once=%s" % [pending, saved_once])
 
 
 func background_suspend() -> void:
@@ -1025,12 +1031,13 @@ func lake_exit() -> void:
 		reflection.visible = false
 		for frame: int in range(3):
 			await process_frame
-		await RenderingServer.frame_post_draw
+		# A paused desktop window may stop drawing after the visibility change settles.
+		RenderingServer.force_draw(false)
 		var bare: Image = root.get_texture().get_image()
 		reflection.visible = true
 		for frame: int in range(3):
 			await process_frame
-		await RenderingServer.frame_post_draw
+		RenderingServer.force_draw(false)
 		var mirrored: Image = root.get_texture().get_image()
 		var edge: Vector2 = main.get_global_transform_with_canvas() * Vector2(lake.lake_end_x, surface)
 		var changed: int = 0

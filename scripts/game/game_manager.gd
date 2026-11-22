@@ -709,8 +709,7 @@ func _notification(what: int) -> void:
 		# Back button. project.godot sets quit_on_go_back=false so this arrives instead
 		# of Godot quitting for us. Mid-run it pauses (losing a run to a stray back press
 		# is the thing being fixed); on the pause screen it resumes, which is what the
-		# gesture means there. On START/DEAD there is nothing in progress to protect, and
-		# refusing to exit at all would be its own annoyance, so back does quit.
+		# gesture means there. On START it quits. On DEAD it quits once the run is saved.
 		NOTIFICATION_WM_GO_BACK_REQUEST:
 			if state == State.SHOP and reset_confirm_dialog != null and reset_confirm_dialog.visible:
 				reset_confirm_dialog.hide()
@@ -727,8 +726,8 @@ func _notification(what: int) -> void:
 				State.SHOP, State.STATS, State.SKINS:
 					set_state(modal_return_state)
 				State.DEAD:
-					retry_run_save()
-					get_tree().quit()
+					if retry_run_save():
+						get_tree().quit()
 				_:
 					get_tree().quit()
 		# Mobile suspend and focus loss may both arrive. The state check keeps
@@ -907,8 +906,8 @@ func _on_sfx_volume_changed(value: float) -> void:
 # The "Home" button on both the pause and death screens. Lands on START because that's
 # what a bare reload_current_scene() does -- see require_start_screen.
 func _on_home_pressed() -> void:
-	retry_run_save()
-	reload_scene(false)
+	if retry_run_save():
+		reload_scene(false)
 
 
 # The "Restart" button on both the pause and death screens: reloads AND skips the

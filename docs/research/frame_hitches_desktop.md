@@ -45,3 +45,29 @@ The workload performed 1,423 full repaints instead of 1,951, a 27% reduction.
 All 15 checks in `scripts/check.sh --full` passed, including the physics gates and Android pack
 content check. The rendered sky, ice and biome checks passed, along with all 14 rendered UI
 cases, including the lake exit and Melt portal.
+
+### Real-time desktop replay
+
+A second windowed replay used the same terrain seed and a test-only 60 fps limit on the
+Mac's reported 60 Hz display. It reached 12 minutes of gameplay in 720.8 seconds, scheduled
+160 patterns and recorded zero movement-stall recoveries. The harness resumed when the window
+lost focus so the run could finish. The window was unfocused for almost the entire measurement.
+
+| Draw callbacks | Intervals | Median | 95th percentile | Over 25 ms | Over 100 ms | Maximum |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Outside startup and focus changes | 42,708 | 16.66 ms | 18.21 ms | 70 | 6 | 155.41 ms |
+| From 8 minutes onward, same exclusions | 14,255 | 16.67 ms | 18.37 ms | 17 | 0 | 84.25 ms |
+
+The longest gap was 1,005.65 ms. It began about 30 ms after focus loss, with 1,004.27 ms
+between the pre-draw and post-draw callbacks. The run continued afterward. Other long gaps
+occurred both inside and outside the draw callback interval. The viewport GPU timer returned
+zero throughout this capture, so the trace provides no GPU-side attribution. The timing
+records callback cadence on this Mac during a background replay, which leaves foreground and
+Android frame pacing open.
+
+A two-minute control ran the same window and renderer with only a moving 3×3 rectangle.
+It logged 466 draw callbacks. One 24.9-second gap opened around focus loss, while 1,492
+physics callbacks continued. Draw callbacks stopped again while the control was unfocused.
+Draw callbacks can therefore disappear with no gameplay scene loaded. The control had too
+little comparable draw time to estimate a gameplay-specific hitch rate or identify the
+one-second pause's exact cause.

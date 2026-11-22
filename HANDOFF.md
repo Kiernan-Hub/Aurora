@@ -10,15 +10,17 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 
 - Mobile suspend now pauses and banks progress once, clearing stale jump input in the run and
   The Melt. Android Back dismisses Reset Progress before leaving its shop.
-- Failed run saves can retry from results without duplicating rewards. A failed reset preserves
-  progress. A scratch Android APK export and a desktop run from its exported data passed.
+- Failed run saves stay on results even when Home or Android Back retries the write. Retrying
+  preserves the same rewards. A failed reset preserves progress. A scratch Android APK export
+  and a desktop run from its exported data passed.
 - The Android preset excludes root review screenshots named `Screenshot *.png`. The export
   check catches both the original resource and its imported texture path.
 - Slow obstacle searches were about 30% faster in the desktop benchmark with identical terrain
   and placements. Evidence and coverage: `docs/review/2026-11-21-mobile-readiness-audit.md`.
 - A follow-up made terrain sampling cheaper and skipped 27% of ice repaints in the palette
-  benchmark, with identical sampled geometry and ice colors. The largest desktop frame gaps
-  remain unattributed. Measurements: `docs/research/frame_hitches_desktop.md`.
+  benchmark, with identical sampled geometry and ice colors. A real-time replay caught its
+  largest draw gap just after focus loss. A window with no gameplay loaded also lost draw
+  callbacks around focus changes. Measurements: `docs/research/frame_hitches_desktop.md`.
 
 ### Desktop review
 
@@ -124,8 +126,8 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 
 - New `class_name` needs one import before gates. Add a `/tmp` log file to every Godot command.
 - Headless never draws. Visual changes need the three rendered checks; input/UI logic uses
-  `regression_probe --ui-only` with a renderer and memory save. Window focus can pause tests;
-  one lake-capture run timed out and a repeat passed without production changes.
+  `regression_probe --ui-only` with a renderer and memory save. The paused lake check requests
+  its own redraws because an unfocused desktop window can stop drawing.
 - Headless frame counts are not real time without `--fixed-fps 60`; await tween completion.
 - Keep gameplay resolving `GameServices.resolve(self)`, null-guarded; do not add bare Services
   references, new globals or physics changes for animation. Keep the code clean and lean.
