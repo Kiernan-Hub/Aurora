@@ -8,6 +8,10 @@ const PORTAL_SCENE: PackedScene = preload("res://scenes/pickups/melt_portal.tscn
 const VIEW_SCRIPT: Script = preload("res://scripts/ui/melt_view.gd")
 const FIRST_SECONDS: float = 240.0
 const RANDOM_DELAY_SECONDS: float = 180.0
+const RETURN_GROUND_CLEARANCE: float = 1100.0
+const RETURN_HAZARD_CLEARANCE: float = 1500.0
+# The capsule can contact the 18px portal circle on either side of its center.
+const CONTACT_MARGIN: float = 40.0
 var debug_first_seconds: float = 0.0
 
 var main: Main
@@ -73,14 +77,16 @@ func _process(_delta: float) -> void:
 	if main.elapsed_time < due or not can_enter():
 		return
 	var x: float = player.global_position.x + RareCoinSpawner.SPAWN_LOOKAHEAD_WORLD_X
-	# Use the same proven jump-reachable placement and hazard/void checks as chests.
-	# Give the return pose extra quiet space; the normal world cannot advance inside.
-	if not terrain.has_ground_over_world_x_span(x, x + 1100.0):
-		return
-	var obstacles: ObstacleSpawner = get_node("../TerrainGenerator/ObstacleSpawner")
-	for offset: float in [0.0, 500.0, 1000.0]:
-		if not obstacles.is_clear_for_pickup(x + offset):
+	var obstacles: ObstacleSpawner = spawner.obstacle_spawner
+	if obstacles != null:
+		# The obstacle and portal spawners use the same lookahead. Allow enough
+		# time that a later pattern starts past the return corridor.
+		var travel: float = RETURN_HAZARD_CLEARANCE + CONTACT_MARGIN
+		var seconds: float = travel / maxf(player.speed_manager.current_speed, 1.0)
+		if not obstacles.has_time_before_next_pattern(seconds):
 			return
+	if not return_corridor_is_clear(x, CONTACT_MARGIN):
+		return
 	portal_spawned = spawner.try_spawn(x, PORTAL_SCENE, 84.0, _on_portal_collected)
 	if portal_spawned:
 		(spawner.active_coins[-1] as MeltPortal).entry_guard = entry_is_clear
@@ -99,13 +105,15 @@ func _on_portal_collected(_value: int) -> void:
 
 
 func entry_is_clear() -> bool:
-	if not can_enter() or not terrain.has_ground_over_world_x_span(player.global_position.x, player.global_position.x + 1100.0):
+	return can_enter() and return_corridor_is_clear(player.global_position.x)
+
+
+func return_corridor_is_clear(x: float, margin: float = 0.0) -> bool:
+	if not terrain.has_ground_over_world_x_span(x - margin, x + RETURN_GROUND_CLEARANCE + margin):
 		return false
-	var obstacles: ObstacleSpawner = get_node("../TerrainGenerator/ObstacleSpawner")
-	for offset: float in [0.0, 500.0, 1000.0]:
-		if not obstacles.is_clear_for_pickup(player.global_position.x + offset):
-			return false
-	return true
+	var obstacles: ObstacleSpawner = spawner.obstacle_spawner
+	return obstacles == null or not obstacles.has_active_obstacle_between(
+		x - ObstacleSpawner.PICKUP_CLEAR_DISTANCE - margin, x + RETURN_HAZARD_CLEARANCE + margin)
 
 
 func begin() -> void:

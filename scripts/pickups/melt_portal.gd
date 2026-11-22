@@ -1,33 +1,67 @@
 extends Coin
 
 class_name MeltPortal
+
 var entry_guard: Callable
 
-class Ring extends Node2D:
-	var age: float = 0.0
-	func _process(delta: float) -> void:
-		age += delta
-		queue_redraw()
+
+class RiftVisual extends Node2D:
+	const TITLE_FONT: Font = preload("res://assets/ui/fonts/display.tres")
+	const INK: Color = Color(0.06, 0.09, 0.17)
+	const FROST: Color = Color(0.77, 0.94, 1.0)
+	const RIM: PackedVector2Array = [
+		Vector2(0, -42), Vector2(17, -29), Vector2(29, -6), Vector2(22, 22),
+		Vector2(3, 41), Vector2(-15, 29), Vector2(-28, 6), Vector2(-22, -21),
+	]
+	const OPENING: PackedVector2Array = [
+		Vector2(1, -33), Vector2(12, -23), Vector2(21, -5), Vector2(15, 18),
+		Vector2(2, 32), Vector2(-10, 23), Vector2(-21, 4), Vector2(-16, -16),
+	]
+
+	func _ready() -> void:
+		# The ice and lettering are static draw commands. Only the light inside
+		# changes, as one CanvasItem property on a tween that pauses with the run.
+		var light := Polygon2D.new()
+		light.polygon = PackedVector2Array([
+			Vector2(0, -26), Vector2(6, -7), Vector2(13, -1), Vector2(5, 5),
+			Vector2(1, 24), Vector2(-5, 7), Vector2(-12, 0), Vector2(-5, -6),
+		])
+		light.color = Color(0.94, 0.83, 0.98)
+		add_child(light)
+		var pulse: Tween = create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		pulse.tween_property(light, "modulate:a", 0.52, 1.0)
+		pulse.tween_property(light, "modulate:a", 1.0, 1.0)
+
 	func _draw() -> void:
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2(0.7, 1.0))
-		for i: int in range(3):
-			var radius: float = 35.0 + float(i) * 3.0
-			draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, Color(0.55, 0.8, 1.0, 0.28 - i * 0.06), 5.0, true)
-		draw_arc(Vector2.ZERO, 35.0, 0.0, TAU, 48, Color(0.7, 0.95, 1.0, 0.9), 1.5, true)
-		draw_arc(Vector2.ZERO, 29.0, age * 0.6, age * 0.6 + PI * 1.3, 32, Color(0.7, 0.55, 1.0, 0.8), 2.5, true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.16, 1.12))
+		draw_colored_polygon(RIM, Color(0.41, 0.77, 0.98, 0.18))
 		draw_set_transform(Vector2.ZERO)
-		var font: Font = ThemeDB.fallback_font
-		draw_string(font, Vector2(-37.0, -48.0), "THE MELT", HORIZONTAL_ALIGNMENT_CENTER, 74.0, 12, Color(0.85, 0.95, 1.0))
-		draw_string(font, Vector2(-40.0, 59.0), "Jump to enter", HORIZONTAL_ALIGNMENT_CENTER, 80.0, 10, Color(0.8, 0.9, 1.0))
+		draw_colored_polygon(RIM, INK)
+		for i: int in range(RIM.size()):
+			var next: int = (i + 1) % RIM.size()
+			var facet := PackedVector2Array([RIM[i], RIM[next], OPENING[next], OPENING[i]])
+			draw_colored_polygon(facet, FROST.lerp(Color(0.37, 0.57, 0.77), float(i % 4) * 0.24))
+		draw_colored_polygon(OPENING, Color(0.13, 0.14, 0.27))
+		draw_colored_polygon(PackedVector2Array([
+			OPENING[7], OPENING[0], OPENING[3], OPENING[4], OPENING[5], OPENING[6],
+		]), Color(0.34, 0.26, 0.44))
+		draw_line(RIM[7], RIM[0], FROST, 1.5, true)
+		draw_line(RIM[0], RIM[1], FROST, 1.5, true)
+		draw_caption(TITLE_FONT, "The Melt", -52.0, 17)
+		draw_caption(ThemeDB.fallback_font, "Jump to enter", 59.0, 13)
+
+	func draw_caption(font: Font, caption: String, baseline: float, font_size: int) -> void:
+		var start := Vector2(-font.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x * 0.5, baseline)
+		draw_string_outline(font, start, caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, 5, INK)
+		draw_string(font, start, caption, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, FROST)
 
 
 func _ready() -> void:
-	var ring: Ring = Ring.new()
-	ring.name = "Visual"
-	add_child(ring)
-	spin_speed = 0.0
-	spin_min_scale = 1.0
+	var rift := RiftVisual.new()
+	rift.name = "Visual"
+	add_child(rift)
 	super._ready()
+	set_process(false)
 
 
 func _on_body_entered(body: Node2D) -> void:

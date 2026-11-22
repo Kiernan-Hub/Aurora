@@ -24,6 +24,7 @@ var instruction: Label
 var result: Label
 var pause_button: Button
 var continue_button: Button
+var shown_chest_tier: int = -1
 
 
 func _ready() -> void:
@@ -32,13 +33,17 @@ func _ready() -> void:
 	theme = load("res://assets/ui/aura_theme.tres")
 	title = make_label(30)
 	title.text = "The Melt"
+	title.add_theme_font_override("font", preload("res://assets/ui/fonts/display.tres"))
 	subtitle = make_label(13)
-	subtitle.text = "An ice rift · Your run is waiting"
+	subtitle.text = "Your run is paused"
 	score = make_label(16)
 	instruction = make_label(15)
 	result = make_label(18)
 	result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	result.add_theme_color_override("font_outline_color", Color(0.045, 0.06, 0.11, 0.9))
+	result.add_theme_constant_override("outline_size", 5)
 	pause_button = Button.new()
 	pause_button.text = "Pause"
 	pause_button.pressed.connect(func(): pause_requested.emit())
@@ -84,15 +89,18 @@ func begin(frames: SpriteFrames, previous_best: float = 0.0) -> void:
 	camera_y = 0.0
 	age = 0.0
 	best_seconds = previous_best
-	result.text = "Tap to begin\nJump between ice ledges. Outlast the rising melt."
+	result.text = "Tap or press Space to begin\nJump between ice ledges ahead of the rising melt."
 	continue_button.visible = false
-	instruction.text = "Tap / Space to jump · 15s: Rare chest · 30s: Aurora chest"
-	score.text = "0.0s\nBest %.1fs" % best_seconds
+	shown_chest_tier = -2
+	update_run_labels()
 	queue_redraw()
 
 
 func show_reward(text: String, saved: bool) -> void:
 	result.text = text
+	if saved:
+		best_seconds = maxf(best_seconds, round.elapsed)
+	update_run_labels()
 	continue_button.text = "Back to your run" if saved else "Retry saving reward"
 	continue_button.visible = true
 
@@ -119,11 +127,30 @@ func _physics_process(delta: float) -> void:
 	else:
 		round.advance(delta)
 		update_camera(delta)
-		score.text = "%.1fs · +%d coins\nBest %.1fs" % [round.elapsed, round.bonus_coins(), best_seconds]
+		update_run_labels()
 		if round.finished and not finish_announced:
 			finish_announced = true
 			round_finished.emit()
 	queue_redraw()
+
+
+func update_run_labels() -> void:
+	var earned_text: String = " · +%d coins" % round.bonus_coins() if round.started and not round.finished else ""
+	score.text = "%.1fs%s\nBest %.1fs" % [round.elapsed, earned_text, best_seconds]
+	if round.finished:
+		instruction.text = ""
+		return
+	var tier: int = round.chest_tier()
+	if tier == shown_chest_tier:
+		return
+	shown_chest_tier = tier
+	match tier:
+		ChestTypes.Tier.AURORA:
+			instruction.text = "Tap / Space to jump · Aurora chest earned"
+		ChestTypes.Tier.RARE:
+			instruction.text = "Tap / Space to jump · Upgrade to Aurora at %.0fs" % MeltRound.AURORA_SECONDS
+		_:
+			instruction.text = "Tap / Space to jump · Rare chest at %.0fs" % MeltRound.RARE_SECONDS
 
 
 func _input(event: InputEvent) -> void:

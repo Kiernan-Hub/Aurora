@@ -164,6 +164,9 @@ func find_void_spans(chasm_budget: int) -> Array[Dictionary]:
 func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: float) -> bool:
 	var near_lip_x: float = float(void_span["start_x"])
 	var far_lip_x: float = float(void_span["end_x"])
+	terrain_generator.ensure_segment_cache_for_world_x(near_lip_x)
+	var chasm_spec: Dictionary = terrain_generator.get_segment_spec(terrain_generator.find_segment_index_at_x(near_lip_x))
+	var check_plunge_framing: bool = trial_mode == "no_jump" and float(chasm_spec.get("exit_drop", 0.0)) >= 1400.0
 	# Probes get no upgrades (GameManager.apply_upgrades() skips headless), so the air-move trials
 	# grant their move here and every other trial measures the player who owns nothing.
 	var is_island_trial: bool = trial_mode.begins_with("islands")
@@ -215,6 +218,7 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 	var has_released_glide: bool = false
 	var reached_x: float = player.global_position.x
 	var landed_past_far_lip: bool = false
+	var lowest_feet_from_camera: float = 0.0
 	for _frame_index: int in range(TRIAL_FRAME_BUDGET):
 		var player_x: float = player.global_position.x
 		var is_over_void: bool = player_x >= near_lip_x and player_x < far_lip_x
@@ -246,6 +250,9 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 		if player.is_dead:
 			break
 		reached_x = maxf(reached_x, player.global_position.x)
+		if check_plunge_framing and reached_x >= near_lip_x and not player.is_on_floor():
+			var feet_y: float = player.global_position.y + player.capsule_half_height
+			lowest_feet_from_camera = maxf(lowest_feet_from_camera, feet_y - (main as Main).camera_y)
 		# "Cleared" means LANDED past the far lip, not merely travelled past it horizontally.
 		# Distance alone is not enough: at 750 px/s the player crosses a 220px void in 0.29s
 		# having fallen only ~69px, so a body that is still descending toward its death sails
@@ -266,8 +273,6 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 	# means the ground was never removed and every other result here is meaningless. A drop
 	# chasm inverts that contract -- it is crossed by running straight off the near lip, so
 	# there no_jump must SURVIVE, and a death is the failure.
-	terrain_generator.ensure_segment_cache_for_world_x(near_lip_x)
-	var chasm_spec: Dictionary = terrain_generator.get_segment_spec(terrain_generator.find_segment_index_at_x(near_lip_x))
 	var must_be_jumped: bool = bool(chasm_spec.get("must_be_jumped", true))
 	var expects_survival: bool = (trial_mode != "no_jump" and trial_mode != "double_late") or not must_be_jumped
 	var recoveries: int = player.debug_stall_recovery_count
@@ -275,6 +280,14 @@ func run_trial(void_span: Dictionary, trial_mode: String, phase_offset_world_x: 
 	# a watchdog papered over it, which is exactly the large_valley failure the lips are
 	# supposed to make impossible.
 	var passed: bool = survived == expects_survival and recoveries == 0
+	if check_plunge_framing:
+		# Headless has no useful window size. Project the feet into the game's
+		# minimum landscape frame, leaving room to see the landing ice.
+		var frame_height: float = float(ProjectSettings.get_setting("display/window/size/viewport_height"))
+		var feet_screen_y: float = frame_height * 0.5 + lowest_feet_from_camera * (main as Main).camera_2d.zoom.y
+		var framing_ok: bool = feet_screen_y <= frame_height - 32.0
+		print("  PLUNGE_CAMERA feet_y=%.1f frame_height=%.0f clear=%s" % [feet_screen_y, frame_height, framing_ok])
+		passed = passed and framing_ok
 
 	player.upgrade_jump_multiplier = 1.0
 	print("  CHASM_TRIAL void=[%.1f, %.1f] mode=%-7s speed=%.0f survived=%s expected=%s reached=%.1f recoveries=%d %s" % [

@@ -118,6 +118,9 @@ const REJECTED_SLOT_RETRY_DELAY: float = 1.0
 # asserted by terrain_invariant_check's check_spawn_lookahead().
 const SPAWN_LOOKAHEAD_WORLD_X: float = 1500.0
 const DESPAWN_BEHIND_WORLD_X: float = 1500.0
+# Timed pickups share the same spawn lookahead. Keep their art and jump targets
+# apart when two timers find a legal slot at the same time.
+const PICKUP_SPACING: float = 100.0
 # Only over near-flat ground. Jumping from a slope changes both the apex and where it lands
 # relative to the coin, which is exactly the derivation above coming apart -- and the same
 # reason ObstacleSpawner has this rule, at the same 6 degrees.
@@ -242,6 +245,10 @@ func try_spawn(world_x: float, scene: PackedScene, clearance: float, on_collecte
 	# Never where reaching for it means jumping into a hazard (ObstacleSpawner.is_clear_for_pickup).
 	if obstacle_spawner != null and not obstacle_spawner.is_clear_for_pickup(world_x):
 		return false
+	for pickup: Coin in active_coins:
+		if is_instance_valid(pickup) and not pickup.has_been_collected \
+				and absf(pickup.position.x - world_x) < PICKUP_SPACING:
+			return false
 
 	var local_y: float = terrain_generator.ground_y + terrain_generator.get_terrain_height(world_x) - clearance
 	var coin: Coin = scene.instantiate() as Coin

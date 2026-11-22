@@ -308,6 +308,10 @@ over.
 
 Vertical: uses a 72px baseline-relative dead zone with symmetric climb/descent follow and
 exponential smoothing. Glide temporarily takes tight vertical control until landing.
+Fast airborne falls blend from normal to tighter vertical smoothing between 750 and
+1,500px/s. The target stays on the same dead zone, so landing does not swap targets.
+This keeps the skater and landing ice in frame on the 1,400px plunge. The plunge
+no-input trials in `chasm_probe` verify the skater's feet stay above the bottom 32px.
 
 Horizontal: **also exponentially smoothed** (`HORIZONTAL_FOLLOW_SMOOTHNESS`, 8.0) and
 then *led* by a smoothed scroll-rate estimate that cancels the filter's steady-state lag.

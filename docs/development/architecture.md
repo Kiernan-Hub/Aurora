@@ -204,6 +204,9 @@ and every upgrade level, gone, with no error anywhere.
 is `Cosmetics.ITEMS`, with trails, outfit colours and display-only charms. Chest rolls use its
 unowned IDs and remove finds from the pool within a run; exhaustion falls back to the jackpot.
 `grant_chest_rewards` grants ownership before `record_run`'s one write, independent of reveal taps.
+`ChestReveal` keeps at most four openings on the results screen. When a run exceeds that
+budget, named mission and glide rewards are shown separately, and the last tap groups the
+remaining pickups with a visible count and the highest tier's art.
 `to_data()` is the exact disk payload, tested through JSON without writing the developer's save.
 
 **v5 (2026-11-15)** adds `mission_id`, `mission_progress` and `missions_completed`.
@@ -366,9 +369,13 @@ before (`docs/research/freeze_bug.md`). Check before assuming a new `_ready()`-t
 
 `MeltDirector` is a sibling under Main. It seeds a 240–420s deadline from the session seed,
 allows at most one portal per run and uses RareCoinSpawner.try_spawn's existing legal placement
-pipeline at clearance84. No portal during an active/reserved lake or Aurora or boost/glide.
-`MeltPortal extends Coin` rechecks the upcoming ground/hazard corridor before collection; its
-18px radius still requires a jump at every upgrade level. Entry is deferred past the physics
+pipeline at clearance84. The same pipeline keeps portals, chests and diamonds 100px apart
+and tests the full extent of active hazard spans. No portal during a reserved or active
+lake or Aurora, or during boost/glide.
+Portal placement also requires enough time before the next obstacle pattern for that pattern
+to spawn beyond the return corridor. `MeltPortal extends Coin` checks ground and placed hazards
+at contact, when a pattern that's still waiting will spawn offscreen. Its 18px radius still
+requires a jump at every upgrade level. Entry is deferred past the physics
 flush and stays pending if Pause wins that same frame. A later new scene starts fresh.
 
 GameManager.BONUS pauses the tree; a process-ALWAYS `MeltView` in a layer2 canvas drives only

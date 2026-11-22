@@ -338,12 +338,29 @@ const PICKUP_CLEAR_SECONDS: float = 1.0
 func is_clear_for_pickup(world_x: float) -> bool:
 	if debug_spawning_disabled or player == null:
 		return true
-	if next_pattern_time - player.speed_manager.elapsed_time < PICKUP_CLEAR_SECONDS:
-		return false
+	return has_time_before_next_pattern(PICKUP_CLEAR_SECONDS) \
+		and not has_active_obstacle_between(world_x - PICKUP_CLEAR_DISTANCE, world_x + PICKUP_CLEAR_DISTANCE)
+
+
+func has_time_before_next_pattern(seconds: float) -> bool:
+	return debug_spawning_disabled or player == null or next_pattern_time - player.speed_manager.elapsed_time >= seconds
+
+
+# Check physical occupancy separately from the scheduler's next deadline. The
+# portal uses this at contact, when future hazards still spawn offscreen.
+func has_active_obstacle_between(start_x: float, end_x: float) -> bool:
 	for obstacle: Node2D in active_obstacles:
-		if is_instance_valid(obstacle) and absf(obstacle.position.x - world_x) < PICKUP_CLEAR_DISTANCE:
-			return false
-	return true
+		if not is_instance_valid(obstacle):
+			continue
+		var obstacle_start: float = obstacle.position.x
+		var obstacle_end: float = obstacle_start
+		if obstacle is ThinIce:
+			var span: ThinIce = obstacle as ThinIce
+			obstacle_start = span.start_x
+			obstacle_end = span.end_x
+		if obstacle_end > start_x and obstacle_start < end_x:
+			return true
+	return false
 
 
 # One scheduling decision, taken when a pattern is due. The pattern is drawn from

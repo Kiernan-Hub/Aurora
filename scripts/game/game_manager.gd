@@ -177,7 +177,7 @@ var landing_burst: Node2D
 # 32px to the metre puts the 48px-tall skater at 1.5m and MAX_SPEED at ~84 km/h.
 const PIXELS_PER_METER: float = 32.0
 # Locked achievements, and nothing else, are drawn at this alpha on the Stats screen.
-const STATS_DIM_ALPHA: float = 0.45
+const STATS_DIM_ALPHA: float = 0.70
 # A skin button: room for the frame (150x180 source, drawn shrunk) above its name.
 const SKIN_BUTTON_SIZE: Vector2 = Vector2(96, 150)
 var run_start_x: float = 0.0
@@ -595,7 +595,8 @@ func build_mission_ui() -> void:
 	mission_hud.offset_top = -58
 	mission_hud.offset_bottom = -14
 	mission_label = Label.new()
-	mission_label.add_theme_font_size_override("font_size", 13)
+	mission_label.theme = start_screen.theme
+	mission_label.theme_type_variation = &"HudLabel"
 	mission_hud.add_child(mission_label)
 	mission_bar = ProgressBar.new()
 	mission_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1417,8 +1418,6 @@ const SHOP_PIP_SIZE: Vector2 = Vector2(18, 6)
 const SHOP_PIP_ON: Color = Color(1.0, 0.82, 0.4)
 const SHOP_PIP_OFF: Color = Color(1.0, 1.0, 1.0, 0.16)
 const SHOP_SKATER_PICTURE_SIZE: Vector2 = Vector2(72, 96)
-# A card the wallet cannot buy yet is dimmed to this.
-const SHOP_CARD_DIM_ALPHA: float = 0.7
 
 
 func build_shop_rows() -> void:
@@ -1466,7 +1465,7 @@ func build_shop_rows() -> void:
 			column.add_child(picture)
 		column.add_child(make_shop_label(String(track["name"]).trim_suffix(" skater"), 17))
 		var label: Label = make_shop_label("", 12)
-		label.modulate.a = 0.65
+		label.modulate.a = 0.74
 		column.add_child(label)
 
 		var pips: Array[ColorRect] = []
@@ -1542,7 +1541,6 @@ func refresh_shop() -> void:
 			(row["pips"][pip_index] as ColorRect).color = SHOP_PIP_ON if pip_index < level else SHOP_PIP_OFF
 		var can_buy: bool = services != null and services.upgrades.can_purchase(upgrade_id)
 		button.disabled = not can_buy
-		(row["card"] as Control).modulate.a = 1.0 if can_buy or is_complete else SHOP_CARD_DIM_ALPHA
 
 
 # Just opens the confirmation -- the actual wipe is in _on_reset_progress_confirmed,

@@ -1,6 +1,6 @@
 # Handoff
 
-## START HERE — desktop review, 2026-11-21
+## START HERE — desktop polish, 2026-11-21
 
 **Branch: `play/next`. Latest skating change: `8fa0bdb` (smooth recovery).**
 The previous long phone-review handoff is archived at the top of `docs/history.md`.
@@ -8,16 +8,35 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 
 ### Desktop review
 
+- **Rewards:** crowded results give the mission and 50th-glide chests their own named taps.
+  Regular overflow shows its batch size and highest tier. Rewards still bank before the reveal.
+  The run HUD has outlined text; shop prices and locked achievement hints are easier to read.
+- **Terrain/hazards:** fast falls tighten vertical camera follow. The plunge now shows the
+  landing ice before touchdown, and normal camera metrics matched the prior build. Timed
+  pickups keep 100px apart, and the pickup guard checks the full length of thin ice and other
+  spans. Rendered runs cleared all three island gaps and stayed grounded over a mountain.
+- **The Melt:** the faceted ice rift and outlined labels hold up against bright scenery.
+  The portal caches its static drawing and only the core light pulses. The bonus screen shows
+  the next chest threshold and updates the best time when the reward saves. Portal placement
+  waits for enough time before the next obstacle pattern. Contact checks the actual return
+  corridor, so an upcoming offscreen pattern cannot veto a safe jump into the rift.
+  In a rendered run, a jump into a naturally spawned portal at 4:24 survived 36.47s,
+  saved the Aurora chest once and returned to the same run pose and clock. Eight seeded
+  simulations without powerups found a clear return corridor at contact.
+- Review captures: `art_source/ui_review/2026-11-21-desktop-review.jpg`.
 - The 50th-glide chest and achievement could arrive together with the notice overlapping Home.
   The notice now moves to the bottom right on the results screen. Rendered checks verify the
   reward pays once and the notice clears the results column at both desktop and phone widths.
 - Removed a redundant spike-scene preload that caused a resource load cycle during Android
   export. The spawner already loads the same scene from its piece table when needed. A run
   launched from the exported pack spawned the spike with its collision script connected.
-- Four seeded 12-minute headless runs exercised the live obstacle scheduler with invincibility
+- The prior four seeded 12-minute headless runs exercised the live obstacle scheduler with invincibility
   and chasms enabled. Slowest decisions in tier 8 were 8.6–9.6 ms on the M4, with 74–78 late
-  placements per run and zero stall recoveries. These are scheduler timings on desktop.
-  Compare phone logcat with actual frame timing before changing density.
+  placements per run and zero stall recoveries.
+- A rendered 12-minute desktop run with invincibility and a 60 fps cap placed 158
+  patterns with zero stall recoveries. Late pattern scheduling peaked at 20.65 ms.
+  From 8:00 onward, the 95th-percentile frame gap was 17.58 ms and 23 of 14,394
+  gaps exceeded 25 ms. The 902 ms outlier was not attributed to a specific system.
 
 ### Current skating — owner review pending
 
@@ -40,8 +59,7 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 ### Other current work / review status
 
 - Owner likes collection/customizations and tier/mission visuals. **Really? is approved.**
-  The Melt portal is provisional and needs polish. Still Water exit fixes and revised spray
-  are implemented; broader terrain/pacing/phone feel remains unapproved.
+  The polished Melt portal, Still Water exit and terrain have been reviewed on desktop.
 - **High-glide milestones are built, review pending:** same Really? qualification of >=6s
   uninterrupted held ascent and >=3,000px actual climb; there is no literal height ceiling.
   **10th:** "still??". **50th:** "fine, here you go" and an Ultra Mega Super Duper Chest:
@@ -58,13 +76,10 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 
 ### Validation
 
-- The 2026-11-21 baseline passed all 15 gates (230s). The review fixes passed all six
-  standard gates, the Aurora integration probe, all 12 rendered UI cases and all three
-  visual checks.
-- Latest gameplay: **all six standard gates pass (121s)**, including **21 headless regression
-  cases**; **all three visual checks pass**, plus the rendered five-skin before/after preview.
-- Earlier in this session, the full15 physics gates and12 rendered UI cases passed. They
-  predate the final animation refinements; latest validation is the bullet above.
+- **15 full gates pass (227s)**, including 22 headless regression cases. All 12 rendered UI
+  cases and three visuals pass. Both chasm gates passed with the added plunge framing
+  check (796 trials total). The old camera failed all eight plunge phases in 504 trials.
+  All six standard gates and 12 rendered UI cases passed again after the last portal fix.
 - The motion checks cover full cycles, fixed bones, blade contact, coasting, boundaries,
   acceleration through toe-off and early combined lift/forward motion. Second differences
   use1ms samples to avoid single-precision Vector2 rounding noise. Smoothness step limits
@@ -72,17 +87,10 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 - The known editor rewrite of `project.godot` (only removed pins/comments and key order)
   was restored under CLAUDE's standing rule. Check status after every engine run.
 
-### Phone and desktop constraints
+### Desktop constraints
 
-- **Phone is unplugged. Owner explicitly deferred installation until later.** The installed
-  **Aura Playtest** (`com.kiernan.aura.playtest`) still has the first2.8s continuous skating
-  build, before the latest refinements and high-glide milestones. The ignored
-  **`aura-playtest.apk` is ready for USB install**. It was exported from a temporary copy and
-  verified against the previous Playtest package ID and signing certificate. Install as an
-  update to preserve Playtest progress and the separate original Aura install.
-- **USB only, Aura only, no wireless debugging or unrelated app/data access.** Before any
-  phone screenshot or tap, verify Aura Playtest is the focused window, not merely resumed.
-  Device/export/install procedure: `docs/development/debugging.md`, Android device testing.
+- **The owner explicitly requested desktop-only testing.** Android testing is parked.
+  The ignored `aura-playtest.apk` is from the prior review, before the desktop polish.
 - Automated desktop previews: **Master -24dB in memory or `--audio-driver Dummy`**. Never
   change saved volumes. Use the probe's in-memory SaveStore for automated dev/death tests;
   dev mode's99,999 wallet top-up otherwise writes the real save.
@@ -91,18 +99,12 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 
 ### Next actions, in order
 
-1. Owner reviews **the latest smooth-recovery animation**; tune only from that feedback.
-   Reconnect USB later, then install the prepared Aura Playtest without wiping progress.
-2. Review the10th/50th glide milestones and broader phone feel: chest tiers/reveals, mission
-   completion across runs, shop/collection layout, HUD readability, plunge landing/camera,
-   mountains at speed, islands, black ice, vents and geodes. The Melt still needs polish.
-3. Still owed: a long phone run past5:00 with logcat `OBSTACLE_SEARCH_SLOWEST`, plus the owner
-   tests in history. Late-tier search cost on Android is unmeasured; if late frames appear beyond8:00,
-   first restore `ObstacleSpawner.BREATHING_ROOM_FLOOR` from2.0 to2.5. No new modes/features
-   or retention rewards should distract from stability. Flag costly/bug-prone options.
-4. **Do not merge `play/next` into `main` without the owner's decision.** Backup pushes to
-   `play/next` were explicitly requested. Retention ideas such as five-mission cosmetic choice
-   and collection-set rewards remain planned, not built, until after owner play review.
+1. Review owner feedback on skating, the glide milestones and the portal using desktop captures.
+   Tune where feedback or a reproducible issue calls for it.
+2. **The owner decides when to merge `play/next` into `main`.** Backup pushes to
+   `play/next` were explicitly requested.
+3. The later reward ideas are a cosmetic choice after five missions, collection-set rewards
+   and personal-best encouragement. Flag costly or bug-prone options before starting.
 
 ### Standing test traps
 
@@ -284,7 +286,7 @@ except after a double jump; the air moves split left (slam) / right (double jump
 - Node path `TerrainGenerator/ObstacleSpawner`, `class_name ObstacleSpawner` (Aurora + biome directors).
 - `debug_spawning_disabled` (a plain var, set by 6 probes, watched by `shipping_values_check`).
 - `spawn_obstacle(x, kind = spike)`, `spawn_thin_ice(start, end)` (now a wrapper of `spawn_span(kind, start, end)`), `is_black_ice_at(x)` / `is_vent_at(x)` (Player, UNTYPED: naming the class from `player.gd` closes a load cycle), `active_obstacles` (`aurora_calm_probe`,
-  `check_spawn_placement`). `OBSTACLE_SCENE` (preloaded; `aurora_calm_probe`).
+  `check_spawn_placement`). `aurora_calm_probe` reads the spike scene path from `PIECE_KINDS`.
 - Read by `terrain_invariant_check`: `OBSTACLE_HALF_HEIGHT`, `FIRST_PATTERN_TIME`, `PIECE_KINDS`, `PATTERNS`, `TIERS`,
   `RECURRING_PATTERN_MIN_INTERVAL_FLOOR`, `BREATHING_ROOM_FLOOR`, `MIN_SAFE_START_WORLD_X`,
   `OBSTACLE_VOID_CLEARANCE_AHEAD`, `SPAWN_LOOKAHEAD_WORLD_X`, the static `get_pattern_span()`,

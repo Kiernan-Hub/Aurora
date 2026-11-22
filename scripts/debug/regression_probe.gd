@@ -128,6 +128,7 @@ func run() -> void:
 	mission_model()
 	melt_model()
 	lake_exit_approach()
+	await pickup_span_clearance()
 	await glide_achievement()
 	await death_pickups()
 	await reload_banking()
@@ -900,6 +901,22 @@ func lake_exit_approach() -> void:
 		"spike beyond shore with locked takeoff rejected=%s; dry approach allowed=%s at cap and boost" % [unsafe_rejected, dry_allowed])
 
 
+func pickup_span_clearance() -> void:
+	await new_scene()
+	var spawner: ObstacleSpawner = main.get_node("TerrainGenerator/ObstacleSpawner")
+	spawner.debug_spawning_disabled = false
+	spawner.next_pattern_time = INF
+	var start: float = START_X + 1500.0
+	var end: float = start + 1.2 * SpeedManager.MAX_SPEED
+	spawner.spawn_thin_ice(start, end)
+	var clear_distance: float = ObstacleSpawner.PICKUP_CLEAR_DISTANCE
+	var blocked: bool = not spawner.is_clear_for_pickup(end - 1.0) \
+		and not spawner.is_clear_for_pickup(end + clear_distance - 1.0)
+	var clear: bool = spawner.is_clear_for_pickup(end + clear_distance + 1.0)
+	expect("pickup_span_clearance", blocked and clear,
+		"long thin-ice tail keeps pickups and their jump approaches clear")
+
+
 func lake_exit() -> void:
 	var clipped: bool = true
 	var jumps: bool = true
@@ -1155,9 +1172,28 @@ func glide_milestones() -> void:
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("/tmp/aura-glide-milestone-chest.png")
 	root.size = original_size
-	expect("glide_milestones", paid and no_double_pay and label_ok and opens and toast_clear,
-		"real completed glide pays once=%s death only reveals=%s named bundle=%s tap opens all loot/no save=%s toast clear=%s" % [
-			paid, no_double_pay, label_ok, opens, toast_clear])
+	var crowded: Array[Dictionary] = ChestRewards.roll_all(6, [], RandomNumberGenerator.new(), [])
+	var mission_reward: Dictionary = ChestRewards.roll([], RandomNumberGenerator.new(), [], ChestTypes.Tier.RARE)
+	mission_reward["mission"] = true
+	crowded.append(mission_reward)
+	crowded.append(game_manager.chest_rewards[0])
+	reveal.play(crowded, Callable())
+	await process_frame
+	var named_openings: bool = reveal.open_label.text.contains("Mission chest")
+	reveal.open_next()
+	reveal.reveal_tween.custom_step(5.0)
+	named_openings = named_openings and reveal.open_label.text.contains(ChestRewards.GLIDE_CHEST_NAME)
+	for opening: int in range(2):
+		reveal.open_next()
+		reveal.reveal_tween.custom_step(5.0)
+	var grouped: bool = reveal.open_label.text == "5 chests · Tap 4/4"
+	reveal.open_next()
+	reveal.reveal_tween.custom_step(5.0)
+	grouped = grouped and reveal.next_reward == crowded.size() and reveal.open_label.text == "Opened" \
+		and store.writes == banked_writes and store.coin_wallet == 1040
+	expect("glide_milestones", paid and no_double_pay and label_ok and opens and toast_clear and named_openings and grouped,
+		"one save/reward=%s death only reveals=%s named bundle=%s open/no save=%s toast clear=%s long-run special receipts/batch=%s" % [
+			paid, no_double_pay, label_ok, opens, toast_clear, named_openings and grouped])
 
 
 func melt_lifecycle() -> void:
@@ -1166,17 +1202,25 @@ func melt_lifecycle() -> void:
 	var director: MeltDirector = main.get_node("MeltDirector")
 	var spawner: RareCoinSpawner = main.get_node("TerrainGenerator/RareCoinSpawner")
 	var terrain: TerrainGenerator = main.get_node("TerrainGenerator")
+	var obstacles: ObstacleSpawner = spawner.obstacle_spawner
+	obstacles.debug_spawning_disabled = false
+	player.speed_manager.current_speed = SpeedManager.MAX_SPEED
 	director.debug_first_seconds = 12.0
 	director.due = -1.0
 	main.elapsed_time = 11.0
 	director._process(0.0)
 	var schedule_ok: bool = not director.portal_spawned and director.due == 12.0
 	main.elapsed_time = 12.0
-	for candidate: int in range(20000, 60000, 64):
-		player.global_position = Vector2(float(candidate), terrain.get_surface_world_y(float(candidate)) - player.capsule_half_height)
-		director._process(0.0)
-		if director.portal_spawned:
-			break
+	for wait_seconds: float in [1.5, 10.0]:
+		obstacles.next_pattern_time = player.speed_manager.elapsed_time + wait_seconds
+		for candidate: int in range(20000, 60000, 64):
+			var x: float = float(candidate)
+			player.global_position = Vector2(x, terrain.get_surface_world_y(x) - player.capsule_half_height)
+			director._process(0.0)
+			if director.portal_spawned:
+				break
+		if wait_seconds == 1.5:
+			schedule_ok = schedule_ok and not director.portal_spawned
 	schedule_ok = schedule_ok and director.portal_spawned
 	var portal_count: int = spawner.active_coins.size()
 	director._process(0.0)
@@ -1185,8 +1229,15 @@ func melt_lifecycle() -> void:
 		expect("melt_lifecycle", false, "no legal scheduled portal found")
 		return
 	var portal: MeltPortal = spawner.active_coins[-1] as MeltPortal
+	var pickup_clear: bool = not spawner.try_spawn_chest(portal.global_position.x) \
+		and spawner.active_coins.size() == portal_count
 	player.global_position = portal.global_position
 	player.velocity = Vector2.ZERO
+	obstacles.next_pattern_time = player.speed_manager.elapsed_time + 0.2
+	var physical_clearance: bool = director.entry_is_clear()
+	obstacles.spawn_obstacle(portal.global_position.x + 1050.0)
+	physical_clearance = physical_clearance and not director.entry_is_clear()
+	obstacles.active_obstacles.pop_back().free()
 	for chunk_index: int in terrain.active_chunks.keys():
 		terrain.remove_chunk(chunk_index)
 	terrain.initialize_chunks()
@@ -1230,16 +1281,16 @@ func melt_lifecycle() -> void:
 	var writes: int = store.writes
 	director.settle_reward()
 	var paid: bool = director.reward_paid and store.coin_wallet == wallet + view.round.bonus_coins() \
-		and store.cosmetics.get(cosmetic, false) and store.writes == writes + 1
+		and store.cosmetics.get(cosmetic, false) and store.writes == writes + 1 and view.score.text.contains("Best 31.0s")
 	director.settle_reward()
 	paid = paid and store.writes == writes + 1
 	director._on_reward_requested()
 	view._physics_process(2.1)
 	var returned: bool = game_manager.state == GameManager.State.PLAYING and not paused \
 		and not view.visible and player.position == world_x and main.elapsed_time == clock and player.jump_buffer_timer == 0.0
-	expect("melt_lifecycle", schedule_ok and entered_ok and frozen and moved and pause_ok and resume_ok and rollback and paid and returned,
-		"schedule/once=%s real portal=%s world frozen=%s plays=%s pause/focus=%s resume=%s rollback=%s once=%s return pose/clock=%s" % [
-			schedule_ok, entered_ok, frozen, moved, pause_ok, resume_ok, rollback, paid, returned])
+	expect("melt_lifecycle", schedule_ok and pickup_clear and physical_clearance and entered_ok and frozen and moved and pause_ok and resume_ok and rollback and paid and returned,
+		"safe schedule/once=%s clear slot=%s only placed hazards veto=%s real portal=%s world frozen=%s plays=%s pause/focus=%s resume=%s rollback=%s once/best=%s return=%s" % [
+			schedule_ok, pickup_clear, physical_clearance, entered_ok, frozen, moved, pause_ok, resume_ok, rollback, paid, returned])
 
 
 # Catch a visible snap at either foot's recovery boundary or cycle wrap, across all skins.

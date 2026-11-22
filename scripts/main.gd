@@ -17,6 +17,7 @@ class_name Main
 const WORLD_REBASER_SCRIPT: Script = preload("res://scripts/systems/world_rebaser.gd")
 const VERTICAL_FOLLOW_MARGIN: float = 72.0
 const VERTICAL_FOLLOW_SMOOTHNESS: float = 6.0
+const FAST_FALL_FOLLOW_SMOOTHNESS: float = 15.0
 
 # WHERE THE FROZEN LAKE'S SHORE SITS ON SCREEN, as a fraction from the top, while a lake is being
 # crossed. Measured off the owner's reference screenshot (Glossy Frozen Lake.png), not chosen:
@@ -233,7 +234,11 @@ func _physics_process(delta: float) -> void:
 		interpolation_weight = 1.0 - exp(-GLIDE_VERTICAL_FOLLOW_SMOOTHNESS * delta)
 	else:
 		target_camera_y = get_vertical_camera_target()
-		interpolation_weight = 1.0 - exp(-VERTICAL_FOLLOW_SMOOTHNESS * delta)
+		# Ordinary jumps stay on the soft follow. A plunge can exceed 2,100 px/s,
+		# which puts the skater below the frame before that filter catches up.
+		var fast_fall: float = 0.0 if player.is_on_floor() else smoothstep(750.0, 1500.0, player.velocity.y)
+		var follow_smoothness: float = lerpf(VERTICAL_FOLLOW_SMOOTHNESS, FAST_FALL_FOLLOW_SMOOTHNESS, fast_fall)
+		interpolation_weight = 1.0 - exp(-follow_smoothness * delta)
 	target_camera_y = apply_lake_framing(target_camera_y)
 	target_camera_y = apply_aurora_framing(target_camera_y, aurora_camera_blend)
 	camera_y = lerpf(camera_y, target_camera_y, interpolation_weight)

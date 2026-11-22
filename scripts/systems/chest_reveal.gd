@@ -56,6 +56,17 @@ func play(rewards: Array[Dictionary], on_sound: Callable) -> void:
 		return
 
 	pending_rewards = rewards.duplicate()
+	if rewards.size() > MAX_ROWS:
+		# Keep the named glide reward and the mission receipt visible as their
+		# own openings. Only regular pickups can end up in the last batch.
+		pending_rewards.clear()
+		var regular: Array[Dictionary] = []
+		for reward: Dictionary in rewards:
+			if reward.has("contents") or reward.get("mission", false):
+				pending_rewards.append(reward)
+			else:
+				regular.append(reward)
+		pending_rewards.append_array(regular)
 	next_reward = 0
 	sound_callback = on_sound
 	open_button = Button.new()
@@ -79,18 +90,34 @@ func prepare_next() -> void:
 	if next_reward >= pending_rewards.size():
 		open_label.text = "Opened"
 		return
+	var shown: Array[Dictionary] = get_next_opening()
+	var tier: int = ChestTypes.Tier.NORMAL
+	for reward: Dictionary in shown:
+		tier = maxi(tier, int(reward.get("tier", ChestTypes.Tier.NORMAL)))
 	stage.begin_chest()
-	stage.set_tier(int(pending_rewards[next_reward].get("tier", ChestTypes.Tier.NORMAL)))
+	stage.set_tier(tier)
 	stage.appear = 1.0
 	open_button.disabled = false
 	open_label.remove_theme_font_size_override(&"font_size")
 	open_label.offset_top = -32.0
+	var tap: String = "Tap %d/%d" % [next_reward + 1, mini(pending_rewards.size(), MAX_ROWS)]
 	var tier_name: String = ChestTypes.get_type(stage.tier)["name"]
-	open_label.text = "%s · Tap %d/%d" % [("Mission " + tier_name) if pending_rewards[next_reward].get("mission", false) else tier_name + " chest", next_reward + 1, pending_rewards.size()]
-	if pending_rewards[next_reward].has("contents"):
-		open_label.text = "%s\nTap %d/%d" % [pending_rewards[next_reward]["name"], next_reward + 1, pending_rewards.size()]
+	var reward: Dictionary = shown[0]
+	if shown.size() > 1:
+		open_label.text = "%d chests · %s" % [shown.size(), tap]
+	elif reward.has("contents"):
+		open_label.text = "%s\n%s" % [reward["name"], tap]
 		open_label.add_theme_font_size_override(&"font_size", 12)
 		open_label.offset_top = -40.0
+	else:
+		var name_text: String = "Mission chest" if reward.get("mission", false) else tier_name + " chest"
+		open_label.text = "%s · %s" % [name_text, tap]
+
+
+func get_next_opening() -> Array[Dictionary]:
+	if next_reward == MAX_ROWS - 1:
+		return pending_rewards.slice(next_reward)
+	return [pending_rewards[next_reward]]
 
 
 # One tap opens one chest. Repeated taps during the animation cannot skip rewards.
@@ -99,10 +126,8 @@ func open_next() -> void:
 		return
 	open_button.disabled = true
 	open_label.text = "Opening..."
-	var is_overflow_row: bool = next_reward == MAX_ROWS - 1 and pending_rewards.size() > MAX_ROWS
-	var shown: Array[Dictionary] = []
-	shown.assign(pending_rewards.slice(next_reward) if is_overflow_row else [pending_rewards[next_reward]])
-	next_reward = pending_rewards.size() if is_overflow_row else next_reward + 1
+	var shown: Array[Dictionary] = get_next_opening()
+	next_reward += shown.size()
 	var is_big: bool = is_big_reward(shown)
 	var row: Label = Label.new()
 	row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
