@@ -26,6 +26,10 @@ nothing is damaged). `check.sh` passes `--log-file` itself since then, and passe
 The alternative is letting the agent write to `~/Library/Application Support/Godot` (its sandbox
 settings). The flag is the smaller change and works for any runner.
 
+**Windowed checks on macOS (2026-11-21):** use the approved unsandboxed execution path
+for GUI commands. The sandboxed rendered probe aborted during AppKit application
+registration, before Godot loaded Aura. The same command ran normally with GUI access.
+
 ## The fast six: `./scripts/check.sh`
 
 One command, ~75s, the tier to run before every commit:

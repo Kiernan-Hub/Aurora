@@ -803,8 +803,7 @@ func _on_player_died() -> void:
 	set_state(State.DEAD)
 	if chest_reveal != null:
 		chest_reveal.play(chest_rewards, sfx_player.play_chest)
-	# After set_state, so an achievement toast this grants starts on a paused tree and knows to
-	# run over the death screen (AchievementToast.show_next_name).
+	# Publish run achievements after the death screen and its toast layout are in place.
 	if services != null and DisplayServer.get_name() != "headless":
 		run_recorded.emit(get_run_distance_meters(), coin_count, services.save_store.total_distance_meters)
 

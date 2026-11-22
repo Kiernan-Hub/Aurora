@@ -346,7 +346,8 @@ func check_entry_failures() -> void:
 	expect(director.try_reserve(), "Conflict setup failed")
 	await warp_case(context, director.flat_start_x + director.recovery_distance + 64.0)
 	# Deliberately bypass the spawner guard to prove entry inspects actual bodies.
-	var obstacle: Obstacle = ObstacleSpawner.OBSTACLE_SCENE.instantiate() as Obstacle
+	var spike_scene_path: String = ObstacleSpawner.PIECE_KINDS[ObstacleSpawner.PIECE_SPIKE]["scene"]
+	var obstacle: Obstacle = (load(spike_scene_path) as PackedScene).instantiate() as Obstacle
 	obstacle.position.x = director.player.global_position.x + 500.0
 	director.obstacle_spawner.add_child(obstacle)
 	director._physics_process(1.0 / 60.0)

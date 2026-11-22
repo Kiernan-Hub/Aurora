@@ -1107,7 +1107,7 @@ func glide_milestone_model() -> void:
 
 func glide_milestones() -> void:
 	await new_scene()
-	game_manager.set_state(GameManager.State.PAUSED)
+	game_manager.set_state(GameManager.State.PLAYING)
 	store.high_glide_count = 49
 	store.achievements[AchievementManager.REALLY] = true
 	store.achievements[AchievementManager.STILL] = true
@@ -1131,6 +1131,10 @@ func glide_milestones() -> void:
 	var no_double_pay: bool = store.coin_wallet == 1040 and game_manager.chest_rewards.size() == 1 		and game_manager.earned_chest_rewards.is_empty() and game_manager.coin_count == 0
 	var reveal: ChestReveal = game_manager.chest_reveal
 	var label_ok: bool = reveal.open_label.text.contains(ChestRewards.GLIDE_CHEST_NAME)
+	var toast: AchievementToast = main.get_node("CanvasLayer/AchievementToast")
+	var results: Control = game_manager.restart_button.get_parent() as Control
+	var toast_clear: bool = toast.visible and toast.can_process()
+	await create_timer(GameManager.DEATH_SCREEN_FADE_SECONDS).timeout
 	var original_size: Vector2i = root.size
 	for width: int in [1152, 1404]:
 		root.size = Vector2i(width, 648)
@@ -1140,6 +1144,8 @@ func glide_milestones() -> void:
 		label_ok = label_ok and ui_rect_fits(reveal.open_button) and ui_rect_fits(game_manager.restart_button) \
 			and reveal.open_label.get_minimum_size().x <= reveal.open_button.size.x \
 			and reveal.open_label.get_minimum_size().y <= reveal.open_label.size.y
+		toast_clear = toast_clear and ui_rect_fits(toast) \
+			and not toast.get_global_rect().intersects(results.get_global_rect())
 		root.get_texture().get_image().save_png("/tmp/aura-glide-chest-%d.png" % width)
 	var banked_writes: int = store.writes
 	reveal.open_next()
@@ -1149,8 +1155,9 @@ func glide_milestones() -> void:
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("/tmp/aura-glide-milestone-chest.png")
 	root.size = original_size
-	expect("glide_milestones", paid and no_double_pay and label_ok and opens,
-		"real completed glide pays once=%s death only reveals=%s named bundle=%s tap opens all loot/no save=%s" % [paid, no_double_pay, label_ok, opens])
+	expect("glide_milestones", paid and no_double_pay and label_ok and opens and toast_clear,
+		"real completed glide pays once=%s death only reveals=%s named bundle=%s tap opens all loot/no save=%s toast clear=%s" % [
+			paid, no_double_pay, label_ok, opens, toast_clear])
 
 
 func melt_lifecycle() -> void:

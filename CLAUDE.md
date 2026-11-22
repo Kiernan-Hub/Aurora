@@ -6,8 +6,8 @@ over time, on infinite seeded procedural terrain. The look is **clean, minimal i
 **Priority order:** terrain stability > physics/collision correctness > game feel. Missions,
 upgrades and visual polish stay deprioritized until the core loop is stable.
 
-**Where the project is (2026-11-16):** core loop and set pieces are merged to `main`; current phone-review work is backed up on `play/next`. **Start at HANDOFF.md, "START HERE"** for current state, validation and next actions.
-Latest animation is B - Smoother return:1s per stroke,0.3s push/0.7s return, same timing with a smoother lift arc; latest gameplay commit `8fa0bdb`. Owner review is pending. The phone is unplugged; rebuild/install Aura Playtest over USB later, preserving both app saves.
+**Where the project is (2026-11-21):** core loop and set pieces are merged to `main`; current review work is on `play/next`. **Start at HANDOFF.md, "START HERE"** for current state, validation and next actions.
+Latest animation is B - Smoother return:1s per stroke,0.3s push/0.7s return, same timing with a smoother lift arc. Owner review is pending. A fresh Aura Playtest APK is ready for USB installation when the phone is available.
 Really? is approved;10th/50th high-glide milestones await review; The Melt is provisional. Keep fixes/stability ahead of feature growth. Session detail and superseded directions are archived in docs/history.md, which is not required reading.
 
 **Editing rules.** Find the root cause in the connected files before changing anything; prefer targeted

@@ -9,8 +9,8 @@ class_name AchievementToast
 # in the project allowed to touch get_tree().paused or a screen's visibility (CLAUDE.md, hard
 # rule). Every other Control under CanvasLayer is either a full-screen modal that set_state()
 # owns, or a permanent HUD label that is simply always there. This is neither: the game stays
-# PLAYING throughout, exactly as the frozen lake itself does, and this node owns its own
-# visibility the way LakeReflection owns the mirror's. Nothing here reaches for GameManager.
+# PLAYING when earned mid-run, and this node owns its own visibility the way LakeReflection
+# owns the mirror's. It observes state changes to keep death notices clear of the controls.
 #
 # DIVISION OF LABOUR, matching the lake's. AchievementManager owns WHETHER and WHEN and is the
 # only writer of save data; this file owns nothing but the look, and is handed a display name it
@@ -24,6 +24,8 @@ class_name AchievementToast
 # all top-right (TimerLabel, CoinLabel, PowerupLabel), so nothing collides.
 const BOTTOM_MARGIN: float = 60.0
 const TOAST_HEIGHT: float = 50.0
+const DEATH_TOAST_WIDTH: float = 350.0
+const DEATH_RIGHT_MARGIN: float = 24.0
 
 # Fade up, hold, fade down. Deliberately gentle at both ends: this fires at the far shore of a
 # set piece tuned over three revisions, and a hard cut would be the loudest event in it.
@@ -83,8 +85,13 @@ func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 
-	layout_toast()
 	build_labels()
+	var game_manager: GameManager = get_node_or_null("../../GameManager") as GameManager
+	if game_manager != null:
+		game_manager.state_changed.connect(_on_state_changed)
+		_on_state_changed(game_manager.state)
+	else:
+		_on_state_changed(GameManager.State.PLAYING)
 
 	achievement_manager = get_node_or_null(achievement_manager_path) as AchievementManager
 	if achievement_manager == null:
@@ -97,18 +104,19 @@ func _ready() -> void:
 	achievement_manager.achievement_granted.connect(_on_achievement_granted)
 
 
-# Anchored to the BOTTOM EDGE rather than given a fixed y, because the viewport is
-# aspect="expand": the pinned 1152x648 base is a MINIMUM, so a 20:9 phone is taller in world
-# units than the editor window and a hard-coded y would float in the middle of it.
-func layout_toast() -> void:
-	anchor_left = 0.0
+# Anchor to the bottom edge for every aspect ratio. The death screen's center column
+# can extend into the usual toast space when it contains a chest reveal.
+func _on_state_changed(state: GameManager.State) -> void:
+	var is_death: bool = state == GameManager.State.DEAD
+	anchor_left = 1.0 if is_death else 0.0
 	anchor_right = 1.0
 	anchor_top = 1.0
 	anchor_bottom = 1.0
-	offset_left = 0.0
-	offset_right = 0.0
+	offset_left = -DEATH_TOAST_WIDTH - DEATH_RIGHT_MARGIN if is_death else 0.0
+	offset_right = -DEATH_RIGHT_MARGIN if is_death else 0.0
 	offset_top = -(BOTTOM_MARGIN + TOAST_HEIGHT)
 	offset_bottom = -BOTTOM_MARGIN
+	process_mode = Node.PROCESS_MODE_ALWAYS if is_death else Node.PROCESS_MODE_INHERIT
 
 
 func build_labels() -> void:
@@ -160,10 +168,6 @@ func show_next_name() -> void:
 	toast_time = 0.0
 	modulate.a = 0.0
 	visible = true
-	# A notice that STARTS on a paused tree is the death screen's (a run achievement, granted
-	# after set_state(DEAD)), and must play over it. One started mid-run keeps the clock rule
-	# above: it holds still behind the pause menu rather than ageing out unseen.
-	process_mode = Node.PROCESS_MODE_ALWAYS if get_tree().paused else Node.PROCESS_MODE_INHERIT
 	set_process(true)
 
 

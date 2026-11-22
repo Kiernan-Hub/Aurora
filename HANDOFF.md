@@ -1,11 +1,23 @@
 # Handoff
 
-## START HERE — session closeout, 2026-11-16
+## START HERE — desktop review, 2026-11-21
 
-**Branch: `play/next`. Current source, art and review videos are backed up on GitHub.
-Latest gameplay commit: `8fa0bdb` (smooth recovery). `main` is untouched.**
+**Branch: `play/next`. Latest skating change: `8fa0bdb` (smooth recovery).**
 The previous long phone-review handoff is archived at the top of `docs/history.md`.
 Read this section and "Next actions"; the remainder is older obstacle-system reference.
+
+### Desktop review
+
+- The 50th-glide chest and achievement could arrive together with the notice overlapping Home.
+  The notice now moves to the bottom right on the results screen. Rendered checks verify the
+  reward pays once and the notice clears the results column at both desktop and phone widths.
+- Removed a redundant spike-scene preload that caused a resource load cycle during Android
+  export. The spawner already loads the same scene from its piece table when needed. A run
+  launched from the exported pack spawned the spike with its collision script connected.
+- Four seeded 12-minute headless runs exercised the live obstacle scheduler with invincibility
+  and chasms enabled. Slowest decisions in tier 8 were 8.6–9.6 ms on the M4, with 74–78 late
+  placements per run and zero stall recoveries. These are scheduler timings on desktop.
+  Compare phone logcat with actual frame timing before changing density.
 
 ### Current skating — owner review pending
 
@@ -46,7 +58,9 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 
 ### Validation
 
-- Documentation closeout: all six standard gates pass again (122s); no gameplay code changed.
+- The 2026-11-21 baseline passed all 15 gates (230s). The review fixes passed all six
+  standard gates, the Aurora integration probe, all 12 rendered UI cases and all three
+  visual checks.
 - Latest gameplay: **all six standard gates pass (121s)**, including **21 headless regression
   cases**; **all three visual checks pass**, plus the rendered five-skin before/after preview.
 - Earlier in this session, the full15 physics gates and12 rendered UI cases passed. They
@@ -62,9 +76,10 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 
 - **Phone is unplugged. Owner explicitly deferred installation until later.** The installed
   **Aura Playtest** (`com.kiernan.aura.playtest`) still has the first2.8s continuous skating
-  build, before the latest refinements and high-glide milestones. **Rebuild before installing;
-  the ignored existing `aura-playtest.apk` is stale.** Export from a temporary copy, preserving
-  the Playtest package/save. The original Aura app and its separate save must remain intact.
+  build, before the latest refinements and high-glide milestones. The ignored
+  **`aura-playtest.apk` is ready for USB install**. It was exported from a temporary copy and
+  verified against the previous Playtest package ID and signing certificate. Install as an
+  update to preserve Playtest progress and the separate original Aura install.
 - **USB only, Aura only, no wireless debugging or unrelated app/data access.** Before any
   phone screenshot or tap, verify Aura Playtest is the focused window, not merely resumed.
   Device/export/install procedure: `docs/development/debugging.md`, Android device testing.
@@ -77,12 +92,12 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 ### Next actions, in order
 
 1. Owner reviews **the latest smooth-recovery animation**; tune only from that feedback.
-   Reconnect USB later, then rebuild/install the latest Aura Playtest without wiping progress.
+   Reconnect USB later, then install the prepared Aura Playtest without wiping progress.
 2. Review the10th/50th glide milestones and broader phone feel: chest tiers/reveals, mission
    completion across runs, shop/collection layout, HUD readability, plunge landing/camera,
    mountains at speed, islands, black ice, vents and geodes. The Melt still needs polish.
 3. Still owed: a long phone run past5:00 with logcat `OBSTACLE_SEARCH_SLOWEST`, plus the owner
-   tests in history. Late-tier search cost is unmeasured; if late frames appear beyond8:00,
+   tests in history. Late-tier search cost on Android is unmeasured; if late frames appear beyond8:00,
    first restore `ObstacleSpawner.BREATHING_ROOM_FLOOR` from2.0 to2.5. No new modes/features
    or retention rewards should distract from stability. Flag costly/bug-prone options.
 4. **Do not merge `play/next` into `main` without the owner's decision.** Backup pushes to

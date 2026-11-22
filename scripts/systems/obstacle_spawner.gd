@@ -26,7 +26,6 @@ signal geode_broken(value: int)
 # to true before add_child(main).
 var debug_spawning_disabled: bool = false
 
-const OBSTACLE_SCENE: PackedScene = preload("res://scenes/obstacles/obstacle.tscn")
 # Half of the spike's 32x32 box (its silhouette hitbox lies inside it), so the box sits on top of
 # the surface rather than centered on it or floating above it.
 const OBSTACLE_HALF_HEIGHT: float = 16.0
@@ -126,11 +125,9 @@ const DESPAWN_BEHIND_WORLD_X: float = 1500.0
 #
 # "floating" marks kinds a glider could fly into: patterns holding one wait out a glide.
 #
-# PATHS, LOADED ON FIRST SPAWN, NOT preload(). Preloading floe.tscn and shard.tscn here made a
-# load cycle: when this script is the first thing loaded, obstacle.gd is still mid-load (for
-# OBSTACLE_SCENE) when those two ask for it, and they come back with NO SCRIPT -- a floe that
-# never hurts anyone, with no error in the game. Measured 2026-09-27; main.tscn's own load
-# order happened to hide it. load() is cached after the first call.
+# Load these paths at spawn time. Preloading a scene closes a dependency cycle through
+# Obstacle, Player and GameManager back to this spawner. Depending on load order, that can strip the
+# obstacle's script or report "Parse Error: Busy" while exporting the scene.
 const PIECE_SPIKE: StringName = &"spike"
 const PIECE_FLOE: StringName = &"floe"
 const PIECE_SHARD: StringName = &"shard"
