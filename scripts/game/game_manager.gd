@@ -221,9 +221,10 @@ static var pending_quick_restart: bool = false
 # Null only off-tree. Under `--headless --script` the autoload node exists and this resolves,
 # which is why every save-writing path here also checks DisplayServer (see apply_upgrades()).
 var services: GameServices
-# This run's record_run() verdict, kept for refresh_death_stats(): the death screen stays up
+# This run's score verdict, kept for refresh_death_stats(): the death screen stays up
 # under the shop, whose purchases and reset change the wallet and best it shows.
 var last_run_is_new_best: bool = false
+var run_save_pending: bool = false
 
 # How much of THIS run's Main.elapsed_time has already been folded into
 # SaveStore.total_playtime_seconds. See bank_playtime() for why it exists.
@@ -711,6 +712,9 @@ func _notification(what: int) -> void:
 		# gesture means there. On START/DEAD there is nothing in progress to protect, and
 		# refusing to exit at all would be its own annoyance, so back does quit.
 		NOTIFICATION_WM_GO_BACK_REQUEST:
+			if state == State.SHOP and reset_confirm_dialog != null and reset_confirm_dialog.visible:
+				reset_confirm_dialog.hide()
+				return
 			match state:
 				State.PLAYING, State.BONUS:
 					set_state(State.PAUSED)
@@ -722,13 +726,14 @@ func _notification(what: int) -> void:
 				# the app from a menu.
 				State.SHOP, State.STATS, State.SKINS:
 					set_state(modal_return_state)
+				State.DEAD:
+					retry_run_save()
+					get_tree().quit()
 				_:
 					get_tree().quit()
-		# Focus loss: notification shade, incoming call, recents switcher. Only PLAYING
-		# needs handling -- the other three states are already paused. Deliberately does
-		# NOT auto-resume on focus-in: coming back to a running game you can't react to
-		# yet is how you lose a run to the OS.
-		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		# Mobile suspend and focus loss may both arrive. The state check keeps
+		# the transition and its progress write to one call.
+		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_WINDOW_FOCUS_OUT:
 			if state == State.PLAYING or state == State.BONUS:
 				set_state(State.PAUSED)
 
@@ -796,7 +801,10 @@ func _on_player_died() -> void:
 		# rather than costing a second one from set_state(DEAD) a few lines below.
 		bank_playtime()
 		services.save_store.grant_chest_rewards(chest_rewards)
-		last_run_is_new_best = services.save_store.record_run(coin_count, main.elapsed_time, get_run_distance_meters())
+		last_run_is_new_best = coin_count > services.save_store.best_score
+		run_save_pending = not services.save_store.record_run(coin_count, main.elapsed_time, get_run_distance_meters())
+		if run_save_pending:
+			restart_button.text = "Retry save"
 	# These were paid at flight completion. Append only AFTER banking the run's chests.
 	chest_rewards.append_array(earned_chest_rewards)
 	earned_chest_rewards.clear()
@@ -805,8 +813,24 @@ func _on_player_died() -> void:
 	if chest_reveal != null:
 		chest_reveal.play(chest_rewards, sfx_player.play_chest)
 	# Publish run achievements after the death screen and its toast layout are in place.
-	if services != null and DisplayServer.get_name() != "headless":
-		run_recorded.emit(get_run_distance_meters(), coin_count, services.save_store.total_distance_meters)
+	if services != null and DisplayServer.get_name() != "headless" and not run_save_pending:
+		publish_run_recorded()
+
+
+func publish_run_recorded() -> void:
+	run_recorded.emit(get_run_distance_meters(), coin_count, services.save_store.total_distance_meters)
+
+
+func retry_run_save() -> bool:
+	if not run_save_pending:
+		return true
+	if not services.save_store.save_to_disk():
+		return false
+	run_save_pending = false
+	restart_button.text = "Restart"
+	refresh_death_stats()
+	publish_run_recorded()
+	return true
 
 
 func _on_earned_chest(reward: Dictionary) -> void:
@@ -835,8 +859,9 @@ func refresh_death_stats() -> void:
 		wallet = services.save_store.coin_wallet
 	# A reset since death zeroes the best, and "Best: 0 (New Best!)" would contradict itself.
 	var best_suffix: String = " (New Best!)" if last_run_is_new_best and best_score == coin_count else ""
-	death_stats_label.text = "Coins: %d\nTime: %s\nDistance: %s\nBest: %d%s\nWallet: %d" % [coin_count,
-		main.format_elapsed_time(main.elapsed_time), format_distance(get_run_distance_meters()), best_score, best_suffix, wallet]
+	var save_suffix: String = " · Save pending" if run_save_pending else ""
+	death_stats_label.text = "Coins: %d\nTime: %s\nDistance: %s\nBest: %d%s\nWallet: %d%s" % [coin_count,
+		main.format_elapsed_time(main.elapsed_time), format_distance(get_run_distance_meters()), best_score, best_suffix, wallet, save_suffix]
 
 
 # Session state, not save state: where this run ended is where the next one picks the day
@@ -882,6 +907,7 @@ func _on_sfx_volume_changed(value: float) -> void:
 # The "Home" button on both the pause and death screens. Lands on START because that's
 # what a bare reload_current_scene() does -- see require_start_screen.
 func _on_home_pressed() -> void:
+	retry_run_save()
 	reload_scene(false)
 
 
@@ -889,6 +915,9 @@ func _on_home_pressed() -> void:
 # START screen, straight into a new run, via the static flag that survives the reload --
 # see pending_quick_restart.
 func _on_quick_restart_pressed() -> void:
+	if run_save_pending:
+		retry_run_save()
+		return
 	reload_scene(true)
 
 
@@ -1032,6 +1061,8 @@ func apply_debug_start_wallet() -> void:
 
 
 func _on_shop_pressed() -> void:
+	if not retry_run_save():
+		return
 	sfx_player.play_click()
 	modal_return_state = State.DEAD
 	refresh_shop()
@@ -1555,14 +1586,19 @@ func _on_reset_progress_pressed() -> void:
 
 func _on_reset_progress_confirmed() -> void:
 	sfx_player.play_click()
+	if services == null:
+		return
+	if not services.save_store.reset_progress():
+		shop_wallet_label.text = "Couldn't reset progress. Try again."
+		return
 	earned_chest_rewards.clear()
-	if services != null:
-		services.save_store.reset_progress()
-		# Same reasoning as _on_buy_pressed: sync the now-reset levels onto the live
-		# player immediately rather than waiting for the next reload.
-		apply_upgrades()
-		apply_skin()
-		apply_sparkle()
-		prepare_mission()
+	chest_rewards.clear()
+	if chest_reveal != null:
+		chest_reveal.play([], Callable())
+	# Sync the reset levels and selected items onto the player before another run.
+	apply_upgrades()
+	apply_skin()
+	apply_sparkle()
+	prepare_mission()
 	refresh_shop()
 	refresh_death_stats()

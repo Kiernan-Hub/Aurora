@@ -157,6 +157,10 @@ with temporary per-second logging to logcat plus `dumpsys SurfaceFlinger --laten
   geometry). Cost: `reset_physics_interpolation()` on every teleport — world rebasing, restart,
   respawn, spawner placement — and every probe and the camera were measured with it off.
 
+On 2026-11-21, removing redundant cached lookups reduced desktop obstacle search P99 from
+7.8–7.9 ms to 5.3–5.7 ms with identical placements. This is CPU search time. Physical-device
+frame timing remains unmeasured for that change. See the [stability audit](../review/2026-11-21-mobile-readiness-audit.md).
+
 ## Jump reach, and the rare coin (2026-08-13)
 
 Apex is `v² / 2g` with `v = JUMP_VELOCITY(640) × upgrade multiplier`, so it goes as the

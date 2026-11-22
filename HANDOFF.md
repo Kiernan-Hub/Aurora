@@ -1,10 +1,20 @@
 # Handoff
 
-## START HERE — desktop polish, 2026-11-21
+## START HERE — desktop audit and polish, 2026-11-21
 
 **Branch: `play/next`. Latest skating change: `8fa0bdb` (smooth recovery).**
 The previous long phone-review handoff is archived at the top of `docs/history.md`.
 Read this section and "Next actions"; the remainder is older obstacle-system reference.
+
+### Stability audit
+
+- Mobile suspend now pauses and banks progress once, clearing stale jump input in the run and
+  The Melt. Android Back dismisses Reset Progress before leaving its shop.
+- Failed run saves can retry from results without duplicating rewards. A failed reset preserves
+  progress. A scratch Android APK export and a desktop run from its exported data passed.
+- Slow obstacle searches were about 30% faster in the desktop benchmark with identical terrain
+  and placements. Remaining frame hitches and physical Android behavior were not measured again.
+  Evidence and coverage: `docs/review/2026-11-21-mobile-readiness-audit.md`.
 
 ### Desktop review
 

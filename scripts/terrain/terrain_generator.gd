@@ -1421,7 +1421,8 @@ func get_terrain_height(world_x: float) -> float:
 
 	var segment_x: float = world_x - segment_start_x
 	var spec: Dictionary = get_segment_spec(segment_index)
-	var segment_baseline: float = get_segment_baseline(segment_index)
+	# The lookup above already addressed an ensured segment.
+	var segment_baseline: float = segment_baseline_cache[segment_index]
 	var segment_progress: float = segment_x / float(spec["length"])
 	return segment_baseline + evaluate_segment_offset(spec, segment_progress)
 
@@ -1920,9 +1921,9 @@ func find_segment_index_at_x(world_x: float) -> int:
 	var lower_index: int = lowest_cached_segment_index
 	var upper_index: int = highest_cached_segment_index
 	while lower_index <= upper_index:
-		var middle_index: int = floori(float(lower_index + upper_index) / 2.0)
+		var middle_index: int = lower_index + ((upper_index - lower_index) >> 1)
 		var middle_start_x: float = segment_start_x_cache[middle_index]
-		var middle_end_x: float = get_cached_segment_end_x(middle_index)
+		var middle_end_x: float = middle_start_x + segment_length_cache[middle_index]
 		if world_x < middle_start_x:
 			upper_index = middle_index - 1
 		elif world_x >= middle_end_x:

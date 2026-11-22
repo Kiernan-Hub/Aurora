@@ -129,6 +129,12 @@ run_export_check() {
 		rm -rf "$(dirname "$pack")"
 		return 1
 	fi
+	# Godot can produce a pack and exit 0 after a resource has failed to load.
+	if grep -Eq 'Parse Error|Failed (loading resource|to load script)' <<< "$output"; then
+		output="$output"$'\n''EXPORT FAILED -- a resource did not load.'
+		rm -rf "$(dirname "$pack")"
+		return 1
+	fi
 
 	local hits=()
 	for path in "${FORBIDDEN[@]}"; do

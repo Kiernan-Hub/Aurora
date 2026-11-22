@@ -99,17 +99,20 @@ func run() -> void:
 		DevMode.is_enabled = false
 		DevMode.is_invincible = false
 		await pause_pointer()
+		await background_suspend()
 		await dev_speed()
 		await chests()
 		await chest_tiers()
 		await mission_lifecycle()
+		await failed_run_save()
 		await glide_achievement()
 		await glide_milestones()
 		await melt_lifecycle()
 		await collection()
 		await rig_lifecycle()
-		await menu_layout()
+		# Capture the lake before the menu check opens a modal OS window.
 		await lake_exit()
+		await menu_layout()
 		main.queue_free()
 		await process_frame
 		print("REGRESSION_UI_RESULT cases=%d failures=%d status=%s" % [cases, failures, "PASS" if failures == 0 else "FAIL"])
@@ -235,12 +238,21 @@ func death_stats() -> void:
 	var at_death: String = stats_line(3) + " / " + stats_line(4)
 	game_manager._on_buy_pressed(UpgradeStore.SLAM_UPGRADE_ID)
 	var after_buy: String = stats_line(3) + " / " + stats_line(4)
+	store.cosmetics["trail_comet"] = true
+	store.mission_progress = 25.0
+	var before_reset: Dictionary = store.to_data().duplicate(true)
+	store.succeed = false
+	game_manager._on_reset_progress_confirmed()
+	var refused: bool = store.to_data() == before_reset \
+		and game_manager.shop_wallet_label.text.contains("Couldn't reset")
+	store.succeed = true
 	game_manager._on_reset_progress_confirmed()
 	var after_reset: String = stats_line(3) + " / " + stats_line(4)
 	var expected_after_buy: String = "Best: 50 / Wallet: %d" % (1000 - UpgradeStore.SLAM_UPGRADE_COST)
 	expect("death_stats", at_death == "Best: 50 / Wallet: 1000" and after_buy == expected_after_buy
-		and after_reset == "Best: 0 / Wallet: 0",
-		"at death [%s], after buy [%s], after reset [%s]" % [at_death, after_buy, after_reset])
+		and refused and after_reset == "Best: 0 / Wallet: 0",
+		"at death [%s], after buy [%s], failed reset preserved progress=%s, after reset [%s]" % [
+			at_death, after_buy, refused, after_reset])
 
 
 func chests() -> void:
@@ -519,6 +531,59 @@ func send_pointer(at: Vector2, down: bool, touch: bool) -> void:
 	root.push_input(event, true)
 
 
+func failed_run_save() -> void:
+	await new_scene()
+	store.mission_id = "coins"
+	store.mission_progress = 100.0
+	game_manager.prepare_mission()
+	game_manager._on_coin_collected(25)
+	var previous_runs: int = store.total_runs
+	var signals: Array[int] = [0]
+	game_manager.run_recorded.connect(func(_distance, _coins, _all_distance): signals[0] += 1)
+	store.succeed = false
+	player.die()
+	var pending: bool = game_manager.run_save_pending and signals[0] == 0 \
+		and game_manager.death_stats_label.text.contains("Save pending") and game_manager.restart_button.text == "Retry save"
+	var staged: Dictionary = store.to_data().duplicate(true)
+	var chests: Array[Dictionary] = game_manager.chest_rewards.duplicate(true)
+	game_manager._on_quick_restart_pressed()
+	pending = pending and game_manager.run_save_pending and game_manager.state == GameManager.State.DEAD
+	store.succeed = true
+	game_manager._on_quick_restart_pressed()
+	game_manager.retry_run_save()
+	var saved_once: bool = store.to_data() == staged and signals[0] == 1 and store.total_runs == previous_runs + 1 \
+		and game_manager.chest_rewards == chests and chests.size() == 1 and not game_manager.run_save_pending \
+		and game_manager.restart_button.text == "Restart" and game_manager.state == GameManager.State.DEAD
+	expect("failed_run_save", pending and saved_once,
+		"failure visible and retry stays on results=%s successful retry saves the same run/mission rewards once=%s" % [pending, saved_once])
+
+
+func background_suspend() -> void:
+	await new_scene()
+	store.mission_id = "coins"
+	store.mission_progress = 0.0
+	game_manager.prepare_mission()
+	game_manager._on_coin_collected(20)
+	var touch_at: Vector2 = root.get_visible_rect().size * 0.5
+	send_pointer(touch_at, true, true)
+	var queued: bool = player.jump_buffer_timer > 0.0 and main.is_touch_held()
+	var writes: int = store.writes
+	var clock: float = main.elapsed_time
+	game_manager.notification(NOTIFICATION_APPLICATION_PAUSED)
+	await physics_frame
+	var suspended: bool = paused and game_manager.state == GameManager.State.PAUSED and main.elapsed_time == clock
+	game_manager.notification(NOTIFICATION_APPLICATION_FOCUS_OUT)
+	game_manager.notification(NOTIFICATION_APPLICATION_RESUMED)
+	var banked_once: bool = store.writes == writes + 1 and store.mission_progress == 20.0
+	var cleared: bool = player.jump_buffer_timer == 0.0 and not main.is_touch_held()
+	game_manager._on_resume_pressed()
+	await physics_frame
+	var no_ghost_jump: bool = game_manager.state == GameManager.State.PLAYING and not player.is_jump_ascending
+	expect("background_suspend", queued and suspended and banked_once and cleared and no_ghost_jump,
+		"suspend pauses and banks once=%s clears touch and jump=%s resumes on request=%s" % [
+			suspended and banked_once, queued and cleared, no_ghost_jump])
+
+
 func dev_speed() -> void:
 	DevMode.is_enabled = true
 	await new_scene()
@@ -768,9 +833,12 @@ func collection() -> void:
 # Headless's 64px viewport cannot establish either visibility or usable menu geometry.
 func menu_layout() -> void:
 	await new_scene()
+	# This case opens and closes menus in consecutive frames, then exits. Keep
+	# the Dummy driver from retaining those one-shot sounds at test shutdown.
+	game_manager.sfx_player.is_headless = true
 	var original_size: Vector2i = root.size
 	var passed: bool = true
-	for size: Vector2i in [Vector2i(1152, 648), Vector2i(1404, 648)]:
+	for size: Vector2i in [Vector2i(1152, 648), Vector2i(1404, 648), Vector2i(1512, 648), Vector2i(1152, 864)]:
 		root.size = size
 		game_manager.set_state(GameManager.State.START)
 		for frame: int in range(3):
@@ -792,7 +860,16 @@ func menu_layout() -> void:
 			passed = passed and ui_rect_fits(button)
 		passed = passed and ui_rect_fits(game_manager.skins_close_button)
 	root.size = original_size
-	expect("menu_layout", passed, "primary button style applied; HUD hidden on menus; shop/collection fit 16:9 and phone")
+	game_manager.set_state(GameManager.State.START)
+	game_manager._on_start_shop_pressed()
+	game_manager._on_reset_progress_pressed()
+	var dialog_back: bool = game_manager.reset_confirm_dialog.visible
+	game_manager.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	dialog_back = dialog_back and not game_manager.reset_confirm_dialog.visible and game_manager.state == GameManager.State.SHOP
+	game_manager.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	dialog_back = dialog_back and game_manager.state == GameManager.State.START
+	expect("menu_layout", passed and dialog_back,
+		"shop/collection fit four viewport sizes=%s Back dismisses reset prompt before the shop=%s" % [passed, dialog_back])
 
 
 func ui_rect_fits(control: Control) -> bool:
@@ -1266,8 +1343,10 @@ func melt_lifecycle() -> void:
 	var pause_ok: bool = game_manager.state == GameManager.State.PAUSED and view.round.elapsed == bonus_time
 	game_manager._on_resume_pressed()
 	var resume_ok: bool = game_manager.state == GameManager.State.BONUS and paused
-	game_manager._notification(NOTIFICATION_APPLICATION_FOCUS_OUT)
-	pause_ok = pause_ok and game_manager.state == GameManager.State.PAUSED
+	view.round.jump_buffer = 0.10
+	game_manager.notification(NOTIFICATION_APPLICATION_PAUSED)
+	game_manager.notification(NOTIFICATION_APPLICATION_RESUMED)
+	pause_ok = pause_ok and game_manager.state == GameManager.State.PAUSED and view.round.jump_buffer == 0.0
 	game_manager._on_resume_pressed()
 	view.round.finished = true
 	view.round.elapsed = 31.0

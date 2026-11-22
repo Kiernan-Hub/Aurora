@@ -54,6 +54,7 @@ func _ready() -> void:
 	continue_button.pressed.connect(func(): reward_requested.emit())
 	add_child(continue_button)
 	resized.connect(layout_ui)
+	visibility_changed.connect(clear_jump_when_hidden)
 	layout_ui()
 
 
@@ -63,6 +64,11 @@ func make_label(font_size: int) -> Label:
 	label.add_theme_font_size_override("font_size", font_size)
 	add_child(label)
 	return label
+
+
+func clear_jump_when_hidden() -> void:
+	if not visible:
+		round.jump_buffer = 0.0
 
 
 func layout_ui() -> void:

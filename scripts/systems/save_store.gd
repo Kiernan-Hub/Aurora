@@ -320,17 +320,10 @@ func to_data() -> Dictionary:
 		},
 	}
 
-# Returns true when this run beat the stored best, so the caller can show "New Best!".
-# Time is recorded alongside but does not by itself qualify as a new best -- coins are
-# the score, matching what the death screen has always reported.
-#
-# This ALWAYS writes now, where it used to write only on a new best. Every run banks its
-# coins into the wallet, so there is always something to persist; a run that failed to
-# beat the best but earned 40 coins toward an upgrade must not be silently dropped. It
-# is still exactly one disk write per death.
+# Fold the run in exactly once, even if the write fails. A caller retries
+# save_to_disk() with the same earnings rather than recording the run again.
 func record_run(coin_count: int, elapsed_time: float, distance_meters: float) -> bool:
-	var is_new_best: bool = coin_count > best_score
-	if is_new_best:
+	if coin_count > best_score:
 		best_score = coin_count
 		best_time = elapsed_time
 
@@ -339,8 +332,7 @@ func record_run(coin_count: int, elapsed_time: float, distance_meters: float) ->
 	total_coins_earned += maxi(coin_count, 0)
 	total_distance_meters += maxf(distance_meters, 0.0)
 	best_distance_meters = maxf(best_distance_meters, distance_meters)
-	save_to_disk()
-	return is_new_best
+	return save_to_disk()
 
 
 # What this run's chests held (ChestRewards): coins into the wallet and the all-time total, and
@@ -361,7 +353,8 @@ func grant_chest_rewards(rewards: Array[Dictionary]) -> void:
 # levels -- but deliberately leaves music_volume/sfx_volume untouched: those are a
 # device preference, not progress, and a player resetting their save has no reason to
 # expect their volume to jump back to the defaults too.
-func reset_progress() -> void:
+func reset_progress() -> bool:
+	var previous: Dictionary = to_data().duplicate(true)
 	best_score = 0
 	best_time = 0.0
 	coin_wallet = 0
@@ -388,4 +381,7 @@ func reset_progress() -> void:
 	missions_completed = 0
 	best_melt_seconds = 0.0
 	high_glide_count = 0
-	save_to_disk()
+	if save_to_disk():
+		return true
+	load_from_data(previous)
+	return false

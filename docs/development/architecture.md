@@ -208,6 +208,9 @@ unowned IDs and remove finds from the pool within a run; exhaustion falls back t
 budget, named mission and glide rewards are shown separately, and the last tap groups the
 remaining pickups with a visible count and the highest tier's art.
 `to_data()` is the exact disk payload, tested through JSON without writing the developer's save.
+The results screen shows Save pending if `record_run()` fails to write. Retry writes the
+already-prepared state and then publishes the run result, without adding earnings or choosing
+chests again. A failed Reset Progress restores the prior payload.
 
 **v5 (2026-11-15)** adds `mission_id`, `mission_progress` and `missions_completed`.
 `Missions` is a pure stable-ID model, not an autoload. It cycles coins/distance/chests/geodes,

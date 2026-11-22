@@ -193,6 +193,10 @@ func is_touch_held() -> bool:
 func _on_game_manager_state_changed(new_state: GameManager.State) -> void:
 	if new_state != GameManager.State.PLAYING:
 		held_touch_indices.clear()
+	if new_state == GameManager.State.PAUSED:
+		(player as Player).jump_buffer_timer = 0.0
+		Input.action_release(&"ui_accept")
+		Input.action_release(Player.SLAM_ACTION)
 
 
 # True for a press (not a release) of either pointer kind landing inside the pause

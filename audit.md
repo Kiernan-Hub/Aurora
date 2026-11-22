@@ -1,7 +1,7 @@
 # Project cleanliness and maintenance audit — 2026-10-04
 
-**Current audit: this section is Claude's action list.** The earlier audits below are preserved
-as history; their priorities, branch tables and old repro line numbers are not current.
+The [2026-11-21 stability audit](docs/review/2026-11-21-mobile-readiness-audit.md) is current.
+This and the earlier audits are preserved as history.
 
 Baseline: `2486c9c`, branch `claude/implementation-t58fc3`; working tree was clean at the start.
 **Only `audit.md` was changed.** No fixes, deletions, settings changes, commits, pushes or merges.
