@@ -13,8 +13,10 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 - Failed run saves can retry from results without duplicating rewards. A failed reset preserves
   progress. A scratch Android APK export and a desktop run from its exported data passed.
 - Slow obstacle searches were about 30% faster in the desktop benchmark with identical terrain
-  and placements. Remaining frame hitches and physical Android behavior were not measured again.
-  Evidence and coverage: `docs/review/2026-11-21-mobile-readiness-audit.md`.
+  and placements. Evidence and coverage: `docs/review/2026-11-21-mobile-readiness-audit.md`.
+- A follow-up made terrain sampling cheaper and skipped 27% of ice repaints in the palette
+  benchmark, with identical sampled geometry and ice colors. The largest desktop frame gaps
+  remain unattributed. Measurements: `docs/research/frame_hitches_desktop.md`.
 
 ### Desktop review
 

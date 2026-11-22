@@ -1018,11 +1018,12 @@ func paint_ice_band(band: Polygon2D, row_size: int) -> void:
 	# no knowledge of which chunk it is looking at. Safe because every tile is the same size
 	# (biome_schedule_check's EXPECTED_ICE_TILE_SIZE).
 	var horizontal_scale: float = ice_band_texture.get_size().x / ICE_TILE_WORLD_WIDTH
+	var band_uv: PackedVector2Array = band.uv
 
 	var band_colors: PackedColorArray = PackedColorArray()
 	band_colors.resize(row_size * 2)
 	for vertex_index: int in range(row_size):
-		var world_x: float = band.uv[vertex_index].x / horizontal_scale
+		var world_x: float = band_uv[vertex_index].x / horizontal_scale
 		band_colors[vertex_index] = shift_ice_hue(effective_ice_surface, get_ice_hue_shift(world_x))
 		# Depth row deliberately UNSHIFTED -- see BiomePalette.ice_hue_variance. It keeps the
 		# bottom of the band at exactly the colour the flat deep fill below it uses, so no
@@ -1184,9 +1185,9 @@ func paint_snow_cap(cap: Polygon2D, row_size: int) -> void:
 
 	var cap_colors: PackedColorArray = PackedColorArray()
 	cap_colors.resize(row_size * 2)
+	cap_colors.fill(fade_color)
 	for vertex_index: int in range(row_size):
 		cap_colors[vertex_index] = surface_color
-		cap_colors[row_size + vertex_index] = fade_color
 	cap.vertex_colors = cap_colors
 	# Same reasoning as the ice band's: a fully transparent Polygon2D still costs a draw call,
 	# and outside a snowy biome that would be every ground run in the world.
@@ -1263,9 +1264,7 @@ func build_fill_vertex_colors(vertex_count: int) -> PackedColorArray:
 	# the only part with structure; everything below simply has to continue the band's
 	# bottom row without a step. A gradient here would only reintroduce one, because the
 	# band now ends shallower than this polygon's own gradient stop.
-	var deep_color: Color = get_deep_fill_color()
-	for vertex_index: int in range(vertex_colors.size()):
-		vertex_colors[vertex_index] = deep_color
+	vertex_colors.fill(get_deep_fill_color())
 	return vertex_colors
 
 
@@ -1362,7 +1361,10 @@ func get_chunk_surface_sample_world_xs(chunk_start_x: float, chunk_end_x: float,
 	var safe_sample_count: int = maxi(sample_count, 2)
 	for sample_index: int in range(safe_sample_count + 1):
 		var progress: float = float(sample_index) / float(safe_sample_count)
-		add_unique_sample_world_x(sample_world_xs, chunk_start_x + (progress * (chunk_end_x - chunk_start_x)))
+		var world_x: float = chunk_start_x + (progress * (chunk_end_x - chunk_start_x))
+		# Regular samples are monotonic. Seams and lips below are the only unsorted insertions.
+		if sample_world_xs.is_empty() or absf(world_x - sample_world_xs[-1]) > 0.001:
+			sample_world_xs.append(world_x)
 
 	if include_segment_boundaries:
 		add_segment_boundary_sample_world_xs(sample_world_xs, chunk_start_x, chunk_end_x)
@@ -2324,18 +2326,25 @@ func get_collision_chord_slope_angle(world_x: float) -> float:
 # without it the ice would visibly change colour at every chunk boundary during a fade.
 # The two tiles arrive as the biome pair's OWN ice_texture values rather than off `palette`,
 # because a blended palette cannot express a crossfade between two textures -- see
-# BiomePalette.ice_texture. ice_weight is the ice channel's weight: 0 at the start of a
-# transition, 1 at the end, and pinned at 0 the rest of the time.
+# BiomePalette.ice_texture. A null tile uses the default smooth ice. The ice channel's
+# weight goes from 0 to 1 during a transition and stays at 0 between transitions.
 func apply_ice_palette(palette: BiomePalette, from_ice_texture: Texture2D, to_ice_texture: Texture2D, ice_weight: float) -> void:
+	var base_tile: Texture2D = from_ice_texture if from_ice_texture != null else ICE_TERRAIN_TEXTURE
+	var overlay_tile: Texture2D = to_ice_texture if to_ice_texture != null else ICE_TERRAIN_TEXTURE
+	# Sky and scenery can change while the ice channel still holds its starting look.
+	# Compare the exact inputs so every visible change still reaches all chunks.
+	if ice_surface_tint == palette.ice_surface and ice_depth_tint == palette.ice_depth \
+			and ice_hue_variance == palette.ice_hue_variance and ice_contrast == palette.ice_contrast \
+			and snow_cap_tint == palette.snow_cap_color and snow_cap_strength == palette.snow_cap_strength \
+			and ice_band_texture == base_tile and ice_overlay_texture == overlay_tile and ice_overlay_weight == ice_weight:
+		return
 	ice_surface_tint = palette.ice_surface
 	ice_hue_variance = palette.ice_hue_variance
 	snow_cap_tint = palette.snow_cap_color
 	snow_cap_strength = palette.snow_cap_strength
 	ice_depth_tint = palette.ice_depth
-	# null means "this biome uses the default smooth tile"; six of the eight palettes leave
-	# it unset rather than restating it.
-	ice_band_texture = from_ice_texture if from_ice_texture != null else ICE_TERRAIN_TEXTURE
-	ice_overlay_texture = to_ice_texture if to_ice_texture != null else ICE_TERRAIN_TEXTURE
+	ice_band_texture = base_tile
+	ice_overlay_texture = overlay_tile
 	ice_overlay_weight = ice_weight
 	ice_contrast = palette.ice_contrast
 	# One write, seen by every band in the world at once -- the incoming tile and the dissolve
@@ -2451,8 +2460,7 @@ func repaint_chunk(chunk: Node2D) -> void:
 			continue
 
 		var vertex_colors: PackedColorArray = polygon.vertex_colors
-		for vertex_index: int in range(vertex_colors.size()):
-			vertex_colors[vertex_index] = deep_color
+		vertex_colors.fill(deep_color)
 		# Reassigned as a whole array: PackedColorArray is a value type here, so mutating
 		# the local copy above does not touch the node until this line.
 		polygon.vertex_colors = vertex_colors
