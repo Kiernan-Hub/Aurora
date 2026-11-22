@@ -1,6 +1,6 @@
 # Handoff
 
-## START HERE — desktop audit and polish, 2026-11-21
+## START HERE — desktop audit and polish, 2026-11-22
 
 **Branch: `play/next`. Latest skating change: `8fa0bdb` (smooth recovery).**
 The previous long phone-review handoff is archived at the top of `docs/history.md`.
@@ -15,6 +15,9 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
   and a desktop run from its exported data passed.
 - The Android preset excludes root review screenshots named `Screenshot *.png`. The export
   check catches both the original resource and its imported texture path.
+- The Melt keeps a failed reward save available when the player tries Home or Restart. The shop
+  saves a skater purchase and its equipped choice together. Both paths passed fault-injection
+  checks. See `docs/review/2026-11-22-desktop-stability-audit.md`.
 - Slow obstacle searches were about 30% faster in the desktop benchmark with identical terrain
   and placements. Evidence and coverage: `docs/review/2026-11-21-mobile-readiness-audit.md`.
 - A follow-up made terrain sampling cheaper and skipped 27% of ice repaints in the palette
@@ -92,10 +95,9 @@ Read this section and "Next actions"; the remainder is older obstacle-system ref
 
 ### Validation
 
-- **15 full gates pass (227s)**, including 22 headless regression cases. All 12 rendered UI
-  cases and three visuals pass. Both chasm gates passed with the added plunge framing
+- On November 22, all 15 full gates and all 14 rendered UI cases passed. The prior visual
+  pass covered sky, ice and biome transitions. Both chasm gates passed with the plunge framing
   check (796 trials total). The old camera failed all eight plunge phases in 504 trials.
-  All six standard gates and 12 rendered UI cases passed again after the last portal fix.
 - The motion checks cover full cycles, fixed bones, blade contact, coasting, boundaries,
   acceleration through toe-off and early combined lift/forward motion. Second differences
   use1ms samples to avoid single-precision Vector2 rounding noise. Smoothness step limits

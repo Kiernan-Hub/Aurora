@@ -445,6 +445,8 @@ func mission_lifecycle() -> void:
 	game_manager.set_state(GameManager.State.PAUSED)
 	var no_repeat: bool = store.mission_progress == 100.0 and store.writes == banked_writes
 	await new_scene()
+	# Model a death during play even if the desktop window lost focus during warmup.
+	game_manager.set_state(GameManager.State.PLAYING)
 	game_manager.coin_count = 0
 	before = store.writes
 	player.die()
@@ -566,6 +568,7 @@ func failed_run_save() -> void:
 
 func background_suspend() -> void:
 	await new_scene()
+	game_manager.set_state(GameManager.State.PLAYING)
 	store.mission_id = "coins"
 	store.mission_progress = 0.0
 	game_manager.prepare_mission()
@@ -723,16 +726,23 @@ func skins() -> void:
 	var locked_shown: bool = game_manager.skin_buttons["dad"].disabled and not game_manager.skin_buttons[Skins.DEFAULT_ID].disabled
 	game_manager._on_skin_picked("dad")
 	var locked_refused: bool = store.selected_skin == Skins.DEFAULT_ID
-	game_manager._on_buy_pressed(Skins.get_track_id("dad"))
+	var track_id: String = Skins.get_track_id("dad")
+	store.succeed = false
+	game_manager._on_buy_pressed(track_id)
+	var failed_buy: bool = store.selected_skin == Skins.DEFAULT_ID and store.coin_wallet == 1000 \
+		and not store.upgrade_levels.has(track_id)
+	store.succeed = true
+	var writes: int = store.writes
+	game_manager._on_buy_pressed(track_id)
 	var bought_worn: bool = store.selected_skin == "dad" and game_manager.get_worn_skin_id() == "dad" \
-		and store.coin_wallet == 1000 - UpgradeStore.SKIN_PARENT_COST
+		and store.coin_wallet == 1000 - UpgradeStore.SKIN_PARENT_COST and store.writes == writes + 1
 	game_manager._on_reset_progress_confirmed()
 	var reset_default: bool = game_manager.get_worn_skin_id() == Skins.DEFAULT_ID
 	store.selected_skin = Skins.DEFAULT_ID
 	expect("skins", broken.is_empty() and typed_default and unknown_default and buttons == Skins.SKINS.size()
-		and locked_shown and locked_refused and bought_worn and reset_default,
-		"broken=%s wrong-typed->default=%s unknown->default=%s buttons=%d locked shown=%s refused=%s bought+worn=%s reset->default=%s" % [
-			broken, typed_default, unknown_default, buttons, locked_shown, locked_refused, bought_worn, reset_default])
+		and locked_shown and locked_refused and failed_buy and bought_worn and reset_default,
+		"broken=%s wrong-typed->default=%s unknown->default=%s buttons=%d locked shown=%s refused=%s rollback=%s bought+worn once=%s reset->default=%s" % [
+			broken, typed_default, unknown_default, buttons, locked_shown, locked_refused, failed_buy, bought_worn, reset_default])
 
 
 func sparkles() -> void:
@@ -1363,6 +1373,13 @@ func melt_lifecycle() -> void:
 	director.settle_reward()
 	var cosmetic: String = director.reward_roll[0]["cosmetic"]
 	var rollback: bool = not director.reward_paid and store.coin_wallet == wallet and store.cosmetics.is_empty()
+	var reward_kept: bool = true
+	for leave: Callable in [game_manager._on_home_pressed, game_manager._on_quick_restart_pressed]:
+		game_manager.set_state(GameManager.State.PAUSED)
+		leave.call()
+		reward_kept = reward_kept and game_manager.state == GameManager.State.BONUS and paused \
+			and view.visible and view.continue_button.text == "Retry saving reward" \
+			and not director.reward_paid and store.coin_wallet == wallet and director.reward_roll[0]["cosmetic"] == cosmetic
 	store.succeed = true
 	var writes: int = store.writes
 	director.settle_reward()
@@ -1374,9 +1391,9 @@ func melt_lifecycle() -> void:
 	view._physics_process(2.1)
 	var returned: bool = game_manager.state == GameManager.State.PLAYING and not paused \
 		and not view.visible and player.position == world_x and main.elapsed_time == clock and player.jump_buffer_timer == 0.0
-	expect("melt_lifecycle", schedule_ok and pickup_clear and physical_clearance and entered_ok and frozen and moved and pause_ok and resume_ok and rollback and paid and returned,
-		"safe schedule/once=%s clear slot=%s only placed hazards veto=%s real portal=%s world frozen=%s plays=%s pause/focus=%s resume=%s rollback=%s once/best=%s return=%s" % [
-			schedule_ok, pickup_clear, physical_clearance, entered_ok, frozen, moved, pause_ok, resume_ok, rollback, paid, returned])
+	expect("melt_lifecycle", schedule_ok and pickup_clear and physical_clearance and entered_ok and frozen and moved and pause_ok and resume_ok and rollback and reward_kept and paid and returned,
+		"safe schedule/once=%s clear slot=%s only placed hazards veto=%s real portal=%s world frozen=%s plays=%s pause/focus=%s resume=%s rollback=%s reward kept=%s once/best=%s return=%s" % [
+			schedule_ok, pickup_clear, physical_clearance, entered_ok, frozen, moved, pause_ok, resume_ok, rollback, reward_kept, paid, returned])
 
 
 # Catch a visible snap at either foot's recovery boundary or cycle wrap, across all skins.

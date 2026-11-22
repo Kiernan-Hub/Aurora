@@ -199,7 +199,7 @@ signal run_recorded(distance_meters: float, coins: int, total_distance_meters: f
 # that mutates player stats mid-run. STATS and SKINS are the same kind of modal, from START.
 enum State { START, PLAYING, PAUSED, DEAD, SHOP, STATS, SKINS, BONUS }
 var pause_return_state: State = State.PLAYING
-var melt_view: Control
+var melt_view: MeltView
 # How long the death screen takes to fade in from a death (set_state).
 const DEATH_SCREEN_FADE_SECONDS: float = 0.6
 
@@ -465,7 +465,7 @@ func set_state(new_state: State) -> void:
 	state = new_state
 	if melt_view != null:
 		melt_view.visible = new_state == State.BONUS
-		melt_view.set("running", new_state == State.BONUS)
+		melt_view.running = new_state == State.BONUS
 
 	# START/DEAD stay visible underneath SHOP: the shop is a modal over whichever screen
 	# opened it (see modal_return_state), and closing it returns there without a flicker.
@@ -926,6 +926,9 @@ func _on_quick_restart_pressed() -> void:
 # true would rebuild the scene into a frozen world. The reloaded GameManager sets its own
 # state in _ready().
 func reload_scene(quick_start: bool) -> void:
+	if state == State.PAUSED and pause_return_state == State.BONUS and melt_view != null and melt_view.reward_save_pending:
+		_on_resume_pressed()
+		return
 	# Restart starts a run; Home goes back. Played on the Services voice: the reload below frees
 	# SfxPlayer's pool, which cut the old click off after a frame.
 	sfx_player.play_across_reload(SfxPlayer.START_SOUND if quick_start else SfxPlayer.BACK_SOUND)
@@ -1413,17 +1416,19 @@ static func format_playtime(seconds: float) -> String:
 func _on_buy_pressed(upgrade_id: String) -> void:
 	if services == null:
 		return
+	# A bought skater is worn at once. Include that choice in the purchase's own write.
+	var skin_id: String = String(UpgradeStore.get_track(upgrade_id).get("skin", ""))
+	var previous_skin: String = services.save_store.selected_skin
+	if not skin_id.is_empty():
+		services.save_store.selected_skin = skin_id
 	if not services.upgrades.purchase(upgrade_id):
+		services.save_store.selected_skin = previous_skin
 		# The button is disabled when unaffordable, so a refusal here is a save that failed
 		# and was rolled back. The next refresh_shop() restores the wallet line.
 		shop_wallet_label.text = "Couldn't save. Try again."
 		return
 	sfx_player.play_purchase()
-	# A bought skater is worn at once: the purchase's payoff is seeing it.
-	var skin_id: String = String(UpgradeStore.get_track(upgrade_id).get("skin", ""))
 	if not skin_id.is_empty():
-		services.save_store.selected_skin = skin_id
-		services.save_store.save_to_disk()
 		apply_skin()
 	# Applied immediately even though the current run is over: keeping this next to the
 	# purchase means there is exactly one ordering to reason about, and the restart that

@@ -132,8 +132,9 @@ of modal, read-only, opened from START's Stats button; its rows are built in cod
 (Skaters, 2026-10-29) likewise: one toggle per `Skins.SKINS` row in a `ButtonGroup`, a pick saved
 to `SaveStore.selected_skin` (a preference: a reset keeps it) and put on the Player by
 `apply_skin()`, which skips headless like `apply_upgrades()`. Every skin but the girl is BOUGHT:
-a one-level `UpgradeStore.TRACKS` row (`"skin"` names it, `Skins.get_track_id()` builds its id),
-so it rides the shop's purchase and rollback. `get_worn_skin_id()` wears the pick only if it is
+a one-level `UpgradeStore.TRACKS` row (`"skin"` names it, `Skins.get_track_id()` builds its id).
+A purchase saves the wallet, ownership and equipped skater together. A failed write restores
+all three. `get_worn_skin_id()` wears the pick only if it is
 still owned, which is what makes a reset safe. The same screen's **Sparkle** row picks a
 `Skins.SPARKLES` colour (`SaveStore.selected_sparkle`), unlocked by an achievement and applied by
 `apply_sparkle()` as a `modulate` on `LandingBurst` and the player's `FlightTrail`, which both draw
@@ -155,10 +156,10 @@ frozen world.
 `GameManager._notification()` adds the Android lifecycle triggers (added 2026-08-03,
 there was no `_notification` anywhere before that) — back button and focus loss. Both
 route through `set_state()`, so they are new *triggers*, not a second pause mechanism.
-Back is pause mid-run / resume on the pause screen / quit on START and DEAD, which
+Back pauses during a run or The Melt, resumes from Pause, and quits from Start or saved results. This
 requires `application/config/quit_on_go_back=false` in `project.godot` or Godot quits
-before the notification arrives. Focus-out pauses only from PLAYING and deliberately does
-**not** auto-resume on focus-in. `GameManager` sets `process_mode = ALWAYS` so these
+before the notification arrives. Suspend and focus loss pause both active modes. The player
+resumes manually. `GameManager` sets `process_mode = ALWAYS` so these
 still arrive while the tree is paused; it has no `_process`, so that costs nothing.
 
 ## Persistence
@@ -390,8 +391,10 @@ three tested launch leads. Lava catches them around36.5s and a hard60s close gua
 The view draws simple ice facets, mountains/ribbons and a restrained rose/violet melt with the
 selected skater frames. GameManager owns view visibility and pause state; the view owns only
 its internal intro/result controls. Back/focus pause; Resume remembers whether it returns to
-PLAYING or BONUS. Home/Restart abandon the bonus through normal reload. A successful result
-uses a two-second return countdown and clears run input without moving the frozen player.
+PLAYING or BONUS. Home or Restart abandons the bonus through normal reload. If an earned bonus
+reward still needs to save, either button returns to its retry screen and preserves the same
+reward. A successful result uses a two-second countdown and clears run input without moving
+the frozen player.
 
 Results grant10+2 coins per completed second (cap130), plus Rare at15s or Aurora at30s.
 `bank_bonus` uses the existing atomic save and rolls back wallet, lifetime coins, skaters,

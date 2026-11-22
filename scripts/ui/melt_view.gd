@@ -14,6 +14,7 @@ var camera_y: float = 0.0
 var age: float = 0.0
 var best_seconds: float = 0.0
 var return_seconds: float = -1.0
+var reward_save_pending: bool = false
 var skater_frames: SpriteFrames
 var skater_rig_data: Dictionary = {}
 var skater_stride: float = 0.0
@@ -92,6 +93,7 @@ func begin(frames: SpriteFrames, previous_best: float = 0.0) -> void:
 	skater_stride = 0.0
 	finish_announced = false
 	return_seconds = -1.0
+	reward_save_pending = false
 	camera_y = 0.0
 	age = 0.0
 	best_seconds = previous_best
@@ -103,6 +105,7 @@ func begin(frames: SpriteFrames, previous_best: float = 0.0) -> void:
 
 
 func show_reward(text: String, saved: bool) -> void:
+	reward_save_pending = not saved
 	result.text = text
 	if saved:
 		best_seconds = maxf(best_seconds, round.elapsed)
